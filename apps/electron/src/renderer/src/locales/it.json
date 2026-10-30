@@ -795,6 +795,14 @@
     "githubRepo": "Repository GitHub"
   },
   "meetings": {
+    "folderSuggest": {
+      "suggest": "Suggerisci",
+      "running": "Scrittura…",
+      "hint": "Scrive una descrizione dai riepiloghi delle riunioni di questa cartella. Il testo viene salvato solo quando fai clic su Salva.",
+      "noSummaries": "Nessuna riunione di questa cartella ha un riepilogo. Riepiloga prima una riunione.",
+      "noModel": "Nessun modello di IA configurato. Aggiungine uno in Impostazioni > Modelli.",
+      "failed": "Impossibile scrivere una descrizione. Riprova."
+    },
     "folders": {
       "title": "Cartelle",
       "new": "Nuova cartella",

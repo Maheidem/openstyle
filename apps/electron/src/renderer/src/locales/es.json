@@ -796,6 +796,14 @@
     "githubRepo": "Repositorio de GitHub"
   },
   "meetings": {
+    "folderSuggest": {
+      "suggest": "Sugerir",
+      "running": "Escribiendo…",
+      "hint": "Escribe una descripción a partir de los resúmenes de las reuniones de esta carpeta. El texto no se guarda hasta que hagas clic en Guardar.",
+      "noSummaries": "Ninguna reunión de esta carpeta tiene un resumen. Resume primero una reunión.",
+      "noModel": "No hay ningún modelo de IA configurado. Añade uno en Ajustes > Modelos.",
+      "failed": "No se pudo escribir una descripción. Inténtalo de nuevo."
+    },
     "folders": {
       "title": "Carpetas",
       "new": "Nueva carpeta",

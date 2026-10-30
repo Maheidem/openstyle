@@ -19,6 +19,12 @@ export type DictationStepId =
   | "dictationPolish"
   | "dictationTone";
 
+/** The LLM step of a folder: the description suggestion (issue #373). */
+export type FolderStepId = "folderDescription";
+
+/** Every step that the gateway can call. */
+export type GatewayStepId = LlmStepId | FolderStepId;
+
 export interface ChatTurn {
   role: "user" | "assistant";
   content: string;
@@ -67,7 +73,7 @@ export interface CallRecord {
   /** `step_key`. */
   unitKey: string;
   /** `node`. */
-  node: LlmStepId | DictationStepId;
+  node: GatewayStepId | DictationStepId;
   /** `retry_reason`: the retry kind on the second call, else null. */
   retryReason: string | null;
   provider: string | null;

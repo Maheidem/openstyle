@@ -98,7 +98,7 @@ export const runContexts: RunContextRegistry<RunContext> =
   createRunContextRegistry<RunContext>();
 
 /** The retry wait. Rejects when the signal aborts. */
-function realSleep(ms: number, signal: AbortSignal): Promise<void> {
+export function realSleep(ms: number, signal: AbortSignal): Promise<void> {
   return new Promise((resolve, reject) => {
     if (signal.aborted) {
       reject(signal.reason);
