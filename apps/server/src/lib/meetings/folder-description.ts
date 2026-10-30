@@ -74,7 +74,7 @@ function oneLine(text: string): string {
 }
 
 /** Cut at a word end when one exists near the limit. */
-function cutText(text: string, max: number): string {
+export function cutText(text: string, max: number): string {
   if (text.length <= max) return text;
   const head = text.slice(0, max - 1);
   const space = head.lastIndexOf(" ");
@@ -101,7 +101,7 @@ function summaryJsonParts(json: string): string[] | null {
 }
 
 /** Plain text of a summary that has only markdown (older rows). */
-function markdownParts(markdown: string): string[] {
+export function markdownParts(markdown: string): string[] {
   return markdown
     .split("\n")
     .map((l) =>

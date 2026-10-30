@@ -5,6 +5,7 @@ export * from "./diagnostics.js";
 export * from "./dictionary.js";
 export * from "./export.js";
 export * from "./folder-description.js";
+export * from "./folder-overview.js";
 export * from "./import-limits.js";
 export * from "./jobs.js";
 export * from "./language-list.js";
