@@ -44,6 +44,11 @@ import {
   useSearchStatus,
 } from "./search";
 import {
+  readMeetingsSelection,
+  rememberMeetingsSelection,
+  validateSelection,
+} from "./selection-memory";
+import {
   AsrContextSettingsPopover,
   DiarizationSettingsPopover,
   EnhanceSettingsPopover,
@@ -56,11 +61,19 @@ const autoOpenedLive = new Set<string>();
 
 export default function MeetingsPage(): React.JSX.Element {
   const { t } = useTranslation();
-  const [selectedId, setSelectedId] = useState<string | null>(null);
-  const [selectedFolderId, setSelectedFolderId] = useState<string | null>(null);
-  const [expanded, setExpanded] = useState<Record<string, boolean>>({
-    none: true,
-  });
+  // The selection comes back after a visit to another page.
+  const [selectedId, setSelectedId] = useState<string | null>(
+    () => readMeetingsSelection().selectedId,
+  );
+  const [selectedFolderId, setSelectedFolderId] = useState<string | null>(
+    () => readMeetingsSelection().selectedFolderId,
+  );
+  const [expanded, setExpanded] = useState<Record<string, boolean>>(
+    () => readMeetingsSelection().expanded,
+  );
+  useEffect(() => {
+    rememberMeetingsSelection({ selectedId, selectedFolderId, expanded });
+  }, [selectedId, selectedFolderId, expanded]);
   const [creating, setCreating] = useState(false);
   const [renamingId, setRenamingId] = useState<string | null>(null);
   const [panelAction, setPanelAction] = useState<{
@@ -102,6 +115,20 @@ export default function MeetingsPage(): React.JSX.Element {
         : false,
   });
   const meetings = useMemo(() => listData ?? [], [listData]);
+  // Once the lists load, drop a remembered meeting or folder that is gone.
+  const selectionChecked = useRef(false);
+  useEffect(() => {
+    if (selectionChecked.current || !listData || !folderData.data) return;
+    selectionChecked.current = true;
+    const valid = validateSelection(
+      { selectedId, selectedFolderId },
+      new Set(listData.map((m) => m.id)),
+      new Set(folderData.data.map((f) => f.id)),
+    );
+    if (valid.selectedId !== selectedId) setSelectedId(valid.selectedId);
+    if (valid.selectedFolderId !== selectedFolderId)
+      setSelectedFolderId(valid.selectedFolderId);
+  }, [listData, folderData.data, selectedId, selectedFolderId]);
   const [defaultId, setDefaultId] = useState<string | null>(null);
   useEffect(() => {
     if (meetings.length > 0 && !meetings.some((m) => m.id === defaultId))
