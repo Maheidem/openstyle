@@ -39,6 +39,7 @@ import {
   quoteInLines,
   renderSummaryMarkdown,
   repairCutAnswer,
+  repairCutOverview,
   supportedOwner,
   withoutDuringCall,
   withSupportedOwners,
@@ -1008,17 +1009,32 @@ describe("the length route", () => {
     expect(statusOf(r)).toBe("succeeded");
   });
 
-  it("an extraction call that ends `length` on a small part is raised once, then fails with kind length", async () => {
+  it("an extraction call that ends `length` on a small part is raised once; a cut with no complete item gives an empty list, and the summary is saved partial", async () => {
     const f = seedFixtureMeeting({
       chunks: 1,
       speakers: 1,
       meetingId: "m-lr9s",
     });
-    const r = await run(f, [LENGTH_CUT]);
-    expect(r.requests.map((q) => q.maxOutputTokens)).toEqual([4096, 8192]);
-    expect(r.finalState.summary?.failure?.kind).toBe("length");
-    expect(stepStatus(r.recorder, "decisions")).toBe("failed");
-    expect(r.requests.filter(isOverview)).toHaveLength(0);
+    const r = await run(f, (req) =>
+      stageOf(req) === "decisions" ? LENGTH_CUT : sum({ overview: "Done." }),
+    );
+    expect(r.requests.filter((q) => stageOf(q) === "decisions")).toHaveLength(
+      2,
+    );
+    expect(
+      r.requests
+        .filter((q) => stageOf(q) === "decisions")
+        .map((q) => q.maxOutputTokens),
+    ).toEqual([4096, 8192]);
+    expect(r.finalState.summary?.status).toBe("ok");
+    expect(r.finalState.summary?.partial).toBe(true);
+    expect(r.finalState.summary?.summary?.decisions).toEqual([]);
+    expect(stepStatus(r.recorder, "decisions")).toBe("partial");
+    // The other stages ran: one cut answer does not stop the summary.
+    expect(r.requests.filter(isOverview)).toHaveLength(1);
+    expect(r.finalState.summary?.summary?.overview).toBe("Done.");
+    expect(partialRow(f.meeting.id)).toBe(1);
+    expect(statusOf(r)).toBe("succeeded");
   });
 
   it("LR10: a cut answer of a part splits that part; keys decisions:2, decisions:2/0, decisions:2/1", async () => {
@@ -1192,17 +1208,88 @@ describe("a cut answer with a valid prefix (PR #258)", () => {
     expect(partialRow(f.meeting.id)).toBe(0);
   });
 
-  it("a cut overview with no complete text stays a failed step: no summary", async () => {
+  it("a cut overview with no whole sentence gives an empty overview: the lists are saved, the summary is partial", async () => {
     const f = seedFixtureMeeting({
       chunks: 1,
       speakers: 1,
       meetingId: "m-cut4",
     });
-    const r = await run(f, (req) => (isOverview(req) ? LENGTH_CUT : sum()));
-    expect(r.finalState.summary?.status).toBe("failed");
-    expect(r.finalState.summary?.failure?.kind).toBe("length");
-    expect(stepStatus(r.recorder, "overview")).toBe("failed");
-    expect(savedRow(f.meeting.id)).toBeUndefined();
+    const r = await run(f, (req) =>
+      isOverview(req) ? LENGTH_CUT : sum({ keyPoints: ["A point."] }),
+    );
+    expect(r.finalState.summary?.status).toBe("ok");
+    expect(r.finalState.summary?.partial).toBe(true);
+    expect(r.finalState.summary?.summary?.overview).toBe("");
+    expect(r.finalState.summary?.summary?.keyPoints).toEqual(["A point."]);
+    expect(stepStatus(r.recorder, "overview")).toBe("partial");
+    expect(savedRow(f.meeting.id)?.markdown).toContain("- A point.");
+    expect(partialRow(f.meeting.id)).toBe(1);
+  });
+
+  it("a cut overview keeps its whole sentences and stops where a sentence repeats", async () => {
+    const f = seedFixtureMeeting({
+      chunks: 1,
+      speakers: 1,
+      meetingId: "m-cut5",
+    });
+    const loop = reply(
+      "length",
+      "length",
+      `{"overview": "The team chose a rollout plan. It starts in May. ${"It starts in May. ".repeat(40)}The pil`,
+    );
+    const r = await run(f, (req) => (isOverview(req) ? loop : sum()));
+    expect(r.finalState.summary?.summary?.overview).toBe(
+      "The team chose a rollout plan. It starts in May.",
+    );
+    expect(r.finalState.summary?.partial).toBe(true);
+    expect(stepStatus(r.recorder, "overview")).toBe("partial");
+  });
+});
+
+describe("repairCutOverview (pure)", () => {
+  it("keeps the whole sentences and drops the cut one", () => {
+    expect(
+      repairCutOverview('{"overview": "One. Two sentences here! Thre'),
+    ).toBe("One. Two sentences here!");
+  });
+
+  it("does not split at a dot inside a number", () => {
+    expect(
+      repairCutOverview('{"overview": "Cost rose by 3.5 percent. Then it fe'),
+    ).toBe("Cost rose by 3.5 percent.");
+  });
+
+  it("stops at the first repeated sentence, ignoring case and spacing", () => {
+    expect(
+      repairCutOverview(
+        '{"overview": "Plan agreed. Next step.  next   STEP. Next step. Plan agreed. Lat',
+      ),
+    ).toBe("Plan agreed. Next step.");
+  });
+
+  it("decodes escapes and drops an escape that the cut left open", () => {
+    expect(
+      repairCutOverview('{"overview": "Say \\"go\\".\\nThen wait. And the\\'),
+    ).toBe('Say "go". Then wait.');
+    expect(repairCutOverview('{"overview": "Done. Next \\u00e')).toBe("Done.");
+  });
+
+  it("splits at a CJK end mark with no space after it", () => {
+    expect(repairCutOverview('{"overview": "会議は終わった。次は来週の')).toBe(
+      "会議は終わった。",
+    );
+  });
+
+  it("gives an empty text when no sentence is whole or the text is no overview answer", () => {
+    expect(repairCutOverview('{"overview": "cut')).toBe("");
+    expect(repairCutOverview("")).toBe("");
+    expect(repairCutOverview('{"keyPoints": ["A.", "B')).toBe("");
+  });
+
+  it("reads the text of an answer whose string is closed", () => {
+    expect(repairCutOverview('{"overview": "All done."  \n   ')).toBe(
+      "All done.",
+    );
   });
 });
 

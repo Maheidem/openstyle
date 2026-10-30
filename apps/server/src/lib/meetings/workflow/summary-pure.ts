@@ -347,3 +347,68 @@ export function repairCutAnswer<T>(
   const parsed = schema.safeParse(obj);
   return parsed.success ? parsed.data : null;
 }
+
+/**
+ * The end of a sentence: ". ", "! " or "? " (a dot inside "3.5" does not
+ * count) or a CJK end mark, each with the closing marks after it.
+ */
+const SENTENCE_END = /(?:[.!?]+["')\]”’]*(?=\s|$))|(?:[。！？]+[」』）”’]*)/gu;
+
+/**
+ * The text of the `overview` field of a cut stage answer, or null when the
+ * text does not start with `{"overview": "`. The string has no closing quote
+ * (the token limit cut it), so the text ends at the end of the input. A
+ * dangling escape at the end is dropped.
+ */
+function cutOverviewText(text: string): string | null {
+  const head = /^\s*\{\s*"overview"\s*:\s*"/.exec(text);
+  if (!head) return null;
+  let raw = text.slice(head[0].length);
+  // Find the end of the string text. An escape that the cut left open (a lone
+  // backslash, or a \uXXXX with fewer than 4 digits) is not part of it.
+  for (let i = 0; i < raw.length; i++) {
+    const c = raw[i];
+    if (c === '"') {
+      raw = raw.slice(0, i);
+      break;
+    }
+    if (c !== "\\") continue;
+    const open =
+      i + 1 >= raw.length || (raw[i + 1] === "u" && i + 6 > raw.length);
+    if (open) {
+      raw = raw.slice(0, i);
+      break;
+    }
+    i += raw[i + 1] === "u" ? 5 : 1;
+  }
+  try {
+    return JSON.parse(`"${raw}"`) as string;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * The overview of a cut `overview` answer: whole sentences only. The last
+ * sentence is dropped when it has no end mark, and the text stops at the first
+ * sentence that repeats an earlier one (the loop that a runaway answer writes
+ * until the token limit). `""` when no whole sentence is left. The overview is
+ * free text, so it has no other closing point (`closeCutJson` gives null).
+ */
+export function repairCutOverview(text: string): string {
+  const cut = cutOverviewText(text);
+  if (cut === null) return "";
+  const kept: string[] = [];
+  const seen = new Set<string>();
+  let from = 0;
+  for (const match of cut.matchAll(SENTENCE_END)) {
+    const to = (match.index ?? 0) + match[0].length;
+    const sentence = cut.slice(from, to).trim();
+    from = to;
+    const key = sentence.toLowerCase().replace(/\s+/g, " ");
+    if (sentence === "" || seen.has(key)) break;
+    seen.add(key);
+    kept.push(sentence);
+  }
+  return kept.join(" ");
+}
