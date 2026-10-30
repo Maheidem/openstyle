@@ -43,7 +43,7 @@ export LAB_MLFLOW_URI=<MLflow server>  LAB_OWNER_NAME=<owner first name>
 | `pnpm lab run <grid.json> [--dry-run] [--force] [--port n]` | Runs each cell. A cell with a FINISHED run of the same snapshot hash is skipped (`--force` runs it again). |
 | `pnpm lab list [--filter knob=value] [--metrics m,...]` | One row per run, with the knobs that differ. |
 | `pnpm lab best --metric <m> [--top N] [--asc/--desc] [--filter knob=value]` | The best runs and their knob values. WER, insertions, wall time and RSS are lower-is-better. |
-| `pnpm lab compare <runA> <runB>` | Metric deltas (B - A), meetings better/worse/same on span hits, span flips, changed knobs, basis WARN lines. |
+| `pnpm lab compare <runA> <runB> [--band N] [--fail-on-worse]` | A verdict line (BETTER / WORSE / SAME / UNKNOWN), metric deltas (B - A), meetings better/worse/same on span hits, span flips, changed knobs, basis WARN lines. See "Verdict and regression gate". |
 | `pnpm lab show <run>` | Params, `lab.*` tags, pooled metrics, local items. A run id prefix is enough. |
 
 ## Write a grid
@@ -92,12 +92,44 @@ A grid file is JSON (`grids/` has examples):
 
 | Command | Expected |
 |---|---|
-| `pnpm meeting:eval:test` | `pass 110`, `fail 0` (after the server build) |
+| `pnpm meeting:eval:test` | `pass 123`, `fail 0` (after the server build) |
 | `pnpm meeting:silver:test` | `Ran 15 tests ... OK`, then `Ran 7 tests ... OK` |
 | `pnpm lab corpus check silver-14-s34` | `61/61 OK` |
 | `pnpm lab run scripts/meeting-v2/eval/lab/grids/shipped-s33.json` (14 meetings, owner name set) | `spans_all 82.7 (1152/1393)`, `READ BACK OK`. This number was made with `full`. Since the `first` default, the grid must set `attendee_name_form` to `full` to give it again. |
 | The same command again, at the same commit | `SKIP (run <id> has this snapshot)` |
 | The same command after a new commit | No SKIP. The grid runs again. The ASR cache serves the transcripts, so only scoring costs time. |
+
+## Baseline and regression gate
+
+### THE meeting ASR baseline (2026-10-29, recorded for issue #249)
+
+| Item | Value |
+|---|---|
+| Config | The shipped config: `owner_name=env`, every other knob at its default (`vocabulary=corpus`, `attendees=corpus`, `attendee_name_form=first`, `max_attendee_names=20`, `asr_model=qwen3-1.7b-8bit`). Grid: `grids/baseline-s36.json`. |
+| Corpus | `silver-14-s36`: 14 meetings, goldKind silver-3.6, goldHash `9e2d8da06703`, corpus manifest sha256 `d1bc920d5446c6a8...` |
+| Baseline run | MLflow `openstyle-lab-asr`, run `879493a2` (full id `879493a2ce3e41af9e458b88c4f8395a`), git sha `50062d1b7d715fd4818086e85ba458485c64f4d4` (clean tree) |
+| Numbers | `spans_all` 1235/1604 (77.0 %), `spans_high` 1133/1402, `spans_person` 363/475, `spans_term` 663/893, `spans_verified` 93/239, `wer` 4.12, `wer_eligible` 3.20, `possible_insertions` 47 |
+| Reproduction | Run `e0cf5008` (`baseline-s36/1`, full id `e0cf5008102a4e3ab9d51ce26f270b93`, git sha `fcdf0cdccff2de944a6d73aee198c902de12e304` = main `caae38b4` plus the grid files). A fresh ASR run, not a cache hit (14 fresh, 0 cached; the cache key holds the server source, which changed). Every metric equal to the baseline run. |
+
+A change to the meeting ASR is good when it does not lose span hits against this baseline. To beat the baseline, run the same grid with your change and compare against `879493a2`.
+
+### Verdict and regression gate
+
+`pnpm lab compare <runA> <runB>` prints a verdict line on top: `verdict: BETTER|WORSE|SAME|UNKNOWN (reason)`. It judges run B against run A on `spans_all_hits` (hits of all scored spans), the primary metric.
+
+- `SAME`: the hits differ by at most the noise band. `BETTER` or `WORSE`: they differ by more.
+- `UNKNOWN`: a run has no `spans_all_*` metric, or `spans_all_n` differs (another gold). Fix the basis first.
+- `--band N` sets the noise band in span hits. Default 0.
+- `--fail-on-worse` sets the exit code: 3 for WORSE, 4 for UNKNOWN, 0 otherwise. Without the flag the exit code is always 0 (as before).
+- Put the baseline as `<runA>` and the new run as `<runB>`: `pnpm lab compare 879493a2 <new run> --fail-on-worse`.
+
+Noise band: ASR runs are deterministic. Two runs of the same config on the same snapshot give byte-identical transcripts. This was measured on 2026-10-30: baseline run `879493a2` and the fresh rerun `e0cf5008` have equal values for every metric, except wall time and RSS. So the band for `spans_all_hits` is 0 for the same snapshot. Use a band above 0 only for a change that adds randomness (for example sampling above temperature 0). Wall time and RSS are not quality metrics and never decide the verdict.
+
+### Proof of the gate (2026-10-30)
+
+- Rerun against the baseline: `lab compare e0cf5008 879493a2 --fail-on-worse` printed `verdict: SAME (spans_all hits 1235 -> 1235 (0 of 1604), noise band 0)`, every metric delta 0, 14 meetings same, 0 span flips, exit 0.
+- Planted regression: run `2332e34d` (full id `2332e34d4977453a8da7d482c9298c5d`, `vocabulary=none`, grid `grids/planted-vocab-none-s36.json`, fresh ASR run of 14 meetings, git sha of this change). `lab compare 879493a2 2332e34d --fail-on-worse` printed `verdict: WORSE (spans_all hits 1235 -> 1209 (-26 of 1604), noise band 0)` and exited 3. 11 meetings worse, 3 better, 55 span flips miss->hit and 81 hit->miss. `spans_in_vocab` fell from 84.46 to 68.39.
+- Read the other metrics with care: in this run `wer` fell (4.12 to 3.65) and `possible_insertions` fell (47 to 38), because the vocabulary prompt also adds insertions. So a better `wer` does not offset fewer span hits. The gate uses `spans_all_hits` only; read `wer` and the insertions next to it.
 
 ## Known facts
 
