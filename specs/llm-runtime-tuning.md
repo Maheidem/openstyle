@@ -401,7 +401,7 @@ Real app (Test Runner, quiet mode, fictional data, 0 privacy prompts), dictation
 
 ## 13. Built-in model profiles (2026-10-30)
 
-A profile that the user links to a task belongs to the model that the task runs on (setting `llm_profile_links`, (model, task) to profile). It does not follow the task to another model. With no link, a task uses the Instruct profile of its model (`BUILTIN_MODEL_PRESETS` in `packages/validations/src/llm-task-profiles.ts`). A user link always wins. Each profile sends `enable_thinking` explicitly, and none sets `max_tokens` (it stays derived from the task). The default built-in profile does not block a bounded reasoning step of the gateway; a linked profile does.
+A profile that the user links to a task belongs to the model that the task runs on (setting `llm_profile_links`, (model, task) to profile). It does not follow the task to another model. With no link, a task uses the Instruct profile of its model (`BUILTIN_LLM_PRESETS` in `packages/validations/src/llm-task-profiles.ts`). A user link always wins. Each profile sends `enable_thinking` explicitly, and none sets `max_tokens` (it stays derived from the task). The default built-in profile does not block a bounded reasoning step of the gateway; a linked profile does.
 
 | Family | Mode | temperature | top_p | top_k | min_p | repetition | presence | chat_template_kwargs |
 |---|---|---|---|---|---|---|---|---|

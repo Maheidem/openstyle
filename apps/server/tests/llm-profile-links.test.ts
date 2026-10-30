@@ -1,5 +1,5 @@
 import {
-  BUILTIN_MODEL_PRESETS,
+  BUILTIN_LLM_PRESETS,
   builtinProfile,
   profileLinkKey,
   qwenFamilyKey,
@@ -66,9 +66,9 @@ describe("built-in model profiles", () => {
   });
 
   it("every family has Instruct and Thinking; Qwen 3.8 also has the medium and low levels", () => {
-    const keys = new Set(BUILTIN_MODEL_PRESETS.map((p) => p.model));
+    const keys = new Set(BUILTIN_LLM_PRESETS.map((p) => p.model));
     for (const k of keys) {
-      const modes = BUILTIN_MODEL_PRESETS.filter((p) => p.model === k).map(
+      const modes = BUILTIN_LLM_PRESETS.filter((p) => p.model === k).map(
         (p) => p.mode,
       );
       expect(modes).toContain("instruct");

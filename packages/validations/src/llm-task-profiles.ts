@@ -219,7 +219,7 @@ const MODE_LABEL: Record<BuiltinProfileMode, string> = {
   "thinking-low": "Thinking (low)",
 };
 
-export const BUILTIN_MODEL_PRESETS: readonly LlmParameterPreset[] =
+export const BUILTIN_LLM_PRESETS: readonly LlmParameterPreset[] =
   BUILTIN_FAMILY_DEFS.flatMap((d) => {
     const modes: [BuiltinProfileMode, Record<string, unknown>][] = [
       ["instruct", d.instruct],
@@ -308,11 +308,8 @@ export function builtinProfile(
   key: string,
   mode: BuiltinProfileMode = "instruct",
 ): LlmParameterPreset | undefined {
-  return BUILTIN_MODEL_PRESETS.find((p) => p.model === key && p.mode === mode);
+  return BUILTIN_LLM_PRESETS.find((p) => p.model === key && p.mode === mode);
 }
-
-export const BUILTIN_LLM_PRESETS: readonly LlmParameterPreset[] =
-  BUILTIN_MODEL_PRESETS;
 
 /** Built-in ids, the retired ones too: a user preset may not take them. */
 export const BUILTIN_LLM_PRESET_IDS = new Set([
