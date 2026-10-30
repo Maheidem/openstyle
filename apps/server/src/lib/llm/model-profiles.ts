@@ -306,8 +306,28 @@ function anthropicAdaptive(shortId: string): boolean {
   return major > 4 || (major === 4 && minor >= 7);
 }
 
+/** Gemini 3 and Gemini 4 control thinking with `thinkingLevel`. */
 function isGemini3(shortId: string): boolean {
-  return /^gemini-3/.test(shortId);
+  return /^gemini-[34]/.test(shortId);
+}
+
+/**
+ * Claude models that reject `thinking: disabled` (Fable 5, Fable 5.1, Opus 5.5
+ * and Mythos): adaptive thinking is always on. Sonnet 5.5 rejects it too, but
+ * the AI SDK sends its lowest setting `between_tools`. Source: the thinking
+ * table in platform.claude.com/docs/en/build-with-claude/thinking.
+ */
+function anthropicThinkingAlwaysOn(shortId: string): boolean {
+  return /^claude-(?:fable-5|mythos-5|opus-5-5)/.test(shortId);
+}
+
+/**
+ * Mistral `reasoning_effort` for "no reasoning". Small 4 and Medium 3.5 take
+ * `none`; Large 4 and GLM 5.3 do not (their lowest level is `low`). Source:
+ * docs.mistral.ai/studio/conversations/reasoning (llms-full.txt, 2026-10-30).
+ */
+function mistralOffEffort(shortId: string): "none" | "low" {
+  return /^(?:mistral-large-4|zai-glm-5-3)/.test(shortId) ? "low" : "none";
 }
 
 const OPENAI_EFFORT_ORDER = ["none", "minimal", "low", "medium", "high"];
@@ -468,7 +488,11 @@ export function reasoningWire(profile: CallProfile): ReasoningWire {
               },
             };
       } else {
-        wire.providerOptions.anthropic = { thinking: { type: "disabled" } };
+        wire.providerOptions.anthropic = {
+          thinking: { type: "disabled" },
+          // The model cannot stop thinking, so ask for the least of it.
+          ...(anthropicThinkingAlwaysOn(shortId) ? { effort: "low" } : {}),
+        };
       }
       return wire;
     }
@@ -502,7 +526,7 @@ export function reasoningWire(profile: CallProfile): ReasoningWire {
     }
     case "mistral": {
       wire.providerOptions.mistral = {
-        reasoningEffort: bounded ? "high" : "none",
+        reasoningEffort: bounded ? "high" : mistralOffEffort(shortId),
       };
       return wire;
     }

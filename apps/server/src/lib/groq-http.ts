@@ -37,7 +37,7 @@ export function getGroqChatModel(modelId: string): LanguageModel {
 
 /** Warm Groq while the user is still speaking so the handoff is ready on commit. */
 export function prewarmGroqConnection(
-  modelId = "llama-3.1-8b-instant",
+  modelId = "openai/gpt-oss-20b",
 ): Promise<void> {
   if (prewarmPromise) return prewarmPromise;
 

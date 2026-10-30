@@ -785,6 +785,12 @@
       "confirmTitle": "Puede que este modelo no quepa en este Mac",
       "confirmMsg": "<b>{{name}}</b> necesita unos {{need}} GB de memoria. Este Mac tiene {{ram}} GB. El modelo puede ir muy lento o no iniciarse. La descarga ocupa {{size}}.",
       "confirmAction": "Descargar igualmente"
+    },
+    "retiredNotice": {
+      "title": "{{provider}} retiró {{from}}",
+      "desc": "Openstyle ahora usa {{to}} para la limpieza con IA.",
+      "action": "Cambiar",
+      "dismiss": "Descartar"
     }
   },
   "shell": {

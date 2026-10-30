@@ -118,3 +118,28 @@ describe("resolveMlxLanguage", () => {
     expect(resolveMlxLanguage(whisper, "en")).toBe("en");
   });
 });
+
+describe("OpenAI models with a languages list", () => {
+  it("does not send the single language field to gpt-transcribe", () => {
+    expect(
+      aiSdkProviderOptions("openai", "es", null, "gpt-transcribe"),
+    ).toBeUndefined();
+    expect(
+      aiSdkProviderOptions("openai", "es", null, "openai/gpt-live-transcribe"),
+    ).toBeUndefined();
+  });
+
+  it("keeps the language field for the older models and the prompt for all", () => {
+    expect(
+      aiSdkProviderOptions("openai", "es", null, "gpt-4o-transcribe"),
+    ).toEqual({ openai: { language: "es" } });
+    expect(
+      aiSdkProviderOptions(
+        "openai",
+        "es",
+        { kind: "prompt", text: "Openstyle" },
+        "gpt-transcribe",
+      ),
+    ).toEqual({ openai: { prompt: "Openstyle" } });
+  });
+});

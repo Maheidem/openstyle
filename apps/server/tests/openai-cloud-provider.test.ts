@@ -65,4 +65,25 @@ describe("OpenAI cloud transcription provider", () => {
 
     expect(createOpenAICallConfig()).toEqual({ apiKey: "cloud-openai-key" });
   });
+
+  it("uses gpt-transcribe for a file when the live model is selected", async () => {
+    const provider = new OpenAITranscriptionProvider();
+    const transcription = vi.fn((id: string) => ({ id }));
+    vi.mocked(createOpenAI).mockReturnValueOnce({ transcription } as never);
+
+    await provider.transcribe({ ...opts, model: "openai/gpt-live-transcribe" });
+
+    // gpt-live-transcribe has no v1/audio/transcriptions endpoint.
+    expect(transcription).toHaveBeenCalledWith("gpt-transcribe");
+  });
+
+  it("keeps every other model id for a file", async () => {
+    const provider = new OpenAITranscriptionProvider();
+    const transcription = vi.fn((id: string) => ({ id }));
+    vi.mocked(createOpenAI).mockReturnValueOnce({ transcription } as never);
+
+    await provider.transcribe({ ...opts, model: "openai/gpt-4o-transcribe" });
+
+    expect(transcription).toHaveBeenCalledWith("gpt-4o-transcribe");
+  });
 });
