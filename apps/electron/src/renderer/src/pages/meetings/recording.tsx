@@ -10,9 +10,9 @@ import {
 } from "@renderer/components/ui/dialog";
 import { Progress } from "@renderer/components/ui/progress";
 import { useElapsedClock } from "@renderer/hooks/use-elapsed-clock";
-import { queryKeys } from "@renderer/lib/query";
+import { queryKeys, settingsQueryOptions } from "@renderer/lib/query";
 import { cn } from "@renderer/lib/utils";
-import { useQueryClient } from "@tanstack/react-query";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   AlertTriangle,
   Folder,
@@ -27,6 +27,8 @@ import {
   type MeetingDevicePlan,
   planKeys,
 } from "../../../../shared/meeting-devices";
+import { SETTINGS_KEYS } from "../../../../shared/settings-keys";
+import { LiveTranscriptPanel } from "./live-transcript-panel";
 import type { RecorderStatus } from "./types";
 
 // ---------------------------------------------------------------------------
@@ -414,6 +416,9 @@ export function RecordingCard({
   const [systemLevel, setSystemLevel] = useState(0);
   const recording = recorder.status === "recording";
   const finalizing = recorder.status === "finalizing";
+  // Live transcript and chat (issue #375): experimental, off by default.
+  const { data: appSettings } = useQuery(settingsQueryOptions());
+  const liveChatOn = appSettings?.[SETTINGS_KEYS.liveChatEnabled] === "true";
   // The start time comes from the main process, so this timer and the pill
   // show the same time, also after the page mounts again.
   const elapsed = useElapsedClock(recording ? recorder.startedAt : null);
@@ -559,6 +564,9 @@ export function RecordingCard({
           </Button>
         )}
       </div>
+      {recording && liveChatOn && (
+        <LiveTranscriptPanel meetingId={recorder.meetingId} />
+      )}
       {!recording && !finalizing && targetName && (
         <p className="text-muted-foreground mt-2 text-xs">
           {t("meetings.folders.recordsInto")}{" "}
