@@ -833,6 +833,19 @@
       "tagsTitle": "Etiquetas",
       "noTags": "Las reuniones de esta carpeta no tienen etiquetas."
     },
+    "folderStanding": {
+      "title": "Estado del proyecto",
+      "write": "Escribir",
+      "refresh": "Actualizar",
+      "running": "Escribiendo…",
+      "hint": "Escribe un texto corto sobre el estado de este proyecto a partir de las tareas abiertas, las decisiones y las preguntas abiertas. Una llamada a la IA. El texto se guarda.",
+      "empty": "Aún no está escrito. Haz clic en Escribir para obtener un texto corto sobre el estado de este proyecto.",
+      "noContent": "Esta carpeta aún no tiene tareas abiertas, decisiones ni preguntas.",
+      "noModel": "No hay ningún modelo de IA configurado. Añade uno en Ajustes > Modelos.",
+      "failed": "No se pudo escribir el texto. Inténtalo de nuevo.",
+      "generatedAt": "Escrito: {{date}}",
+      "stale": "Desactualizado: la carpeta cambió desde entonces. Haz clic en Actualizar."
+    },
     "folders": {
       "title": "Carpetas",
       "new": "Nueva carpeta",

@@ -833,6 +833,19 @@
       "tagsTitle": "Étiquettes",
       "noTags": "Aucune étiquette sur les réunions de ce dossier."
     },
+    "folderStanding": {
+      "title": "Où en est le projet",
+      "write": "Écrire",
+      "refresh": "Actualiser",
+      "running": "Écriture…",
+      "hint": "Écrit un court texte sur l'état de ce projet à partir des tâches ouvertes, des décisions et des questions ouvertes. Un appel à l'IA. Le texte est enregistré.",
+      "empty": "Pas encore écrit. Cliquez sur Écrire pour obtenir un court texte sur l'état de ce projet.",
+      "noContent": "Ce dossier n'a pas encore de tâche ouverte, de décision ni de question.",
+      "noModel": "Aucun modèle d'IA n'est configuré. Ajoutez-en un dans Réglages > Modèles.",
+      "failed": "Impossible d'écrire le texte. Réessayez.",
+      "generatedAt": "Écrit : {{date}}",
+      "stale": "Obsolète : le dossier a changé depuis. Cliquez sur Actualiser."
+    },
     "folders": {
       "title": "Dossiers",
       "new": "Nouveau dossier",

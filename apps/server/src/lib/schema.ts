@@ -11,7 +11,7 @@ const DEFAULT_CLOUD_URL = "https://service.freestylevoice.com";
 // reports 26). Migrations only run while currentVersion < SCHEMA_VERSION, so a
 // fork migration numbered below that is silently skipped for anyone arriving
 // from upstream. Keep this above the highest upstream version we have seen.
-const SCHEMA_VERSION = 49;
+const SCHEMA_VERSION = 50;
 
 // Legacy default format-rule patterns (used only by pre-v12 migrations below):
 // domain/phrase entries match as substrings of url+title+app; bare words match
@@ -1294,6 +1294,20 @@ function applyMigrations(db: DatabaseSync, currentVersion: number): void {
         done INTEGER NOT NULL DEFAULT 0,
         updated_at INTEGER NOT NULL,
         PRIMARY KEY (folder_id, item_key)
+      )
+    `);
+  }
+
+  if (currentVersion < 50 && tableExists(db, "meeting_folders")) {
+    // The saved "where things stand" text of a folder
+    // (specs/folder-project-page.md 6). input_hash is the hash of the input
+    // that the model read. A different hash now means the text is out of date.
+    db.exec(`
+      CREATE TABLE IF NOT EXISTS folder_standing (
+        folder_id TEXT PRIMARY KEY REFERENCES meeting_folders(id) ON DELETE CASCADE,
+        input_hash TEXT NOT NULL,
+        bullets_json TEXT NOT NULL,
+        generated_at INTEGER NOT NULL
       )
     `);
   }

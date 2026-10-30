@@ -1011,6 +1011,19 @@
       "tagsTitle": "Tags",
       "noTags": "No tags on the meetings of this folder."
     },
+    "folderStanding": {
+      "title": "Where things stand",
+      "write": "Write",
+      "refresh": "Refresh",
+      "running": "Writing…",
+      "hint": "Write a short text about the state of this project from the open tasks, decisions and open questions. One AI call. The text is saved.",
+      "empty": "Not written yet. Click Write to get a short text about the state of this project.",
+      "noContent": "This folder has no open task, decision or question yet.",
+      "noModel": "No AI model is set up. Add one in Settings > Models.",
+      "failed": "Could not write the text. Try again.",
+      "generatedAt": "Written: {{date}}",
+      "stale": "Out of date: the folder changed since then. Click Refresh."
+    },
     "folders": {
       "title": "Folders",
       "new": "New folder",

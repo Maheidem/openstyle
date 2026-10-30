@@ -1,6 +1,6 @@
 # Folder project page: the Overview (issue #374)
 
-Status: Step A in PR for #374 (2026-10-29). Step B ("Where things stand") is in section 6.
+Status: Steps A and B in the PR for #374 (2026-10-29). Step B ("Where things stand") is in section 6.
 
 Owner decisions: one page per folder. The page is "a curated, maintained and updated view of all important things going on in that project". The owner was away. The builder decided the open points. Each one is marked "Decision".
 
@@ -68,4 +68,46 @@ Small fix in the same PR: in selection mode, rows set `user-select: none`, so a 
 
 ## 6. Step B: Where things stand
 
-See section 6 of the final version of this file.
+Decision: Step B is built in the same PR as Step A. It does not block the Overview.
+
+### 6.1 What it is
+
+A card at the top of the Overview. It holds 3 to 6 short bullets about where the project stands now: what is decided, what is open and what comes next. One narrow LLM job writes them. The user clicks "Write" (first time) or "Refresh". Decision: no automatic call. A new summary only marks the saved text as out of date. A model call that the user did not ask for would use the GPU while the user does other work.
+
+### 6.2 Server
+
+Routes in `apps/server/src/routes/meeting-folder-standing.ts`: `GET /api/meetings/folders/:id/standing` reads the saved text and never calls a model. `POST` writes a new text and saves it. Logic: `apps/server/src/lib/meetings/folder-standing.ts`. Schemas: `packages/validations/src/folder-standing.ts`.
+
+GET answers `{ standing: { bullets, generated_at, stale } | null, can_generate }`. POST answers the `standing` object. Errors (same shape as the description suggestion): `folder_not_found` (404), `no_content` (409, nothing to read), `no_llm` (409), `llm_failed` (502).
+
+Code does the rule-like work:
+
+- Input: the Overview data, built by code. Open action items first (not done, newest first, at most 20), then decisions (at most 15), then open questions (at most 8). Each line is cut to 220 characters. The line says the owner and the due. Done items stay out. The folder description and the most common meeting language go into the system prompt.
+- Budget: at most 1500 input tokens per call, less for a small context window. Output budget 400 tokens.
+- Map-reduce: when the lines do not fit one call, code packs them into groups. The SAME job runs on each group (step keys `map/<pass>/<n>`), then on the group bullets (`reduce`). At most 3 map passes.
+- Clean-up: one line per bullet, no list marks, no duplicates, at most 6 bullets, at most 240 characters each. Decision: 1 to 6 bullets, not a fixed 3 to 6. A folder with 2 items cannot give 3 true bullets, and a forced 3 would invent facts.
+- The job: structured output `{ "bullets": string[] }` (schema `folder_standing` v1). Gateway rules apply: strict structured output, a non-stop finish reason is a typed error, one retry.
+- Model: task `meetingSummarize`, step profile `summarize`, reasoning off (the same choice as the description suggestion).
+- Call record: scope `folder`, kind `folderStanding`, node `folderStanding`. It shares the 50-run prune with the description runs.
+
+### 6.3 Cache (Decision)
+
+Table `folder_standing` (schema version 50): `folder_id` (primary key, cascade), `input_hash`, `bullets_json`, `generated_at`. The hash covers the description, the language and the input lines. GET compares it with the hash of the current input. A different hash gives `stale: true`. Marking an action item done, a new summary, a re-summarize or a move all change the lines, so they all make the text stale. Nothing is saved when a call fails.
+
+### 6.4 Renderer
+
+`folder-standing.tsx`: the card, the Write and Refresh button (spinner and "Writing…" while it runs), the written time, the "Out of date" note and the error line (`role="alert"`). The request stops when the user leaves the page, and the server stops the model. Strings: `meetings.folderStanding.*`.
+
+| Server code | Message |
+|---|---|
+| `no_content` | This folder has no open task, decision or question yet. |
+| `no_llm` | No AI model is set up. Add one in Settings > Models. |
+| `llm_failed` | Could not write the text. Try again. |
+
+### 6.5 Tests
+
+`apps/server/tests/folder-standing.test.ts`: input lines (done items, other folders, caps, cut), hash changes, prompt, clean-up, GET (no model call), 404, 409 `no_content`, 409 `no_llm`, write and save, fresh then stale after a change, refresh, map-reduce, 502 `llm_failed` with nothing saved, and "the Overview route calls no model". Renderer: `folder-standing.test.ts` (error code to message key).
+
+### 6.6 Bench note
+
+See the PR description for the real Gemma 4 E2B run (calls, tokens, time, output).

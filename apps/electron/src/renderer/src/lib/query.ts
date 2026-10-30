@@ -65,6 +65,9 @@ export const queryKeys = {
     all: ["meetings"] as const,
     list: ["meetings", "list"] as const,
     folders: ["meetings", "folders"] as const,
+    /** `GET /meetings/folders/:id/standing`, the saved "where things stand". */
+    folderStanding: (id: string) =>
+      ["meetings", "folder-standing", id] as const,
     /** `GET /meetings/folders/:id/overview` (issue #374). */
     folderOverview: (id: string) =>
       ["meetings", "folder-overview", id] as const,

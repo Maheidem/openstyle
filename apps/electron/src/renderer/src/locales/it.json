@@ -832,6 +832,19 @@
       "tagsTitle": "Tag",
       "noTags": "Nessun tag sulle riunioni di questa cartella."
     },
+    "folderStanding": {
+      "title": "A che punto è il progetto",
+      "write": "Scrivi",
+      "refresh": "Aggiorna",
+      "running": "Scrittura…",
+      "hint": "Scrive un breve testo sullo stato di questo progetto dalle attività aperte, dalle decisioni e dalle domande aperte. Una chiamata all'IA. Il testo viene salvato.",
+      "empty": "Non ancora scritto. Fai clic su Scrivi per ottenere un breve testo sullo stato di questo progetto.",
+      "noContent": "Questa cartella non ha ancora attività aperte, decisioni o domande.",
+      "noModel": "Nessun modello di IA è configurato. Aggiungine uno in Impostazioni > Modelli.",
+      "failed": "Impossibile scrivere il testo. Riprova.",
+      "generatedAt": "Scritto: {{date}}",
+      "stale": "Non aggiornato: la cartella è cambiata da allora. Fai clic su Aggiorna."
+    },
     "folders": {
       "title": "Cartelle",
       "new": "Nuova cartella",

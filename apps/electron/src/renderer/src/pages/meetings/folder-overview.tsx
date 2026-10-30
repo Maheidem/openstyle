@@ -12,6 +12,7 @@ import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useState } from "react";
 import { useTranslation } from "react-i18next";
 import { splitActionItems, visibleSources } from "./folder-overview-model";
+import { FolderStandingCard } from "./folder-standing";
 
 // The Overview tab of a folder (issue #374, specs/folder-project-page.md).
 // The server computes it from stored data on every read. The only write is
@@ -334,6 +335,7 @@ export function FolderOverviewView({
           {t("meetings.folderOverview.noSummaries")}
         </p>
       )}
+      <FolderStandingCard folderId={folderId} />
       <ActionItems folderId={folderId} items={o.action_items} onOpen={onOpen} />
       {o.open_questions.length > 0 && (
         <Section

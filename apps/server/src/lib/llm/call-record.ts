@@ -19,8 +19,9 @@ export type DictationStepId =
   | "dictationPolish"
   | "dictationTone";
 
-/** The LLM step of a folder: the description suggestion (issue #373). */
-export type FolderStepId = "folderDescription";
+/** The LLM steps of a folder: the description suggestion (issue #373) and
+ * "where things stand" (issue #374). */
+export type FolderStepId = "folderDescription" | "folderStanding";
 
 /** Every step that the gateway can call. */
 export type GatewayStepId = LlmStepId | FolderStepId;

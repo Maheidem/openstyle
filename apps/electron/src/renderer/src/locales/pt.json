@@ -832,6 +832,19 @@
       "tagsTitle": "Tags",
       "noTags": "Nenhuma tag nas reuniões desta pasta."
     },
+    "folderStanding": {
+      "title": "Em que pé está o projeto",
+      "write": "Escrever",
+      "refresh": "Atualizar",
+      "running": "Escrevendo…",
+      "hint": "Escreve um texto curto sobre o estado deste projeto a partir das tarefas em aberto, decisões e perguntas em aberto. Uma chamada à IA. O texto é salvo.",
+      "empty": "Ainda não escrito. Clique em Escrever para obter um texto curto sobre o estado deste projeto.",
+      "noContent": "Esta pasta ainda não tem tarefa em aberto, decisão ou pergunta.",
+      "noModel": "Nenhum modelo de IA está configurado. Adicione um em Configurações > Modelos.",
+      "failed": "Não foi possível escrever o texto. Tente novamente.",
+      "generatedAt": "Escrito: {{date}}",
+      "stale": "Desatualizado: a pasta mudou desde então. Clique em Atualizar."
+    },
     "folders": {
       "title": "Pastas",
       "new": "Nova pasta",

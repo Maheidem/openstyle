@@ -252,13 +252,17 @@ export type FolderDescriptionResult =
   | { status: "ok"; description: string; meetingCount: number; calls: number }
   | { status: "no_summaries" };
 
-function maxOutputFor(profile: CallProfile): number {
+/** The output budget of a folder job: `answerTokens` and the reasoning share. */
+export function maxOutputFor(
+  profile: CallProfile,
+  answerTokens: number = FOLDER_DESCRIPTION_ANSWER_TOKENS,
+): number {
   const reasoningShare = profile.reasoning.countsInMaxOutput
     ? profile.reasoning.budgetTokens
     : 0;
   return Math.min(
     profile.maxOutputTokens ?? Number.POSITIVE_INFINITY,
-    FOLDER_DESCRIPTION_ANSWER_TOKENS + reasoningShare,
+    answerTokens + reasoningShare,
   );
 }
 
@@ -279,7 +283,7 @@ export function noteBudget(
   );
 }
 
-function pruneFolderRuns(db: DatabaseSync): void {
+export function pruneFolderRuns(db: DatabaseSync): void {
   try {
     db.prepare(
       `DELETE FROM llm_runs
