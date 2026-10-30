@@ -4,6 +4,7 @@ import {
   DEFAULT_MEETING_ENHANCE_TIMEOUT_SECONDS,
   DEFAULT_MEETING_SUMMARY_TIMEOUT_SECONDS,
   type LlmTaskAssignments,
+  profileLinkKey,
   serverModelId,
 } from "@openstyle/validations";
 import { generateText } from "ai";
@@ -20,6 +21,7 @@ import {
 } from "../src/lib/llm/task-profiles.js";
 import { insertOwnServer } from "../src/lib/own-servers.js";
 import { createChatModel } from "../src/lib/providers.js";
+import { putTaskAssignments } from "./helpers/task-assignments.js";
 
 let serverId = "";
 
@@ -33,7 +35,7 @@ function seedDefaultLlm(provider: string, modelId: string): void {
 }
 
 function setAssignments(assignments: LlmTaskAssignments): void {
-  writeSetting("llm_task_assignments", JSON.stringify(assignments));
+  putTaskAssignments(assignments);
 }
 
 function clearSettings(): void {
@@ -120,7 +122,7 @@ describe("LLM_TASK_PROFILES (§3.2)", () => {
 
 describe("BUILTIN_LLM_PRESETS — param key spelling (§4.2 amendment, §12 item 6)", () => {
   it("both starter presets use repetition_penalty, matching the server's accepted key and cleanupSamplingSchema's field name — not repeat_penalty, which the server silently ignores", () => {
-    for (const preset of BUILTIN_LLM_PRESETS) {
+    for (const preset of BUILTIN_LLM_PRESETS.filter((p) => !p.model)) {
       expect(preset.params).not.toHaveProperty("repeat_penalty");
       expect(preset.params).toHaveProperty("repetition_penalty", 1.0);
       // Tied to the schema so the two spellings can't diverge again: a
@@ -144,6 +146,9 @@ describe("resolveTaskCall — mode: auto (§6.1)", () => {
 
   it("a mapped-subset provider gets an empty sampling object", async () => {
     seedDefaultLlm("openai", "gpt-4o-mini");
+    setAssignments({
+      cleanup: { mode: "preset", presetId: "builtin:qwen-thinking" },
+    });
     getDb()
       .prepare("INSERT INTO api_keys (provider, key) VALUES ('openai', 'k')")
       .run();
@@ -192,6 +197,9 @@ describe("resolveTaskCall — mode: preset, builtin:qwen-thinking (§6.1, §6.4)
 
   it("on a mapped-subset provider: only the safe subset survives, floor applies", async () => {
     seedDefaultLlm("openai", "gpt-4o-mini");
+    setAssignments({
+      cleanup: { mode: "preset", presetId: "builtin:qwen-thinking" },
+    });
     getDb()
       .prepare("INSERT INTO api_keys (provider, key) VALUES ('openai', 'k')")
       .run();
@@ -224,48 +232,60 @@ describe("resolveTaskCall — max_tokens is a floor, never a ceiling (§6.2)", (
   });
 });
 
-describe("resolveTaskCall — sampling values belong to one model", () => {
+describe("resolveTaskCall — a profile belongs to one model and one task", () => {
   const E2B = "local-mlx-llm/gemma-4-e2b-qat-4bit";
+  const QWEN = "local-mlx-llm/qwen3.8-27b-4bit";
+  const link = (model: string, params: Record<string, unknown>) =>
+    writeSetting(
+      "llm_profile_links",
+      JSON.stringify({
+        [profileLinkKey("local-mlx-llm", model)]: {
+          meetingEnhance: { mode: "custom", params },
+        },
+      }),
+    );
 
-  it("a custom max_tokens does not reach a built-in MLX model that the task does not pin", async () => {
+  beforeEach(() => writeSetting("llm_profile_links_migrated", "1"));
+
+  it("a link made for Qwen does not apply to Gemma; Gemma uses its built-in profile", async () => {
+    link(QWEN, { max_tokens: 32768, top_p: 0.5 });
     seedDefaultLlm("local-mlx-llm", E2B);
-    setAssignments({
-      meetingEnhance: {
-        mode: "custom",
-        params: { max_tokens: 32768, top_p: 0.5 },
-      },
-    });
     const resolved = await resolveTaskCall("meetingEnhance", {
       autoMaxOutputTokens: 900,
     });
     expect(resolved.maxOutputTokens).toBe(900);
     expect(resolved.samplingParams).not.toHaveProperty("max_tokens");
-    expect(resolved.samplingParams).not.toHaveProperty("top_p");
+    expect(resolved.source).toEqual({
+      mode: "preset",
+      presetId: "builtin:model:gemma-4-e2b-qat-4bit",
+    });
   });
 
-  it("the same values apply when the task pins that built-in model", async () => {
-    seedDefaultLlm("local-mlx-llm", E2B);
-    setAssignments({
-      meetingEnhance: {
-        mode: "custom",
-        params: { max_tokens: 2000 },
-        modelOverride: { provider: "local-mlx-llm", model_id: E2B },
-      },
-    });
+  it("the Qwen link is active again when the task runs on Qwen again", async () => {
+    link(QWEN, { max_tokens: 2000 });
+    seedDefaultLlm("local-mlx-llm", QWEN);
     const resolved = await resolveTaskCall("meetingEnhance", {
       autoMaxOutputTokens: 900,
     });
     expect(resolved.maxOutputTokens).toBe(2000);
+    expect(resolved.source.mode).toBe("custom");
   });
 
-  it("an own server keeps the values (the Qwen presets target it)", async () => {
-    setAssignments({
-      meetingEnhance: { mode: "custom", params: { max_tokens: 32768 } },
+  it("a link of one task does not apply to another task", async () => {
+    link(QWEN, { max_tokens: 2000 });
+    seedDefaultLlm("local-mlx-llm", QWEN);
+    const resolved = await resolveTaskCall("meetingSummarize", {
+      autoMaxOutputTokens: 900,
     });
+    expect(resolved.maxOutputTokens).toBe(4096);
+  });
+
+  it("an own server has no built-in profile: no link means auto", async () => {
     const resolved = await resolveTaskCall("meetingEnhance", {
       autoMaxOutputTokens: 900,
     });
-    expect(resolved.maxOutputTokens).toBe(32768);
+    expect(resolved.maxOutputTokens).toBe(900);
+    expect(resolved.source).toEqual({ mode: "auto" });
   });
 });
 

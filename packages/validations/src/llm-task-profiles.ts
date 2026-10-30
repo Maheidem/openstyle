@@ -44,6 +44,10 @@ export interface LlmParameterPreset {
   /** Arbitrary JSON object, passed through per §7. No schema beyond
    *  "valid JSON, top-level object" (§4.3). */
   params: Record<string, unknown>;
+  /** Built-in model profile only: the catalog id of the model it is for. */
+  model?: string;
+  /** Built-in model profile only: values of one task, over `params`. */
+  taskParams?: Partial<Record<LlmTaskId, Record<string, unknown>>>;
   createdAt: string; // ISO
   updatedAt: string; // ISO
 }
@@ -83,7 +87,7 @@ export const llmParameterPresetsSettingSchema = z.object({
  * knob already in this codebase (`cleanupSamplingSchema.repetition_penalty`,
  * `settings.ts`). Values unchanged (`1.0` for both presets).
  */
-export const BUILTIN_LLM_PRESETS: readonly LlmParameterPreset[] = [
+const QWEN_STARTER_PRESETS: readonly LlmParameterPreset[] = [
   {
     id: "builtin:qwen-thinking",
     name: "Qwen thinking",
@@ -122,7 +126,40 @@ export const BUILTIN_LLM_PRESETS: readonly LlmParameterPreset[] = [
     createdAt: "2026-08-27T00:00:00.000Z",
     updatedAt: "2026-08-27T00:00:00.000Z",
   },
-] as const;
+];
+
+/**
+ * Built-in profile of each built-in MLX model (catalog ids of
+ * `apps/server/src/lib/mlx-llm/constants.ts`; a server test keeps the two
+ * lists equal). The app uses it for a task when the user linked no profile
+ * to that model and task. The values are placeholders: the current defaults
+ * of the app (no sampling value of its own), until the researched values of
+ * each vendor are added here, per model and per task (`taskParams`).
+ */
+const builtinModelProfile = (
+  model: string,
+  name: string,
+): LlmParameterPreset => ({
+  id: `builtin:model:${model}`,
+  name,
+  params: {},
+  model,
+  createdAt: "2026-10-30T00:00:00.000Z",
+  updatedAt: "2026-10-30T00:00:00.000Z",
+});
+
+export const BUILTIN_MODEL_PRESETS: readonly LlmParameterPreset[] = [
+  builtinModelProfile("gemma-4-e2b-qat-4bit", "Gemma 4 E2B"),
+  builtinModelProfile("gemma-4-e4b-qat-4bit", "Gemma 4 E4B"),
+  builtinModelProfile("nemotron-3.5-bolt-e4b-4bit", "Nemotron 3.5 Bolt E4B"),
+  builtinModelProfile("gemma-4-26b-a4b-qat-4bit", "Gemma 4 26B-A4B"),
+  builtinModelProfile("qwen3.8-27b-4bit", "Qwen3.8 27B"),
+];
+
+export const BUILTIN_LLM_PRESETS: readonly LlmParameterPreset[] = [
+  ...QWEN_STARTER_PRESETS,
+  ...BUILTIN_MODEL_PRESETS,
+];
 
 export const BUILTIN_LLM_PRESET_IDS = new Set(
   BUILTIN_LLM_PRESETS.map((p) => p.id),
@@ -185,6 +222,81 @@ export function parseLlmTaskAssignments(
   } catch {
     return {};
   }
+}
+
+// ---------------------------------------------------------------------------
+// Profile links: (model, task) -> profile
+// ---------------------------------------------------------------------------
+
+/**
+ * A profile linked to one model for one task. The link belongs to that model
+ * only: a task that runs on another model does not see it, and sees it again
+ * when it runs on the first model again.
+ */
+export interface LlmProfileLink {
+  mode: "preset" | "custom";
+  presetId?: string;
+  params?: Record<string, unknown>;
+}
+
+/** Key = `profileLinkKey(provider, model_id)`. */
+export type LlmProfileLinks = Record<
+  string,
+  Partial<Record<LlmTaskId, LlmProfileLink>>
+>;
+
+/** The key of a model in the link map. A leading `<provider>/` is not part of it. */
+export function profileLinkKey(provider: string, modelId: string): string {
+  const prefix = `${provider}/`;
+  return `${provider}::${modelId.startsWith(prefix) ? modelId.slice(prefix.length) : modelId}`;
+}
+
+const llmProfileLinkSchema = z.object({
+  mode: z.enum(["preset", "custom"]),
+  presetId: z.string().min(1).max(80).optional(),
+  params: z.record(z.string(), z.unknown()).optional(),
+});
+
+/** Parse the stored link map. Never throws; bad entries are dropped. */
+export function parseLlmProfileLinks(
+  value: string | null | undefined,
+): LlmProfileLinks {
+  if (!value) return {};
+  try {
+    const parsed: unknown = JSON.parse(value);
+    if (typeof parsed !== "object" || parsed === null || Array.isArray(parsed))
+      return {};
+    const out: LlmProfileLinks = {};
+    for (const [model, tasks] of Object.entries(parsed)) {
+      if (typeof tasks !== "object" || tasks === null) continue;
+      for (const [task, entry] of Object.entries(tasks)) {
+        if (!(LLM_TASK_IDS as readonly string[]).includes(task)) continue;
+        const r = llmProfileLinkSchema.safeParse(entry);
+        if (r.success) (out[model] ??= {})[task as LlmTaskId] = r.data;
+      }
+    }
+    return out;
+  } catch {
+    return {};
+  }
+}
+
+/**
+ * What the Models page shows for one task: the model override of the stored
+ * assignment, and the link of the model the task runs on (auto when it has
+ * none, which means the built-in profile of a built-in model).
+ */
+export function viewTaskAssignment(
+  stored: LlmTaskAssignment | undefined,
+  links: LlmProfileLinks,
+  modelKey: string | null,
+  task: LlmTaskId,
+): LlmTaskAssignment {
+  const link = modelKey ? links[modelKey]?.[task] : undefined;
+  return {
+    ...(link ?? { mode: "auto" as const }),
+    ...(stored?.modelOverride ? { modelOverride: stored.modelOverride } : {}),
+  };
 }
 
 // ---------------------------------------------------------------------------

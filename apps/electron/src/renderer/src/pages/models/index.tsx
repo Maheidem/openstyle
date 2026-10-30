@@ -314,6 +314,7 @@ export default function ModelsPage(): React.JSX.Element {
           <div ref={taskProfilesRef}>
             <TaskProfilesSection
               taskAssignments={m.taskAssignments}
+              profileLinks={m.profileLinks}
               userPresets={m.userPresets}
               configured={m.configured}
               localLlmItems={m.localLlmItems}

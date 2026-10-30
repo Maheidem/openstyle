@@ -1,6 +1,7 @@
 import type {
   CleanupSampling,
   LlmParameterPreset,
+  LlmProfileLinks,
   LlmTaskAssignment,
   LlmTaskAssignments,
   LlmTaskId,
@@ -12,6 +13,7 @@ import {
   MLX_LLM_KEEP_ALIVE_DEFAULT_MINUTES,
   MLX_LLM_KEEP_READY_DEFAULT,
   parseCleanupSampling,
+  parseLlmProfileLinks,
   parseLlmTaskAssignments,
   parseMlxLlmKeepReady,
 } from "@openstyle/validations";
@@ -117,6 +119,8 @@ export interface UseModels {
   cleanupSampling: CleanupSampling;
   /** Per-task sampling assignments (specs/llm-task-profiles.md §5). */
   taskAssignments: LlmTaskAssignments;
+  /** (model, task) -> profile links. The page shows the link of the model of each task. */
+  profileLinks: LlmProfileLinks;
   /** User-created parameter presets, stored (built-ins are merged in by the
    *  section component, never stored here — §4.2). */
   userPresets: LlmParameterPreset[];
@@ -275,6 +279,12 @@ export function useModels(): UseModels {
   useEffect(() => {
     assignmentsRef.current = taskAssignments;
   }, [taskAssignments]);
+
+  const profileLinks = useMemo(
+    () =>
+      parseLlmProfileLinks(settingsQuery.data?.[SETTINGS_KEYS.llmProfileLinks]),
+    [settingsQuery.data],
+  );
 
   // Keep the settings query honest after a write. The seed effect is one-shot,
   // so a later remount of this page seeds local state from whatever this cache
@@ -1048,6 +1058,7 @@ export function useModels(): UseModels {
     saveMlxLlmKeepReady,
     cleanupSampling,
     taskAssignments,
+    profileLinks,
     userPresets,
     saveTaskAssignment,
     resetTaskAssignment,

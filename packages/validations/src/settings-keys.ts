@@ -26,6 +26,10 @@ export const SETTINGS_KEYS = {
   llmCleanup: "llm_cleanup",
   llmParameterPresets: "llm_parameter_presets",
   llmTaskAssignments: "llm_task_assignments",
+  /** (model, task) -> profile links. The resolver reads only this map. */
+  llmProfileLinks: "llm_profile_links",
+  /** "1" once the links of the old task assignments are bound to a model. */
+  llmProfileLinksMigrated: "llm_profile_links_migrated",
   /**
    * I1 (specs/meeting-transcription-v2.md §3.1): the previous-chunk
    * context for meeting transcription. Decision (owner, 2026-10-07):

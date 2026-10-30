@@ -41,6 +41,7 @@ import {
   type CorrectChunk,
 } from "../src/lib/meetings/workflow/schemas.js";
 import { getOwnServer, insertOwnServer } from "../src/lib/own-servers.js";
+import { putTaskAssignments } from "./helpers/task-assignments.js";
 
 const MODEL = "Qwen3.8-27B";
 const VALID = '{"corrections":[]}';
@@ -302,12 +303,10 @@ describe("W2 and W2b, the preset denylist", () => {
   };
 
   it("W2: response_format, stop and guided_json are dropped; the SDK schema stays", async () => {
-    writeSetting(
-      "llm_task_assignments",
-      JSON.stringify({
-        meetingEnhance: { mode: "custom", params: presetKeys },
-      }),
-    );
+    seedDefaultLlm("server", modelId);
+    putTaskAssignments({
+      meetingEnhance: { mode: "custom", params: presetKeys },
+    });
     const seen = stubFetch([() => chatReply(VALID)]);
     const { input } = await makeInput(await serverProfile());
     const result = await callStructured(input);
@@ -329,14 +328,11 @@ describe("W2 and W2b, the preset denylist", () => {
 
   it("W2b: dictation cleanup keeps stop; the two meeting tasks drop it", async () => {
     seedDefaultLlm("server", modelId);
-    writeSetting(
-      "llm_task_assignments",
-      JSON.stringify({
-        cleanup: { mode: "custom", params: { stop: ["x"], temperature: 0.2 } },
-        meetingEnhance: { mode: "custom", params: { stop: ["x"] } },
-        meetingSummarize: { mode: "custom", params: { stop: ["x"] } },
-      }),
-    );
+    putTaskAssignments({
+      cleanup: { mode: "custom", params: { stop: ["x"], temperature: 0.2 } },
+      meetingEnhance: { mode: "custom", params: { stop: ["x"] } },
+      meetingSummarize: { mode: "custom", params: { stop: ["x"] } },
+    });
     const cleanup = await resolveTaskCall("cleanup", {
       autoMaxOutputTokens: 100,
     });
@@ -1156,10 +1152,8 @@ describe("W15, probeEndpoint", () => {
 
 describe("5.5.2, precedence of the gateway keys over a preset", () => {
   function assign(params: Record<string, unknown>): void {
-    writeSetting(
-      "llm_task_assignments",
-      JSON.stringify({ meetingEnhance: { mode: "custom", params } }),
-    );
+    seedDefaultLlm("server", modelId);
+    putTaskAssignments({ meetingEnhance: { mode: "custom", params } });
   }
 
   async function boundedProfile(): Promise<CallProfile> {

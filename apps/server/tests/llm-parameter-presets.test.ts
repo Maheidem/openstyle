@@ -66,14 +66,13 @@ describe("llmParameterPresetsSettingSchema", () => {
 
 describe("BUILTIN_LLM_PRESETS (§4.2)", () => {
   it("ships exactly the two approved starter presets, verbatim", () => {
-    expect(BUILTIN_LLM_PRESETS.map((p) => p.id)).toEqual([
-      "builtin:qwen-thinking",
-      "builtin:qwen-fast",
-    ]);
+    expect(
+      BUILTIN_LLM_PRESETS.filter((p) => !p.model).map((p) => p.id),
+    ).toEqual(["builtin:qwen-thinking", "builtin:qwen-fast"]);
   });
 
   it("every built-in's max_tokens (512) never lowers any task's own budget (§6.2)", () => {
-    for (const p of BUILTIN_LLM_PRESETS) {
+    for (const p of BUILTIN_LLM_PRESETS.filter((p) => !p.model)) {
       expect(p.params.max_tokens).toBe(512);
     }
   });

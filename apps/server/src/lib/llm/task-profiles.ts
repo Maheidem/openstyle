@@ -28,6 +28,7 @@ import {
   parseCleanupSampling,
   parseLlmTaskAssignments,
   parseServerModelId,
+  profileLinkKey,
   SAFE_SUBSET_KEYS,
   SETTINGS_KEYS,
 } from "@openstyle/validations";
@@ -36,6 +37,7 @@ import { readSetting } from "../db.js";
 import { getMlxLlmModel, MLX_LLM_PROVIDER_ID } from "../mlx-llm/constants.js";
 import { stripModelPrefix } from "../model-id.js";
 import { getOwnServer } from "../own-servers.js";
+import { builtinProfileFor, readProfileLinks } from "./profile-links.js";
 import { getLlmProvider, isLocalProvider } from "./registry.js";
 
 const log = createAppLogger("llm-task-profiles");
@@ -263,6 +265,48 @@ function resolveModeParams(
   return {};
 }
 
+/**
+ * The raw sampling values of one model for one task, before the denylist.
+ * Order: the link of (model, task); the built-in profile of a built-in MLX
+ * model; the old `cleanup_sampling` setting (cleanup only); else `{}` (auto). A link whose preset is gone gives auto.
+ */
+function resolveProfileParams(
+  taskId: LlmTaskId,
+  provider: string,
+  modelId: string,
+): {
+  params: Record<string, unknown>;
+  source: ResolvedTaskCall["source"];
+} {
+  const link = readProfileLinks()[profileLinkKey(provider, modelId)]?.[taskId];
+  if (link) {
+    return {
+      params: resolveModeParams(taskId, link),
+      source: {
+        mode: link.mode,
+        ...(link.presetId ? { presetId: link.presetId } : {}),
+      },
+    };
+  }
+  const builtin = builtinProfileFor(provider, modelId);
+  if (builtin) {
+    return {
+      params: builtin.taskParams?.[taskId] ?? builtin.params,
+      source: { mode: "preset", presetId: builtin.id },
+    };
+  }
+  if (
+    taskId === "cleanup" &&
+    parseLlmTaskAssignments(readSetting(SETTINGS_KEYS.llmTaskAssignments))
+      .cleanup === undefined
+  ) {
+    const legacy = resolveCleanupLegacyFallback();
+    if (legacy)
+      return { params: legacy.params ?? {}, source: { mode: "custom" } };
+  }
+  return { params: {}, source: { mode: "auto" } };
+}
+
 /** §7.4 — strip denylisted keys before either transport tier sees them,
  *  logging what was dropped. The meeting tasks also lose the keys of
  *  `LLM_MEETING_DENYLIST_KEYS` (5.5.3); dictation cleanup keeps them. */
@@ -352,21 +396,6 @@ function readTaskAssignment(taskId: LlmTaskId): LlmTaskAssignment {
   return assignment ?? { mode: "auto" };
 }
 
-/** True when the assignment pins the per-task model override to this model. */
-function pinsModel(
-  assignment: LlmTaskAssignment,
-  provider: string,
-  modelId: string,
-): boolean {
-  const o = assignment.modelOverride;
-  return (
-    o !== undefined &&
-    o.provider === provider &&
-    stripModelPrefix(provider, o.model_id) ===
-      stripModelPrefix(provider, modelId)
-  );
-}
-
 async function resolveModelFor(
   taskId: LlmTaskId,
   assignment: LlmTaskAssignment,
@@ -416,20 +445,14 @@ export async function resolveTaskCall(
     opts.pin,
   );
 
-  // A preset or custom value is tuned for one model. A built-in MLX model has
-  // its own profile (the catalog limits, the task profile), and the task
-  // assignment names no model unless it pins one. Without a pin for this
-  // model, a Qwen preset must not reach Gemma: its max_tokens of 32768 on a
-  // 32768-token window made the worker refuse every call.
-  const presetApplies =
-    provider !== MLX_LLM_PROVIDER_ID ||
-    pinsModel(assignment, provider, modelId);
-  if (!presetApplies && assignment.mode !== "auto") {
-    log.warn(
-      `resolveTaskCall("${taskId}"): the ${assignment.mode} sampling values are not pinned to the built-in model ${modelId}; its own profile is used`,
-    );
-  }
-  const rawParams = presetApplies ? resolveModeParams(taskId, assignment) : {}; // §6.1 — {} for "auto"
+  // The profile of this model for this task: the link the user made for this
+  // model and task, else the built-in profile of a built-in model, else auto.
+  // A link made for another model never applies (profile-links.ts).
+  const { params: rawParams, source } = resolveProfileParams(
+    taskId,
+    provider,
+    modelId,
+  ); // §6.1 — {} for "auto"
   const { kept: strippedParams, dropped: deniedKeys } = stripDenylistedKeys(
     taskId,
     rawParams,
@@ -517,10 +540,7 @@ export async function resolveTaskCall(
     samplingParams,
     timeoutMs: taskTimeoutMs(taskId, profile.timeoutMs),
     droppedKeys,
-    source: {
-      mode: assignment.mode,
-      ...(assignment.presetId ? { presetId: assignment.presetId } : {}),
-    },
+    source,
     presetKeys,
   };
 }

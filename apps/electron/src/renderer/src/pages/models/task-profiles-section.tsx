@@ -1,5 +1,6 @@
 import type {
   LlmParameterPreset,
+  LlmProfileLinks,
   LlmTaskAssignment,
   LlmTaskAssignmentMode,
   LlmTaskId,
@@ -9,8 +10,10 @@ import {
   BUILTIN_LLM_PRESETS,
   LLM_PRESET_NAME_MAX,
   LLM_TASK_IDS,
+  profileLinkKey,
   SAFE_SUBSET_KEYS,
   SERVER_PROVIDER_ID,
+  viewTaskAssignment,
 } from "@openstyle/validations";
 import { Eyebrow } from "@renderer/components/page-chrome";
 import { Badge } from "@renderer/components/ui/badge";
@@ -132,6 +135,7 @@ type EditorState =
 
 export function TaskProfilesSection({
   taskAssignments,
+  profileLinks,
   userPresets,
   configured,
   localLlmItems,
@@ -149,6 +153,8 @@ export function TaskProfilesSection({
   onRequestDeletePreset,
 }: {
   taskAssignments: Partial<Record<LlmTaskId, LlmTaskAssignment>>;
+  /** (model, task) -> profile links. */
+  profileLinks: LlmProfileLinks;
   /** Per task: keep its built-in local model loaded (specs/llm-runtime-tuning.md 6). */
   keepReady: MlxLlmKeepReady;
   onKeepReadyChange: (taskId: LlmTaskId, on: boolean) => void;
@@ -193,11 +199,21 @@ export function TaskProfilesSection({
             taskId === "cleanup" &&
             !taskAssignments.cleanup &&
             cleanupLegacyFallback;
-          const assignment: LlmTaskAssignment =
-            taskAssignments[taskId] ??
-            (migratedFromLegacy
-              ? { mode: "custom", params: cleanupSampling }
-              : { mode: "auto" });
+          // The link of the model that this task runs on. A link made for
+          // another model is not shown (it is back when the task runs on
+          // that model again).
+          const stored = taskAssignments[taskId];
+          const runsOn = stored?.modelOverride ?? defaultLlm;
+          const assignment: LlmTaskAssignment = migratedFromLegacy
+            ? { mode: "custom", params: cleanupSampling }
+            : viewTaskAssignment(
+                stored,
+                profileLinks,
+                runsOn
+                  ? profileLinkKey(runsOn.provider, runsOn.model_id)
+                  : null,
+                taskId,
+              );
 
           return (
             <TaskRow
