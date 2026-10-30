@@ -35,7 +35,11 @@ export const LLM_PRESET_PARAMS_MAX_BYTES = 8192;
 /** Upper bound on the number of user-created presets a settings row can hold. */
 export const LLM_PRESET_COUNT_MAX = 50;
 
-export type BuiltinProfileMode = "instruct" | "thinking";
+export type BuiltinProfileMode =
+  | "instruct"
+  | "thinking"
+  | "thinking-medium"
+  | "thinking-low";
 
 export interface LlmParameterPreset {
   /** `user_<uuid>` for user-created presets. Built-ins use fixed `builtin:*`
@@ -151,6 +155,10 @@ interface BuiltinFamilyDef {
   name: string;
   instruct: Record<string, unknown>;
   thinking: Record<string, unknown>;
+  /** Other thinking levels of the family (Qwen 3.8: medium and low). */
+  levels?: Partial<
+    Record<"thinking-medium" | "thinking-low", Record<string, unknown>>
+  >;
 }
 
 const think = (on: boolean, more: Record<string, unknown> = {}) => ({
@@ -213,6 +221,17 @@ const BUILTIN_FAMILY_DEFS: readonly BuiltinFamilyDef[] = [
       preserve_thinking: false,
       reasoning_effort: "xhigh",
     }),
+    // The 3.8 chat template accepts xhigh (default), medium and low.
+    levels: {
+      "thinking-medium": qwenThinking(0.0, {
+        preserve_thinking: false,
+        reasoning_effort: "medium",
+      }),
+      "thinking-low": qwenThinking(0.0, {
+        preserve_thinking: false,
+        reasoning_effort: "low",
+      }),
+    },
   },
   {
     key: "qwen3.6-27b",
@@ -237,22 +256,35 @@ const BUILTIN_FAMILY_DEFS: readonly BuiltinFamilyDef[] = [
 const MODE_LABEL: Record<BuiltinProfileMode, string> = {
   instruct: "Instruct",
   thinking: "Thinking",
+  "thinking-medium": "Thinking (medium)",
+  "thinking-low": "Thinking (low)",
 };
 
 export const BUILTIN_MODEL_PRESETS: readonly LlmParameterPreset[] =
-  BUILTIN_FAMILY_DEFS.flatMap((d) =>
-    (["instruct", "thinking"] as const).map(
-      (mode): LlmParameterPreset => ({
+  BUILTIN_FAMILY_DEFS.flatMap((d) => {
+    const modes: [BuiltinProfileMode, Record<string, unknown>][] = [
+      ["instruct", d.instruct],
+      ["thinking", d.thinking],
+      ...(Object.entries(d.levels ?? {}) as [
+        BuiltinProfileMode,
+        Record<string, unknown>,
+      ][]),
+    ];
+    return modes.map(([mode, params]): LlmParameterPreset => {
+      // A family with levels names its default thinking level: xhigh.
+      const label =
+        mode === "thinking" && d.levels ? "Thinking (xhigh)" : MODE_LABEL[mode];
+      return {
         id: `builtin:model:${d.key}:${mode}`,
-        name: `${d.name} \u2013 ${MODE_LABEL[mode]}`,
-        params: d[mode],
+        name: `${d.name} \u2013 ${label}`,
+        params,
         model: d.key,
         mode,
         createdAt: "2026-10-30T00:00:00.000Z",
         updatedAt: "2026-10-30T00:00:00.000Z",
-      }),
-    ),
-  );
+      };
+    });
+  });
 
 /** Words in a model id that mean a different model from the plain chat model. */
 const QWEN_REJECT =

@@ -65,15 +65,28 @@ describe("built-in model profiles", () => {
     }
   });
 
-  it("every profile has a partner of the other mode", () => {
+  it("every family has Instruct and Thinking; Qwen 3.8 also has the medium and low levels", () => {
     const keys = new Set(BUILTIN_MODEL_PRESETS.map((p) => p.model));
     for (const k of keys) {
-      expect(
-        BUILTIN_MODEL_PRESETS.filter((p) => p.model === k)
-          .map((p) => p.mode)
-          .sort(),
-      ).toEqual(["instruct", "thinking"]);
+      const modes = BUILTIN_MODEL_PRESETS.filter((p) => p.model === k).map(
+        (p) => p.mode,
+      );
+      expect(modes).toContain("instruct");
+      expect(modes).toContain("thinking");
+      expect(modes.length).toBe(k === "qwen3.8" ? 4 : 2);
     }
+    const effort = (m: "thinking" | "thinking-medium" | "thinking-low") =>
+      (
+        builtinProfile("qwen3.8", m)?.params.chat_template_kwargs as Record<
+          string,
+          unknown
+        >
+      ).reasoning_effort;
+    expect([
+      effort("thinking"),
+      effort("thinking-medium"),
+      effort("thinking-low"),
+    ]).toEqual(["xhigh", "medium", "low"]);
   });
 });
 
@@ -336,7 +349,7 @@ describe("built-in profile values", () => {
     );
     expect(fast.samplingParams).not.toHaveProperty("max_tokens");
     const thinking = builtinProfile("qwen3.8", "thinking");
-    expect(thinking?.name).toBe("Qwen 3.8 \u2013 Thinking");
+    expect(thinking?.name).toBe("Qwen 3.8 \u2013 Thinking (xhigh)");
     expect(thinking?.params).toMatchObject({
       temperature: 1.0,
       presence_penalty: 0,

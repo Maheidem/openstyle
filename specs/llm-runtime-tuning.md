@@ -413,7 +413,7 @@ A profile that the user links to a task belongs to the model that the task runs 
 | Qwen 3.6 35B-A3B | Instruct / Thinking | 0.7 / 1.0 | 0.80 / 0.95 | 20 | 0.0 | 1.0 | 1.5 / 1.5 | enable_thinking false / true (+ preserve_thinking false) |
 | Qwen 3.5 (0.8B to 122B-A10B) | Instruct / Thinking | 0.7 / 1.0 | 0.80 / 0.95 | 20 | 0.0 | 1.0 | 1.5 / 1.5 | enable_thinking false / true |
 
-Qwen 3.8 Instruct sends no `reasoning_effort`: the 3.8 template raises an error for a value outside xhigh, medium and low.
+Qwen 3.8 has three Thinking profiles: xhigh (the default level), medium and low. They differ only in `reasoning_effort`. The chat template of Qwen3.8-27B accepts exactly xhigh (default), medium and low (`raise_exception` for any other value), so Qwen 3.8 Instruct sends no `reasoning_effort`.
 
 Matcher for a model of an own server or a cloud provider (`qwenFamilyKey`): the id (case ignored) must hold `qwen`, then `3.5`, `3.6` or `3.8`, then a covered size right after the version (3.8: 27B, Flash, Flash-Next; 3.6: 27B, 35B-A3B; 3.5: 0.8B, 2B, 4B, 9B, 27B, 35B-A3B, 122B-A10B). A quant or file suffix is fine. An id with coder, embed, rerank, vl, audio, asr, omni, math or base gives no match. An unknown version or size gives no match, and then no automatic profile applies. A built-in MLX model matches by its catalog id (Gemma, Nemotron) or by the same Qwen rule.
 
