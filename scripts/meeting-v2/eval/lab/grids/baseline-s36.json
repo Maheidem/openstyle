@@ -1,0 +1,7 @@
+{
+  "name": "baseline-s36",
+  "description": "The meeting ASR baseline: the shipped config on all 14 meetings of silver-14-s36, owner name set, every other knob at its default (attendee_name_form=first).",
+  "stage": "asr",
+  "corpus": "silver-14-s36",
+  "base": { "owner_name": "env" }
+}
