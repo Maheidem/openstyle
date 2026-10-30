@@ -55,12 +55,17 @@ export const meetingBatchStateSchema = z.object({
   active: z.boolean(),
   /** The items of the current batch (since the queue was last empty). */
   total: z.number().int().nonnegative(),
-  /** Items that ran to the end (also when the run itself failed). */
+  /** Items whose run ended well. */
   done: z.number().int().nonnegative(),
   skipped: z.number().int().nonnegative(),
+  /** Items that started, but whose run failed or did only part of its work. */
+  failed: z.number().int().nonnegative(),
   /** Items that the user cancelled before they started. */
   cancelled: z.number().int().nonnegative(),
   skip_reasons: z.partialRecord(batchSkipReasonSchema, z.number().int()),
+  /** Why started runs failed: the failure kind of the run (for example
+   * "length" or "budget_exceeded"), else "run_failed" or "partly_done". */
+  fail_reasons: z.record(z.string(), z.number().int()),
   current: z
     .object({
       meeting_id: z.string(),

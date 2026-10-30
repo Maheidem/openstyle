@@ -1,11 +1,11 @@
 # Build workflow: checks every PR on the platform that ships (macOS), and
 # produces the signed artifacts for Craft releases.
 # - checks (Linux): lint, knip, types, unit tests, meeting eval checks.
-# - app-macos (macos-14): electron unit tests, typecheck + bundle, E2E.
+# - app-macos (macos-15): electron unit tests, typecheck + bundle, E2E.
 #   No xvfb and no apt. The Mac-only specs run here.
-# - worker (macos-14): on release/** pushes, on a manual run with
+# - worker (macos-15): on release/** pushes, on a manual run with
 #   package=true, or on a PR that changes the worker files.
-# - package (macos-14): signs and notarizes. Only on release/** pushes and on
+# - package (macos-15): signs and notarizes. Only on release/** pushes and on
 #   a manual run with package=true. A PR never runs it. Craft downloads the
 #   "mac-builds" artifact of the release-branch run (.craft.yml).
 # A push to main runs nothing here. cache-warm.yml saves the native-helper
@@ -167,7 +167,7 @@ jobs:
     name: Test (macOS app + E2E)
     needs: [changes]
     if: needs.changes.outputs.app == 'true'
-    runs-on: macos-14
+    runs-on: macos-15
     timeout-minutes: 30
     steps:
       - uses: actions/checkout@v4
@@ -197,7 +197,7 @@ jobs:
             apps/electron/resources/models
           key: ${{ runner.os }}-${{ runner.arch }}-native-${{ hashFiles('apps/electron/native/**', 'apps/electron/scripts/compile-native.js') }}
 
-      # native/fluidaudio-diarize needs Swift tools 6.0; macos-14 defaults to
+      # native/fluidaudio-diarize needs Swift tools 6.0; macos-14 (the old image) defaulted to
       # Xcode 15.4 (Swift 5.10). See the package job for the full note.
       - name: Compile native helpers
         if: steps.native-cache.outputs.cache-hit != 'true'
@@ -252,7 +252,7 @@ jobs:
     name: Build MLX worker
     needs: [changes]
     if: needs.changes.outputs.worker == 'true'
-    runs-on: macos-14
+    runs-on: macos-15
     timeout-minutes: 20
     steps:
       - uses: actions/checkout@v4
@@ -279,7 +279,7 @@ jobs:
     name: Build (macOS)
     needs: [changes, worker]
     if: ${{ !cancelled() && needs.changes.outputs.package == 'true' && needs.worker.result == 'success' }}
-    runs-on: macos-14
+    runs-on: macos-15
     # Notarization waits for Apple; the first submissions can take long.
     timeout-minutes: 90
     steps:
@@ -316,7 +316,7 @@ jobs:
         working-directory: apps/electron
         run: node scripts/download-ffmpeg.mjs
 
-      # macos-14 runner images default to Xcode 15.4 (Swift 5.10), but
+      # macos-14 runner images defaulted to Xcode 15.4 (Swift 5.10), but
       # native/fluidaudio-diarize (specs/meeting-diarization.md §3) is a
       # SwiftPM package pinned to tools version 6.0 — `swift build` (invoked
       # from compile:native inside the "Build electron (macOS)" step below)

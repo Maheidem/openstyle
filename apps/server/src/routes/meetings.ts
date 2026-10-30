@@ -8,6 +8,7 @@ import {
   calendarEventSchema,
   MEETINGS_DIR_NAME,
   type MeetingDetail,
+  type MeetingStage,
   MIC_WAV,
   meetingBatchErrorSchema,
   meetingBatchStateSchema,
@@ -38,7 +39,11 @@ import {
   type WaitForDictationIdleOptions,
   waitForDictationIdle,
 } from "../lib/dictation-activity.js";
-import { createBatchQueue } from "../lib/meetings/batch-queue.js";
+import { createRunAdmin } from "../lib/llm/recorder.js";
+import {
+  createBatchQueue,
+  type StageOutcome,
+} from "../lib/meetings/batch-queue.js";
 import { meetingBiasTerms } from "../lib/meetings/bias-terms.js";
 import {
   applyDiarization,
@@ -1273,7 +1278,7 @@ function startTranscribe(id: string): { ok: true } | StageRefusal {
   ].sort();
   db.prepare(
     `UPDATE meetings SET status = 'transcribing', error = NULL,
-       speaker_names_lost = ? WHERE id = ?`,
+       enhanced_at = NULL, speaker_names_lost = ? WHERE id = ?`,
   ).run(namesJson(confirmed), id);
   // A re-run replaces the previous transcript wholesale.
   db.prepare("DELETE FROM meeting_segments WHERE meeting_id = ?").run(id);
@@ -1370,6 +1375,56 @@ function startRunResponse(
 }
 
 /**
+ * How a stage that the batch started did, once its job released the slot.
+ * Summarize and Enhance: the status of the run row. Transcribe: the meeting
+ * still needs the stage when the transcription failed or kept failed chunks.
+ */
+function stageOutcome(
+  id: string,
+  stage: MeetingStage,
+  runId?: string,
+): StageOutcome {
+  if (stage === "transcribe") {
+    if (!needsStage(id, "transcribe")) return "ok";
+    const status = getMeetingRow(id)?.status;
+    return status === "transcribed" || status === "summarized"
+      ? "partial"
+      : "failed";
+  }
+  const run = runId ? createRunAdmin(getDb()).getRun(runId) : null;
+  switch (run?.status) {
+    case "succeeded":
+      return "ok";
+    case "partial":
+      return "partial";
+    case "cancelled":
+      return "cancelled";
+    default:
+      return "failed";
+  }
+}
+
+/** The failure kind of the first failed step of a run, else of the run. */
+function stageFailureKind(
+  _id: string,
+  stage: MeetingStage,
+  runId?: string,
+): string | null {
+  if (stage === "transcribe" || !runId) return null;
+  const db = getDb();
+  const step = db
+    .prepare(
+      `SELECT error_kind FROM llm_run_steps
+        WHERE run_id = ? AND status = 'failed' AND error_kind IS NOT NULL
+        ORDER BY seq LIMIT 1`,
+    )
+    .get(runId) as { error_kind: string } | undefined;
+  return (
+    step?.error_kind ?? createRunAdmin(db).getRun(runId)?.errorKind ?? null
+  );
+}
+
+/**
  * The batch queue (specs/meeting-folder-batch.md 3). One per process, in
  * memory only. It starts each stage with the same function as the route.
  */
@@ -1380,6 +1435,8 @@ const batchQueue = createBatchQueue({
   cancel: (id) => {
     requestCancel(id);
   },
+  outcome: stageOutcome,
+  failureKind: stageFailureKind,
   needsStage,
   stageBlock,
   runningTranscription: () =>

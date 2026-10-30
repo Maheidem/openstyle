@@ -30,6 +30,7 @@ import {
   __batchQueueIdle,
   __setMeetingsTestOverrides,
 } from "../src/routes/meetings.js";
+import { okReply } from "./helpers/fake-model.js";
 import { jsonRequest, postEmpty } from "./helpers/http.js";
 import {
   insertSegment,
@@ -38,7 +39,10 @@ import {
 } from "./helpers/meetings-db.js";
 import {
   defaultAnswer,
+  isIdentify,
+  isSummaryRequest,
   runnerHarness,
+  SUMMARY_ANSWER,
   waitUntil,
 } from "./helpers/runner-helpers.js";
 import { buildWav } from "./helpers/wav.js";
@@ -429,6 +433,111 @@ describe("POST /api/meetings/batch", () => {
     expect((await app.request(`${base}/nope/summary-versions`)).status).toBe(
       404,
     );
+  });
+
+  it("runs Enhance on a folder one meeting at a time, and the Need-it count goes down", async () => {
+    seedTestModel();
+    const folder = await createFolder("Enhance batch");
+    for (const [id, at] of [
+      ["e1", 1],
+      ["e2", 2],
+    ] as const) {
+      insertMeeting(id, "transcribed", { folder: folder.id, startedAt: at });
+      text(id);
+    }
+    insertMeeting("e3", "summarized", { folder: folder.id, startedAt: 3 });
+    text("e3");
+    enhanced("e3");
+    summary("e3", "Fine summary.");
+    expect((await folderCounts(folder.id))?.enhance).toEqual({
+      ready: 2,
+      blocked: 0,
+    });
+    const h = runnerHarness({ answer: defaultAnswer });
+    __setMeetingsTestOverrides({ workflowDeps: h.deps });
+
+    const res = await startBatch({ stage: "enhance", folder_id: folder.id });
+    expect(res.status).toBe(202);
+    await __batchQueueIdle();
+    expect(await batchState()).toMatchObject({
+      total: 2,
+      done: 2,
+      failed: 0,
+      skipped: 0,
+    });
+    expect((await folderCounts(folder.id))?.enhance).toEqual({
+      ready: 0,
+      blocked: 0,
+    });
+    expect((await folderCounts(folder.id))?.summarize).toEqual({
+      ready: 0,
+      blocked: 0,
+    });
+  });
+
+  it("ends the Enhance need also when the run finds nothing to correct", async () => {
+    seedTestModel();
+    const folder = await createFolder("Enhance clean");
+    for (const [id, at] of [
+      ["c1", 1],
+      ["c2", 2],
+    ] as const) {
+      insertMeeting(id, "transcribed", { folder: folder.id, startedAt: at });
+      text(id);
+    }
+    const h = runnerHarness({
+      answer: (r) =>
+        isSummaryRequest(r)
+          ? SUMMARY_ANSWER
+          : isIdentify(r)
+            ? okReply('{"speakers":[]}')
+            : okReply('{"corrections":[]}'),
+    });
+    __setMeetingsTestOverrides({ workflowDeps: h.deps });
+
+    await startBatch({ stage: "enhance", folder_id: folder.id });
+    await __batchQueueIdle();
+    expect(await batchState()).toMatchObject({ total: 2, done: 2, failed: 0 });
+    // No segment has enhanced_text: the run mark ends the need.
+    expect(
+      getDb()
+        .prepare(
+          "SELECT COUNT(*) AS n FROM meeting_segments WHERE enhanced_text IS NOT NULL",
+        )
+        .get(),
+    ).toEqual({ n: 0 });
+    expect((await folderCounts(folder.id))?.enhance).toEqual({
+      ready: 0,
+      blocked: 0,
+    });
+    // A new transcript clears the mark: the meeting needs Enhance again.
+    getDb().prepare("UPDATE meetings SET enhanced_at = NULL").run();
+    expect((await folderCounts(folder.id))?.enhance.ready).toBe(2);
+  });
+
+  it("counts an Enhance run that failed as failed, and the meetings still need it", async () => {
+    seedTestModel();
+    const folder = await createFolder("Enhance fail");
+    for (const [id, at] of [
+      ["f1", 1],
+      ["f2", 2],
+    ] as const) {
+      insertMeeting(id, "transcribed", { folder: folder.id, startedAt: at });
+      text(id);
+    }
+    const h = runnerHarness({ answer: () => new Error("model down") });
+    __setMeetingsTestOverrides({ workflowDeps: h.deps });
+
+    await startBatch({ stage: "enhance", folder_id: folder.id });
+    await __batchQueueIdle();
+    const state = await batchState();
+    expect(state).toMatchObject({ total: 2, done: 0, skipped: 0 });
+    expect(state.failed).toBe(2);
+    // The reason is the failure kind of the run, never "done".
+    expect(Object.values(state.fail_reasons).reduce((a, b) => a + b, 0)).toBe(
+      2,
+    );
+    expect((await folderCounts(folder.id))?.enhance.ready).toBe(2);
   });
 
   it("skips a selected meeting with no transcript, and a folder meeting that is done", async () => {

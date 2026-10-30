@@ -938,6 +938,7 @@
         "waiting": "In attesa: {{count}}",
         "doneCount": "Completate: {{count}}",
         "skipped": "Saltate: {{count}}",
+        "failed": "Non riuscite: {{count}}",
         "cancelledCount": "Annullate: {{count}}",
         "memoryNote": "Se chiudi l’app, la coda si ferma.",
         "cancel": "Annulla il resto",
@@ -950,6 +951,10 @@
           "no_transcript": "Senza trascrizione",
           "no_llm": "Senza modello di IA",
           "refused": "Avvio non riuscito"
+        },
+        "failReason": {
+          "run_failed": "Esecuzione fallita",
+          "partly_done": "Fatta in parte"
         },
         "select": "Seleziona",
         "selectDone": "Fine",

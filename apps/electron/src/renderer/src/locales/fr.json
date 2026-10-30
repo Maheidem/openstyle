@@ -939,6 +939,7 @@
         "waiting": "En attente : {{count}}",
         "doneCount": "Terminées : {{count}}",
         "skipped": "Ignorées : {{count}}",
+        "failed": "Échecs : {{count}}",
         "cancelledCount": "Annulées : {{count}}",
         "memoryNote": "Si vous quittez l’app, la file s’arrête.",
         "cancel": "Annuler le reste",
@@ -951,6 +952,10 @@
           "no_transcript": "Sans transcription",
           "no_llm": "Sans modèle d’IA",
           "refused": "Démarrage impossible"
+        },
+        "failReason": {
+          "run_failed": "Exécution échouée",
+          "partly_done": "Faite en partie"
         },
         "select": "Sélectionner",
         "selectDone": "Terminé",

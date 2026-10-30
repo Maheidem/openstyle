@@ -17,7 +17,7 @@ concurrency:
 jobs:
   native-helpers:
     name: Save native-helper cache
-    runs-on: macos-14
+    runs-on: macos-15
     timeout-minutes: 20
     steps:
       - uses: actions/checkout@v4
@@ -34,7 +34,7 @@ jobs:
       - uses: ./.github/actions/setup
         if: steps.native-cache.outputs.cache-hit != 'true'
 
-      # native/fluidaudio-diarize needs Swift tools 6.0; macos-14 defaults to
+      # native/fluidaudio-diarize needs Swift tools 6.0; macos-14 (the old image) defaulted to
       # Xcode 15.4 (Swift 5.10). See the package job in build.yml.
       - name: Compile native helpers
         if: steps.native-cache.outputs.cache-hit != 'true'
