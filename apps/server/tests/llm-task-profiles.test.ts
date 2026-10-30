@@ -257,7 +257,7 @@ describe("resolveTaskCall — a profile belongs to one model and one task", () =
     expect(resolved.samplingParams).not.toHaveProperty("max_tokens");
     expect(resolved.source).toEqual({
       mode: "preset",
-      presetId: "builtin:model:gemma-4-e2b-qat-4bit",
+      presetId: "builtin:model:gemma-4-e2b-qat-4bit:instruct",
     });
   });
 

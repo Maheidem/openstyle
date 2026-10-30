@@ -35,6 +35,8 @@ export const LLM_PRESET_PARAMS_MAX_BYTES = 8192;
 /** Upper bound on the number of user-created presets a settings row can hold. */
 export const LLM_PRESET_COUNT_MAX = 50;
 
+export type BuiltinProfileMode = "instruct" | "thinking";
+
 export interface LlmParameterPreset {
   /** `user_<uuid>` for user-created presets. Built-ins use fixed `builtin:*`
    *  ids (§4.2) that never appear in this stored list. */
@@ -46,11 +48,8 @@ export interface LlmParameterPreset {
   params: Record<string, unknown>;
   /** Built-in model profile only: the catalog id of the model it is for. */
   model?: string;
-  /**
-   * Built-in model profile only: values for a call with thinking on, over
-   * `params` (a model such as Qwen has one parameter set for each mode).
-   */
-  thinkingParams?: Record<string, unknown>;
+  /** Built-in model profile only: the mode of the profile. */
+  mode?: BuiltinProfileMode;
   /** Built-in model profile only: values of one task, over the values above. */
   taskParams?: Partial<Record<LlmTaskId, Record<string, unknown>>>;
   createdAt: string; // ISO
@@ -134,68 +133,100 @@ const QWEN_STARTER_PRESETS: readonly LlmParameterPreset[] = [
 ];
 
 /**
- * Built-in profile of each built-in MLX model (catalog ids of
+ * The built-in profiles are data: one parameter set for each (model id, mode).
+ * Each built-in MLX model has two, Instruct and Thinking (catalog ids of
  * `apps/server/src/lib/mlx-llm/constants.ts`; a server test keeps the two
- * lists equal). The app uses it for a task when the user linked no profile
- * to that model and task. Owner decision 2026-10-30: pure ideal values,
- * temperature included, no task override. The values are the ones that Unsloth
- * and the vendor recommend for each model (research: "Model sampling
- * profiles", section 9). `max_tokens` is not in a profile: it stays derived
- * from the task, so a profile can never lift a call past the window.
+ * lists equal). The app uses the Instruct profile of the model for a task
+ * when the user linked no profile to that model and task. The user can link
+ * the Thinking profile (or any other) per model and task.
+ *
+ * The values are PLACEHOLDERS until the validated table is added (owner
+ * decision 2026-10-30: pure values, temperature included, no task override).
+ * `max_tokens` is never in a profile: it stays derived from the task, so a
+ * profile cannot lift a call past the context window.
  */
-const builtinModelProfile = (
-  model: string,
-  name: string,
-  params: Record<string, unknown>,
-  thinkingParams?: Record<string, unknown>,
-): LlmParameterPreset => ({
-  id: `builtin:model:${model}`,
-  name,
-  params,
-  ...(thinkingParams ? { thinkingParams } : {}),
+interface BuiltinModelDef {
+  model: string;
+  name: string;
+  instruct: Record<string, unknown>;
+  thinking: Record<string, unknown>;
+}
+
+const GEMMA_SAMPLING = {
+  temperature: 1.0,
+  top_p: 0.95,
+  top_k: 64,
+  repetition_penalty: 1.0,
+};
+const gemma = (model: string, name: string): BuiltinModelDef => ({
   model,
-  createdAt: "2026-10-30T00:00:00.000Z",
-  updatedAt: "2026-10-30T00:00:00.000Z",
+  name,
+  instruct: {
+    ...GEMMA_SAMPLING,
+    chat_template_kwargs: { enable_thinking: false },
+  },
+  thinking: {
+    ...GEMMA_SAMPLING,
+    chat_template_kwargs: { enable_thinking: true },
+  },
 });
 
-/** Gemma 4 and the Gemma-based Nemotron: one set for every mode. */
-const GEMMA_SAMPLING = { temperature: 1.0, top_p: 0.95, top_k: 64 };
-
-export const BUILTIN_MODEL_PRESETS: readonly LlmParameterPreset[] = [
-  builtinModelProfile("gemma-4-e2b-qat-4bit", "Gemma 4 E2B", GEMMA_SAMPLING),
-  builtinModelProfile("gemma-4-e4b-qat-4bit", "Gemma 4 E4B", GEMMA_SAMPLING),
-  builtinModelProfile(
-    "nemotron-3.5-bolt-e4b-4bit",
-    "Nemotron 3.5 Bolt E4B",
-    GEMMA_SAMPLING,
-  ),
-  builtinModelProfile(
-    "gemma-4-26b-a4b-qat-4bit",
-    "Gemma 4 26B-A4B",
-    GEMMA_SAMPLING,
-  ),
-  // Qwen: the non-thinking set is the app default; thinking has its own.
-  builtinModelProfile(
-    "qwen3.8-27b-4bit",
-    "Qwen3.8 27B",
-    {
+const BUILTIN_MODEL_DEFS: readonly BuiltinModelDef[] = [
+  gemma("gemma-4-e2b-qat-4bit", "Gemma 4 E2B"),
+  gemma("gemma-4-e4b-qat-4bit", "Gemma 4 E4B"),
+  gemma("nemotron-3.5-bolt-e4b-4bit", "Nemotron 3.5 Bolt E4B"),
+  gemma("gemma-4-26b-a4b-qat-4bit", "Gemma 4 26B-A4B"),
+  {
+    model: "qwen3.8-27b-4bit",
+    name: "Qwen3.8 27B",
+    instruct: {
       temperature: 0.7,
       top_p: 0.8,
       top_k: 20,
       min_p: 0.0,
       repetition_penalty: 1.0,
       presence_penalty: 1.5,
+      chat_template_kwargs: {
+        enable_thinking: false,
+        preserve_thinking: false,
+        reasoning_effort: "none",
+      },
     },
-    {
+    thinking: {
       temperature: 1.0,
       top_p: 0.95,
       top_k: 20,
       min_p: 0.0,
       repetition_penalty: 1.0,
       presence_penalty: 0.0,
+      chat_template_kwargs: {
+        enable_thinking: true,
+        preserve_thinking: false,
+        reasoning_effort: "xhigh",
+      },
     },
-  ),
+  },
 ];
+
+const MODE_LABEL: Record<BuiltinProfileMode, string> = {
+  instruct: "Instruct",
+  thinking: "Thinking",
+};
+
+export const BUILTIN_MODEL_PRESETS: readonly LlmParameterPreset[] =
+  BUILTIN_MODEL_DEFS.flatMap((d) =>
+    (["instruct", "thinking"] as const).map(
+      (mode): LlmParameterPreset => ({
+        id: `builtin:model:${d.model}:${mode}`,
+        name: `${d.name} \u2013 ${MODE_LABEL[mode]}`,
+        params: d[mode],
+        model: d.model,
+        mode,
+        createdAt: "2026-10-30T00:00:00.000Z",
+        updatedAt: "2026-10-30T00:00:00.000Z",
+      }),
+    ),
+  );
 
 export const BUILTIN_LLM_PRESETS: readonly LlmParameterPreset[] = [
   ...QWEN_STARTER_PRESETS,

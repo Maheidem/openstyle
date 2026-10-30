@@ -785,7 +785,10 @@ def _parse_chat_request(body: Any) -> dict[str, Any]:
         "top_p": _opt_number(body, "top_p", float),
         "top_k": _opt_number(body, "top_k", int),
         "min_p": _opt_number(body, "min_p", float),
-        "repetition_penalty": _opt_number(body, "repetition_penalty", float),
+        # `repeat_penalty` is the llama.cpp spelling; a profile may use it.
+        "repetition_penalty": _opt_number(body, "repetition_penalty", float)
+        if body.get("repetition_penalty") is not None
+        else _opt_number(body, "repeat_penalty", float),
         "presence_penalty": _opt_number(body, "presence_penalty", float),
         "stop": [s for s in stop if s],
         "schema": schema,

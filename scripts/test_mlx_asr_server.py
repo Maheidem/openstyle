@@ -639,6 +639,14 @@ class LlmEngineTests(unittest.TestCase):
         engine.complete(self._req())
         self.assertNotIn("rep", calls)
 
+    def test_repeat_penalty_is_an_alias_of_repetition_penalty(self) -> None:
+        engine, _, calls = _engine([("{}", "stop")])
+        engine.complete(self._req(repeat_penalty=1.2))
+        self.assertEqual(calls["rep"], {"repetition_penalty": 1.2})
+        engine, _, calls = _engine([("{}", "stop")])
+        engine.complete(self._req(repeat_penalty=1.2, repetition_penalty=1.3))
+        self.assertEqual(calls["rep"], {"repetition_penalty": 1.3})
+
     def test_think_pair_only_when_thinking_on(self) -> None:
         engine, _, calls = _engine([("{}", "stop")])
         engine.complete(self._req(response_format={"type": "json_object"}, chat_template_kwargs={"enable_thinking": True}))

@@ -274,7 +274,6 @@ function resolveProfileParams(
   taskId: LlmTaskId,
   provider: string,
   modelId: string,
-  thinking: boolean,
 ): {
   params: Record<string, unknown>;
   source: ResolvedTaskCall["source"];
@@ -294,13 +293,9 @@ function resolveProfileParams(
     // The profile is one parameter set for each model, with its own
     // temperature: the SDK default of the task (0) is only the fallback for a
     // model or a call that has no value. mergeSamplingIntoBody lets the
-    // profile win. The output limit stays task-derived (the profile floor).
+    // profile win. The output limit stays task-derived.
     return {
-      params: {
-        ...builtin.params,
-        ...(thinking ? builtin.thinkingParams : {}),
-        ...builtin.taskParams?.[taskId],
-      },
+      params: { ...builtin.params, ...builtin.taskParams?.[taskId] },
       source: { mode: "preset", presetId: builtin.id },
     };
   }
@@ -461,7 +456,6 @@ export async function resolveTaskCall(
     taskId,
     provider,
     modelId,
-    profile.reasoningEnabled,
   ); // §6.1 — {} for "auto"
   const { kept: strippedParams, dropped: deniedKeys } = stripDenylistedKeys(
     taskId,

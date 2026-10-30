@@ -38,9 +38,9 @@ beforeEach(() => {
 
 describe("built-in model profiles", () => {
   it("each built-in MLX model has one, and no other model has one", () => {
-    expect(BUILTIN_MODEL_PRESETS.map((p) => p.model).sort()).toEqual(
-      MLX_LLM_MODELS.map((m) => m.id).sort(),
-    );
+    expect(
+      [...new Set(BUILTIN_MODEL_PRESETS.map((p) => p.model))].sort(),
+    ).toEqual(MLX_LLM_MODELS.map((m) => m.id).sort());
   });
 });
 
@@ -187,7 +187,7 @@ describe("built-in profile values", () => {
     expect(body).not.toHaveProperty("presence_penalty");
   });
 
-  it("Qwen has a non-thinking set (the default) and a thinking set", async () => {
+  it("Qwen Instruct is the default; Qwen Thinking is a second built-in profile", async () => {
     seedDefault(QWEN);
     const fast = await resolveTaskCall("meetingEnhance", {
       autoMaxOutputTokens: 900,
@@ -196,14 +196,27 @@ describe("built-in profile values", () => {
       temperature: 0.7,
       top_p: 0.8,
       presence_penalty: 1.5,
+      chat_template_kwargs: {
+        enable_thinking: false,
+        reasoning_effort: "none",
+      },
     });
+    expect(fast.samplingParams).not.toHaveProperty("max_tokens");
     const thinking = BUILTIN_MODEL_PRESETS.find(
-      (p) => p.model === "qwen3.8-27b-4bit",
+      (p) => p.model === "qwen3.8-27b-4bit" && p.mode === "thinking",
     );
-    expect(thinking?.thinkingParams).toMatchObject({
+    expect(thinking?.name).toBe("Qwen3.8 27B \u2013 Thinking");
+    expect(thinking?.params).toMatchObject({
       temperature: 1.0,
-      top_p: 0.95,
       presence_penalty: 0,
     });
+  });
+
+  it("each built-in model has an Instruct and a Thinking profile, and none sets max_tokens", () => {
+    for (const m of MLX_LLM_MODELS) {
+      const own = BUILTIN_MODEL_PRESETS.filter((p) => p.model === m.id);
+      expect(own.map((p) => p.mode).sort()).toEqual(["instruct", "thinking"]);
+      for (const p of own) expect(p.params).not.toHaveProperty("max_tokens");
+    }
   });
 });

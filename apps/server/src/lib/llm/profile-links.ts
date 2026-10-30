@@ -20,16 +20,22 @@ const log = createAppLogger("llm-profile-links");
 // does not follow the task to another model. A built-in model has a built-in
 // profile that the app uses when no link exists.
 
-/** The built-in profile of a built-in MLX model, or undefined. */
+/**
+ * The built-in profile of a built-in MLX model, or undefined. The default of
+ * every stage is the Instruct profile.
+ */
 export function builtinProfileFor(
   provider: string,
   modelId: string,
+  mode: "instruct" | "thinking" = "instruct",
 ): LlmParameterPreset | undefined {
   if (provider !== MLX_LLM_PROVIDER_ID) return undefined;
   const short = modelId.startsWith(`${provider}/`)
     ? modelId.slice(provider.length + 1)
     : modelId;
-  return BUILTIN_MODEL_PRESETS.find((p) => p.model === short);
+  return BUILTIN_MODEL_PRESETS.find(
+    (p) => p.model === short && p.mode === mode,
+  );
 }
 
 /**
