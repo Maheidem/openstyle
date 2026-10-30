@@ -1,5 +1,12 @@
 # Changelog
 
+## 2.25.0-alpha.7
+
+### Bug Fixes 🐛
+
+- (llm) Profiles per model and task, built-in model profiles (long-meeting failures) by @Maheidem in [#385](https://github.com/Maheidem/openstyle/pull/385)
+- (meetings) Count a failed batch run as failed, not as done by @Maheidem in [#384](https://github.com/Maheidem/openstyle/pull/384)
+
 ## 2.25.0-alpha.6
 
 ### Bug Fixes 🐛
