@@ -42,6 +42,14 @@ import { getLlmProvider, isLocalProvider } from "./registry.js";
 
 const log = createAppLogger("llm-task-profiles");
 
+/**
+ * Temperature of the Auto path of a stage (no user link). Gold eval, Gemma 4
+ * E2B, fixed worker, 3 runs each: the vendor Instruct temperature 1.0 gave hard
+ * fails in 4 of 6 meeting runs and 6.0 of 13 summary items; 0 gave no hard
+ * fail and 8 of 13.
+ */
+export const AUTO_TEMPERATURE = 0;
+
 export interface LlmTaskProfile {
   id: LlmTaskId;
   /** Whether reasoning/thinking is on by default for this task's nature. */
@@ -292,12 +300,18 @@ function resolveProfileParams(
   }
   const builtin = builtinProfileFor(provider, modelId);
   if (builtin) {
-    // The profile is one parameter set for each model, with its own
-    // temperature: the SDK default of the task (0) is only the fallback for a
-    // model or a call that has no value. mergeSamplingIntoBody lets the
-    // profile win. The output limit stays task-derived.
+    // The Auto path (no link): the Instruct profile of the model with the
+    // validated vendor values, except the temperature, which is 0 for every
+    // stage (owner decision 2026-10-30, specs/llm-runtime-tuning.md section 13).
+    // The stored profile keeps the vendor temperature: a profile that the
+    // user links is used as stored (the branch above). mergeSamplingIntoBody
+    // lets these values win. The output limit stays task-derived.
     return {
-      params: { ...builtin.params, ...builtin.taskParams?.[taskId] },
+      params: {
+        ...builtin.params,
+        ...builtin.taskParams?.[taskId],
+        temperature: AUTO_TEMPERATURE,
+      },
       source: { mode: "preset", presetId: builtin.id },
       soft: true,
     };

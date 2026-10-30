@@ -1,6 +1,7 @@
 import {
   BUILTIN_LLM_PRESETS,
   builtinProfile,
+  LLM_TASK_IDS,
   profileLinkKey,
   qwenFamilyKey,
   serverModelId,
@@ -90,6 +91,71 @@ describe("built-in model profiles", () => {
   });
 });
 
+describe("Auto path: temperature 0 for every stage (owner decision 2026-10-30)", () => {
+  it.each([
+    ...LLM_TASK_IDS,
+  ])("%s on a built-in model sends temperature 0, the other Instruct values stay", async (task) => {
+    seedDefault(E2B);
+    const resolved = await resolveTaskCall(task, {
+      autoMaxOutputTokens: 500,
+    });
+    const vendor = builtinProfile("gemma-4-e2b-qat-4bit")!;
+    expect(vendor.params.temperature).toBe(1.0); // the stored record stays true
+    expect(resolved.source.presetId).toBe(vendor.id);
+    expect(resolved.temperature).toBe(0);
+    expect(resolved.samplingParams).toEqual({
+      ...vendor.params,
+      temperature: 0,
+    });
+    expect(resolved.presetKeys).toEqual({
+      topLevel: [],
+      chatTemplateKwargs: [],
+    });
+  });
+
+  it("a linked built-in Instruct profile keeps its stored (vendor) temperature", async () => {
+    seedDefault(E2B);
+    writeSetting("llm_profile_links_migrated", "1");
+    writeSetting(
+      "llm_profile_links",
+      JSON.stringify({
+        [profileLinkKey("local-mlx-llm", E2B)]: {
+          meetingEnhance: {
+            mode: "preset",
+            presetId: "builtin:model:gemma-4-e2b-qat-4bit:instruct",
+          },
+        },
+      }),
+    );
+    const linked = await resolveTaskCall("meetingEnhance", {
+      autoMaxOutputTokens: 500,
+    });
+    expect(linked.samplingParams.temperature).toBe(1.0);
+    const auto = await resolveTaskCall("meetingSummarize");
+    expect(auto.samplingParams.temperature).toBe(0);
+  });
+
+  it("a linked Thinking profile keeps its vendor temperature", async () => {
+    seedDefault(QWEN);
+    writeSetting("llm_profile_links_migrated", "1");
+    writeSetting(
+      "llm_profile_links",
+      JSON.stringify({
+        [profileLinkKey("local-mlx-llm", QWEN)]: {
+          cleanup: {
+            mode: "preset",
+            presetId: "builtin:model:qwen3.8:thinking",
+          },
+        },
+      }),
+    );
+    const resolved = await resolveTaskCall("cleanup", {
+      autoMaxOutputTokens: 500,
+    });
+    expect(resolved.samplingParams.temperature).toBe(1.0);
+  });
+});
+
 describe("Qwen matcher for own-server and cloud model ids", () => {
   const cases: [string, string | null][] = [
     ["Qwen3.6-35B-A3B", "qwen3.6-35b-a3b"],
@@ -145,8 +211,9 @@ describe("Qwen matcher for own-server and cloud model ids", () => {
         resolved.samplingParams,
       ),
     );
+    // Auto path: the Instruct values, with temperature 0 (not the vendor 0.7).
     expect(body).toMatchObject({
-      temperature: 0.7,
+      temperature: 0,
       top_p: 0.8,
       top_k: 20,
       presence_penalty: 1.5,
@@ -330,7 +397,7 @@ describe("PUT /api/settings/llm_task_assignments", () => {
 });
 
 describe("built-in profile values", () => {
-  it("Gemma sends its own temperature, over the task default of 0", async () => {
+  it("Gemma sends its vendor values on the Auto path, with temperature 0", async () => {
     seedDefault(E2B);
     const resolved = await resolveTaskCall("meetingEnhance", {
       autoMaxOutputTokens: 900,
@@ -347,7 +414,7 @@ describe("built-in profile values", () => {
       ),
     );
     expect(body).toMatchObject({
-      temperature: 1.0,
+      temperature: 0, // Auto path: vendor values except temperature 0
       top_p: 0.95,
       top_k: 64,
       max_tokens: 900,
@@ -361,7 +428,7 @@ describe("built-in profile values", () => {
       autoMaxOutputTokens: 900,
     });
     expect(fast.samplingParams).toMatchObject({
-      temperature: 0.7,
+      temperature: 0, // Auto path (vendor value 0.7 stays in the stored profile)
       top_p: 0.8,
       presence_penalty: 1.5,
       chat_template_kwargs: { enable_thinking: false },

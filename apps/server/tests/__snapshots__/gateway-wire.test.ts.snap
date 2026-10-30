@@ -313,7 +313,7 @@ exports[`W12, every provider and mode puts its structured-output field on the wi
       },
       "type": "json_schema",
     },
-    "temperature": 0.7,
+    "temperature": 0,
     "top_p": 0.8,
   },
   "url": "https://api.groq.com/openai/v1/chat/completions",
