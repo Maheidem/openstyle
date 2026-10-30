@@ -1,5 +1,11 @@
 # Changelog
 
+## 2.25.0-alpha.6
+
+### Bug Fixes 🐛
+
+- (meetings) Keep the last selection when the user switches pages by @Maheidem in [#383](https://github.com/Maheidem/openstyle/pull/383)
+
 ## 2.25.0-alpha.5
 
 ### New Features ✨
