@@ -533,6 +533,10 @@ describe("POST /api/meetings/batch", () => {
     const state = await batchState();
     expect(state).toMatchObject({ total: 2, done: 0, skipped: 0 });
     expect(state.failed).toBe(2);
+    // The reason is the failure kind of the run, never "done".
+    expect(Object.values(state.fail_reasons).reduce((a, b) => a + b, 0)).toBe(
+      2,
+    );
     expect((await folderCounts(folder.id))?.enhance.ready).toBe(2);
   });
 

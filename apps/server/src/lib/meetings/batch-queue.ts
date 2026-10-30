@@ -1,6 +1,5 @@
 import { createAppLogger, errorMessage } from "@openstyle/utils";
 import type {
-  BatchFailReason,
   BatchSkipReason,
   MeetingBatchState,
   MeetingStage,
@@ -28,6 +27,8 @@ export interface BatchQueueDeps {
   ): { ok: true; runId?: string } | { ok: false };
   /** How the job that just ended did. Called after `waitForEnd`. */
   outcome(id: string, stage: MeetingStage, runId?: string): StageOutcome;
+  /** The failure kind of a run that did not end well, or null. */
+  failureKind(id: string, stage: MeetingStage, runId?: string): string | null;
   /** Resolves when the job that holds the meeting's slot ends. */
   waitForEnd(id: string): Promise<void>;
   /** Ask the running job of the meeting to stop (the normal cancel). */
@@ -74,7 +75,7 @@ export function createBatchQueue(deps: BatchQueueDeps): BatchQueue {
   let total = 0;
   let done = 0;
   let cancelled = 0;
-  let failReasons: Partial<Record<BatchFailReason, number>> = {};
+  let failReasons: Record<string, number> = {};
   let skipReasons: Partial<Record<BatchSkipReason, number>> = {};
   let running: Promise<void> | null = null;
   /** The user cancelled the batch while `current` waited or ran. */
@@ -109,7 +110,7 @@ export function createBatchQueue(deps: BatchQueueDeps): BatchQueue {
     log.info(`batch: skipped ${item.stage} on meeting ${item.id} (${reason})`);
   }
 
-  function fail(item: Item, reason: BatchFailReason): void {
+  function fail(item: Item, reason: string): void {
     failReasons = { ...failReasons, [reason]: (failReasons[reason] ?? 0) + 1 };
     log.warn(
       `batch: ${item.stage} on meeting ${item.id} did not finish (${reason})`,
@@ -148,9 +149,10 @@ export function createBatchQueue(deps: BatchQueueDeps): BatchQueue {
       ? "cancelled"
       : deps.outcome(item.id, item.stage, started.runId);
     if (outcome === "cancelled") cancelled += 1;
-    else if (outcome === "failed") fail(item, "run_failed");
-    else if (outcome === "partial") fail(item, "partly_done");
-    else done += 1;
+    else if (outcome === "failed" || outcome === "partial") {
+      const kind = deps.failureKind(item.id, item.stage, started.runId);
+      fail(item, kind ?? (outcome === "failed" ? "run_failed" : "partly_done"));
+    } else done += 1;
     log.info(`batch: ended ${item.stage} on meeting ${item.id} (${outcome})`);
   }
 

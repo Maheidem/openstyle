@@ -288,17 +288,22 @@ function reasonLine(
 ): string {
   const line = (
     reasons: Record<string, number | undefined>,
-    group: "skipReason" | "failReason",
+    text: (reason: string) => string,
   ) =>
     Object.entries(reasons)
       .filter(([, n]) => (n ?? 0) > 0)
-      .map(
-        ([reason, n]) =>
-          `${t(`meetings.folders.batch.${group}.${reason}`)}: ${n}`,
-      );
+      .map(([reason, n]) => `${text(reason)}: ${n}`);
   return [
-    ...line(state.skip_reasons, "skipReason"),
-    ...line(state.fail_reasons, "failReason"),
+    ...line(state.skip_reasons, (r) =>
+      t(`meetings.folders.batch.skipReason.${r}`),
+    ),
+    // A failure kind has its text under meetings.llmError. The two generic
+    // reasons have theirs under the batch keys.
+    ...line(state.fail_reasons, (r) =>
+      r === "run_failed" || r === "partly_done"
+        ? t(`meetings.folders.batch.failReason.${r}`)
+        : t(`meetings.llmError.${r}`),
+    ),
   ].join(" · ");
 }
 

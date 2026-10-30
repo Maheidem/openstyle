@@ -1404,6 +1404,26 @@ function stageOutcome(
   }
 }
 
+/** The failure kind of the first failed step of a run, else of the run. */
+function stageFailureKind(
+  _id: string,
+  stage: MeetingStage,
+  runId?: string,
+): string | null {
+  if (stage === "transcribe" || !runId) return null;
+  const db = getDb();
+  const step = db
+    .prepare(
+      `SELECT error_kind FROM llm_run_steps
+        WHERE run_id = ? AND status = 'failed' AND error_kind IS NOT NULL
+        ORDER BY seq LIMIT 1`,
+    )
+    .get(runId) as { error_kind: string } | undefined;
+  return (
+    step?.error_kind ?? createRunAdmin(db).getRun(runId)?.errorKind ?? null
+  );
+}
+
 /**
  * The batch queue (specs/meeting-folder-batch.md 3). One per process, in
  * memory only. It starts each stage with the same function as the route.
@@ -1416,6 +1436,7 @@ const batchQueue = createBatchQueue({
     requestCancel(id);
   },
   outcome: stageOutcome,
+  failureKind: stageFailureKind,
   needsStage,
   stageBlock,
   runningTranscription: () =>

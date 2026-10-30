@@ -36,6 +36,7 @@ function world(
       return { ok: true, runId: `run-${id}` };
     },
     outcome: (id) => o.outcome?.(id) ?? "ok",
+    failureKind: (id) => (id === "bad" ? "length" : null),
     waitForEnd: (id) =>
       id === outside ? outsideEnd.promise : (ends.get(id) ?? Promise.resolve()),
     cancel: (id) => {
@@ -127,7 +128,7 @@ describe("batch queue", () => {
       total: 3,
       done: 1,
       failed: 2,
-      fail_reasons: { run_failed: 1, partly_done: 1 },
+      fail_reasons: { length: 1, partly_done: 1 },
       skipped: 0,
       cancelled: 0,
     });
