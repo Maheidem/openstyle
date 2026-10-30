@@ -492,6 +492,7 @@ class ParseChatRequestTests(unittest.TestCase):
                 "top_k": 20,
                 "min_p": 0.05,
                 "repetition_penalty": 1.1,
+                "presence_penalty": 1.5,
                 "stop": "END",
                 "response_format": {"type": "json_schema", "json_schema": {"name": "x", "schema": SCHEMA, "strict": True}},
                 "chat_template_kwargs": {"enable_thinking": True},
@@ -500,6 +501,7 @@ class ParseChatRequestTests(unittest.TestCase):
         )
         self.assertEqual(req["messages"][0]["content"], "ab")
         self.assertEqual((req["max_tokens"], req["top_k"], req["stop"]), (50, 20, ["END"]))
+        self.assertEqual(req["presence_penalty"], 1.5)
         self.assertEqual(req["schema"], SCHEMA)
         self.assertTrue(req["enable_thinking"])
 
@@ -620,6 +622,22 @@ class LlmEngineTests(unittest.TestCase):
         self.assertEqual(calls["rep"], {"repetition_penalty": 1.1})
         self.assertEqual(calls["sampler"], {"temp": 0.0, "top_p": 0.8})
         self.assertEqual(json.loads(out["choices"][0]["message"]["content"]), {"corrections": []})
+
+    def test_presence_penalty_reaches_the_logits_processors(self) -> None:
+        engine, _, calls = _engine([("{}", "stop")])
+        engine.complete(self._req(presence_penalty=1.5))
+        self.assertEqual(calls["stream"]["logits_processors"], ["REP"])
+        self.assertEqual(
+            calls["rep"],
+            {"presence_penalty": 1.5, "presence_context_size": mlx_asr_server._PRESENCE_CONTEXT_TOKENS},
+        )
+        engine, _, calls = _engine([("{}", "stop")])
+        engine.complete(self._req(repetition_penalty=1.1, presence_penalty=0.5))
+        self.assertEqual(calls["rep"]["repetition_penalty"], 1.1)
+        self.assertEqual(calls["rep"]["presence_penalty"], 0.5)
+        engine, _, calls = _engine([("{}", "stop")])
+        engine.complete(self._req())
+        self.assertNotIn("rep", calls)
 
     def test_think_pair_only_when_thinking_on(self) -> None:
         engine, _, calls = _engine([("{}", "stop")])

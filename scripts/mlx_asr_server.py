@@ -658,6 +658,8 @@ _JSON_GRAMMAR_OPTIONS: dict[str, Any] = {
     "whitespace_pattern": r"[\x20\x0A\x0D\x09]{0,24}",
 }
 
+# Tokens that the presence penalty looks back over (see _LlmEngine.complete).
+_PRESENCE_CONTEXT_TOKENS = 4096
 _LLM_DEFAULT_MAX_TOKENS = 4096
 # (open, close) of an empty thinking block. Qwen3.5 and Gemma 4.
 _THINK_PAIRS: tuple[tuple[str, str], ...] = (("<think>", "</think>"), ("<|channel>", "<channel|>"))
@@ -784,6 +786,7 @@ def _parse_chat_request(body: Any) -> dict[str, Any]:
         "top_k": _opt_number(body, "top_k", int),
         "min_p": _opt_number(body, "min_p", float),
         "repetition_penalty": _opt_number(body, "repetition_penalty", float),
+        "presence_penalty": _opt_number(body, "presence_penalty", float),
         "stop": [s for s in stop if s],
         "schema": schema,
         "enable_thinking": enable_thinking,
@@ -1101,8 +1104,18 @@ class _LlmEngine:
             if req[name] is not None:
                 sampler_kwargs[name] = req[name]
         procs: list[Any] = []
+        penalties: dict[str, Any] = {}
         if req["repetition_penalty"] is not None:
-            procs += self._make_logits_processors(repetition_penalty=req["repetition_penalty"])
+            penalties["repetition_penalty"] = req["repetition_penalty"]
+        if req["presence_penalty"] is not None:
+            # mlx-lm subtracts the penalty from the logit of each token that
+            # appears in the context (the OpenAI meaning). Its default context
+            # is the last 20 tokens. The OpenAI meaning is the whole answer, so
+            # the context here is long.
+            penalties["presence_penalty"] = req["presence_penalty"]
+            penalties["presence_context_size"] = _PRESENCE_CONTEXT_TOKENS
+        if penalties:
+            procs += self._make_logits_processors(**penalties)
         grammar = None
         if req["schema"] is not None:
             # A thinking block may open only when thinking is on. With thinking
