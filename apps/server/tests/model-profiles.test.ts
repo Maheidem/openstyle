@@ -158,7 +158,7 @@ describe("reasoning profile per provider (5.5)", () => {
 
   it("groq: byte for byte as today's switch, 'medium' when bounded, no control for an unknown model", async () => {
     for (const id of [
-      "qwen/qwen3-32b",
+      "qwen/qwen3.8-27b",
       "openai/gpt-oss-20b",
       "openai/gpt-oss-120b",
     ]) {
@@ -172,11 +172,11 @@ describe("reasoning profile per provider (5.5)", () => {
       );
     }
     expect(
-      reasoningWire(await profileFor("groq", "groq/qwen/qwen3.8-27b"))
+      reasoningWire(await profileFor("groq", "groq/vendor/unknown-model"))
         .providerOptions.groq,
     ).toBeUndefined();
     expect(
-      reasoningWire(await profileFor("groq", "groq/qwen/qwen3.8-27b"))
+      reasoningWire(await profileFor("groq", "groq/vendor/unknown-model"))
         .noControl,
     ).toBe(true);
   });
@@ -310,7 +310,7 @@ describe("structured mode resolution (5.4)", () => {
     expect(await start("anthropic", "anthropic/claude-sonnet-4-5")).toBe(
       "json_schema",
     );
-    expect(await start("anthropic", "anthropic/claude-3-haiku-20240307")).toBe(
+    expect(await start("anthropic", "anthropic/claude-3-opus-latest")).toBe(
       "json_tool",
     );
     expect(await start("google", "google/gemini-2.5-flash")).toBe(
@@ -468,5 +468,64 @@ describe("W14, the models.dev read is best effort (5.1)", () => {
       },
     });
     expect(registryMock).not.toHaveBeenCalled();
+  });
+});
+
+describe("cloud line-up of 2026-10-30, reasoning switches that the provider accepts", () => {
+  const off = async (provider: string, id: string) =>
+    reasoningWire(await profileFor(provider, `${provider}/${id}`));
+
+  it("claude: models that cannot stop thinking get the lowest effort", async () => {
+    for (const id of ["claude-opus-5-5", "claude-fable-5-1"]) {
+      expect((await off("anthropic", id)).providerOptions.anthropic).toEqual({
+        thinking: { type: "disabled" },
+        effort: "low",
+      });
+    }
+  });
+
+  it("claude: models that stop thinking keep the plain disabled switch", async () => {
+    for (const id of ["claude-haiku-5-5", "claude-sonnet-5-5"]) {
+      expect((await off("anthropic", id)).providerOptions.anthropic).toEqual({
+        thinking: { type: "disabled" },
+      });
+    }
+  });
+
+  it("claude 5.x uses adaptive thinking with an effort when bounded", async () => {
+    const p = await profileFor("anthropic", "anthropic/claude-sonnet-5-5", {
+      bounded: true,
+      tokens: 4096,
+    });
+    expect(reasoningWire(p).providerOptions.anthropic).toEqual({
+      thinking: { type: "adaptive" },
+      effort: "medium",
+    });
+  });
+
+  it("gemini 3.8 and gemini 4 use thinkingLevel, never a budget", async () => {
+    for (const id of ["gemini-3.8-flash", "gemini-4-argon"]) {
+      expect((await off("google", id)).providerOptions.google).toEqual({
+        thinkingConfig: { thinkingLevel: "low" },
+      });
+    }
+    expect(
+      (await off("google", "gemini-3.5-flash-lite")).providerOptions.google,
+    ).toEqual({ thinkingConfig: { thinkingLevel: "low" } });
+  });
+
+  it("mistral: Large 4 has no 'none' level, Small 4 has", async () => {
+    expect(
+      (await off("mistral", "mistral-large-4")).providerOptions.mistral,
+    ).toEqual({ reasoningEffort: "low" });
+    expect(
+      (await off("mistral", "mistral-small-latest")).providerOptions.mistral,
+    ).toEqual({ reasoningEffort: "none" });
+  });
+
+  it("groq: Qwen 3.8 27B switches reasoning off with 'none'", async () => {
+    expect(
+      (await off("groq", "qwen/qwen3.8-27b")).providerOptions.groq,
+    ).toEqual({ reasoningFormat: "hidden", reasoningEffort: "none" });
   });
 });

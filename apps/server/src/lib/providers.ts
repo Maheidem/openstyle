@@ -1,5 +1,10 @@
 import type { LanguageModel } from "ai";
 import { getApiKey } from "./api-keys.js";
+import {
+  reconcileRetiredCloudLlmModels,
+  retiredReplacement,
+  warnRetiredOnce,
+} from "./cloud-models.js";
 import { getDb } from "./db.js";
 import type { LlmTaskContext } from "./llm/registry.js";
 import { getLlmProvider, isLocalProvider } from "./llm/registry.js";
@@ -33,6 +38,7 @@ interface DefaultModels {
 export function getDefaultModels(): DefaultModels {
   reconcileUnsupportedMlxVoiceDefault();
   reconcileRemovedMlxLlmModels();
+  reconcileRetiredCloudLlmModels();
   const db = getDb();
   const voice = db
     .prepare(
@@ -68,8 +74,13 @@ export async function createChatModel(
   if (!apiKey)
     throw new Error(`No API key configured for provider: ${providerId}`);
 
+  // A retired id fails at the provider. Use its replacement and say so, for
+  // callers that hold an id the default reconcile did not rewrite.
+  const retired = retiredReplacement(providerId, modelId);
+  if (retired) warnRetiredOnce(providerId, modelId, retired.message);
+
   return provider.createModel(
-    getChatModelId(providerId, modelId),
+    getChatModelId(providerId, retired ? retired.modelId : modelId),
     apiKey,
     taskContext,
   );

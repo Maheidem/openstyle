@@ -63,8 +63,8 @@ um so we ship on friday i think
           "role": "user",
         },
       ],
-      "model": "qwen/qwen3-32b",
-      "reasoning_effort": "none",
+      "model": "openai/gpt-oss-120b",
+      "reasoning_effort": "low",
       "reasoning_format": "hidden",
       "temperature": 0,
     },
@@ -80,7 +80,7 @@ um so we ship on friday i think
   "result": {
     "cleaned": "We ship on Friday, I think.",
     "inputTokens": 40,
-    "model": "qwen/qwen3-32b",
+    "model": "openai/gpt-oss-120b",
     "outputTokens": 9,
   },
 }

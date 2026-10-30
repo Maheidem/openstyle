@@ -19,15 +19,27 @@ const LANGUAGE_OPTION_KEYS: Record<string, string> = {
   elevenlabs: "languageCode",
 };
 
+/**
+ * `gpt-transcribe` and `gpt-live-transcribe` take a `languages` list and not
+ * the single `language` field. The API says to send only one of the two
+ * (platform.openai.com/docs/guides/speech-to-text and /realtime-transcription).
+ */
+export function takesLanguagesList(modelId: string): boolean {
+  return /^(?:openai\/)?gpt-(?:live-)?transcribe$/.test(modelId);
+}
+
 export function aiSdkProviderOptions(
   providerId: string,
   language: string | undefined,
   bias: AsrVocabularyBias | null | undefined,
+  modelId = "",
 ): TranscribeProviderOptions | undefined {
   const options: TranscribeProviderOptions = {
     ...providerOptionsFromBias(providerId, bias),
   };
-  if (language && language !== "auto") {
+  // The AI SDK sends only `language`. The model detects the language itself.
+  const skipLanguage = providerId === "openai" && takesLanguagesList(modelId);
+  if (language && language !== "auto" && !skipLanguage) {
     const key = LANGUAGE_OPTION_KEYS[providerId] ?? "language";
     options[providerId] = { ...options[providerId], [key]: language };
   }
@@ -45,6 +57,7 @@ export async function transcribeWithAiSdk(
     providerId,
     opts.language,
     opts.bias,
+    opts.model,
   );
   const result = await transcribe({
     model,

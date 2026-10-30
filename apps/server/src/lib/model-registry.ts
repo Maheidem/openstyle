@@ -4,6 +4,7 @@
  * from routes. The cost lookup is cache-only on purpose (see
  * {@link getModelCostCached}).
  */
+import { isLineupCloudLlm } from "./cloud-models.js";
 import { isLocalProvider } from "./llm/registry.js";
 import { stripModelPrefix } from "./model-id.js";
 
@@ -166,6 +167,8 @@ export async function isCleanupModelSupported(
 ): Promise<boolean> {
   if (isLocalProvider(providerId)) return true;
   if (providerId in LLM_GATEWAYS) return true;
+  // The curated line-up works even when models.dev has no entry for it yet.
+  if (isLineupCloudLlm(providerId, modelId)) return true;
 
   try {
     const registry = await fetchModelsFromRegistry();

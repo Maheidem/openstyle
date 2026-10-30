@@ -1,6 +1,13 @@
 import { zValidator } from "@hono/zod-validator";
 import { configureModelSchema } from "@openstyle/validations";
 import { Hono } from "hono";
+import {
+  CLOUD_LLM_LINEUP,
+  CLOUD_VOICE_LINEUP,
+  CURATED_LLM_IDS,
+  legacyNotice,
+  reconcileRetiredCloudLlmModels,
+} from "../lib/cloud-models.js";
 import { getDb } from "../lib/db.js";
 import {
   MLX_ASR_PROVIDER_ID,
@@ -41,12 +48,20 @@ interface AvailableModel {
   cost_output?: number;
   /** Surfaced in the default picker; non-curated models live behind "All models". */
   curated?: boolean;
+  /** A short note for a model the provider plans to remove. */
+  notice?: string;
   /**
    * Display name of the LLM gateway fronting this model (e.g. "OpenRouter"),
    * when the provider is an aggregator rather than a first-party vendor. The
    * picker shows this as a small badge next to the model.
    */
   gateway?: string;
+}
+
+/** The `notice` field of a legacy cloud model, or nothing. */
+function legacyField(providerId: string, modelId: string): { notice?: string } {
+  const notice = legacyNotice(providerId, modelId);
+  return notice ? { notice } : {};
 }
 
 /** Build the /available entry for a local voice model. */
@@ -69,58 +84,18 @@ function toVoiceModel(
   };
 }
 
-// Curated voice catalog: one flagship per provider. The models.dev
-// registry is deliberately NOT merged for voice — untested model noise.
-const BUILTIN_VOICE_MODELS: AvailableModel[] = [
-  {
-    provider_id: "openai",
-    provider_name: "OpenAI",
-    model_id: "openai/gpt-4o-transcribe",
-    model_name: "OpenAI Transcribe",
-    family: "whisper",
-    type: "voice",
-  },
-  {
-    provider_id: "groq",
-    provider_name: "Groq",
-    model_id: "groq/whisper-large-v3-turbo",
-    model_name: "Groq Whisper Turbo",
-    family: "whisper",
-    type: "voice",
-  },
-  {
-    provider_id: "groq",
-    provider_name: "Groq",
-    model_id: "groq/whisper-large-v3",
-    model_name: "Groq Whisper Large v3",
-    family: "whisper",
-    type: "voice",
-  },
-  {
-    provider_id: "deepgram",
-    provider_name: "Deepgram",
-    model_id: "deepgram/nova-3",
-    model_name: "Deepgram Nova 3",
-    family: "deepgram",
-    type: "voice",
-  },
-  {
-    provider_id: "elevenlabs",
-    provider_name: "ElevenLabs",
-    model_id: "elevenlabs/scribe_v2_realtime",
-    model_name: "ElevenLabs Scribe",
-    family: "elevenlabs",
-    type: "voice",
-  },
-  {
-    provider_id: "soniox",
-    provider_name: "Soniox",
-    model_id: "soniox/stt-rt-v5",
-    model_name: "Soniox Realtime v5",
-    family: "soniox",
-    type: "voice",
-  },
-];
+// Curated voice catalog: the cloud speech-to-text line-up (lib/cloud-models.ts).
+// The models.dev registry is deliberately NOT merged for voice: untested model
+// noise.
+const BUILTIN_VOICE_MODELS: AvailableModel[] = CLOUD_VOICE_LINEUP.map((m) => ({
+  provider_id: m.providerId,
+  provider_name: m.providerName,
+  model_id: m.modelId,
+  model_name: m.name,
+  family: m.family,
+  type: "voice",
+  ...legacyField(m.providerId, m.modelId),
+}));
 
 // Cleanup-LLM providers the app can actually run (see lib/providers.ts).
 const SUPPORTED_LLM_PROVIDERS = new Set([
@@ -132,31 +107,21 @@ const SUPPORTED_LLM_PROVIDERS = new Set([
   ...Object.keys(LLM_GATEWAYS),
 ]);
 
-// One fast-tier cleanup model per provider, surfaced by default; everything
-// else from the registry sits behind the picker's "All models" expander.
-const CURATED_LLM_IDS = new Set([
-  "groq/llama-3.1-8b-instant",
-  "groq/llama-3.3-70b-versatile",
-  "groq/openai/gpt-oss-20b",
-  "groq/qwen/qwen3-32b",
-  "groq/mistral-saba-24b",
-  "openai/gpt-4o-mini",
-  "anthropic/claude-haiku-4-5",
-  "google/gemini-2.5-flash",
-  "mistral/mistral-small-latest",
-]);
-
-const BUILTIN_LLM_MODELS: AvailableModel[] = [
-  {
-    provider_id: "groq",
-    provider_name: "Groq",
-    model_id: "mistral-saba-24b",
-    model_name: "Mistral Saba 24B",
-    family: "mistral",
-    type: "llm",
-    curated: true,
-  },
-];
+// The curated line-up (lib/cloud-models.ts) is shown by default. Everything
+// else from the registry sits behind the picker's "All models" expander. The
+// line-up is also merged in when the registry has no entry for it, so a new
+// model shows up when models.dev is late or offline.
+const BUILTIN_LLM_MODELS: AvailableModel[] = CLOUD_LLM_LINEUP.map((m) => ({
+  provider_id: m.providerId,
+  provider_name: m.providerName,
+  model_id: m.id,
+  model_name: m.name,
+  family: m.family,
+  type: "llm",
+  cost_input: m.costInput,
+  cost_output: m.costOutput,
+  curated: true,
+}));
 
 const models = new Hono()
   .get("/available", async (c) => {
@@ -197,6 +162,7 @@ const models = new Hono()
               cost_output: model.cost?.output,
               curated: CURATED_LLM_IDS.has(`${providerId}/${model.id}`),
               gateway: LLM_GATEWAYS[providerId],
+              ...legacyField(providerId, model.id),
             });
           }
         }
@@ -273,6 +239,7 @@ const models = new Hono()
   .get("/configured", (c) => {
     reconcileUnsupportedMlxVoiceDefault();
     reconcileRemovedMlxLlmModels();
+    reconcileRetiredCloudLlmModels();
     const db = getDb();
     const rows = db
       .prepare(

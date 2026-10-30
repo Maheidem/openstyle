@@ -247,9 +247,13 @@ function buildLlmRows(
       // (e.g. "Microsoft via OpenRouter"). Vendor is the model_id prefix; some
       // gateway IDs carry a "~" alias prefix ("~openai/...") — strip it.
       const vendor = model.model_id.replace(/^~/, "").split("/")[0] ?? "";
-      const meta = model.gateway
+      const vendorMeta = model.gateway
         ? vendor.charAt(0).toUpperCase() + vendor.slice(1)
         : providerName;
+      // A legacy model shows the note of the provider plan (server notice).
+      const meta = model.notice
+        ? `${vendorMeta} · ${model.notice}`
+        : vendorMeta;
       rows.push({
         key: model.model_id,
         name: model.model_name,

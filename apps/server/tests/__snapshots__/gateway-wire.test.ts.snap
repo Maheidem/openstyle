@@ -275,6 +275,8 @@ exports[`W12, every provider and mode puts its structured-output field on the wi
       },
     ],
     "model": "qwen/qwen3.8-27b",
+    "reasoning_effort": "none",
+    "reasoning_format": "hidden",
     "response_format": {
       "json_schema": {
         "name": "correct_chunk",
