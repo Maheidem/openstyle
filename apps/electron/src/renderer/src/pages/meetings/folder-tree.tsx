@@ -65,7 +65,7 @@ export function FolderMeetingRow({
           check.onToggle(event.shiftKey);
         }}
         className={cn(
-          "hover:bg-accent/50 flex w-full min-w-0 cursor-default items-center gap-2.5 px-2.5 py-2 text-left transition-colors",
+          "hover:bg-accent/50 flex w-full min-w-0 cursor-default select-none items-center gap-2.5 px-2.5 py-2 text-left transition-colors",
           check.checked &&
             "bg-[var(--accent-passive-tint)] text-[var(--accent-passive-ink)]",
           table && "border-b border-b-border last:border-b-0",

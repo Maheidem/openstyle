@@ -1,3 +1,4 @@
+import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { createInstance } from "i18next";
 import { createElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
@@ -34,20 +35,24 @@ const folder: MeetingFolder = {
 };
 function panel(value: MeetingFolder, action?: "description" | "delete") {
   return renderToStaticMarkup(
-    createElement(FolderPanel, {
-      folder: value,
-      folders: [value],
-      meetings: [],
-      loading: false,
-      failed: false,
-      initialAction: action,
-      onUpdate: vi.fn(async () => {}),
-      onDelete: vi.fn(async () => {}),
-      onOpen: vi.fn(),
-      onMove: vi.fn(),
-      onBack: vi.fn(),
-      onStartBatch: vi.fn(async () => true),
-    }),
+    createElement(
+      QueryClientProvider,
+      { client: new QueryClient() },
+      createElement(FolderPanel, {
+        folder: value,
+        folders: [value],
+        meetings: [],
+        loading: false,
+        failed: false,
+        initialAction: action,
+        onUpdate: vi.fn(async () => {}),
+        onDelete: vi.fn(async () => {}),
+        onOpen: vi.fn(),
+        onMove: vi.fn(),
+        onBack: vi.fn(),
+        onStartBatch: vi.fn(async () => true),
+      }),
+    ),
   );
 }
 

@@ -88,7 +88,7 @@ describe("migration 40", () => {
 
     initSchema(db);
 
-    expect(version()).toBe(48);
+    expect(version()).toBe(50);
     expect(
       count(
         "SELECT count(*) AS c FROM sqlite_master WHERE type='table' AND name LIKE 'llm_%'",
@@ -147,7 +147,7 @@ describe("migration 40", () => {
     ).run();
     db.exec("UPDATE schema_version SET version = 39 WHERE id = 1");
     expect(() => initSchema(db)).not.toThrow();
-    expect(version()).toBe(48);
+    expect(version()).toBe(50);
     expect(
       count(
         "SELECT count(*) AS c FROM pragma_table_info('meeting_summaries') WHERE name = 'summary_json'",
@@ -176,7 +176,7 @@ describe("migration 40", () => {
           .prepare("SELECT version FROM schema_version WHERE id = 1")
           .get() as { version: number }
       ).version,
-    ).toBe(48);
+    ).toBe(50);
     expect(
       old
         .prepare(
@@ -451,7 +451,7 @@ describe("migration 43 (meeting_summaries.partial, PR #258)", () => {
       UPDATE schema_version SET version = 42 WHERE id = 1;
     `);
     initSchema(db);
-    expect(version()).toBe(48);
+    expect(version()).toBe(50);
     expect(
       one<{ partial: number | null }>(
         "SELECT partial FROM meeting_summaries WHERE meeting_id = 'm1'",

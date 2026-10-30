@@ -11,7 +11,7 @@ const DEFAULT_CLOUD_URL = "https://service.freestylevoice.com";
 // reports 26). Migrations only run while currentVersion < SCHEMA_VERSION, so a
 // fork migration numbered below that is silently skipped for anyone arriving
 // from upstream. Keep this above the highest upstream version we have seen.
-const SCHEMA_VERSION = 48;
+const SCHEMA_VERSION = 50;
 
 // Legacy default format-rule patterns (used only by pre-v12 migrations below):
 // domain/phrase entries match as substrings of url+title+app; bare words match
@@ -1281,6 +1281,35 @@ function applyMigrations(db: DatabaseSync, currentVersion: number): void {
     if (!hasColumn(db, "meetings", "speaker_names_lost")) {
       db.exec(`ALTER TABLE meetings ADD COLUMN speaker_names_lost TEXT`);
     }
+  }
+
+  if (currentVersion < 49 && tableExists(db, "meeting_folders")) {
+    // Done marks of the action items on the folder Overview
+    // (specs/folder-project-page.md 2.3). item_key is a hash of the meeting
+    // id and the normalized task, so a changed task text is a new, open item.
+    db.exec(`
+      CREATE TABLE IF NOT EXISTS folder_action_item_state (
+        folder_id TEXT NOT NULL REFERENCES meeting_folders(id) ON DELETE CASCADE,
+        item_key TEXT NOT NULL,
+        done INTEGER NOT NULL DEFAULT 0,
+        updated_at INTEGER NOT NULL,
+        PRIMARY KEY (folder_id, item_key)
+      )
+    `);
+  }
+
+  if (currentVersion < 50 && tableExists(db, "meeting_folders")) {
+    // The saved "where things stand" text of a folder
+    // (specs/folder-project-page.md 6). input_hash is the hash of the input
+    // that the model read. A different hash now means the text is out of date.
+    db.exec(`
+      CREATE TABLE IF NOT EXISTS folder_standing (
+        folder_id TEXT PRIMARY KEY REFERENCES meeting_folders(id) ON DELETE CASCADE,
+        input_hash TEXT NOT NULL,
+        bullets_json TEXT NOT NULL,
+        generated_at INTEGER NOT NULL
+      )
+    `);
   }
 
   // Upsert schema version

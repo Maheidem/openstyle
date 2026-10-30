@@ -1,5 +1,11 @@
 import type { MeetingListItem, MeetingStage } from "@openstyle/validations";
 import { Button } from "@renderer/components/ui/button";
+import {
+  Tabs,
+  TabsContent,
+  TabsList,
+  TabsTrigger,
+} from "@renderer/components/ui/tabs";
 import { Textarea } from "@renderer/components/ui/textarea";
 import { formatClockDuration } from "@renderer/lib/format";
 import {
@@ -21,6 +27,7 @@ import {
 } from "./batch";
 import { FolderIcon, FolderNameInput } from "./folder-controls";
 import { SuggestDescriptionButton } from "./folder-description-suggest";
+import { FolderOverviewView } from "./folder-overview";
 import { FolderMeetingRow } from "./folder-tree";
 import {
   FolderRequestError,
@@ -65,6 +72,7 @@ export function FolderPanel({
   const { t, i18n } = useTranslation();
   // Selection mode of the meeting list: the checked ids, the last clicked
   // id (the start of a shift-click range) and the stage of the bulk bar.
+  const [tab, setTab] = useState("overview");
   const [selecting, setSelecting] = useState(false);
   const [checked, setChecked] = useState<Set<string>>(() => new Set());
   const [anchor, setAnchor] = useState<string | null>(null);
@@ -372,82 +380,114 @@ export function FolderPanel({
           setConfirm({ stage, folder_id: folder.id, count })
         }
       />
-      <div className="flex items-center justify-between gap-2">
-        <h3 className="eyebrow">{t("meetings.folders.meetingsInFolder")}</h3>
-        {meetings.length > 0 && !loading && !failed && (
-          <Button
-            variant="ghost"
-            size="xs"
-            onClick={() => (selecting ? stopSelecting() : setSelecting(true))}
-            data-testid="meeting-select-toggle"
-          >
-            <CheckSquare />
-            {t(
-              selecting
-                ? "meetings.folders.batch.selectDone"
-                : "meetings.folders.batch.select",
-            )}
-          </Button>
-        )}
-      </div>
-      {selecting && (
-        <p className="text-muted-foreground mt-1 text-[11px]">
-          {t("meetings.folders.batch.selectHint")}
-        </p>
-      )}
-      {loading || failed ? (
-        <p
-          className="text-muted-foreground py-5 text-xs"
-          role={failed ? "alert" : undefined}
+      <Tabs value={tab} onValueChange={setTab}>
+        <TabsList
+          variant="line"
+          className="border-border w-full justify-start border-b"
         >
-          {t(
-            failed ? "meetings.folders.loadFailed" : "meetings.folders.loading",
+          <TabsTrigger
+            value="overview"
+            data-testid="folder-tab-overview"
+            className="flex-none"
+          >
+            {t("meetings.folderOverview.tabOverview")}
+          </TabsTrigger>
+          <TabsTrigger
+            value="meetings"
+            data-testid="folder-tab-meetings"
+            className="flex-none"
+          >
+            {t("meetings.folderOverview.tabMeetings")}
+          </TabsTrigger>
+        </TabsList>
+        <TabsContent value="overview">
+          <FolderOverviewView folderId={folder.id} onOpen={onOpen} />
+        </TabsContent>
+        <TabsContent value="meetings" className="pt-4">
+          <div className="flex items-center justify-between gap-2">
+            <h3 className="eyebrow">
+              {t("meetings.folders.meetingsInFolder")}
+            </h3>
+            {meetings.length > 0 && !loading && !failed && (
+              <Button
+                variant="ghost"
+                size="xs"
+                onClick={() =>
+                  selecting ? stopSelecting() : setSelecting(true)
+                }
+                data-testid="meeting-select-toggle"
+              >
+                <CheckSquare />
+                {t(
+                  selecting
+                    ? "meetings.folders.batch.selectDone"
+                    : "meetings.folders.batch.select",
+                )}
+              </Button>
+            )}
+          </div>
+          {selecting && (
+            <p className="text-muted-foreground mt-1 text-[11px]">
+              {t("meetings.folders.batch.selectHint")}
+            </p>
           )}
-        </p>
-      ) : meetings.length ? (
-        <div className="border-border bg-card mb-5 mt-2 overflow-hidden rounded-lg border">
-          {meetings.map((meeting) => (
-            <FolderMeetingRow
-              key={meeting.id}
-              meeting={meeting}
-              folders={folders}
-              onOpen={() => onOpen(meeting.id)}
-              onMove={(id) => onMove(meeting, id)}
-              table
-              check={
-                selecting
-                  ? {
-                      checked: checked.has(meeting.id),
-                      onToggle: (range) => toggle(meeting.id, range),
-                    }
-                  : undefined
+          {loading || failed ? (
+            <p
+              className="text-muted-foreground py-5 text-xs"
+              role={failed ? "alert" : undefined}
+            >
+              {t(
+                failed
+                  ? "meetings.folders.loadFailed"
+                  : "meetings.folders.loading",
+              )}
+            </p>
+          ) : meetings.length ? (
+            <div className="border-border bg-card mb-5 mt-2 overflow-hidden rounded-lg border">
+              {meetings.map((meeting) => (
+                <FolderMeetingRow
+                  key={meeting.id}
+                  meeting={meeting}
+                  folders={folders}
+                  onOpen={() => onOpen(meeting.id)}
+                  onMove={(id) => onMove(meeting, id)}
+                  table
+                  check={
+                    selecting
+                      ? {
+                          checked: checked.has(meeting.id),
+                          onToggle: (range) => toggle(meeting.id, range),
+                        }
+                      : undefined
+                  }
+                />
+              ))}
+            </div>
+          ) : (
+            <p className="border-border text-muted-foreground mb-5 mt-2 rounded-lg border border-dashed p-6 text-center text-[12.5px]">
+              {t("meetings.folders.emptyPanel")}
+            </p>
+          )}
+          {selecting && (
+            <MeetingBulkBar
+              count={visibleChecked.length}
+              total={meetings.length}
+              stage={bulkStage}
+              onStage={setBulkStage}
+              onRun={() =>
+                setConfirm({
+                  stage: bulkStage,
+                  meeting_ids: visibleChecked.map((m) => m.id),
+                  count: visibleChecked.length,
+                })
               }
+              onSelectAll={() => setChecked(new Set(meetings.map((m) => m.id)))}
+              onClear={() => setChecked(new Set())}
+              onDone={stopSelecting}
             />
-          ))}
-        </div>
-      ) : (
-        <p className="border-border text-muted-foreground mb-5 mt-2 rounded-lg border border-dashed p-6 text-center text-[12.5px]">
-          {t("meetings.folders.emptyPanel")}
-        </p>
-      )}
-      {selecting && (
-        <MeetingBulkBar
-          count={visibleChecked.length}
-          total={meetings.length}
-          stage={bulkStage}
-          onStage={setBulkStage}
-          onRun={() =>
-            setConfirm({
-              stage: bulkStage,
-              meeting_ids: visibleChecked.map((m) => m.id),
-              count: visibleChecked.length,
-            })
-          }
-          onSelectAll={() => setChecked(new Set(meetings.map((m) => m.id)))}
-          onClear={() => setChecked(new Set())}
-          onDone={stopSelecting}
-        />
-      )}
+          )}
+        </TabsContent>
+      </Tabs>
       <BatchConfirmDialog
         request={confirm}
         autoRun={autoRun}

@@ -65,6 +65,12 @@ export const queryKeys = {
     all: ["meetings"] as const,
     list: ["meetings", "list"] as const,
     folders: ["meetings", "folders"] as const,
+    /** `GET /meetings/folders/:id/standing`, the saved "where things stand". */
+    folderStanding: (id: string) =>
+      ["meetings", "folder-standing", id] as const,
+    /** `GET /meetings/folders/:id/overview` (issue #374). */
+    folderOverview: (id: string) =>
+      ["meetings", "folder-overview", id] as const,
     /** `GET /meetings/batch`, the batch queue (specs/meeting-folder-batch.md).
      * Its own root, so a refresh of the meetings family does not poll it. */
     batch: ["meeting-batch"] as const,
