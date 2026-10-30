@@ -1,5 +1,11 @@
 # Changelog
 
+## 2.25.0-alpha.5
+
+### New Features ✨
+
+- (meetings) Live view in the meeting pane (#375) by @Maheidem in [#382](https://github.com/Maheidem/openstyle/pull/382)
+
 ## 2.25.0-alpha.4
 
 ### New Features ✨
