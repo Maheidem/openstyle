@@ -74,6 +74,13 @@ export interface GatewayOverrides {
    * JSON grammar applies from the first token (`llamacpp-completion.ts`).
    */
   llamaCppCompletion?: boolean;
+  /**
+   * The room left in the context window after the prompt. A preset
+   * `max_tokens` (a floor) never lifts the body above it, so a preset that
+   * names the whole window cannot make the model refuse every call. The value
+   * the caller computed stays: the context guard has checked that it fits.
+   */
+  maxTokensCeiling?: number;
   presetSet?: {
     topLevel?: readonly string[];
     chatTemplateKwargs?: readonly string[];
@@ -203,6 +210,11 @@ export function mergeSamplingIntoBody(
         typeof computed === "number"
           ? Math.max(computed, sampling.max_tokens)
           : sampling.max_tokens;
+      const ceiling = gatewayOverrides?.maxTokensCeiling;
+      if (ceiling !== undefined && typeof merged.max_tokens === "number") {
+        const own = typeof computed === "number" ? computed : 0;
+        merged.max_tokens = Math.min(merged.max_tokens, Math.max(ceiling, own));
+      }
     }
 
     if (gatewayOverrides) applyGatewayOverrides(merged, gatewayOverrides);

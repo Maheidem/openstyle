@@ -1,5 +1,6 @@
 import type {
   LlmParameterPreset,
+  LlmProfileLinks,
   LlmTaskAssignment,
   LlmTaskAssignmentMode,
   LlmTaskId,
@@ -7,10 +8,14 @@ import type {
 } from "@openstyle/validations";
 import {
   BUILTIN_LLM_PRESETS,
+  builtinProfile,
+  builtinProfileKey,
   LLM_PRESET_NAME_MAX,
   LLM_TASK_IDS,
+  profileLinkKey,
   SAFE_SUBSET_KEYS,
   SERVER_PROVIDER_ID,
+  viewTaskAssignment,
 } from "@openstyle/validations";
 import { Eyebrow } from "@renderer/components/page-chrome";
 import { Badge } from "@renderer/components/ui/badge";
@@ -132,6 +137,7 @@ type EditorState =
 
 export function TaskProfilesSection({
   taskAssignments,
+  profileLinks,
   userPresets,
   configured,
   localLlmItems,
@@ -149,6 +155,8 @@ export function TaskProfilesSection({
   onRequestDeletePreset,
 }: {
   taskAssignments: Partial<Record<LlmTaskId, LlmTaskAssignment>>;
+  /** (model, task) -> profile links. */
+  profileLinks: LlmProfileLinks;
   /** Per task: keep its built-in local model loaded (specs/llm-runtime-tuning.md 6). */
   keepReady: MlxLlmKeepReady;
   onKeepReadyChange: (taskId: LlmTaskId, on: boolean) => void;
@@ -193,11 +201,21 @@ export function TaskProfilesSection({
             taskId === "cleanup" &&
             !taskAssignments.cleanup &&
             cleanupLegacyFallback;
-          const assignment: LlmTaskAssignment =
-            taskAssignments[taskId] ??
-            (migratedFromLegacy
-              ? { mode: "custom", params: cleanupSampling }
-              : { mode: "auto" });
+          // The link of the model that this task runs on. A link made for
+          // another model is not shown (it is back when the task runs on
+          // that model again).
+          const stored = taskAssignments[taskId];
+          const runsOn = stored?.modelOverride ?? defaultLlm;
+          const assignment: LlmTaskAssignment = migratedFromLegacy
+            ? { mode: "custom", params: cleanupSampling }
+            : viewTaskAssignment(
+                stored,
+                profileLinks,
+                runsOn
+                  ? profileLinkKey(runsOn.provider, runsOn.model_id)
+                  : null,
+                taskId,
+              );
 
           return (
             <TaskRow
@@ -324,9 +342,36 @@ function TaskRow({
     assignment.mode !== "auto" &&
     computeCloudPartial(effectiveProvider, params);
 
+  // The picker shows the profiles of the model that this stage runs on: the
+  // built-in profiles of its family (Gemma, Nemotron, or a Qwen version and
+  // size that the id names), then the user's own presets. Built-ins of other
+  // families are hidden. A model with no family shows the user's presets only.
+  const runsOn = assignment.modelOverride ?? defaultLlm;
+  const familyKey = runsOn
+    ? builtinProfileKey(
+        runsOn.model_id.startsWith(`${runsOn.provider}/`)
+          ? runsOn.model_id.slice(runsOn.provider.length + 1)
+          : runsOn.model_id,
+        runsOn.provider === MLX_LLM_PROVIDER_ID,
+      )
+    : null;
+  const familyProfiles = familyKey
+    ? presets.filter((p) => p.model === familyKey)
+    : [];
+  const autoProfile = familyKey ? builtinProfile(familyKey) : undefined;
   const segmentedOptions: SegmentedOption[] = [
-    { value: "auto", label: t("models.taskProfiles.assignmentAuto") },
-    ...presets.map((p) => ({ value: p.id, label: p.name })),
+    {
+      value: "auto",
+      label: autoProfile
+        ? t("models.taskProfiles.assignmentAutoProfile", {
+            profile: autoProfile.name,
+          })
+        : t("models.taskProfiles.assignmentAuto"),
+    },
+    ...familyProfiles.map((p) => ({ value: p.id, label: p.name })),
+    ...presets
+      .filter((p) => !p.model)
+      .map((p) => ({ value: p.id, label: p.name })),
     { value: CUSTOM_VALUE, label: t("models.taskProfiles.customOption") },
     {
       value: NEW_PRESET_VALUE,

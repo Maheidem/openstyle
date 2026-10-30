@@ -345,7 +345,7 @@ um so we ship on friday i think
           "role": "user",
         },
       ],
-      "model": "Qwen3.8-27B",
+      "model": "Test-Model-27B",
       "temperature": 0,
     },
     "contentType": "application/json",
@@ -360,7 +360,7 @@ um so we ship on friday i think
   "result": {
     "cleaned": "We ship on Friday, I think.",
     "inputTokens": 40,
-    "model": "Qwen3.8-27B",
+    "model": "Test-Model-27B",
     "outputTokens": 9,
   },
 }
@@ -393,7 +393,7 @@ um so we ship on friday i think
         },
       ],
       "min_p": 0,
-      "model": "Qwen3.8-27B",
+      "model": "Test-Model-27B",
       "presence_penalty": 0,
       "repetition_penalty": 1,
       "temperature": 1,
@@ -412,7 +412,7 @@ um so we ship on friday i think
   "result": {
     "cleaned": "We ship on Friday, I think.",
     "inputTokens": 40,
-    "model": "Qwen3.8-27B",
+    "model": "Test-Model-27B",
     "outputTokens": 9,
   },
 }

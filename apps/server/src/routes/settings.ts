@@ -6,6 +6,10 @@ import {
   HISTORY_RETENTION_SETTING_KEY,
   purgeExpiredHistory,
 } from "../lib/history-store.js";
+import {
+  readProfileLinks,
+  recordAssignmentWrite,
+} from "../lib/llm/profile-links.js";
 import { applyMlxAsrRetentionPolicy } from "../lib/mlx-asr/server.js";
 import { applyMlxLlmRetentionPolicy } from "../lib/mlx-llm/server.js";
 import {
@@ -73,6 +77,9 @@ function isNetworkSetting(key: string): boolean {
 
 const settings = new Hono()
   .get("/", (c) => {
+    // Binds the old task assignments to their models on the first read, so
+    // the Models page shows the links of the model each task runs on.
+    readProfileLinks();
     const db = getDb();
     const rows = db.prepare("SELECT key, value FROM settings").all() as {
       key: string;
@@ -114,6 +121,12 @@ const settings = new Hono()
     const validationError = validateSetting(key, body.value);
     if (validationError) {
       return c.json({ error: validationError }, 400);
+    }
+
+    // A profile that the user links to a task belongs to the model that the
+    // task runs on. Read the old value first, so write this before the save.
+    if (key === SETTINGS_KEYS.llmTaskAssignments) {
+      recordAssignmentWrite(String(body.value));
     }
 
     writeSetting(key, String(body.value));

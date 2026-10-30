@@ -398,3 +398,23 @@ This Mac now reports `max_recommended_working_set_size` 130,566,586,368 B (121.6
 `pnpm meeting:eval` E2B on 5578edb0 and ca70f895, main and branch with the same new worker: the 6 pack files have the same sha256, the same tokens (34,845 / 1,848 and 76,727 / 10,652), and 0 hard fails on both meetings in both arms.
 
 Real app (Test Runner, quiet mode, fictional data, 0 privacy prompts), dictation every 16 to 19 s during 5 Summarize rounds on 26B-A4B: dictation idle p50 / p95 275 / 321 ms (n 10), during Summarize 1,252 / 1,634 ms, max 1,634 ms (n 15, all HTTP 200); 5 of 5 Summarize runs succeeded (50 to 55 s); the status showed E2B pinned with Keep ready for cleanup and 26B-A4B with Keep ready for Summarize, P sum 21.40 GiB. Keep ready toggles persist after a restart (`{"cleanup":false,"meetingSummarize":true}` before and after); the engine-not-ready notice shows (neutral, clock icon) with a stale runtime and a dead download URL, and when the URL serves the archive, Enhance starts again by itself (`started_by: auto`, `succeeded`, 48 s).
+
+## 13. Built-in model profiles (2026-10-30)
+
+A profile that the user links to a task belongs to the model that the task runs on (setting `llm_profile_links`, (model, task) to profile). It does not follow the task to another model. With no link, a task uses the Instruct profile of its model (`BUILTIN_LLM_PRESETS` in `packages/validations/src/llm-task-profiles.ts`). A user link always wins. Each profile sends `enable_thinking` explicitly, and none sets `max_tokens` (it stays derived from the task). The default built-in profile does not block a bounded reasoning step of the gateway; a linked profile does.
+
+| Family | Mode | temperature | top_p | top_k | min_p | repetition | presence | chat_template_kwargs |
+|---|---|---|---|---|---|---|---|---|
+| Gemma 4 (E2B, E4B, 26B-A4B) | Instruct / Thinking | 1.0 | 0.95 | 64 | none | 1.0 | none | enable_thinking false / true |
+| Nemotron 3.5 Bolt E4B | Instruct / Thinking | 1.0 | 0.95 | 64 | none | none | none | enable_thinking false / true |
+| Qwen 3.8 | Instruct | 0.7 | 0.80 | 20 | 0.0 | 1.0 | 1.5 | enable_thinking false |
+| Qwen 3.8 | Thinking | 1.0 | 0.95 | 20 | 0.0 | 1.0 | 0.0 | enable_thinking true, reasoning_effort xhigh, preserve_thinking false |
+| Qwen 3.6 27B | Instruct / Thinking | 0.7 / 1.0 | 0.80 / 0.95 | 20 | 0.0 | 1.0 | 1.5 / 0.0 | enable_thinking false / true (+ preserve_thinking false) |
+| Qwen 3.6 35B-A3B | Instruct / Thinking | 0.7 / 1.0 | 0.80 / 0.95 | 20 | 0.0 | 1.0 | 1.5 / 1.5 | enable_thinking false / true (+ preserve_thinking false) |
+| Qwen 3.5 (0.8B to 122B-A10B) | Instruct / Thinking | 0.7 / 1.0 | 0.80 / 0.95 | 20 | 0.0 | 1.0 | 1.5 / 1.5 | enable_thinking false / true |
+
+Qwen 3.8 has three Thinking profiles: xhigh (the default level), medium and low. They differ only in `reasoning_effort`. The chat template of Qwen3.8-27B accepts exactly xhigh (default), medium and low (`raise_exception` for any other value), so Qwen 3.8 Instruct sends no `reasoning_effort`.
+
+Matcher for a model of an own server or a cloud provider (`qwenFamilyKey`): the id (case ignored) must hold `qwen`, then `3.5`, `3.6` or `3.8`, then a covered size right after the version (3.8: 27B, Flash, Flash-Next; 3.6: 27B, 35B-A3B; 3.5: 0.8B, 2B, 4B, 9B, 27B, 35B-A3B, 122B-A10B). A quant or file suffix is fine. An id with coder, embed, rerank, vl, audio, asr, omni, math or base gives no match. An unknown version or size gives no match, and then no automatic profile applies. A built-in MLX model matches by its catalog id (Gemma, Nemotron) or by the same Qwen rule.
+
+Side effect: a meeting run is no longer byte-identical between two runs. The measurements in sections 4.3 and 10 compare outputs at temperature 0. A comparison of two runs on a built-in model now needs a link with `temperature: 0`.

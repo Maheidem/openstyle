@@ -1,4 +1,5 @@
 import {
+  BUILTIN_LLM_PRESET_IDS,
   BUILTIN_LLM_PRESETS,
   CLEANUP_SAMPLING_MAX_TOKENS_LIMIT,
   cleanupSamplingSchema,
@@ -6,7 +7,9 @@ import {
   LLM_PRESET_NAME_MAX,
   llmParameterPresetsSettingSchema,
   parseCleanupSampling,
+  parseLlmProfileLinks,
   parseLlmTaskAssignments,
+  remapRetiredPresetId,
 } from "@openstyle/validations";
 import { describe, expect, it } from "vitest";
 import createApp from "../src/index.js";
@@ -65,32 +68,43 @@ describe("llmParameterPresetsSettingSchema", () => {
 });
 
 describe("BUILTIN_LLM_PRESETS (§4.2)", () => {
-  it("ships exactly the two approved starter presets, verbatim", () => {
-    expect(BUILTIN_LLM_PRESETS.map((p) => p.id)).toEqual([
-      "builtin:qwen-thinking",
-      "builtin:qwen-fast",
-    ]);
+  it("the two starter presets are retired: not listed, ids reserved, a stored link reads as the Qwen 3.8 built-in", () => {
+    const ids = BUILTIN_LLM_PRESETS.map((p) => p.id);
+    expect(ids).not.toContain("builtin:qwen-thinking");
+    expect(ids).not.toContain("builtin:qwen-fast");
+    expect(BUILTIN_LLM_PRESET_IDS.has("builtin:qwen-fast")).toBe(true);
+    expect(remapRetiredPresetId("builtin:qwen-thinking")).toBe(
+      "builtin:model:qwen3.8:thinking",
+    );
+    expect(remapRetiredPresetId("builtin:qwen-fast")).toBe(
+      "builtin:model:qwen3.8:instruct",
+    );
+    expect(remapRetiredPresetId("user_x")).toBe("user_x");
+    expect(
+      parseLlmTaskAssignments(
+        JSON.stringify({
+          cleanup: { mode: "preset", presetId: "builtin:qwen-fast" },
+        }),
+      ).cleanup?.presetId,
+    ).toBe("builtin:model:qwen3.8:instruct");
+    expect(
+      parseLlmProfileLinks(
+        JSON.stringify({
+          "local-mlx-llm::x": {
+            meetingEnhance: {
+              mode: "preset",
+              presetId: "builtin:qwen-thinking",
+            },
+          },
+        }),
+      )["local-mlx-llm::x"]?.meetingEnhance?.presetId,
+    ).toBe("builtin:model:qwen3.8:thinking");
   });
 
-  it("every built-in's max_tokens (512) never lowers any task's own budget (§6.2)", () => {
+  it("no built-in profile sets max_tokens (it stays task-derived)", () => {
     for (const p of BUILTIN_LLM_PRESETS) {
-      expect(p.params.max_tokens).toBe(512);
+      expect(p.params).not.toHaveProperty("max_tokens");
     }
-  });
-
-  it("qwen-thinking enables thinking, qwen-fast disables it", () => {
-    const thinking = BUILTIN_LLM_PRESETS.find(
-      (p) => p.id === "builtin:qwen-thinking",
-    )!;
-    const fast = BUILTIN_LLM_PRESETS.find((p) => p.id === "builtin:qwen-fast")!;
-    expect(
-      (thinking.params.chat_template_kwargs as Record<string, unknown>)
-        .enable_thinking,
-    ).toBe(true);
-    expect(
-      (fast.params.chat_template_kwargs as Record<string, unknown>)
-        .enable_thinking,
-    ).toBe(false);
   });
 });
 

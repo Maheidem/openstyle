@@ -4,6 +4,7 @@ import {
   DEFAULT_MEETING_ENHANCE_TIMEOUT_SECONDS,
   DEFAULT_MEETING_SUMMARY_TIMEOUT_SECONDS,
   type LlmTaskAssignments,
+  profileLinkKey,
   serverModelId,
 } from "@openstyle/validations";
 import { generateText } from "ai";
@@ -20,6 +21,7 @@ import {
 } from "../src/lib/llm/task-profiles.js";
 import { insertOwnServer } from "../src/lib/own-servers.js";
 import { createChatModel } from "../src/lib/providers.js";
+import { putTaskAssignments } from "./helpers/task-assignments.js";
 
 let serverId = "";
 
@@ -33,7 +35,7 @@ function seedDefaultLlm(provider: string, modelId: string): void {
 }
 
 function setAssignments(assignments: LlmTaskAssignments): void {
-  writeSetting("llm_task_assignments", JSON.stringify(assignments));
+  putTaskAssignments(assignments);
 }
 
 function clearSettings(): void {
@@ -73,7 +75,7 @@ beforeEach(() => {
     apiKey: null,
     flavor: "omlx",
   }).id;
-  seedDefaultLlm("server", serverModelId(serverId, "Qwen3.8-27B"));
+  seedDefaultLlm("server", serverModelId(serverId, "Test-Model-27B"));
 });
 
 afterEach(() => {
@@ -120,7 +122,7 @@ describe("LLM_TASK_PROFILES (§3.2)", () => {
 
 describe("BUILTIN_LLM_PRESETS — param key spelling (§4.2 amendment, §12 item 6)", () => {
   it("both starter presets use repetition_penalty, matching the server's accepted key and cleanupSamplingSchema's field name — not repeat_penalty, which the server silently ignores", () => {
-    for (const preset of BUILTIN_LLM_PRESETS) {
+    for (const preset of BUILTIN_LLM_PRESETS.filter((p) => !p.model)) {
       expect(preset.params).not.toHaveProperty("repeat_penalty");
       expect(preset.params).toHaveProperty("repetition_penalty", 1.0);
       // Tied to the schema so the two spellings can't diverge again: a
@@ -144,6 +146,9 @@ describe("resolveTaskCall — mode: auto (§6.1)", () => {
 
   it("a mapped-subset provider gets an empty sampling object", async () => {
     seedDefaultLlm("openai", "gpt-4o-mini");
+    setAssignments({
+      cleanup: { mode: "preset", presetId: "builtin:model:qwen3.8:thinking" },
+    });
     getDb()
       .prepare("INSERT INTO api_keys (provider, key) VALUES ('openai', 'k')")
       .run();
@@ -160,21 +165,21 @@ describe("resolveTaskCall — mode: auto (§6.1)", () => {
   });
 });
 
-describe("resolveTaskCall — mode: preset, builtin:qwen-thinking (§6.1, §6.4)", () => {
+describe("resolveTaskCall — mode: preset, the Qwen 3.8 Thinking built-in (§6.1, §6.4)", () => {
   beforeEach(() => {
     setAssignments({
-      cleanup: { mode: "preset", presetId: "builtin:qwen-thinking" },
+      cleanup: { mode: "preset", presetId: "builtin:model:qwen3.8:thinking" },
     });
   });
 
-  it("on a server: every key survives except `stream` (denylisted), and the preset's enable_thinking wins over the task seed", async () => {
+  it("on a server: every key survives, and the preset's enable_thinking wins over the task seed", async () => {
     const resolved = await resolveTaskCall("cleanup", {
       autoMaxOutputTokens: 512,
     });
     const preset = BUILTIN_LLM_PRESETS.find(
-      (p) => p.id === "builtin:qwen-thinking",
+      (p) => p.id === "builtin:model:qwen3.8:thinking",
     )!;
-    const { stream: _stream, chat_template_kwargs, ...rest } = preset.params;
+    const { chat_template_kwargs, ...rest } = preset.params;
     expect(resolved.samplingParams).toEqual({
       ...rest,
       chat_template_kwargs,
@@ -185,13 +190,15 @@ describe("resolveTaskCall — mode: preset, builtin:qwen-thinking (§6.1, §6.4)
       (resolved.samplingParams.chat_template_kwargs as Record<string, unknown>)
         .enable_thinking,
     ).toBe(true);
-    expect(resolved.samplingParams).not.toHaveProperty("stream");
     // Local providers get top_p inside samplingParams, never as `topP`.
     expect(resolved.topP).toBeUndefined();
   });
 
   it("on a mapped-subset provider: only the safe subset survives, floor applies", async () => {
     seedDefaultLlm("openai", "gpt-4o-mini");
+    setAssignments({
+      cleanup: { mode: "preset", presetId: "builtin:model:qwen3.8:thinking" },
+    });
     getDb()
       .prepare("INSERT INTO api_keys (provider, key) VALUES ('openai', 'k')")
       .run();
@@ -200,8 +207,8 @@ describe("resolveTaskCall — mode: preset, builtin:qwen-thinking (§6.1, §6.4)
     });
     expect(resolved.temperature).toBe(1.0);
     expect(resolved.topP).toBe(0.95);
-    // Preset's max_tokens (512) beats the small auto budget (100).
-    expect(resolved.maxOutputTokens).toBe(512);
+    // A built-in profile has no max_tokens: the task budget stays.
+    expect(resolved.maxOutputTokens).toBe(100);
     expect(resolved.samplingParams).toEqual({});
   });
 });
@@ -221,6 +228,63 @@ describe("resolveTaskCall — max_tokens is a floor, never a ceiling (§6.2)", (
     });
     const resolved = await resolveTaskCall("meetingSummarize");
     expect(resolved.maxOutputTokens).toBe(8000);
+  });
+});
+
+describe("resolveTaskCall — a profile belongs to one model and one task", () => {
+  const E2B = "local-mlx-llm/gemma-4-e2b-qat-4bit";
+  const QWEN = "local-mlx-llm/qwen3.8-27b-4bit";
+  const link = (model: string, params: Record<string, unknown>) =>
+    writeSetting(
+      "llm_profile_links",
+      JSON.stringify({
+        [profileLinkKey("local-mlx-llm", model)]: {
+          meetingEnhance: { mode: "custom", params },
+        },
+      }),
+    );
+
+  beforeEach(() => writeSetting("llm_profile_links_migrated", "1"));
+
+  it("a link made for Qwen does not apply to Gemma; Gemma uses its built-in profile", async () => {
+    link(QWEN, { max_tokens: 32768, top_p: 0.5 });
+    seedDefaultLlm("local-mlx-llm", E2B);
+    const resolved = await resolveTaskCall("meetingEnhance", {
+      autoMaxOutputTokens: 900,
+    });
+    expect(resolved.maxOutputTokens).toBe(900);
+    expect(resolved.samplingParams).not.toHaveProperty("max_tokens");
+    expect(resolved.source).toEqual({
+      mode: "preset",
+      presetId: "builtin:model:gemma-4-e2b-qat-4bit:instruct",
+    });
+  });
+
+  it("the Qwen link is active again when the task runs on Qwen again", async () => {
+    link(QWEN, { max_tokens: 2000 });
+    seedDefaultLlm("local-mlx-llm", QWEN);
+    const resolved = await resolveTaskCall("meetingEnhance", {
+      autoMaxOutputTokens: 900,
+    });
+    expect(resolved.maxOutputTokens).toBe(2000);
+    expect(resolved.source.mode).toBe("custom");
+  });
+
+  it("a link of one task does not apply to another task", async () => {
+    link(QWEN, { max_tokens: 2000 });
+    seedDefaultLlm("local-mlx-llm", QWEN);
+    const resolved = await resolveTaskCall("meetingSummarize", {
+      autoMaxOutputTokens: 900,
+    });
+    expect(resolved.maxOutputTokens).toBe(4096);
+  });
+
+  it("an own server has no built-in profile: no link means auto", async () => {
+    const resolved = await resolveTaskCall("meetingEnhance", {
+      autoMaxOutputTokens: 900,
+    });
+    expect(resolved.maxOutputTokens).toBe(900);
+    expect(resolved.source).toEqual({ mode: "auto" });
   });
 });
 
@@ -259,7 +323,7 @@ describe("resolveTaskCall — model override (§6.3, §11)", () => {
       resolved = await resolveTaskCall("cleanup", { autoMaxOutputTokens: 512 });
     });
     expect(resolved!.provider).toBe("server");
-    expect(resolved!.modelId).toBe(serverModelId(serverId, "Qwen3.8-27B"));
+    expect(resolved!.modelId).toBe(serverModelId(serverId, "Test-Model-27B"));
     expect(out).toMatch(/anthropic/);
   });
 
@@ -318,7 +382,7 @@ describe("resolveTaskCall — server model override (§6.3, §6.2)", () => {
     const out = await captureStdout(async () => {
       resolved = await resolveTaskCall("cleanup", { autoMaxOutputTokens: 512 });
     });
-    expect(resolved!.modelId).toBe(serverModelId(serverId, "Qwen3.8-27B"));
+    expect(resolved!.modelId).toBe(serverModelId(serverId, "Test-Model-27B"));
     expect(out).toMatch(/server is no longer in the list/);
   });
 });
@@ -491,7 +555,7 @@ describe("server provider wiring — taskContext, not a direct DB read (§8.1)",
           id: "1",
           object: "chat.completion",
           created: 0,
-          model: "Qwen3.8-27B",
+          model: "Test-Model-27B",
           choices: [
             {
               index: 0,
@@ -506,7 +570,7 @@ describe("server provider wiring — taskContext, not a direct DB read (§8.1)",
     });
     const model = await createChatModel(
       "server",
-      serverModelId(serverId, "Qwen3.8-27B"),
+      serverModelId(serverId, "Test-Model-27B"),
       taskContext,
     );
     await generateText({ model, prompt: "hi", temperature: 0 });

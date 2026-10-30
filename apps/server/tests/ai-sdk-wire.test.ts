@@ -3,6 +3,7 @@
 // `createChatModel`, and snapshot what leaves the process. The snapshot is
 // made on SDK v6 and must show no diff on v7. Never run `vitest -u` to fix a
 // diff here: a diff means the wire changed.
+
 import { createElevenLabs } from "@ai-sdk/elevenlabs";
 import { createGroq } from "@ai-sdk/groq";
 import { createOpenAI } from "@ai-sdk/openai";
@@ -15,6 +16,7 @@ import { resolveTaskCall } from "../src/lib/llm/task-profiles.js";
 import { insertOwnServer } from "../src/lib/own-servers.js";
 import { createChatModel } from "../src/lib/providers.js";
 import { transcribeWithAiSdk } from "../src/lib/streaming/utils.js";
+import { putTaskAssignments } from "./helpers/task-assignments.js";
 
 const RAW_TEXT = "um so we ship on friday i think";
 const CLEANED = "We ship on Friday, I think.";
@@ -246,7 +248,7 @@ const cleanupCases: Array<{
   {
     id: "WB8 server",
     provider: "server",
-    model: () => serverModelId(serverId, "Qwen3.8-27B"),
+    model: () => serverModelId(serverId, "Test-Model-27B"),
     reply: openAiReply,
   },
 ];
@@ -280,11 +282,12 @@ describe("stt postProcess wire body, preset (WB9)", () => {
     const assignments: LlmTaskAssignments = {
       cleanup: { mode: "preset", presetId: "builtin:qwen-thinking" },
     };
-    writeSetting("llm_task_assignments", JSON.stringify(assignments));
+    seedDefaultLlm("server", serverModelId(serverId, "Test-Model-27B"));
+    putTaskAssignments(assignments);
     const calls = spyFetch(openAiReply);
     const { result, errors } = await runCleanup(
       "server",
-      serverModelId(serverId, "Qwen3.8-27B"),
+      serverModelId(serverId, "Test-Model-27B"),
       "unused",
     );
     expect(errors).toEqual([]);

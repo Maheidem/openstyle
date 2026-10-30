@@ -16,6 +16,26 @@ Checked against `origin/main` dc6b5080 (2026-10-25). Spec: `specs/local-mlx-llm.
 5. Never write to `~/.cache/huggingface`. Downloads for a check go to a scratch cache (`HUGGINGFACE_HUB_CACHE`, `--hf-cache`).
 6. Take the shared GPU lock (`mkdir /tmp/openstyle-gpu.lock`) before any model load. Release it after.
 
+## Validate the inference parameters (required, owner rule 2026-10-30)
+
+Do this before you add a catalog entry, a built-in profile or an auto-pick name rule. The rule is in `AGENTS.md`, section "New model rule".
+
+1. Source order, from the strongest: the official model card, then the chat template as it really behaves, then Unsloth, then the runtimes (Ollama, vLLM, llama.cpp), then community posts. Use at least 2 independent sources for each value. When two sources conflict, the higher one wins. Write the conflict down.
+2. Read the raw text, not a summary. Replace `<org>/<repo>` with the Hugging Face repo:
+
+```bash
+timeout 30 curl -sL "https://huggingface.co/<org>/<repo>/raw/main/README.md" | grep -n -i -E "temperature|top_p|top_k|min_p|presence|repetition|enable_thinking|reasoning_effort|preserve_thinking"
+timeout 30 curl -sL "https://huggingface.co/<org>/<repo>/raw/main/generation_config.json"
+timeout 30 curl -sL "https://huggingface.co/<org>/<repo>/raw/main/chat_template.jinja" | grep -n -E "enable_thinking|reasoning_effort|preserve_thinking|raise_exception"
+```
+
+   The chat template shows which switch values the model accepts (the Qwen 3.8 template raises an error for a `reasoning_effort` outside xhigh, medium and low).
+3. Each version and size can differ (Qwen 3.5, 3.6 and 3.8, and 27B against 35B-A3B). Make one family key for each set of values.
+4. Add the values to the profile table: `BUILTIN_FAMILY_DEFS` in `packages/validations/src/llm-task-profiles.ts`. Each family has an Instruct and a Thinking profile, and each sends `enable_thinking` explicitly. A family with several thinking levels adds them in `levels`. For an own-server or cloud id, add the version and size to `QWEN_FAMILIES` (the matcher, `qwenFamilyKey`) only when the id names both.
+5. Never copy `max_tokens` from a vendor page. It stays derived from the task and below the context window. A test fails when a profile sets it.
+6. The test that must cover the new entry: `apps/server/tests/llm-profile-links.test.ts` (each catalog model has an Instruct and a Thinking profile; the matcher table names the new ids and one id that must not match). Run `cd apps/server && pnpm exec vitest run tests/llm-profile-links.test.ts`.
+7. Put the table, the quotes, the URLs and the conflicts in the PR body. The method and the results for Gemma 4, Nemotron and Qwen are in `specs/llm-runtime-tuning.md`, section 13.
+
 ## Where the catalog lives
 
 `apps/server/src/lib/mlx-llm/constants.ts` (lines checked on dc6b5080):

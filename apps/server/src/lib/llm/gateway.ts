@@ -673,12 +673,18 @@ export async function callStructured<T>(
     );
   }
   let jsonSchema: unknown;
+  let instructions: string;
+  let promptTokens: number;
   try {
     resolved = await resolveTaskCall(profile.taskId, {
       autoMaxOutputTokens: maxOutputTokens,
       pin: { provider: profile.provider, modelId: profile.modelId },
     });
     jsonSchema = await asSchema(input.schema.zod).jsonSchema;
+    instructions = degraded
+      ? `${input.instructions}\n\n${DEGRADED_SUFFIX}\n${JSON.stringify(jsonSchema)}`
+      : input.instructions;
+    promptTokens = estimateCallTokens({ instructions, messages });
 
     const presetSet = {
       topLevel: resolved.presetKeys.topLevel,
@@ -687,6 +693,9 @@ export async function callStructured<T>(
     const overrides: GatewayOverrides = {
       ...wire.overrides,
       presetSet,
+      ...(profile.contextWindow !== null
+        ? { maxTokensCeiling: profile.contextWindow - promptTokens }
+        : {}),
       ...(llamaCppCompletion ? { llamaCppCompletion: true } : {}),
     };
     if (wire.overrides.bounded) {
@@ -779,9 +788,6 @@ export async function callStructured<T>(
   const modelRequested = model.modelId;
   facts.modelRequested = modelRequested;
 
-  const instructions = degraded
-    ? `${input.instructions}\n\n${DEGRADED_SUFFIX}\n${JSON.stringify(jsonSchema)}`
-    : input.instructions;
   const output =
     mode === "prompt_only"
       ? Output.text()
@@ -874,7 +880,6 @@ export async function callStructured<T>(
   // The context guard (specs/llm-runtime-tuning.md 9 item 5): a call whose
   // estimated prompt and answer budget do not fit the window is not sent.
   // The caller splits the input. A call that fits is sent unchanged.
-  const promptTokens = estimateCallTokens({ instructions, messages });
   if (!fitsWindow(promptTokens, maxOutputTokens, profile.contextWindow)) {
     log.warn(
       `context guard: ${input.step} ${input.unitKey} not sent (estimated prompt ${promptTokens} + max ${maxOutputTokens} > context ${profile.contextWindow}); the caller splits`,

@@ -41,8 +41,9 @@ import {
   type CorrectChunk,
 } from "../src/lib/meetings/workflow/schemas.js";
 import { getOwnServer, insertOwnServer } from "../src/lib/own-servers.js";
+import { putTaskAssignments } from "./helpers/task-assignments.js";
 
-const MODEL = "Qwen3.8-27B";
+const MODEL = "Test-Model-27B";
 const VALID = '{"corrections":[]}';
 const jsonHeaders = { "content-type": "application/json" };
 
@@ -302,12 +303,10 @@ describe("W2 and W2b, the preset denylist", () => {
   };
 
   it("W2: response_format, stop and guided_json are dropped; the SDK schema stays", async () => {
-    writeSetting(
-      "llm_task_assignments",
-      JSON.stringify({
-        meetingEnhance: { mode: "custom", params: presetKeys },
-      }),
-    );
+    seedDefaultLlm("server", modelId);
+    putTaskAssignments({
+      meetingEnhance: { mode: "custom", params: presetKeys },
+    });
     const seen = stubFetch([() => chatReply(VALID)]);
     const { input } = await makeInput(await serverProfile());
     const result = await callStructured(input);
@@ -329,14 +328,11 @@ describe("W2 and W2b, the preset denylist", () => {
 
   it("W2b: dictation cleanup keeps stop; the two meeting tasks drop it", async () => {
     seedDefaultLlm("server", modelId);
-    writeSetting(
-      "llm_task_assignments",
-      JSON.stringify({
-        cleanup: { mode: "custom", params: { stop: ["x"], temperature: 0.2 } },
-        meetingEnhance: { mode: "custom", params: { stop: ["x"] } },
-        meetingSummarize: { mode: "custom", params: { stop: ["x"] } },
-      }),
-    );
+    putTaskAssignments({
+      cleanup: { mode: "custom", params: { stop: ["x"], temperature: 0.2 } },
+      meetingEnhance: { mode: "custom", params: { stop: ["x"] } },
+      meetingSummarize: { mode: "custom", params: { stop: ["x"] } },
+    });
     const cleanup = await resolveTaskCall("cleanup", {
       autoMaxOutputTokens: 100,
     });
@@ -1156,10 +1152,8 @@ describe("W15, probeEndpoint", () => {
 
 describe("5.5.2, precedence of the gateway keys over a preset", () => {
   function assign(params: Record<string, unknown>): void {
-    writeSetting(
-      "llm_task_assignments",
-      JSON.stringify({ meetingEnhance: { mode: "custom", params } }),
-    );
+    seedDefaultLlm("server", modelId);
+    putTaskAssignments({ meetingEnhance: { mode: "custom", params } });
   }
 
   async function boundedProfile(): Promise<CallProfile> {
@@ -1238,6 +1232,38 @@ describe("5.5.2, precedence of the gateway keys over a preset", () => {
     expect(
       JSON.parse(mergeSamplingIntoBody(body, { max_tokens: 50 })).max_tokens,
     ).toBe(100);
+  });
+
+  it("a preset max_tokens never lifts the body past the room left in the window", async () => {
+    // The owner preset names the whole window (32768) on a 32768-token model.
+    // The worker refuses prompt + max_tokens over the window, so every call
+    // failed and the length route split down to single lines.
+    assign({ max_tokens: 32768 });
+    const seen = stubFetch([() => chatReply(VALID)]);
+    const profile = { ...(await serverProfile()), contextWindow: 32768 };
+    const { input } = await makeInput(profile);
+    await callStructured(input);
+    const body = seen[0]?.body as Record<string, unknown>;
+    const max = body.max_tokens as number;
+    expect(max).toBeGreaterThanOrEqual(400);
+    // The prompt is about 60 tokens: the room is far below 32768.
+    expect(max).toBeLessThan(32768 - 40);
+  });
+
+  it("the ceiling keeps a smaller preset floor and the call value", () => {
+    const body = JSON.stringify({ model: "m", max_tokens: 400 });
+    const merge = (preset: number, ceiling: number) =>
+      JSON.parse(
+        mergeSamplingIntoBody(
+          body,
+          { max_tokens: preset },
+          { maxTokensCeiling: ceiling },
+        ),
+      ).max_tokens;
+    expect(merge(1000, 5000)).toBe(1000);
+    expect(merge(32768, 5000)).toBe(5000);
+    // A ceiling under the call value never lowers it.
+    expect(merge(32768, 100)).toBe(400);
   });
 });
 
