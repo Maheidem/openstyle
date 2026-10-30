@@ -44,6 +44,11 @@ import {
   useSearchStatus,
 } from "./search";
 import {
+  readMeetingsSelection,
+  rememberMeetingsSelection,
+  validateSelection,
+} from "./selection-memory";
+import {
   AsrContextSettingsPopover,
   DiarizationSettingsPopover,
   EnhanceSettingsPopover,
@@ -56,11 +61,19 @@ const autoOpenedLive = new Set<string>();
 
 export default function MeetingsPage(): React.JSX.Element {
   const { t } = useTranslation();
-  const [selectedId, setSelectedId] = useState<string | null>(null);
-  const [selectedFolderId, setSelectedFolderId] = useState<string | null>(null);
-  const [expanded, setExpanded] = useState<Record<string, boolean>>({
-    none: true,
-  });
+  // The selection comes back after a visit to another page.
+  const [selectedId, setSelectedId] = useState<string | null>(
+    () => readMeetingsSelection().selectedId,
+  );
+  const [selectedFolderId, setSelectedFolderId] = useState<string | null>(
+    () => readMeetingsSelection().selectedFolderId,
+  );
+  const [expanded, setExpanded] = useState<Record<string, boolean>>(
+    () => readMeetingsSelection().expanded,
+  );
+  useEffect(() => {
+    rememberMeetingsSelection({ selectedId, selectedFolderId, expanded });
+  }, [selectedId, selectedFolderId, expanded]);
   const [creating, setCreating] = useState(false);
   const [renamingId, setRenamingId] = useState<string | null>(null);
   const [panelAction, setPanelAction] = useState<{
@@ -74,6 +87,13 @@ export default function MeetingsPage(): React.JSX.Element {
   const [searchFocus, setSearchFocus] = useState<SearchFocus | null>(null);
   const moving = useRef(false);
   const detailColumn = useRef<HTMLDivElement>(null);
+  const listColumn = useRef<HTMLElement>(null);
+  // A restored selection can sit below the fold of the list. Scroll to it
+  // once, when its row first renders. Later clicks do not scroll.
+  const restoredSelection = useRef(
+    Boolean(readMeetingsSelection().selectedId) ||
+      Boolean(readMeetingsSelection().selectedFolderId),
+  );
   const actionSequence = useRef(0);
   const { data: config, isLoading: configLoading } = useQuery(
     configQueryOptions(),
@@ -102,6 +122,20 @@ export default function MeetingsPage(): React.JSX.Element {
         : false,
   });
   const meetings = useMemo(() => listData ?? [], [listData]);
+  // Once the lists load, drop a remembered meeting or folder that is gone.
+  const selectionChecked = useRef(false);
+  useEffect(() => {
+    if (selectionChecked.current || !listData || !folderData.data) return;
+    selectionChecked.current = true;
+    const valid = validateSelection(
+      { selectedId, selectedFolderId },
+      new Set(listData.map((m) => m.id)),
+      new Set(folderData.data.map((f) => f.id)),
+    );
+    if (valid.selectedId !== selectedId) setSelectedId(valid.selectedId);
+    if (valid.selectedFolderId !== selectedFolderId)
+      setSelectedFolderId(valid.selectedFolderId);
+  }, [listData, folderData.data, selectedId, selectedFolderId]);
   const [defaultId, setDefaultId] = useState<string | null>(null);
   useEffect(() => {
     if (meetings.length > 0 && !meetings.some((m) => m.id === defaultId))
@@ -173,6 +207,14 @@ export default function MeetingsPage(): React.JSX.Element {
     batch.state.total > 0 &&
     (batch.state.active || closedBatch !== batchKey(batch.state));
   const folderGroup = groups.get(selectedFolderId);
+  // biome-ignore lint/correctness/useExhaustiveDependencies: run when the rows load
+  useEffect(() => {
+    if (!restoredSelection.current) return;
+    const row = listColumn.current?.querySelector('[aria-current="true"]');
+    if (!row) return;
+    restoredSelection.current = false;
+    row.scrollIntoView({ block: "nearest" });
+  }, [groupQueries, folders]);
 
   const openFolderId = openMeeting?.folder_id;
   useEffect(() => {
@@ -337,6 +379,7 @@ export default function MeetingsPage(): React.JSX.Element {
         )}
         <div className="grid flex-1 grid-cols-1 gap-6 min-[900px]:min-h-0 min-[900px]:grid-cols-[262px_minmax(0,1fr)] min-[900px]:grid-rows-[minmax(0,1fr)]">
           <aside
+            ref={listColumn}
             aria-label={t("meetings.folders.railLabel")}
             data-testid="meetings-list-column"
             style={{ scrollbarWidth: "none" }}
