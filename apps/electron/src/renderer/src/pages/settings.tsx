@@ -210,6 +210,7 @@ export default function SettingsPage(): React.JSX.Element {
   const [calendarEnabled, setCalendarEnabled] = useState(false);
   // Project memory (#234) is on unless the row says "false".
   const [projectMemory, setProjectMemory] = useState(true);
+  const [liveChat, setLiveChat] = useState(false);
   // The owner name: the first term of the meeting ASR bias. Saved on blur
   // and on Enter; the ref holds the last saved value.
   const [ownerName, setOwnerName] = useState("");
@@ -506,6 +507,7 @@ export default function SettingsPage(): React.JSX.Element {
     if (s[SETTINGS_KEYS.meetingProjectMemory] === "false") {
       setProjectMemory(false);
     }
+    if (s[SETTINGS_KEYS.liveChatEnabled] === "true") setLiveChat(true);
     savedOwnerName.current = s[SETTINGS_KEYS.ownerName] ?? "";
     setOwnerName(savedOwnerName.current);
     if (s[SETTINGS_KEYS.calendarEnabled] === "true") {
@@ -788,6 +790,16 @@ export default function SettingsPage(): React.JSX.Element {
     setProjectMemory(enabled);
     void putSetting(SETTINGS_KEYS.meetingProjectMemory, String(enabled));
   }, []);
+
+  const handleLiveChatToggle = useCallback(
+    (enabled: boolean) => {
+      setLiveChat(enabled);
+      void putSetting(SETTINGS_KEYS.liveChatEnabled, String(enabled)).then(() =>
+        queryClient.invalidateQueries({ queryKey: queryKeys.settings }),
+      );
+    },
+    [queryClient],
+  );
 
   const commitOwnerName = useCallback(async (raw: string) => {
     const name = raw.trim();
@@ -1407,6 +1419,17 @@ export default function SettingsPage(): React.JSX.Element {
                   checked={projectMemory}
                   onCheckedChange={handleProjectMemoryToggle}
                   aria-label={t("settings.meetings.projectMemory")}
+                />
+              </Row>
+              <Row
+                label={t("settings.meetings.liveChat")}
+                desc={t("settings.meetings.liveChatDesc")}
+              >
+                <Switch
+                  id="settings-live-chat"
+                  checked={liveChat}
+                  onCheckedChange={handleLiveChatToggle}
+                  aria-label={t("settings.meetings.liveChat")}
                 />
               </Row>
               <Row

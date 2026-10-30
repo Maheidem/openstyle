@@ -115,6 +115,15 @@ export const LLM_TASK_PROFILES: Record<LlmTaskId, LlmTaskProfile> = {
      */
     timeoutMs: DEFAULT_MEETING_ENHANCE_TIMEOUT_SECONDS * 1000,
   },
+  // Live chat (issue #375): one short JSON answer for a person who waits.
+  // Interactive like cleanup, so it keeps a code-defined timeout.
+  liveChat: {
+    id: "liveChat",
+    reasoningEnabled: false,
+    temperature: 0,
+    maxOutputTokens: 300,
+    timeoutMs: 30_000,
+  },
 };
 
 /**

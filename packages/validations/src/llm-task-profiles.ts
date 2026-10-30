@@ -10,6 +10,8 @@ export const LLM_TASK_IDS = [
   "cleanup",
   "meetingSummarize",
   "meetingEnhance",
+  // Live chat during a recording (issue #375, specs/live-chat.md).
+  "liveChat",
 ] as const;
 
 export type LlmTaskId = (typeof LLM_TASK_IDS)[number];
@@ -250,6 +252,7 @@ export const MLX_LLM_KEEP_READY_DEFAULT: Readonly<MlxLlmKeepReady> = {
   cleanup: true,
   meetingSummarize: false,
   meetingEnhance: false,
+  liveChat: false,
 };
 
 export const mlxLlmKeepReadySchema = z
@@ -257,6 +260,7 @@ export const mlxLlmKeepReadySchema = z
     cleanup: z.boolean().optional(),
     meetingSummarize: z.boolean().optional(),
     meetingEnhance: z.boolean().optional(),
+    liveChat: z.boolean().optional(),
   })
   .strict();
 

@@ -243,7 +243,9 @@
       "openSystemSettings": "システム設定を開く",
       "calendarRestricted": "お使いのMacのポリシーがカレンダーへのアクセスをブロックしています。Openstyleでは変更できません。",
       "calendarUnavailable": "Openstyleがカレンダーに接続できませんでした。リクエストがタイムアウトしたか、このMacのmacOSがバージョン14より古い可能性があります。もう一度お試しください。",
-      "calendarSaveFailed": "この設定を保存できませんでした。カレンダーはオフのままです。"
+      "calendarSaveFailed": "この設定を保存できませんでした。カレンダーはオフのままです。",
+      "liveChat": "ライブ文字起こしとチャット(試験的)",
+      "liveChatDesc": "録音中に文字起こしを表示し、会議について質問できます。ダウンロード済みのローカル文字起こしモデルが必要です。録音中はメモリを多く使います。"
     },
     "data": {
       "pauseHistory": "履歴を一時停止",
@@ -705,7 +707,11 @@
       "presetDeleteFailed": "このプリセットを削除できませんでした。もう一度お試しください。",
       "deletePresetTitle": "プリセットを削除しますか？",
       "deletePresetMsg": "<b>{{name}}</b> は {{tasks}} で使用されています。削除するとこれらのタスクは Auto に戻ります。",
-      "deletePresetNoTasksMsg": "<b>{{name}}</b> は現在どのタスクでも使用されていません。削除すると完全に削除されます。"
+      "deletePresetNoTasksMsg": "<b>{{name}}</b> は現在どのタスクでも使用されていません。削除すると完全に削除されます。",
+      "liveChat": {
+        "name": "ライブチャット(試験的)",
+        "desc": "録音中の質問に答えます。"
+      }
     },
     "loading": "モデルを読み込み中",
     "mlxKeepAlive": "MLX ASRの保持時間",
@@ -1240,6 +1246,27 @@
       "readOnly": "以前のバージョン（読み取り専用）",
       "close": "閉じる",
       "partial": "一部のみ"
+    },
+    "liveChat": {
+      "transcriptTitle": "ライブ文字起こし",
+      "experimental": "試験的",
+      "warming": "文字起こしモデルを読み込んでいます...",
+      "unavailable": "ライブ文字起こしは使えません。ダウンロード済みのローカル文字起こしモデルが必要です。",
+      "sourceMe": "自分",
+      "sourceThem": "相手",
+      "chatTitle": "この会議について質問",
+      "chatPlaceholder": "質問を入力...",
+      "chatSend": "質問する",
+      "chatWarming": "チャットモデルを読み込んでいます。最初の回答は時間がかかります。",
+      "chatUnavailable": "ライブチャットにはローカルのチャットモデルが必要です。",
+      "chatThinking": "考え中...",
+      "chatError": "回答に失敗しました。もう一度試してください。",
+      "chatEmpty": "この会議、プロジェクト、過去の会議について質問できます。",
+      "citeLive": "ライブ {{time}}",
+      "citePast": "{{title}}、{{time}}",
+      "citeFolder": "フォルダの説明",
+      "you": "あなた",
+      "answer": "回答"
     }
   },
   "help": {

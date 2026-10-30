@@ -9,6 +9,7 @@ import dismissedNotifications from "./dismissed-notifications.js";
 import history from "./history.js";
 import jobs from "./jobs.js";
 import meetings from "./meetings.js";
+import meetingsChat from "./meetings-chat.js";
 import meetingsImport from "./meetings-import.js";
 import meetingsRuns from "./meetings-runs.js";
 import mlxAsr from "./mlx-asr.js";
@@ -52,6 +53,7 @@ const apiRouter = new Hono()
   .route("/meetings", meetings)
   .route("/meetings", meetingsImport)
   .route("/meetings", meetingsRuns)
+  .route("/meetings", meetingsChat)
   .route("/search", search)
   .route("/dictionary", dictionary)
   .route("/dismissed-notifications", dismissedNotifications)

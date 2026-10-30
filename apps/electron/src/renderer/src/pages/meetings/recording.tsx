@@ -10,9 +10,9 @@ import {
 } from "@renderer/components/ui/dialog";
 import { Progress } from "@renderer/components/ui/progress";
 import { useElapsedClock } from "@renderer/hooks/use-elapsed-clock";
-import { queryKeys } from "@renderer/lib/query";
+import { queryKeys, settingsQueryOptions } from "@renderer/lib/query";
 import { cn } from "@renderer/lib/utils";
-import { useQueryClient } from "@tanstack/react-query";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   AlertTriangle,
   Folder,
@@ -27,6 +27,9 @@ import {
   type MeetingDevicePlan,
   planKeys,
 } from "../../../../shared/meeting-devices";
+import { SETTINGS_KEYS } from "../../../../shared/settings-keys";
+import { LiveChatPanel } from "./live-chat-panel";
+import { LiveTranscriptPanel } from "./live-transcript-panel";
 import type { RecorderStatus } from "./types";
 
 // ---------------------------------------------------------------------------
@@ -393,6 +396,25 @@ export function LevelMeter({
   );
 }
 
+/**
+ * Live transcript and chat of the running recording (issue #375).
+ * Experimental: it shows nothing while the setting is off.
+ */
+function LiveSection({
+  meetingId,
+}: {
+  meetingId: string | null;
+}): React.JSX.Element | null {
+  const { data: appSettings } = useQuery(settingsQueryOptions());
+  if (appSettings?.[SETTINGS_KEYS.liveChatEnabled] !== "true") return null;
+  return (
+    <>
+      <LiveTranscriptPanel meetingId={meetingId} />
+      <LiveChatPanel meetingId={meetingId} />
+    </>
+  );
+}
+
 export function RecordingCard({
   recorder,
   compact = false,
@@ -559,6 +581,7 @@ export function RecordingCard({
           </Button>
         )}
       </div>
+      {recording && <LiveSection meetingId={recorder.meetingId} />}
       {!recording && !finalizing && targetName && (
         <p className="text-muted-foreground mt-2 text-xs">
           {t("meetings.folders.recordsInto")}{" "}

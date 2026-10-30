@@ -69,6 +69,8 @@ import {
   waitForRelease,
 } from "../lib/meetings/job-registry.js";
 import { resolveMeetingLanguage } from "../lib/meetings/language.js";
+import { startLive, stopLive } from "../lib/meetings/live/loop.js";
+import { getLive } from "../lib/meetings/live/store.js";
 import {
   isMixedChunk,
   segmentWavFile,
@@ -1553,9 +1555,20 @@ const meetings = new Hono()
       ...calendarColumnValues(calendar ?? null),
       folder_id,
     );
+    // Live transcript (issue #375): a no-op while the setting is off.
+    void startLive(id, audio_dir);
     return c.json(
       meetingStartResponseSchema.parse({ ok: true, id, folder_id }),
     );
+  })
+  // Live transcript of a running recording (issue #375). Poll it every second.
+  // "off" covers the flag off, no recording and an unknown meeting.
+  .get("/:id/live", (c) => {
+    const live = getLive(c.req.param("id"));
+    if (!live) {
+      return c.json({ status: "off" as const, lines: [], skippedTicks: 0 });
+    }
+    return c.json(live);
   })
   // Link or change the calendar event of a meeting. The title follows the
   // event only when it is empty or still holds the previous event's title.
@@ -1633,9 +1646,11 @@ const meetings = new Hono()
     if (title !== undefined) notifyMeetingChanged(id);
     return c.json({ ok: true, title, language, context, retentionExempt });
   })
-  .post("/:id/stop", zValidator("json", stopSchema), (c) => {
+  .post("/:id/stop", zValidator("json", stopSchema), async (c) => {
     const id = c.req.param("id");
     const { ended_at, duration_ms, status, error } = c.req.valid("json");
+    // Wait for the live loop: the final pass needs the one ASR worker.
+    await stopLive(id);
     const db = getDb();
     const result = db
       .prepare(
@@ -1655,9 +1670,10 @@ const meetings = new Hono()
       "json",
       z.object({ duration_ms: z.number().int().min(0).optional() }),
     ),
-    (c) => {
+    async (c) => {
       const id = c.req.param("id");
       const { duration_ms } = c.req.valid("json");
+      await stopLive(id);
       const db = getDb();
       const result = db
         .prepare(

@@ -243,7 +243,9 @@
       "openSystemSettings": "Systemeinstellungen öffnen",
       "calendarRestricted": "Die Richtlinie Ihres Macs blockiert den Kalenderzugriff. Openstyle kann das nicht ändern.",
       "calendarUnavailable": "Openstyle konnte den Kalender nicht erreichen. Die Anfrage ist vielleicht abgelaufen, oder dieser Mac nutzt ein macOS älter als 14. Versuchen Sie es erneut.",
-      "calendarSaveFailed": "Openstyle konnte diese Einstellung nicht speichern. Der Kalender bleibt aus."
+      "calendarSaveFailed": "Openstyle konnte diese Einstellung nicht speichern. Der Kalender bleibt aus.",
+      "liveChat": "Live-Transkript und Chat (experimentell)",
+      "liveChatDesc": "Zeigt das Transkript während der Aufnahme und lässt dich Fragen zur Besprechung stellen. Es braucht ein heruntergeladenes lokales Transkriptionsmodell. Während einer Aufnahme nutzt es mehr Speicher."
     },
     "data": {
       "pauseHistory": "Verlauf pausieren",
@@ -705,7 +707,11 @@
       "presetDeleteFailed": "Dieses Preset konnte nicht gelöscht werden. Versuch es erneut.",
       "deletePresetTitle": "Preset löschen?",
       "deletePresetMsg": "<b>{{name}}</b> wird von {{tasks}} verwendet. Nach dem Löschen fallen diese Aufgaben auf Auto zurück.",
-      "deletePresetNoTasksMsg": "<b>{{name}}</b> wird gerade von keiner Aufgabe verwendet. Nach dem Löschen ist es endgültig weg."
+      "deletePresetNoTasksMsg": "<b>{{name}}</b> wird gerade von keiner Aufgabe verwendet. Nach dem Löschen ist es endgültig weg.",
+      "liveChat": {
+        "name": "Live-Chat (experimentell)",
+        "desc": "Beantwortet deine Fragen während einer Aufnahme."
+      }
     },
     "loading": "Modelle werden geladen",
     "mlxKeepAlive": "MLX-ASR-Haltezeit",
@@ -1240,6 +1246,27 @@
       "readOnly": "Frühere Version (nur lesen)",
       "close": "Schließen",
       "partial": "Unvollständig"
+    },
+    "liveChat": {
+      "transcriptTitle": "Live-Transkript",
+      "experimental": "Experimentell",
+      "warming": "Das Transkriptionsmodell wird geladen...",
+      "unavailable": "Das Live-Transkript ist nicht verfügbar. Es braucht ein heruntergeladenes lokales Transkriptionsmodell.",
+      "sourceMe": "Ich",
+      "sourceThem": "Andere",
+      "chatTitle": "Zu dieser Besprechung fragen",
+      "chatPlaceholder": "Stelle eine Frage...",
+      "chatSend": "Fragen",
+      "chatWarming": "Das Chat-Modell wird geladen. Die erste Antwort dauert länger.",
+      "chatUnavailable": "Der Live-Chat braucht ein lokales Chat-Modell.",
+      "chatThinking": "Denkt nach...",
+      "chatError": "Die Antwort ist fehlgeschlagen. Versuche es noch einmal.",
+      "chatEmpty": "Frage zu dieser Besprechung, zum Projekt oder zu früheren Besprechungen.",
+      "citeLive": "Live {{time}}",
+      "citePast": "{{title}}, {{time}}",
+      "citeFolder": "Ordnerbeschreibung",
+      "you": "Du",
+      "answer": "Antwort"
     }
   },
   "help": {
