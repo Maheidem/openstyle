@@ -27,6 +27,7 @@ import { MIN_MIC_VOICED_MS, type Segment } from "../segmenter.js";
 import { createDefaultTranscriberDeps } from "../transcriber.js";
 import {
   addFinalLine,
+  countSkippedTick,
   dropLive,
   type LiveSource,
   openLive,
@@ -185,7 +186,10 @@ async function tickChannel(
 
 async function tick(state: LoopState): Promise<void> {
   // The single ASR worker serves dictation first.
-  if (state.deps.isDictationActive()) return;
+  if (state.deps.isDictationActive()) {
+    countSkippedTick(state.meetingId);
+    return;
+  }
   setLiveStatus(state.meetingId, state.warm ? "ready" : "warming");
   for (const source of SOURCES) {
     if (state.stopped) return;

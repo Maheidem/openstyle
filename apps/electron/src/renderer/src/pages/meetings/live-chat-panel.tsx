@@ -2,12 +2,14 @@ import { Button } from "@renderer/components/ui/button";
 import { Input } from "@renderer/components/ui/input";
 import { getClient } from "@renderer/lib/api";
 import { useMutation } from "@tanstack/react-query";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { formatLiveTime } from "./live-transcript-panel";
 
 /** The server keeps the last 4 turns of the chat. */
 const HISTORY_TURNS = 4;
+/** A first answer that takes longer than this shows the "warming" text. */
+const WARMING_AFTER_MS = 3000;
 
 interface Cite {
   label: string;
@@ -61,6 +63,7 @@ export function LiveChatPanel({
   const [messages, setMessages] = useState<Message[]>([]);
   const [unavailable, setUnavailable] = useState(false);
   const answered = messages.some((m) => m.role === "assistant");
+  const [slow, setSlow] = useState(false);
 
   const ask = useMutation({
     mutationFn: async (question: string) => {
@@ -101,6 +104,14 @@ export function LiveChatPanel({
     },
   });
 
+  const pending = ask.isPending;
+  useEffect(() => {
+    setSlow(false);
+    if (!pending) return;
+    const timer = setTimeout(() => setSlow(true), WARMING_AFTER_MS);
+    return () => clearTimeout(timer);
+  }, [pending]);
+
   const send = (): void => {
     const question = input.trim();
     if (!question || !meetingId || ask.isPending) return;
@@ -135,11 +146,7 @@ export function LiveChatPanel({
               </p>
             )}
             {messages.map((m, i) => (
-              <div
-                // biome-ignore lint/suspicious/noArrayIndexKey: the list only grows
-                key={i}
-                data-testid={`live-chat-${m.role}`}
-              >
+              <div key={i} data-testid={`live-chat-${m.role}`}>
                 <span className="mono text-muted-foreground mr-2 text-[9px] uppercase tracking-[0.14em]">
                   {m.role === "user"
                     ? t("meetings.liveChat.you")
@@ -165,12 +172,12 @@ export function LiveChatPanel({
               <p
                 className="text-muted-foreground"
                 data-testid={
-                  answered ? "live-chat-thinking" : "live-chat-warming"
+                  slow && !answered ? "live-chat-warming" : "live-chat-thinking"
                 }
               >
-                {answered
-                  ? t("meetings.liveChat.chatThinking")
-                  : t("meetings.liveChat.chatWarming")}
+                {slow && !answered
+                  ? t("meetings.liveChat.chatWarming")
+                  : t("meetings.liveChat.chatThinking")}
               </p>
             )}
           </div>

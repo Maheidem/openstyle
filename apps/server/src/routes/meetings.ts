@@ -1565,7 +1565,9 @@ const meetings = new Hono()
   // "off" covers the flag off, no recording and an unknown meeting.
   .get("/:id/live", (c) => {
     const live = getLive(c.req.param("id"));
-    if (!live) return c.json({ status: "off" as const, lines: [] });
+    if (!live) {
+      return c.json({ status: "off" as const, lines: [], skippedTicks: 0 });
+    }
     return c.json(live);
   })
   // Link or change the calendar event of a meeting. The title follows the

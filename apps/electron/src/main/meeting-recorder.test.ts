@@ -1,7 +1,18 @@
-import { mkdtempSync, readFileSync, rmSync } from "node:fs";
+import {
+  mkdtempSync,
+  readFileSync,
+  rmSync,
+  statSync,
+  writeFileSync,
+} from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { MEETINGS_DIR_NAME, SYNC_JSON } from "@openstyle/validations";
+import {
+  MEETINGS_DIR_NAME,
+  MIC_WAV,
+  SYNC_JSON,
+  SYSTEM_WAV,
+} from "@openstyle/validations";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { MeetingRecorderDeps } from "./meeting-recorder";
 
@@ -592,5 +603,93 @@ describe("MeetingRecorder E2E fake capture", () => {
     await started;
     expect(mocks.helpers).toHaveLength(1);
     await recorder.stop();
+  });
+});
+
+/** A 16 kHz mono PCM16 WAV with a header and `samples` (value 1000). */
+function toneWav(samples: number): Buffer {
+  const data = Buffer.alloc(samples * 2);
+  for (let i = 0; i < samples; i++) data.writeInt16LE(1000, i * 2);
+  const header = Buffer.alloc(44);
+  header.write("RIFF", 0);
+  header.writeUInt32LE(36 + data.length, 4);
+  header.write("WAVEfmt ", 8);
+  header.writeUInt32LE(16, 16);
+  header.writeUInt16LE(1, 20);
+  header.writeUInt16LE(1, 22);
+  header.writeUInt32LE(16000, 24);
+  header.writeUInt32LE(32000, 28);
+  header.writeUInt16LE(2, 32);
+  header.writeUInt16LE(16, 34);
+  header.write("data", 36);
+  header.writeUInt32LE(data.length, 40);
+  return Buffer.concat([header, data]);
+}
+
+describe("MeetingRecorder live chat (issue #375)", () => {
+  beforeEach(() => {
+    mocks.userData = mkdtempSync(join(tmpdir(), "openstyle-recorder-live-"));
+    mocks.helpers.length = 0;
+    mocks.systemCaptures.length = 0;
+    vi.stubEnv("OPENSTYLE_E2E", "1");
+    vi.stubEnv("OPENSTYLE_E2E_FAKE_MEETING_CAPTURE", "1");
+  });
+
+  afterEach(() => {
+    vi.unstubAllEnvs();
+    rmSync(mocks.userData, { recursive: true, force: true });
+  });
+
+  function wavPath(meetingId: string, name: string) {
+    return join(mocks.userData, MEETINGS_DIR_NAME, meetingId, name);
+  }
+
+  function liveFetch(flag: string | null): MeetingRecorderDeps["serverFetch"] {
+    return async (path) =>
+      path === "/settings/live_chat_enabled"
+        ? new Response(JSON.stringify(flag === null ? {} : { value: flag }))
+        : new Response("{}");
+  }
+
+  it("flushes the WAV about every second when the setting is on", async () => {
+    const { recorder } = createRecorder({ serverFetch: liveFetch("true") });
+    const meetingId = await recorder.start();
+    await vi.waitFor(
+      () =>
+        expect(statSync(wavPath(meetingId, MIC_WAV)).size).toBeGreaterThan(44),
+      { timeout: 2500, interval: 100 },
+    );
+    await recorder.stop();
+  });
+
+  it("keeps the 5 s flush when the setting is off", async () => {
+    const { recorder } = createRecorder({ serverFetch: liveFetch(null) });
+    const meetingId = await recorder.start();
+    await new Promise((resolve) => setTimeout(resolve, 1800));
+    expect(statSync(wavPath(meetingId, MIC_WAV)).size).toBe(44);
+    await recorder.stop();
+  });
+
+  it("streams OPENSTYLE_E2E_FAKE_MEETING_AUDIO into the mic track only", async () => {
+    const file = join(mocks.userData, "speech.wav");
+    writeFileSync(file, toneWav(16000));
+    vi.stubEnv("OPENSTYLE_E2E_FAKE_MEETING_AUDIO", file);
+    const { recorder } = createRecorder({ serverFetch: liveFetch("true") });
+    const meetingId = await recorder.start();
+    await new Promise((resolve) => setTimeout(resolve, 1600));
+    await recorder.stop();
+    const mic = readFileSync(wavPath(meetingId, MIC_WAV)).subarray(44);
+    const system = readFileSync(wavPath(meetingId, SYSTEM_WAV)).subarray(44);
+    expect(mic.readInt16LE(0)).toBe(1000);
+    expect(system.some((b) => b !== 0)).toBe(false);
+  });
+
+  it("ignores the audio file without OPENSTYLE_E2E=1", async () => {
+    const file = join(mocks.userData, "speech.wav");
+    writeFileSync(file, toneWav(16000));
+    vi.stubEnv("OPENSTYLE_E2E", "");
+    vi.stubEnv("OPENSTYLE_E2E_FAKE_MEETING_AUDIO", file);
+    const { readFakeMeetingAudioPcm } = await import("./fake-meeting-capture");
+    expect(readFakeMeetingAudioPcm()).toBeNull();
   });
 });

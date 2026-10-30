@@ -32,6 +32,8 @@ export interface LiveSnapshot {
   reason?: string;
   /** Final lines first in time order, then one partial for each channel. */
   lines: LiveLine[];
+  /** Ticks that the loop skipped because a dictation ran. */
+  skippedTicks: number;
 }
 
 interface LiveEntry {
@@ -39,12 +41,18 @@ interface LiveEntry {
   reason?: string;
   finals: LiveLine[];
   partials: Partial<Record<LiveSource, LiveLine>>;
+  skippedTicks: number;
 }
 
 const entries = new Map<string, LiveEntry>();
 
 export function openLive(meetingId: string): void {
-  entries.set(meetingId, { status: "starting", finals: [], partials: {} });
+  entries.set(meetingId, {
+    status: "starting",
+    finals: [],
+    partials: {},
+    skippedTicks: 0,
+  });
 }
 
 export function hasLive(meetingId: string): boolean {
@@ -60,6 +68,11 @@ export function setLiveStatus(
   if (!entry) return;
   entry.status = status;
   entry.reason = reason;
+}
+
+export function countSkippedTick(meetingId: string): void {
+  const entry = entries.get(meetingId);
+  if (entry) entry.skippedTicks++;
 }
 
 export function addFinalLine(meetingId: string, line: LiveLine): void {
@@ -91,6 +104,7 @@ export function getLive(meetingId: string): LiveSnapshot | null {
     status: entry.status,
     ...(entry.reason ? { reason: entry.reason } : {}),
     lines: [...[...entry.finals].sort(byTime), ...partials.sort(byTime)],
+    skippedTicks: entry.skippedTicks,
   };
 }
 
