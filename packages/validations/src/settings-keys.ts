@@ -55,6 +55,12 @@ export const SETTINGS_KEYS = {
    */
   meetingProjectMemory: "meeting_project_memory",
   /**
+   * Live transcript and chat during a recording (issue #375,
+   * specs/live-chat.md). Experimental. OFF by default: only the value
+   * `"true"` turns it on.
+   */
+  liveChatEnabled: "live_chat_enabled",
+  /**
    * I2 (specs/meeting-transcription-v2.md §3.2): the one-time auto-Enhance
    * prompt (or the onboarding step for new users) has been shown. Only
    * `"true"` counts as shown; a missing row means not shown yet. Written

@@ -46,7 +46,10 @@ import type {
 } from "../shared/meeting-devices";
 import type { ServerFetch } from "../shared/server-auth";
 import { SETTINGS_KEYS } from "../shared/settings-keys";
-import { isFakeMeetingCapture } from "./fake-meeting-capture";
+import {
+  isFakeMeetingCapture,
+  readFakeMeetingAudioPcm,
+} from "./fake-meeting-capture";
 import {
   MeetingCaptureHelper,
   type MicRequest,
@@ -73,6 +76,8 @@ const BYTES_PER_SAMPLE = 2;
 const WAV_HEADER_BYTES = 44;
 /** Buffered PCM is flushed to disk (and fsynced) about every 5 s. */
 const FLUSH_INTERVAL_MS = 5000;
+/** With live chat on (issue #375), the live reader needs fresh PCM: 1 s. */
+const LIVE_FLUSH_INTERVAL_MS = 1000;
 /** Refuse to start a recording with less than 2 GB free on the volume. */
 const MIN_FREE_BYTES = 2 * 1024 ** 3;
 // The most the recording start waits for the calendar lookup.
@@ -558,16 +563,21 @@ export class MeetingRecorder {
       this.startFallbackCapture();
     }
 
-    // Periodic PCM flush.
-    this.flushTimer = setInterval(() => {
-      try {
-        this.micWav?.flush();
-        this.systemWav?.flush();
-      } catch (err) {
-        log.error(`WAV flush failed: ${String(err)}`);
-        void this.stop("failed", `wav flush failed: ${String(err)}`);
-      }
-    }, FLUSH_INTERVAL_MS);
+    // Periodic PCM flush. Live chat reads the growing WAV, so it flushes faster.
+    const liveChat =
+      (await this.readSetting(SETTINGS_KEYS.liveChatEnabled)) === "true";
+    this.flushTimer = setInterval(
+      () => {
+        try {
+          this.micWav?.flush();
+          this.systemWav?.flush();
+        } catch (err) {
+          log.error(`WAV flush failed: ${String(err)}`);
+          void this.stop("failed", `wav flush failed: ${String(err)}`);
+        }
+      },
+      liveChat ? LIVE_FLUSH_INTERVAL_MS : FLUSH_INTERVAL_MS,
+    );
 
     // Auto-stop ceiling.
     const maxMs = await this.readMaxDurationMs();
@@ -803,14 +813,24 @@ export class MeetingRecorder {
     if (this.journal) this.journal.sharedClock = true;
     const t0 = Date.now();
     let written = 0;
+    // Optional file for the mic track (issue #375). Silence after its end.
+    const audio = readFakeMeetingAudioPcm();
     this.fakeCaptureTimer = setInterval(() => {
       const due =
         Math.floor(((Date.now() - t0) * SAMPLE_RATE) / 1000) - written;
       if (due <= 0) return;
+      const silence = Buffer.alloc(due * BYTES_PER_SAMPLE);
+      let mic = silence;
+      if (audio && written * BYTES_PER_SAMPLE < audio.length) {
+        const from = written * BYTES_PER_SAMPLE;
+        mic = Buffer.concat([
+          audio.subarray(from, from + silence.length),
+          silence,
+        ]).subarray(0, silence.length);
+      }
       written += due;
-      const pcm = Buffer.alloc(due * BYTES_PER_SAMPLE);
-      this.handleNativeFrame("M", pcm);
-      this.handleNativeFrame("S", pcm);
+      this.handleNativeFrame("M", mic);
+      this.handleNativeFrame("S", silence);
     }, 100);
   }
 

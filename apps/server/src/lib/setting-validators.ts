@@ -230,6 +230,8 @@ const SETTING_VALIDATORS: ReadonlyMap<string, SettingCheck> = new Map([
   ["calendar_enabled", checkBooleanFlag],
   // Project memory (issue #234): off by default, same contract.
   ["meeting_project_memory", checkBooleanFlag],
+  // Live transcript and chat (issue #375): experimental, off by default.
+  ["live_chat_enabled", checkBooleanFlag],
 ]);
 
 /**
