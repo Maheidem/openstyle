@@ -1,5 +1,28 @@
 # Changelog
 
+## 2.25.0-alpha.4
+
+### New Features ✨
+
+#### Eval
+
+- Measure project memory quality (#370) by @Maheidem in [#371](https://github.com/Maheidem/openstyle/pull/371)
+- Lab knob asr_server_model and a Nemotron speech server by @Maheidem in [#366](https://github.com/Maheidem/openstyle/pull/366)
+
+#### Folders
+
+- Project page Overview per folder (#374) by @Maheidem in [#379](https://github.com/Maheidem/openstyle/pull/379)
+- Suggest the project description from the folder's meetings by @Maheidem in [#377](https://github.com/Maheidem/openstyle/pull/377)
+
+#### Meetings
+
+- Live transcript and chat during a recording (experimental, default off) by @Maheidem in [#378](https://github.com/Maheidem/openstyle/pull/378)
+- Folder stage counts, batch run and multi-select re-run by @Maheidem in [#376](https://github.com/Maheidem/openstyle/pull/376)
+
+#### Other
+
+- (lab) Record the meeting ASR baseline and add a compare verdict (#249) by @Maheidem in [#380](https://github.com/Maheidem/openstyle/pull/380)
+
 ## 2.25.0-alpha.3
 
 ### New Features ✨
