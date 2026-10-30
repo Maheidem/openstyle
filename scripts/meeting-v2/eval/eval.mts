@@ -6,6 +6,7 @@
 //     [--keep] [--no-download] [--gold [--gold-dir <dir>] | --answer-key <file>]
 //     [--save-baseline <name> [--noise-from <baseline>]] [--compare <baseline>]
 //     [--hf-cache <dir>] [--port <n>] [--timeout-sec <n>] [--summary-budget <n>]
+//     [--project-memory on|off] [--stored-transcripts <id8,...>]
 //   pnpm meeting:eval --rescore <out> [gold and baseline flags]
 //
 // Models: the catalog ids of the built-in MLX LLM
@@ -156,7 +157,7 @@ const has = (name: string) => process.argv.includes(`--${name}`);
 function usage(msg: string): never {
   console.error(msg);
   console.error(
-    "usage: pnpm meeting:eval --models <id,...> [--meetings <id8,...>] [--out <dir>] [--keep] [--no-download] [--gold [--gold-dir <dir>] | --answer-key <file>] [--save-baseline <name> [--noise-from <file>]] [--compare <file>] [--hf-cache <dir>] [--port <n>] [--timeout-sec <n>] [--summary-budget <n>]\n       pnpm meeting:eval --rescore <out dir of a --keep run> [the gold and baseline flags]",
+    "usage: pnpm meeting:eval --models <id,...> [--meetings <id8,...>] [--out <dir>] [--keep] [--no-download] [--gold [--gold-dir <dir>] | --answer-key <file>] [--save-baseline <name> [--noise-from <file>]] [--compare <file>] [--hf-cache <dir>] [--port <n>] [--timeout-sec <n>] [--summary-budget <n>] [--project-memory on|off] [--stored-transcripts <id8,...>]\n       pnpm meeting:eval --rescore <out dir of a --keep run> [the gold and baseline flags]",
   );
   process.exit(2);
 }
@@ -187,6 +188,18 @@ const timeoutSec = Number(arg("timeout-sec") ?? "7200");
 const summaryBudget = arg("summary-budget");
 if (summaryBudget !== undefined && !/^[1-9]\d{2,5}$/.test(summaryBudget))
   usage("--summary-budget must be a whole number from 100 to 999999");
+// Project memory (issue #370). With --project-memory the scratch DB gets the
+// folder of each meeting and its earlier folder meetings, the app's own indexer
+// builds the search index for them, and the setting meeting_project_memory is
+// set to on or off. Unset: the flag changes nothing (no folders, the app
+// default for the setting).
+const projectMemory = arg("project-memory");
+if (projectMemory !== undefined && !["on", "off"].includes(projectMemory))
+  usage("--project-memory must be on or off");
+// Meetings with no audio: the transcript is the stored one of the real DB.
+const storedArgs = (arg("stored-transcripts") ?? "").split(",").filter(Boolean);
+/** The search embedding model of the app (apps/server/src/lib/mlx-embed/constants.ts). */
+const EMBED_MODEL_ID = "embeddinggemma-2-bf16-text";
 const stamp = new Date()
   .toISOString()
   .replace(/[-:]/g, "")
@@ -247,8 +260,10 @@ const resolveMeetings = () =>
 const setupScratch = (ids: string[]) =>
   setupScratchIn(ASR_DIR, ids, basePort + 2);
 // The run DB lives in arms/, so a run without --keep deletes it.
+let storedIds: string[] = [];
 const ensureTranscribed = (work: string, ids: string[]) =>
   ensureTranscribedIn({
+    storedIds,
     asrDir: ASR_DIR,
     work,
     ids,
@@ -357,6 +372,39 @@ async function ensureDownloaded(seedDb: string): Promise<void> {
           );
         console.log(`download ${ASR_MODEL_ID}: ready`);
       }
+      // Project memory: the search embedding model (the app route).
+      if (projectMemory !== undefined) {
+        const embed = async () =>
+          (
+            ((await call("GET", "/api/mlx-embed/status")).json?.models ??
+              []) as { model: string; status: string }[]
+          ).find((m) => m.model === EMBED_MODEL_ID);
+        let es = await embed();
+        if (es?.status !== "ready") {
+          if (noDownload)
+            throw new Error(
+              `${EMBED_MODEL_ID} is not downloaded in ${hfCache} (--no-download)`,
+            );
+          console.log(`download ${EMBED_MODEL_ID} into ${hfCache}`);
+          const d = await call(
+            "POST",
+            `/api/mlx-embed/models/${EMBED_MODEL_ID}/download`,
+          );
+          if (d.status !== 200)
+            throw new Error(`embed download route answered ${d.status}`);
+          const end = Date.now() + 3600_000;
+          while (Date.now() < end) {
+            await sleep(3000);
+            es = await embed();
+            if (es?.status === "ready" || es?.status === "error") break;
+          }
+          if (es?.status !== "ready")
+            throw new Error(
+              `download of ${EMBED_MODEL_ID} ended with status ${es?.status ?? "?"}`,
+            );
+        }
+        console.log(`model ${EMBED_MODEL_ID}: in ${hfCache}`);
+      }
       // The transcription (R0d, diarization on) needs the forced aligner. The
       // server starts its download at boot. Wait for it here, so that no
       // transcription runs while the aligner is still missing.
@@ -434,6 +482,7 @@ async function prepareArm(model: string, transcribed: string): Promise<string> {
       });
       if (c.status >= 300)
         throw new Error(`POST /api/models/configured answered ${c.status}`);
+      if (projectMemory !== undefined) await buildMemoryIndex(call);
     },
   );
   // Read the row back: a 200 is not proof that the row is stored.
@@ -452,11 +501,123 @@ async function prepareArm(model: string, transcribed: string): Promise<string> {
   db.close();
   if (summaryBudget !== undefined && budget?.value !== summaryBudget)
     throw new Error(`arm DB for ${model}: summary budget not stored`);
+  if (projectMemory !== undefined) checkMemoryArm(armDb, model);
   if (rows.length !== 1 || rows[0]?.model_id !== `local-mlx-llm/${model}`)
     throw new Error(
       `arm DB for ${model}: default LLM row not stored (${rows.length} rows)`,
     );
   return armDb;
+}
+
+/**
+ * Project memory arm (issue #370): make the embedding model the search model,
+ * wait until the app's own indexer has indexed every meeting of the arm DB
+ * (under the GPU lock: it embeds), then set meeting_project_memory.
+ */
+async function buildMemoryIndex(call: Call): Promise<void> {
+  const use = await call("POST", `/api/mlx-embed/models/${EMBED_MODEL_ID}/use`);
+  if (use.status !== 200)
+    throw new Error(`embed use route answered ${use.status}`);
+  await takeLock("memory-index", 15);
+  try {
+    const end = Date.now() + 30 * 60_000;
+    for (;;) {
+      const st = (await call("GET", "/api/search/status")).json;
+      const m = st?.meetings;
+      if (
+        st?.state === "on" &&
+        m &&
+        m.queued === 0 &&
+        m.indexed === m.eligible
+      ) {
+        console.log(
+          `search index: ${m.indexed} of ${m.eligible} meetings, ${st.index.vector_chunks} chunks, failed ${m.failed}`,
+        );
+        break;
+      }
+      if (st?.state === "off")
+        throw new Error(`search is off (${st.reason}); no index`);
+      if (m && m.failed > 0) throw new Error(`index failed for ${m.failed}`);
+      if (Date.now() > end) throw new Error("the search index did not finish");
+      await sleep(3000);
+    }
+  } finally {
+    releaseLock();
+  }
+  const set = await call("PUT", "/api/settings/meeting_project_memory", {
+    value: projectMemory === "on" ? "true" : "false",
+  });
+  if (set.status !== 200)
+    throw new Error(`project memory setting answered ${set.status}`);
+}
+
+/** Read the memory arm back from the DB: the setting, and index rows per folder meeting. */
+function checkMemoryArm(armDb: string, model: string): void {
+  const db = new DatabaseSync(armDb);
+  try {
+    const v = db
+      .prepare(
+        "SELECT value FROM settings WHERE key = 'meeting_project_memory'",
+      )
+      .get() as { value: string } | undefined;
+    if (v?.value !== (projectMemory === "on" ? "true" : "false"))
+      throw new Error(`arm DB for ${model}: project memory setting not stored`);
+    const e = db
+      .prepare(
+        "SELECT value FROM settings WHERE key = 'search_embedding_model'",
+      )
+      .get() as { value: string } | undefined;
+    if (e?.value !== EMBED_MODEL_ID)
+      throw new Error(`arm DB for ${model}: search model not stored`);
+    const n = db
+      .prepare(
+        "SELECT COUNT(*) AS n FROM meeting_chunks c JOIN meetings m ON m.id = c.meeting_id WHERE m.folder_id IS NOT NULL AND c.model_id = ?",
+      )
+      .get(EMBED_MODEL_ID) as { n: number };
+    if (n.n === 0) throw new Error(`arm DB for ${model}: no index rows`);
+    console.log(
+      `arm ${model}: project memory ${projectMemory}, ${n.n} index rows in folders`,
+    );
+  } finally {
+    db.close();
+  }
+}
+
+/**
+ * The project memory of each finished run, from llm_runs.result_json
+ * (ids and counts only). Written to <out>/project-memory.json.
+ */
+function memoryRecords(
+  ids: string[],
+  runs: { model: string; id: string; runDir: string }[],
+): void {
+  const rows = runs.map(({ model, id, runDir }) => {
+    const db = new DatabaseSync(join(runDir, "test.db"), { readOnly: true });
+    const kinds = db
+      .prepare(
+        "SELECT kind, result_json FROM llm_runs WHERE meeting_id = ? ORDER BY started_at",
+      )
+      .all(id) as { kind: string; result_json: string | null }[];
+    db.close();
+    const per = kinds.map((k) => {
+      const r = k.result_json ? JSON.parse(k.result_json).retrieval : null;
+      return {
+        kind: k.kind,
+        meetings: r ? r.meetingIds.length : 0,
+        chunks: r ? r.chunkIds.length : 0,
+        meetingIds: r ? r.meetingIds.map((x: string) => x.slice(0, 8)) : [],
+      };
+    });
+    return { model, meeting: id.slice(0, 8), projectMemory, runs: per };
+  });
+  writeFileSync(
+    join(outDir, "project-memory.json"),
+    `${JSON.stringify({ projectMemory, ids: ids.map((i) => i.slice(0, 8)), rows }, null, 1)}\n`,
+  );
+  for (const r of rows)
+    console.log(
+      `memory ${r.model} ${r.meeting} (${projectMemory}): ${r.runs.map((x) => `${x.kind} ${x.meetings} meetings ${x.chunks} chunks`).join("; ")}`,
+    );
 }
 
 // --- 3. One Enhance run, with an RSS sampler -------------------------------------------------
@@ -735,6 +896,12 @@ async function main(): Promise<number> {
   console.log(
     `asr model: ${ASR_MODEL_ID}${process.env.MEETING_EVAL_ASR_MODEL ? " (MEETING_EVAL_ASR_MODEL)" : " (default)"}`,
   );
+  storedIds = ids.filter((id) => storedArgs.some((a) => id.startsWith(a)));
+  if (storedIds.length !== storedArgs.length)
+    throw new Error("a --stored-transcripts id is not one of --meetings");
+  if (storedIds.length > 0)
+    process.env.MEETING_EVAL_STORED_IDS = storedIds.join(",");
+  if (projectMemory !== undefined) process.env.SEED_FOLDER_MEMORY = "1";
   const work = await setupScratch(ids);
   mkdirSync(join(outDir, "arms"), { recursive: true });
   await ensureDownloaded(join(work, "test.db"));
@@ -865,6 +1032,17 @@ async function main(): Promise<number> {
     }
   }
 
+  if (projectMemory !== undefined) {
+    const doneRuns = models.flatMap((model) =>
+      ids.flatMap((id) => {
+        const runDir = join(outDir, "runs", slug(model), id.slice(0, 8));
+        return existsSync(join(runDir, "test.db"))
+          ? [{ model, id, runDir }]
+          : [];
+      }),
+    );
+    memoryRecords(ids, doneRuns);
+  }
   const results: Results = {
     createdAt: new Date().toISOString(),
     commit,

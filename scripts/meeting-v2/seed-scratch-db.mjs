@@ -10,6 +10,10 @@
 // always the built-in MLX ASR model (local-mlx/qwen3-1.7b-8bit). Never the
 // api_keys table, never the own_servers rows: nothing may call the owner's
 // model server (owner rule 2026-10-21).
+// SEED_FOLDER_MEMORY=1 also copies the folder of each meeting and its earlier
+// folder meetings (seed-folder-memory.mjs), for the project memory eval.
+// MEETING_EVAL_STORED_IDS=<full id,...> marks meetings with no audio: they
+// come from the stored transcript of the source DB.
 // Prints counts, ids and durations only.
 //
 // Usage:
@@ -20,6 +24,10 @@ import { closeSync, openSync, readSync, statSync } from "node:fs";
 import { join } from "node:path";
 import process from "node:process";
 import { DatabaseSync } from "node:sqlite";
+import {
+  seedFolderMemory,
+  seedStoredTranscript,
+} from "./seed-folder-memory.mjs";
 
 const [scratchRoot, srcDbPath, ...meetingIds] = process.argv.slice(2);
 if (!scratchRoot || !srcDbPath || meetingIds.length === 0) {
@@ -162,11 +170,14 @@ try {
        created_at = excluded.created_at`,
   );
   const now = Date.now();
+  const storedIds = (process.env.MEETING_EVAL_STORED_IDS ?? "")
+    .split(",")
+    .filter(Boolean);
   for (const id of meetingIds) {
     const row = realRow.get(id);
     const audioDir = join(scratchRoot, "meetings", id);
     let durationMs = row?.duration_ms ?? null;
-    if (!durationMs) {
+    if (!durationMs && !storedIds.includes(id)) {
       for (const name of ["mic.wav", "system.wav"]) {
         const t = wavDurationMs(join(audioDir, name));
         if (t) {
@@ -193,6 +204,17 @@ try {
       now,
     );
     console.log(`meeting row ${id}: status=recorded duration_ms=${durationMs}`);
+  }
+  for (const id of storedIds) {
+    seedStoredTranscript(db, id);
+    console.log(`stored transcript ${id.slice(0, 8)}: copied (no audio)`);
+  }
+  if (process.env.SEED_FOLDER_MEMORY === "1") {
+    for (const r of seedFolderMemory(db, meetingIds)) {
+      console.log(
+        `folder memory ${r.id.slice(0, 8)}: folder=${r.folder ? "yes" : "no"} earlier=${r.earlier} later=${r.later}`,
+      );
+    }
   }
 } finally {
   db.exec("DETACH DATABASE src");
