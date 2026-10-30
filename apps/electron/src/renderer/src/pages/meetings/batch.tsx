@@ -292,7 +292,7 @@ function reasonLine(
   ) =>
     Object.entries(reasons)
       .filter(([, n]) => (n ?? 0) > 0)
-      .map(([reason, n]) => `${text(reason)}: ${n}`);
+      .map(([reason, n]) => `${text(reason).replace(/\.$/, "")}: ${n}`);
   return [
     ...line(state.skip_reasons, (r) =>
       t(`meetings.folders.batch.skipReason.${r}`),
