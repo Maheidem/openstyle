@@ -224,6 +224,51 @@ describe("resolveTaskCall — max_tokens is a floor, never a ceiling (§6.2)", (
   });
 });
 
+describe("resolveTaskCall — sampling values belong to one model", () => {
+  const E2B = "local-mlx-llm/gemma-4-e2b-qat-4bit";
+
+  it("a custom max_tokens does not reach a built-in MLX model that the task does not pin", async () => {
+    seedDefaultLlm("local-mlx-llm", E2B);
+    setAssignments({
+      meetingEnhance: {
+        mode: "custom",
+        params: { max_tokens: 32768, top_p: 0.5 },
+      },
+    });
+    const resolved = await resolveTaskCall("meetingEnhance", {
+      autoMaxOutputTokens: 900,
+    });
+    expect(resolved.maxOutputTokens).toBe(900);
+    expect(resolved.samplingParams).not.toHaveProperty("max_tokens");
+    expect(resolved.samplingParams).not.toHaveProperty("top_p");
+  });
+
+  it("the same values apply when the task pins that built-in model", async () => {
+    seedDefaultLlm("local-mlx-llm", E2B);
+    setAssignments({
+      meetingEnhance: {
+        mode: "custom",
+        params: { max_tokens: 2000 },
+        modelOverride: { provider: "local-mlx-llm", model_id: E2B },
+      },
+    });
+    const resolved = await resolveTaskCall("meetingEnhance", {
+      autoMaxOutputTokens: 900,
+    });
+    expect(resolved.maxOutputTokens).toBe(2000);
+  });
+
+  it("an own server keeps the values (the Qwen presets target it)", async () => {
+    setAssignments({
+      meetingEnhance: { mode: "custom", params: { max_tokens: 32768 } },
+    });
+    const resolved = await resolveTaskCall("meetingEnhance", {
+      autoMaxOutputTokens: 900,
+    });
+    expect(resolved.maxOutputTokens).toBe(32768);
+  });
+});
+
 describe("resolveTaskCall — denylist (§7.4)", () => {
   it("strips model/stream, keeps temperature, and logs the drop", async () => {
     setAssignments({

@@ -352,6 +352,21 @@ function readTaskAssignment(taskId: LlmTaskId): LlmTaskAssignment {
   return assignment ?? { mode: "auto" };
 }
 
+/** True when the assignment pins the per-task model override to this model. */
+function pinsModel(
+  assignment: LlmTaskAssignment,
+  provider: string,
+  modelId: string,
+): boolean {
+  const o = assignment.modelOverride;
+  return (
+    o !== undefined &&
+    o.provider === provider &&
+    stripModelPrefix(provider, o.model_id) ===
+      stripModelPrefix(provider, modelId)
+  );
+}
+
 async function resolveModelFor(
   taskId: LlmTaskId,
   assignment: LlmTaskAssignment,
@@ -401,7 +416,20 @@ export async function resolveTaskCall(
     opts.pin,
   );
 
-  const rawParams = resolveModeParams(taskId, assignment); // §6.1 — {} for "auto"
+  // A preset or custom value is tuned for one model. A built-in MLX model has
+  // its own profile (the catalog limits, the task profile), and the task
+  // assignment names no model unless it pins one. Without a pin for this
+  // model, a Qwen preset must not reach Gemma: its max_tokens of 32768 on a
+  // 32768-token window made the worker refuse every call.
+  const presetApplies =
+    provider !== MLX_LLM_PROVIDER_ID ||
+    pinsModel(assignment, provider, modelId);
+  if (!presetApplies && assignment.mode !== "auto") {
+    log.warn(
+      `resolveTaskCall("${taskId}"): the ${assignment.mode} sampling values are not pinned to the built-in model ${modelId}; its own profile is used`,
+    );
+  }
+  const rawParams = presetApplies ? resolveModeParams(taskId, assignment) : {}; // §6.1 — {} for "auto"
   const { kept: strippedParams, dropped: deniedKeys } = stripDenylistedKeys(
     taskId,
     rawParams,
