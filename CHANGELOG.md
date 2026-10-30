@@ -1,5 +1,11 @@
 # Changelog
 
+## 2.25.0-alpha.9
+
+### Bug Fixes 🐛
+
+- (summary) A cut answer no longer fails the whole summary by @Maheidem in [#389](https://github.com/Maheidem/openstyle/pull/389)
+
 ## 2.25.0-alpha.8
 
 ### Internal Changes 🔧
