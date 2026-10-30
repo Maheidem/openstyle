@@ -1350,7 +1350,7 @@
       "model_unavailable": "Openstyle cannot use the chosen model. Check Settings > Models, then try again.",
       "engine_not_ready": "The on-device AI engine is not ready yet. It is installing an update.",
       "deadline_exceeded": "The summary took longer than its time limit.",
-      "budget_exceeded": "The meeting is too long for the summary limit of 24 calls.",
+      "budget_exceeded": "The meeting is too long to summarize in one run.",
       "empty_input": "The meeting has no text to process.",
       "save_failed": "Openstyle could not save the result.",
       "internal": "Openstyle stopped the run because of an internal error.",

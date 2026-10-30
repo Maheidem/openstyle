@@ -1239,6 +1239,38 @@ describe("5.5.2, precedence of the gateway keys over a preset", () => {
       JSON.parse(mergeSamplingIntoBody(body, { max_tokens: 50 })).max_tokens,
     ).toBe(100);
   });
+
+  it("a preset max_tokens never lifts the body past the room left in the window", async () => {
+    // The owner preset names the whole window (32768) on a 32768-token model.
+    // The worker refuses prompt + max_tokens over the window, so every call
+    // failed and the length route split down to single lines.
+    assign({ max_tokens: 32768 });
+    const seen = stubFetch([() => chatReply(VALID)]);
+    const profile = { ...(await serverProfile()), contextWindow: 32768 };
+    const { input } = await makeInput(profile);
+    await callStructured(input);
+    const body = seen[0]?.body as Record<string, unknown>;
+    const max = body.max_tokens as number;
+    expect(max).toBeGreaterThanOrEqual(400);
+    // The prompt is about 60 tokens: the room is far below 32768.
+    expect(max).toBeLessThan(32768 - 40);
+  });
+
+  it("the ceiling keeps a smaller preset floor and the call value", () => {
+    const body = JSON.stringify({ model: "m", max_tokens: 400 });
+    const merge = (preset: number, ceiling: number) =>
+      JSON.parse(
+        mergeSamplingIntoBody(
+          body,
+          { max_tokens: preset },
+          { maxTokensCeiling: ceiling },
+        ),
+      ).max_tokens;
+    expect(merge(1000, 5000)).toBe(1000);
+    expect(merge(32768, 5000)).toBe(5000);
+    // A ceiling under the call value never lowers it.
+    expect(merge(32768, 100)).toBe(400);
+  });
 });
 
 describe("W16, wire warnings reach the ledger", () => {
