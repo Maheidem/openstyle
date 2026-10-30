@@ -128,6 +128,19 @@ pi children start without skills or context files, so every pi brief must name t
 
 Why: on 2026-10-26 a 333-word focused dictation prompt beat the ~4k-token multi-job prompt (E2B 36 vs 32 of 108 bench passes, E4B 60 vs 40; blind judge 13 vs 2 on E2B). Details: `specs/llm-runtime-tuning.md`.
 
+## New model rule (owner rule, 2026-10-30, HARD)
+
+Before you add any new LLM model or model family (a built-in catalog entry, a built-in profile, or an auto-pick name rule), research and validate its ideal inference parameters:
+
+- Parameters: temperature, top_p, top_k, min_p, repetition penalty, presence penalty, thinking switches (`enable_thinking`, `reasoning_effort` levels, `preserve_thinking`), stop tokens, context window.
+- Use at least 2 independent sources for each value. Read each source as raw text: the official model card README, `generation_config.json`, the chat template itself, then the Unsloth docs, then Ollama, vLLM and llama.cpp.
+- Each version and size can differ (Qwen 3.5, 3.6 and 3.8 do). Do not copy a value from a neighbour model.
+- Record the quotes and the URLs. List each conflict and say which source wins.
+- Add both a Thinking and an Instruct built-in profile.
+- Never copy `max_tokens` from a vendor page. It stays derived from the task and below the context window.
+
+The steps, the source order and the test are in `.claude/skills/model-catalog/SKILL.md`, section "Validate the inference parameters".
+
 ## UI conventions
 
 - Design tokens and the accent discipline live in `specs/design-system.md` and `apps/electron/src/renderer/src/globals.css`. The accent is deliberately **neutral grey**; `--accent-passive-tint`/`--accent-passive-ink` (blue) are the only sanctioned blue fills (selection, speaker/diarization chips), `--live` (coral) is **recording/live only**, and `--destructive` is kept distinct from both. Check that file before styling, and `specs/design/reskin-mockups.html` for pixel-level truth.
