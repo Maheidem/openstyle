@@ -396,6 +396,25 @@ export function LevelMeter({
   );
 }
 
+/**
+ * Live transcript and chat of the running recording (issue #375).
+ * Experimental: it shows nothing while the setting is off.
+ */
+function LiveSection({
+  meetingId,
+}: {
+  meetingId: string | null;
+}): React.JSX.Element | null {
+  const { data: appSettings } = useQuery(settingsQueryOptions());
+  if (appSettings?.[SETTINGS_KEYS.liveChatEnabled] !== "true") return null;
+  return (
+    <>
+      <LiveTranscriptPanel meetingId={meetingId} />
+      <LiveChatPanel meetingId={meetingId} />
+    </>
+  );
+}
+
 export function RecordingCard({
   recorder,
   compact = false,
@@ -417,9 +436,6 @@ export function RecordingCard({
   const [systemLevel, setSystemLevel] = useState(0);
   const recording = recorder.status === "recording";
   const finalizing = recorder.status === "finalizing";
-  // Live transcript and chat (issue #375): experimental, off by default.
-  const { data: appSettings } = useQuery(settingsQueryOptions());
-  const liveChatOn = appSettings?.[SETTINGS_KEYS.liveChatEnabled] === "true";
   // The start time comes from the main process, so this timer and the pill
   // show the same time, also after the page mounts again.
   const elapsed = useElapsedClock(recording ? recorder.startedAt : null);
@@ -565,12 +581,7 @@ export function RecordingCard({
           </Button>
         )}
       </div>
-      {recording && liveChatOn && (
-        <>
-          <LiveTranscriptPanel meetingId={recorder.meetingId} />
-          <LiveChatPanel meetingId={recorder.meetingId} />
-        </>
-      )}
+      {recording && <LiveSection meetingId={recorder.meetingId} />}
       {!recording && !finalizing && targetName && (
         <p className="text-muted-foreground mt-2 text-xs">
           {t("meetings.folders.recordsInto")}{" "}

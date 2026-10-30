@@ -464,6 +464,7 @@ describe("/api/mlx-llm routes (3.5)", () => {
     expect(data.keepReady).toEqual({
       cleanup: true,
       meetingSummarize: false,
+      liveChat: false,
       meetingEnhance: false,
     });
     expect(data.memory).toMatchObject({ usedBytes: 0 });

@@ -168,6 +168,9 @@ const meetingsChat = new Hono().post(
         ms,
         cold,
         sourceTokens: context.tokens,
+        // What was in the context: labels, and what code left out.
+        sources: [...context.index.keys()],
+        notes: context.notes,
       });
     } catch (err) {
       log.warn(`Live chat failed: ${errorMessage(err)}`);
