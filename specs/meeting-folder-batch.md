@@ -18,12 +18,13 @@ One module defines the rules: `apps/server/src/lib/meetings/stage-needs.ts`. The
 |---|---|---|
 | Transcribe | `status` is `recorded`, `interrupted` or `failed`; or `status` is `transcribed`/`summarized` and a segment has `status = 'failed'` | `audio_dir` is NULL (the retention sweep deleted the audio) |
 | Summarize | the meeting has transcript text and `status = 'transcribed'`; or `status = 'summarized'` and the summary is partial (PR #258) | no default AI model |
-| Enhance | `status` is `transcribed`/`summarized`, the meeting has transcript text, and no segment has `enhanced_text` | no default AI model |
+| Enhance | `status` is `transcribed`/`summarized`, the meeting has transcript text, no segment has `enhanced_text`, and `meetings.enhanced_at` is NULL | no default AI model |
 
 Notes:
 - The save sets `summarized` only when it writes a summary. A transcript with no summary for it stays `transcribed`, also after a re-transcribe. So `status = 'transcribed'` means "the current transcript has no summary".
 - "Transcript text" = a segment with non-empty `text`. The route can still refuse a meeting (an empty merged transcript). The queue then counts it as skipped ("could not start").
 - `recording` and `transcribing` meetings never need a stage. A meeting whose job runs is "busy".
+- A run that finds nothing to correct writes no `enhanced_text`. So an Enhance run that ends `succeeded` sets `meetings.enhanced_at` (schema 51). A new transcript (re-transcribe) clears it. Meetings that were enhanced before schema 51 keep their need until the next run.
 - A failed chunk counts as "needs transcribe". The batch runs a full transcription for it, not the retry of the failed chunks.
 
 The folder response (`GET /api/meetings/folders`) adds `stage_counts: { transcribe, summarize, enhance }`, each `{ ready, blocked }`. `ready` = needs it and can run it. `blocked` = needs it and cannot run it.
@@ -38,6 +39,7 @@ The folder response (`GET /api/meetings/folders`) adds `stage_counts: { transcri
 - At its turn, an item is skipped with a reason: `gone`, `not_needed` (folder batches only), `busy`, `no_audio`, `no_transcript`, `no_llm`, `refused` (the route refused it). The state counts each reason.
 - A selection batch (explicit ids) is a re-run: it does not apply the "needs" rule. It applies only the "cannot run" rules.
 - Cancel drops the waiting items and asks the running job to stop with the normal cancel (`requestCancel`). The running item then counts as cancelled.
+- When the job ends, the queue reads how it ended. A transcription is `ok` when the meeting no longer needs it. A Summarize or Enhance run is `ok` when its run row is `succeeded`. A `partial` run counts as failed with the reason `partly_done`. A `failed` or `interrupted` run counts as failed with the reason `run_failed`. A `cancelled` run counts as cancelled. Only `ok` counts as done.
 - The queue lives in memory. When the app quits, the waiting items are lost. The folder counts then show those meetings as still needed. The UI says this in the confirmation and in the progress card.
 - An item that is already waiting or running is not added again.
 
@@ -73,5 +75,5 @@ The search index keeps only the current summary.
 
 - Folder page (`pages/meetings/folder-panel.tsx`, `batch.tsx`): the "Stages to run" card with one row per stage: "Need it: N", the blocked count with its reason, and "Run on N". A confirmation says what the stage does, that it runs one meeting at a time, and that the queue lives in memory.
 - Selection mode: "Select" above the meeting list. Rows get check boxes. Shift-click selects a range. The bulk bar has the count, Select all / Clear, the stage picker, Run and Done.
-- Progress: a card in the left rail, visible on every meetings view: stage, "n of N", the meeting in work, waiting/done/skipped/cancelled counts, the skip reasons, and "Cancel the rest". A finished batch stays until the user closes it.
+- Progress: a card in the left rail, visible on every meetings view: stage, "n of N", the meeting in work, waiting/done/skipped/failed/cancelled counts, the skip and fail reasons, and "Cancel the rest". A finished batch stays until the user closes it.
 - Meeting page: the re-transcribe confirmation, the "names not kept" note, and "Previous versions".

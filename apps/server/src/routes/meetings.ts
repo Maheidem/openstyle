@@ -1278,7 +1278,7 @@ function startTranscribe(id: string): { ok: true } | StageRefusal {
   ].sort();
   db.prepare(
     `UPDATE meetings SET status = 'transcribing', error = NULL,
-       speaker_names_lost = ? WHERE id = ?`,
+       enhanced_at = NULL, speaker_names_lost = ? WHERE id = ?`,
   ).run(namesJson(confirmed), id);
   // A re-run replaces the previous transcript wholesale.
   db.prepare("DELETE FROM meeting_segments WHERE meeting_id = ?").run(id);

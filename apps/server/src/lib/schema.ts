@@ -11,7 +11,7 @@ const DEFAULT_CLOUD_URL = "https://service.freestylevoice.com";
 // reports 26). Migrations only run while currentVersion < SCHEMA_VERSION, so a
 // fork migration numbered below that is silently skipped for anyone arriving
 // from upstream. Keep this above the highest upstream version we have seen.
-const SCHEMA_VERSION = 50;
+const SCHEMA_VERSION = 51;
 
 // Legacy default format-rule patterns (used only by pre-v12 migrations below):
 // domain/phrase entries match as substrings of url+title+app; bare words match
@@ -1310,6 +1310,15 @@ function applyMigrations(db: DatabaseSync, currentVersion: number): void {
         generated_at INTEGER NOT NULL
       )
     `);
+  }
+
+  if (currentVersion < 51 && tableExists(db, "meetings")) {
+    // When an Enhance run last ended well on the transcript. A run that finds
+    // nothing to correct writes no `enhanced_text`, so the folder batch needs
+    // this mark to know that the stage is done. A new transcript clears it.
+    if (!hasColumn(db, "meetings", "enhanced_at")) {
+      db.exec(`ALTER TABLE meetings ADD COLUMN enhanced_at INTEGER`);
+    }
   }
 
   // Upsert schema version

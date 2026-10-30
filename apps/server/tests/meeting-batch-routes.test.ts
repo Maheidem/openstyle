@@ -30,6 +30,7 @@ import {
   __batchQueueIdle,
   __setMeetingsTestOverrides,
 } from "../src/routes/meetings.js";
+import { okReply } from "./helpers/fake-model.js";
 import { jsonRequest, postEmpty } from "./helpers/http.js";
 import {
   insertSegment,
@@ -38,7 +39,10 @@ import {
 } from "./helpers/meetings-db.js";
 import {
   defaultAnswer,
+  isIdentify,
+  isSummaryRequest,
   runnerHarness,
+  SUMMARY_ANSWER,
   waitUntil,
 } from "./helpers/runner-helpers.js";
 import { buildWav } from "./helpers/wav.js";
@@ -469,6 +473,46 @@ describe("POST /api/meetings/batch", () => {
       ready: 0,
       blocked: 0,
     });
+  });
+
+  it("ends the Enhance need also when the run finds nothing to correct", async () => {
+    seedTestModel();
+    const folder = await createFolder("Enhance clean");
+    for (const [id, at] of [
+      ["c1", 1],
+      ["c2", 2],
+    ] as const) {
+      insertMeeting(id, "transcribed", { folder: folder.id, startedAt: at });
+      text(id);
+    }
+    const h = runnerHarness({
+      answer: (r) =>
+        isSummaryRequest(r)
+          ? SUMMARY_ANSWER
+          : isIdentify(r)
+            ? okReply('{"speakers":[]}')
+            : okReply('{"corrections":[]}'),
+    });
+    __setMeetingsTestOverrides({ workflowDeps: h.deps });
+
+    await startBatch({ stage: "enhance", folder_id: folder.id });
+    await __batchQueueIdle();
+    expect(await batchState()).toMatchObject({ total: 2, done: 2, failed: 0 });
+    // No segment has enhanced_text: the run mark ends the need.
+    expect(
+      getDb()
+        .prepare(
+          "SELECT COUNT(*) AS n FROM meeting_segments WHERE enhanced_text IS NOT NULL",
+        )
+        .get(),
+    ).toEqual({ n: 0 });
+    expect((await folderCounts(folder.id))?.enhance).toEqual({
+      ready: 0,
+      blocked: 0,
+    });
+    // A new transcript clears the mark: the meeting needs Enhance again.
+    getDb().prepare("UPDATE meetings SET enhanced_at = NULL").run();
+    expect((await folderCounts(folder.id))?.enhance.ready).toBe(2);
   });
 
   it("counts an Enhance run that failed as failed, and the meetings still need it", async () => {

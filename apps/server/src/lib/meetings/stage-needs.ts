@@ -28,8 +28,10 @@ const NEEDS: Record<MeetingStage, string> = {
   summarize: `(${HAS_TEXT} AND (m.status = 'transcribed'
     OR (m.status = 'summarized' AND COALESCE((SELECT partial
       FROM meeting_summaries ps WHERE ps.meeting_id = m.id), 0) = 1)))`,
-  // The same Enhance test as meetingDisplayStatus (store.ts).
-  enhance: `(${TRANSCRIBED} AND ${HAS_TEXT} AND NOT EXISTS (
+  // No corrected segment, and no Enhance run that ended well on this
+  // transcript (m.enhanced_at). A run that finds nothing to correct writes no
+  // enhanced_text, so the mark alone ends the need.
+  enhance: `(${TRANSCRIBED} AND ${HAS_TEXT} AND m.enhanced_at IS NULL AND NOT EXISTS (
     SELECT 1 FROM meeting_segments es WHERE es.meeting_id = m.id
       AND es.enhanced_text IS NOT NULL AND es.enhanced_text <> ''))`,
 };

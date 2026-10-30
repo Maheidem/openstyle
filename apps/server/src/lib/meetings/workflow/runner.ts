@@ -641,6 +641,17 @@ function finish(o: {
     finishedAt: deps.now(),
   });
   closeRunSpan(o.span, runId, status, errorKind);
+  // The mark that ends the "needs Enhance" test of a folder, also when the run
+  // found nothing to correct (stage-needs.ts).
+  if (status === "succeeded" && kindOf(final.stages) === "enhance") {
+    try {
+      deps.db
+        .prepare("UPDATE meetings SET enhanced_at = ? WHERE id = ?")
+        .run(deps.now(), meetingId);
+    } catch (err) {
+      log.warn(`meeting ${meetingId}: enhanced_at not saved: ${String(err)}`);
+    }
+  }
   if (hardStopped) admin.closeOpenSteps(runId, "cancelled");
   else if (status === "interrupted") admin.closeOpenSteps(runId, "interrupted");
   else {
