@@ -17,6 +17,10 @@
 #             <dir>/<id>/mic.wav there is copied from it, not from the app folder.
 #             The app deletes old meeting audio (retention sweep); see
 #             scripts/meeting-v2/eval-audio-copy.sh.
+#   MEETING_EVAL_STORED_IDS  full meeting ids (comma list) with no audio: no
+#             audio copy; the transcript comes from the stored segments.
+#   SEED_FOLDER_MEMORY=1  also copy the folder and the earlier folder meetings
+#             (seed-folder-memory.mjs), for the project memory eval.
 #   MEETING_EVAL_SOURCE_DB  the DB to seed from (default: the real app DB).
 #             The Eval Lab sets it to the frozen seed DB of its corpus.
 
@@ -50,6 +54,12 @@ cp "$SRC_DB" "$SCRATCH/dbcopy/attach.db"
 
 # --- 2. Copy the meeting folders, drop old transcripts from the copy ------
 for id in "$@"; do
+  case ",${MEETING_EVAL_STORED_IDS:-}," in
+    *",$id,"*)
+      echo "audio source: none, stored transcript ($id)"
+      continue
+      ;;
+  esac
   if [ -f "$EVAL_AUDIO_DIR/$id/mic.wav" ]; then
     src_dir="$EVAL_AUDIO_DIR/$id"
     echo "audio source: eval copy ($id)"
@@ -124,8 +134,10 @@ V_REAL="$(sqlite3 "$SRC_DB" "select count(*) from vocabulary;")"
 DEFAULTS="$(sqlite3 "$SCRATCH_DB" "select count(*) from model_configs where is_default=1;")"
 API_KEYS="$(sqlite3 "$SCRATCH_DB" "select count(*) from api_keys;")"
 STATUS_OK=1
-for s in $(sqlite3 "$SCRATCH_DB" "select status from meetings;"); do
-  [ "$s" = "recorded" ] || STATUS_OK=0
+for id in "$@"; do
+  WANT="recorded"
+  case ",${MEETING_EVAL_STORED_IDS:-}," in *",$id,"*) WANT="transcribed" ;; esac
+  [ "$(sqlite3 "$SCRATCH_DB" "select status from meetings where id='$id';")" = "$WANT" ] || STATUS_OK=0
 done
 # Guard (7.2, owner rule 2026-10-21): only the app's built-in MLX models.
 # No cloud model and no own-server model (nothing may call the owner's server).

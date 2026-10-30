@@ -252,6 +252,8 @@ export function serverEnv(
   env.HUGGINGFACE_HUB_CACHE = join(hfCache, "hub");
   env.OPENSTYLE_MLX_LLM_WORKER = WORKER;
   env.OPENSTYLE_MLX_ASR_WORKER = WORKER;
+  // The search embedding worker is the same binary (--embed).
+  env.OPENSTYLE_MLX_EMBED_WORKER = WORKER;
   return env;
 }
 
@@ -587,9 +589,15 @@ export async function ensureTranscribed(opts: {
   hashExtra?: string[] | ((id: string) => string[]);
   /** The run-baseline.mjs run name (default R0d). */
   run?: string;
+  /**
+   * Meetings whose transcript is already in the scratch DB (stored
+   * segments, no audio). They are not hashed, cached or transcribed.
+   */
+  storedIds?: string[];
 }): Promise<{ path: string; hash: string; hashes: Record<string, string> }> {
   const { asrDir, work, ids, voice, port, hfCache, out } = opts;
   const run = opts.run ?? "R0d";
+  const stored = new Set(opts.storedIds ?? []);
   const extraOf = (id: string) =>
     typeof opts.hashExtra === "function"
       ? opts.hashExtra(id)
@@ -598,13 +606,15 @@ export async function ensureTranscribed(opts: {
   forceVoiceRow(testDb, voice);
   const code = codeHashParts();
   const hashes: Record<string, string> = {};
-  for (const id of ids)
+  for (const id of ids.filter((x) => !stored.has(x)))
     hashes[id] = meetingHash(work, id, voice, extraOf(id), code, run);
   const cacheDir = join(asrDir, "cache");
   mkdirSync(cacheDir, { recursive: true });
   const cached = (id: string) => join(cacheDir, `${id}.${hashes[id]}.db`);
-  const missing = ids.filter((id) => !existsSync(cached(id)));
-  for (const id of ids)
+  const missing = ids.filter(
+    (id) => !stored.has(id) && !existsSync(cached(id)),
+  );
+  for (const id of ids.filter((x) => !stored.has(x)))
     if (!missing.includes(id))
       console.log(`transcription ${id.slice(0, 8)}: cached (${hashes[id]})`);
 
@@ -666,19 +676,30 @@ export async function ensureTranscribed(opts: {
   const db = new DatabaseSync(out);
   try {
     for (const id of ids) {
-      db.exec(`ATTACH DATABASE '${cached(id)}' AS c`);
-      try {
-        db.prepare(
-          "INSERT OR REPLACE INTO main.meetings SELECT * FROM c.meetings WHERE id = ?",
-        ).run(id);
-        for (const t of TRANSCRIPT_TABLES) {
-          db.prepare(`DELETE FROM main.${t} WHERE meeting_id = ?`).run(id);
+      if (!stored.has(id)) {
+        db.exec(`ATTACH DATABASE '${cached(id)}' AS c`);
+        try {
+          // The folder comes from the scratch DB, not from the cache file
+          // (an older cache file has no folder).
+          const folder = db
+            .prepare("SELECT folder_id FROM main.meetings WHERE id = ?")
+            .get(id) as { folder_id: string | null } | undefined;
           db.prepare(
-            `INSERT INTO main.${t} SELECT * FROM c.${t} WHERE meeting_id = ?`,
+            "INSERT OR REPLACE INTO main.meetings SELECT * FROM c.meetings WHERE id = ?",
           ).run(id);
+          db.prepare("UPDATE main.meetings SET folder_id = ? WHERE id = ?").run(
+            folder?.folder_id ?? null,
+            id,
+          );
+          for (const t of TRANSCRIPT_TABLES) {
+            db.prepare(`DELETE FROM main.${t} WHERE meeting_id = ?`).run(id);
+            db.prepare(
+              `INSERT INTO main.${t} SELECT * FROM c.${t} WHERE meeting_id = ?`,
+            ).run(id);
+          }
+        } finally {
+          db.exec("DETACH DATABASE c");
         }
-      } finally {
-        db.exec("DETACH DATABASE c");
       }
       const m = db
         .prepare(
@@ -695,6 +716,7 @@ export async function ensureTranscribed(opts: {
   }
   const hash = sha(
     ids
+      .filter((id) => !stored.has(id))
       .map((id) => `${id}:${hashes[id]}`)
       .sort()
       .join("\n"),
