@@ -6,7 +6,7 @@
 //     [--keep] [--no-download] [--gold [--gold-dir <dir>] | --answer-key <file>]
 //     [--save-baseline <name> [--noise-from <baseline>]] [--compare <baseline>]
 //     [--hf-cache <dir>] [--port <n>] [--timeout-sec <n>] [--summary-budget <n>]
-//     [--project-memory on|off] [--stored-transcripts <id8,...>]
+//     [--task-params <json>] [--project-memory on|off] [--stored-transcripts <id8,...>]
 //   pnpm meeting:eval --rescore <out> [gold and baseline flags]
 //
 // Models: the catalog ids of the built-in MLX LLM
@@ -139,6 +139,11 @@ import {
   withServer as withServerOn,
 } from "./runtime.mts";
 import { scoreRun } from "./score.mts";
+import {
+  checkTaskLinks,
+  parseTaskParams,
+  taskAssignmentsValue,
+} from "./task-params.mts";
 
 const DEFAULT_MEETINGS = [
   "2943c36a-532e-4db9-af09-b5e66f0bdf2d",
@@ -157,7 +162,7 @@ const has = (name: string) => process.argv.includes(`--${name}`);
 function usage(msg: string): never {
   console.error(msg);
   console.error(
-    "usage: pnpm meeting:eval --models <id,...> [--meetings <id8,...>] [--out <dir>] [--keep] [--no-download] [--gold [--gold-dir <dir>] | --answer-key <file>] [--save-baseline <name> [--noise-from <file>]] [--compare <file>] [--hf-cache <dir>] [--port <n>] [--timeout-sec <n>] [--summary-budget <n>] [--project-memory on|off] [--stored-transcripts <id8,...>]\n       pnpm meeting:eval --rescore <out dir of a --keep run> [the gold and baseline flags]",
+    "usage: pnpm meeting:eval --models <id,...> [--meetings <id8,...>] [--out <dir>] [--keep] [--no-download] [--gold [--gold-dir <dir>] | --answer-key <file>] [--save-baseline <name> [--noise-from <file>]] [--compare <file>] [--hf-cache <dir>] [--port <n>] [--timeout-sec <n>] [--summary-budget <n>] [--task-params <json>] [--project-memory on|off] [--stored-transcripts <id8,...>]\n       pnpm meeting:eval --rescore <out dir of a --keep run> [the gold and baseline flags]",
   );
   process.exit(2);
 }
@@ -188,6 +193,19 @@ const timeoutSec = Number(arg("timeout-sec") ?? "7200");
 const summaryBudget = arg("summary-budget");
 if (summaryBudget !== undefined && !/^[1-9]\d{2,5}$/.test(summaryBudget))
   usage("--summary-budget must be a whole number from 100 to 999999");
+// Task params: a custom profile for meetingEnhance and meetingSummarize of the
+// arm model (all params in one JSON object, for example
+// {"temperature":0,"top_p":0.95,"top_k":64,"repetition_penalty":1,
+// "chat_template_kwargs":{"enable_thinking":false}}). It is set through the
+// llm_task_assignments setting, as the Models page does, and read back from
+// llm_profile_links. Unset: the built-in profile of the model.
+let taskParams: Record<string, unknown> | undefined;
+try {
+  const raw = arg("task-params");
+  if (raw !== undefined) taskParams = parseTaskParams(raw);
+} catch (e) {
+  usage((e as Error).message);
+}
 // Project memory (issue #370). With --project-memory the scratch DB gets the
 // folder of each meeting and its earlier folder meetings, the app's own indexer
 // builds the search index for them, and the setting meeting_project_memory is
@@ -482,6 +500,14 @@ async function prepareArm(model: string, transcribed: string): Promise<string> {
       });
       if (c.status >= 300)
         throw new Error(`POST /api/models/configured answered ${c.status}`);
+      if (taskParams !== undefined) {
+        // After the default LLM row: the link goes to the model of the task.
+        const t = await call("PUT", "/api/settings/llm_task_assignments", {
+          value: taskAssignmentsValue(taskParams),
+        });
+        if (t.status !== 200)
+          throw new Error(`task assignments setting answered ${t.status}`);
+      }
       if (projectMemory !== undefined) await buildMemoryIndex(call);
     },
   );
@@ -498,7 +524,18 @@ async function prepareArm(model: string, transcribed: string): Promise<string> {
       "SELECT value FROM settings WHERE key = 'meeting_summary_context_budget'",
     )
     .get() as { value: string } | undefined;
+  const links = db
+    .prepare("SELECT value FROM settings WHERE key = 'llm_profile_links'")
+    .get() as { value: string } | undefined;
   db.close();
+  if (taskParams !== undefined) {
+    const bad = checkTaskLinks(
+      links?.value,
+      `local-mlx-llm::${model}`,
+      taskParams,
+    );
+    if (bad) throw new Error(`arm DB for ${model}: ${bad}`);
+  }
   if (summaryBudget !== undefined && budget?.value !== summaryBudget)
     throw new Error(`arm DB for ${model}: summary budget not stored`);
   if (projectMemory !== undefined) checkMemoryArm(armDb, model);
