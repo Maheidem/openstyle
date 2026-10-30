@@ -243,7 +243,9 @@
       "openSystemSettings": "Abrir Ajustes del Sistema",
       "calendarRestricted": "La política de tu Mac bloquea el acceso al calendario. Openstyle no puede cambiar esto.",
       "calendarUnavailable": "Openstyle no pudo acceder al calendario. Puede que la solicitud haya caducado, o que este Mac use una versión de macOS anterior a la 14. Inténtalo de nuevo.",
-      "calendarSaveFailed": "Openstyle no pudo guardar este ajuste. El calendario sigue desactivado."
+      "calendarSaveFailed": "Openstyle no pudo guardar este ajuste. El calendario sigue desactivado.",
+      "liveChat": "Transcripción y chat en vivo (experimental)",
+      "liveChatDesc": "Muestra la transcripción mientras grabas y te deja hacer preguntas sobre la reunión. Necesita un modelo local de transcripción descargado. Usa más memoria durante una grabación."
     },
     "data": {
       "pauseHistory": "Pausar historial",
@@ -1244,6 +1246,27 @@
       "readOnly": "Versión anterior (solo lectura)",
       "close": "Cerrar",
       "partial": "Parcial"
+    },
+    "liveChat": {
+      "transcriptTitle": "Transcripción en vivo",
+      "experimental": "Experimental",
+      "warming": "Cargando el modelo de transcripción...",
+      "unavailable": "La transcripción en vivo no está disponible. Necesita un modelo local de transcripción descargado.",
+      "sourceMe": "Yo",
+      "sourceThem": "Ellos",
+      "chatTitle": "Pregunta sobre esta reunión",
+      "chatPlaceholder": "Haz una pregunta...",
+      "chatSend": "Preguntar",
+      "chatWarming": "Cargando el modelo de chat. La primera respuesta tarda más.",
+      "chatUnavailable": "El chat en vivo necesita un modelo de chat local.",
+      "chatThinking": "Pensando...",
+      "chatError": "La respuesta falló. Inténtalo de nuevo.",
+      "chatEmpty": "Pregunta sobre esta reunión, el proyecto o reuniones anteriores.",
+      "citeLive": "En vivo {{time}}",
+      "citePast": "{{title}}, {{time}}",
+      "citeFolder": "Descripción de la carpeta",
+      "you": "Tú",
+      "answer": "Respuesta"
     }
   },
   "help": {

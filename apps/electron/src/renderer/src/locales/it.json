@@ -243,7 +243,9 @@
       "openSystemSettings": "Apri Impostazioni di Sistema",
       "calendarRestricted": "Il criterio del tuo Mac blocca l'accesso al calendario. Openstyle non può cambiarlo.",
       "calendarUnavailable": "Openstyle non è riuscito a raggiungere il calendario. La richiesta potrebbe essere scaduta, oppure questo Mac usa una versione di macOS precedente alla 14. Riprova.",
-      "calendarSaveFailed": "Openstyle non è riuscito a salvare questa impostazione. Il calendario resta disattivato."
+      "calendarSaveFailed": "Openstyle non è riuscito a salvare questa impostazione. Il calendario resta disattivato.",
+      "liveChat": "Trascrizione e chat dal vivo (sperimentale)",
+      "liveChatDesc": "Mostra la trascrizione durante la registrazione e permette di fare domande sulla riunione. Serve un modello di trascrizione locale scaricato. Usa più memoria durante una registrazione."
     },
     "data": {
       "pauseHistory": "Metti in pausa la cronologia",
@@ -1243,6 +1245,27 @@
       "readOnly": "Versione precedente (sola lettura)",
       "close": "Chiudi",
       "partial": "Parziale"
+    },
+    "liveChat": {
+      "transcriptTitle": "Trascrizione dal vivo",
+      "experimental": "Sperimentale",
+      "warming": "Caricamento del modello di trascrizione...",
+      "unavailable": "La trascrizione dal vivo non è disponibile. Serve un modello di trascrizione locale scaricato.",
+      "sourceMe": "Io",
+      "sourceThem": "Altri",
+      "chatTitle": "Chiedi su questa riunione",
+      "chatPlaceholder": "Fai una domanda...",
+      "chatSend": "Chiedi",
+      "chatWarming": "Caricamento del modello di chat. La prima risposta richiede più tempo.",
+      "chatUnavailable": "La chat dal vivo richiede un modello di chat locale.",
+      "chatThinking": "Sto pensando...",
+      "chatError": "La risposta non è riuscita. Riprova.",
+      "chatEmpty": "Chiedi su questa riunione, sul progetto o sulle riunioni precedenti.",
+      "citeLive": "Dal vivo {{time}}",
+      "citePast": "{{title}}, {{time}}",
+      "citeFolder": "Descrizione della cartella",
+      "you": "Tu",
+      "answer": "Risposta"
     }
   },
   "help": {

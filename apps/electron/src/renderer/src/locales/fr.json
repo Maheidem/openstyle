@@ -243,7 +243,9 @@
       "openSystemSettings": "Ouvrir les Réglages Système",
       "calendarRestricted": "La politique de votre Mac bloque l'accès au calendrier. Openstyle ne peut pas la modifier.",
       "calendarUnavailable": "Openstyle n'a pas pu joindre le calendrier. La demande a peut-être expiré, ou ce Mac utilise une version de macOS antérieure à la 14. Réessayez.",
-      "calendarSaveFailed": "Openstyle n'a pas pu enregistrer ce réglage. Le calendrier reste désactivé."
+      "calendarSaveFailed": "Openstyle n'a pas pu enregistrer ce réglage. Le calendrier reste désactivé.",
+      "liveChat": "Transcription et chat en direct (expérimental)",
+      "liveChatDesc": "Affiche la transcription pendant l'enregistrement et permet de poser des questions sur la réunion. Il faut un modèle de transcription local téléchargé. Cela utilise plus de mémoire pendant un enregistrement."
     },
     "data": {
       "pauseHistory": "Suspendre l'historique",
@@ -1244,6 +1246,27 @@
       "readOnly": "Version précédente (lecture seule)",
       "close": "Fermer",
       "partial": "Partiel"
+    },
+    "liveChat": {
+      "transcriptTitle": "Transcription en direct",
+      "experimental": "Expérimental",
+      "warming": "Chargement du modèle de transcription...",
+      "unavailable": "La transcription en direct n'est pas disponible. Elle demande un modèle de transcription local téléchargé.",
+      "sourceMe": "Moi",
+      "sourceThem": "Eux",
+      "chatTitle": "Poser une question sur cette réunion",
+      "chatPlaceholder": "Posez une question...",
+      "chatSend": "Demander",
+      "chatWarming": "Chargement du modèle de chat. La première réponse est plus lente.",
+      "chatUnavailable": "Le chat en direct demande un modèle de chat local.",
+      "chatThinking": "Réflexion...",
+      "chatError": "La réponse a échoué. Réessayez.",
+      "chatEmpty": "Posez une question sur cette réunion, le projet ou les réunions précédentes.",
+      "citeLive": "Direct {{time}}",
+      "citePast": "{{title}}, {{time}}",
+      "citeFolder": "Description du dossier",
+      "you": "Vous",
+      "answer": "Réponse"
     }
   },
   "help": {

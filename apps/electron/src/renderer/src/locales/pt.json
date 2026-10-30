@@ -243,7 +243,9 @@
       "openSystemSettings": "Abrir Ajustes do Sistema",
       "calendarRestricted": "A política do seu Mac bloqueia o acesso ao calendário. O Openstyle não pode alterar isso.",
       "calendarUnavailable": "O Openstyle não conseguiu acessar o calendário. A solicitação pode ter expirado, ou este Mac usa um macOS anterior ao 14. Tente novamente.",
-      "calendarSaveFailed": "O Openstyle não conseguiu salvar esta configuração. O calendário continua desativado."
+      "calendarSaveFailed": "O Openstyle não conseguiu salvar esta configuração. O calendário continua desativado.",
+      "liveChat": "Transcrição e chat ao vivo (experimental)",
+      "liveChatDesc": "Mostra a transcrição enquanto você grava e deixa você fazer perguntas sobre a reunião. Precisa de um modelo local de transcrição baixado. Usa mais memória durante uma gravação."
     },
     "data": {
       "pauseHistory": "Pausar histórico",
@@ -1243,6 +1245,27 @@
       "readOnly": "Versão anterior (somente leitura)",
       "close": "Fechar",
       "partial": "Parcial"
+    },
+    "liveChat": {
+      "transcriptTitle": "Transcrição ao vivo",
+      "experimental": "Experimental",
+      "warming": "Carregando o modelo de transcrição...",
+      "unavailable": "A transcrição ao vivo não está disponível. Ela precisa de um modelo local de transcrição baixado.",
+      "sourceMe": "Eu",
+      "sourceThem": "Outros",
+      "chatTitle": "Pergunte sobre esta reunião",
+      "chatPlaceholder": "Faça uma pergunta...",
+      "chatSend": "Perguntar",
+      "chatWarming": "Carregando o modelo de chat. A primeira resposta demora mais.",
+      "chatUnavailable": "O chat ao vivo precisa de um modelo de chat local.",
+      "chatThinking": "Pensando...",
+      "chatError": "A resposta falhou. Tente de novo.",
+      "chatEmpty": "Pergunte sobre esta reunião, o projeto ou reuniões anteriores.",
+      "citeLive": "Ao vivo {{time}}",
+      "citePast": "{{title}}, {{time}}",
+      "citeFolder": "Descrição da pasta",
+      "you": "Você",
+      "answer": "Resposta"
     }
   },
   "help": {

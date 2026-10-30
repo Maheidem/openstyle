@@ -283,7 +283,9 @@
       "openSystemSettings": "Open System Settings",
       "calendarRestricted": "Your Mac policy blocks calendar access. Openstyle cannot change this.",
       "calendarUnavailable": "Openstyle could not reach the calendar. The request may have timed out, or this Mac may run a macOS version older than 14. Try again.",
-      "calendarSaveFailed": "Openstyle could not save this setting. The calendar stays off."
+      "calendarSaveFailed": "Openstyle could not save this setting. The calendar stays off.",
+      "liveChat": "Live transcript and chat (experimental)",
+      "liveChatDesc": "Shows the transcript while you record and lets you ask questions about the meeting. It needs a downloaded local transcription model. It uses more memory during a recording."
     },
     "data": {
       "pauseHistory": "Pause history",
@@ -1561,6 +1563,27 @@
       "readOnly": "Previous version (read only)",
       "close": "Close",
       "partial": "Partial"
+    },
+    "liveChat": {
+      "transcriptTitle": "Live transcript",
+      "experimental": "Experimental",
+      "warming": "Loading the transcription model...",
+      "unavailable": "The live transcript is not available. It needs a downloaded local transcription model.",
+      "sourceMe": "Me",
+      "sourceThem": "Them",
+      "chatTitle": "Ask about this meeting",
+      "chatPlaceholder": "Ask a question...",
+      "chatSend": "Ask",
+      "chatWarming": "Loading the chat model. The first answer takes longer.",
+      "chatUnavailable": "Live chat needs a local chat model.",
+      "chatThinking": "Thinking...",
+      "chatError": "The answer failed. Try again.",
+      "chatEmpty": "Ask about this meeting, the project, or earlier meetings.",
+      "citeLive": "Live {{time}}",
+      "citePast": "{{title}}, {{time}}",
+      "citeFolder": "Folder description",
+      "you": "You",
+      "answer": "Answer"
     }
   },
   "help": {
