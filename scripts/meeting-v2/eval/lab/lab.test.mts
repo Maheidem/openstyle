@@ -30,7 +30,13 @@ import {
   readItems,
   writeItems,
 } from "./ledger.mts";
-import { bestRuns, compareRuns, lowerIsBetter } from "./query.mts";
+import {
+  bestRuns,
+  compareRuns,
+  lowerIsBetter,
+  renderComparison,
+  verdictOf,
+} from "./query.mts";
 import { scoreRunDb } from "./score.mts";
 import {
   asrCodeParts,
@@ -1020,4 +1026,34 @@ test("compare: deltas, meetings better/worse/same, span flips, basis warnings", 
   assert.deepEqual(d.meetings.better, ["aaaa1111"]);
   assert.equal(d.flips, null);
   assert.deepEqual(compareRuns(a, a, ma, ma, null, null).warnings, []);
+});
+
+test("compare verdict: BETTER, WORSE and SAME on spans_all hits, noise band, UNKNOWN", () => {
+  const r = (id: string, hits: number, n = 1604) =>
+    run(id, { spans_all_hits: hits, spans_all_n: n });
+  const base = r("A", 1235);
+  // The same hits: SAME, also with a band of 0 (ASR is deterministic).
+  assert.equal(verdictOf(base, r("B", 1235)).verdict, "SAME");
+  // One hit less is WORSE at band 0, SAME inside a band of 1.
+  assert.equal(verdictOf(base, r("B", 1234)).verdict, "WORSE");
+  assert.equal(verdictOf(base, r("B", 1234), 1).verdict, "SAME");
+  assert.equal(verdictOf(base, r("B", 1233), 1).verdict, "WORSE");
+  assert.equal(verdictOf(base, r("B", 1236)).verdict, "BETTER");
+  assert.equal(
+    verdictOf(base, r("B", 1190)).reason,
+    "spans_all hits 1235 -> 1190 (-45 of 1604), noise band 0",
+  );
+  // Another span count (another gold) or a missing metric: UNKNOWN.
+  assert.equal(verdictOf(base, r("B", 1235, 1474)).verdict, "UNKNOWN");
+  assert.equal(verdictOf(base, run("B", {})).verdict, "UNKNOWN");
+  // The verdict is the first line after the run ids of the rendered text.
+  const text = renderComparison(
+    compareRuns(base, r("B", 1190), null, null, null, null),
+    base,
+    r("B", 1190),
+  );
+  assert.equal(
+    text.split("\n")[1],
+    "verdict: WORSE (spans_all hits 1235 -> 1190 (-45 of 1604), noise band 0)",
+  );
 });

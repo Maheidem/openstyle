@@ -86,7 +86,43 @@ export const SAME_BASIS_TAGS = [
   "lab.meetings",
 ];
 
+export interface Verdict {
+  verdict: "BETTER" | "WORSE" | "SAME" | "UNKNOWN";
+  reason: string;
+}
+
+/**
+ * The verdict of run B against run A on the primary metric: the span hits
+ * of all scored spans (spans_all_hits). B is SAME when the hits differ by
+ * at most `band`, else BETTER or WORSE. Two runs with a different span
+ * count (spans_all_n) have another gold, so the verdict is UNKNOWN.
+ */
+export function verdictOf(a: FlatRun, b: FlatRun, band = 0): Verdict {
+  const ha = a.metrics.spans_all_hits;
+  const hb = b.metrics.spans_all_hits;
+  const na = a.metrics.spans_all_n;
+  const nb = b.metrics.spans_all_n;
+  if (
+    ha === undefined ||
+    hb === undefined ||
+    na === undefined ||
+    nb === undefined
+  )
+    return { verdict: "UNKNOWN", reason: "a run has no spans_all metric" };
+  if (na !== nb)
+    return {
+      verdict: "UNKNOWN",
+      reason: `spans_all_n differs: ${na} vs ${nb}`,
+    };
+  const d = hb - ha;
+  const sign = d > 0 ? "+" : "";
+  const reason = `spans_all hits ${ha} -> ${hb} (${sign}${d} of ${na}), noise band ${band}`;
+  if (Math.abs(d) <= band) return { verdict: "SAME", reason };
+  return { verdict: d > 0 ? "BETTER" : "WORSE", reason };
+}
+
 export interface Comparison {
+  verdict: Verdict;
   warnings: string[];
   metrics: {
     key: string;
@@ -130,6 +166,7 @@ export function compareRuns(
   mb: MeetingScore[] | null,
   ia: SpanItem[] | null,
   ib: SpanItem[] | null,
+  band = 0,
 ): Comparison {
   const warnings = SAME_BASIS_TAGS.filter(
     (t) => (a.tags[t] ?? "") !== (b.tags[t] ?? ""),
@@ -191,7 +228,14 @@ export function compareRuns(
   const knobs = knobKeys
     .filter((k) => a.params[k] !== b.params[k])
     .map((key) => ({ key, a: a.params[key] ?? "-", b: b.params[key] ?? "-" }));
-  return { warnings, metrics, meetings, flips, knobs };
+  return {
+    verdict: verdictOf(a, b, band),
+    warnings,
+    metrics,
+    meetings,
+    flips,
+    knobs,
+  };
 }
 
 export function renderComparison(
@@ -201,6 +245,7 @@ export function renderComparison(
 ): string {
   const lines = [
     `A ${a.id}  B ${b.id}`,
+    `verdict: ${c.verdict.verdict} (${c.verdict.reason})`,
     ...c.warnings,
     "",
     table(

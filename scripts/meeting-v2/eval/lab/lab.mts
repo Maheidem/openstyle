@@ -6,7 +6,7 @@
 //   pnpm lab run <grid.json> [--force] [--dry-run] [--port <n>]
 //   pnpm lab list [--stage asr] [--filter knob=value ...] [--metrics m,...]
 //   pnpm lab best --metric <m> [--top N] [--asc | --desc] [--filter knob=value ...]
-//   pnpm lab compare <runA> <runB>
+//   pnpm lab compare <runA> <runB> [--band <hits>] [--fail-on-worse]
 //   pnpm lab show <run>
 //
 // The ledger is MLflow (LAB_MLFLOW_URI or SILVER_MLFLOW_URI; no default)
@@ -84,7 +84,7 @@ const positional = argv.filter(
     !a.startsWith("--") &&
     !(
       i > 0 &&
-      /^--(gold-dir|gold-suffix|audio-dir|meetings|port|stage|filter|metrics|metric|top)$/.test(
+      /^--(gold-dir|gold-suffix|audio-dir|meetings|port|stage|filter|metrics|metric|top|band)$/.test(
         argv[i - 1] as string,
       )
     ),
@@ -481,6 +481,9 @@ async function cmdBest() {
 async function cmdCompare() {
   const [, ka, kb] = positional;
   if (!ka || !kb) usage("compare needs <runA> <runB>");
+  const band = Number(arg("band") ?? 0);
+  if (!Number.isInteger(band) || band < 0)
+    usage("--band needs a whole number of span hits, 0 or more");
   const { runs } = await allRuns();
   const a = await findRun(runs, ka);
   const b = await findRun(runs, kb);
@@ -491,8 +494,15 @@ async function cmdCompare() {
     readItems<MeetingScore>(b.id, "meetings.jsonl"),
     readItems<SpanItem>(a.id, "items.jsonl"),
     readItems<SpanItem>(b.id, "items.jsonl"),
+    band,
   );
   console.log(renderComparison(c, a, b));
+  // Exit 3 when B is worse than A beyond the band; exit 4 when the runs
+  // cannot be compared (another span count). Without the flag: exit 0.
+  if (has("fail-on-worse")) {
+    if (c.verdict.verdict === "WORSE") process.exit(3);
+    if (c.verdict.verdict === "UNKNOWN") process.exit(4);
+  }
 }
 
 async function cmdShow() {
