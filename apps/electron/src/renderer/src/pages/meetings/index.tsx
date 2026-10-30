@@ -87,6 +87,13 @@ export default function MeetingsPage(): React.JSX.Element {
   const [searchFocus, setSearchFocus] = useState<SearchFocus | null>(null);
   const moving = useRef(false);
   const detailColumn = useRef<HTMLDivElement>(null);
+  const listColumn = useRef<HTMLElement>(null);
+  // A restored selection can sit below the fold of the list. Scroll to it
+  // once, when its row first renders. Later clicks do not scroll.
+  const restoredSelection = useRef(
+    Boolean(readMeetingsSelection().selectedId) ||
+      Boolean(readMeetingsSelection().selectedFolderId),
+  );
   const actionSequence = useRef(0);
   const { data: config, isLoading: configLoading } = useQuery(
     configQueryOptions(),
@@ -200,6 +207,14 @@ export default function MeetingsPage(): React.JSX.Element {
     batch.state.total > 0 &&
     (batch.state.active || closedBatch !== batchKey(batch.state));
   const folderGroup = groups.get(selectedFolderId);
+  // biome-ignore lint/correctness/useExhaustiveDependencies: run when the rows load
+  useEffect(() => {
+    if (!restoredSelection.current) return;
+    const row = listColumn.current?.querySelector('[aria-current="true"]');
+    if (!row) return;
+    restoredSelection.current = false;
+    row.scrollIntoView({ block: "nearest" });
+  }, [groupQueries, folders]);
 
   const openFolderId = openMeeting?.folder_id;
   useEffect(() => {
@@ -364,6 +379,7 @@ export default function MeetingsPage(): React.JSX.Element {
         )}
         <div className="grid flex-1 grid-cols-1 gap-6 min-[900px]:min-h-0 min-[900px]:grid-cols-[262px_minmax(0,1fr)] min-[900px]:grid-rows-[minmax(0,1fr)]">
           <aside
+            ref={listColumn}
             aria-label={t("meetings.folders.railLabel")}
             data-testid="meetings-list-column"
             style={{ scrollbarWidth: "none" }}
