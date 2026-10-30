@@ -12,7 +12,7 @@ import type {
   TranscriptionProvider,
 } from "../types.js";
 import { stripProviderPrefix } from "../types.js";
-import { transcribeWithAiSdk } from "../utils.js";
+import { takesLanguagesList, transcribeWithAiSdk } from "../utils.js";
 
 const REALTIME_URL = "wss://api.openai.com/v1/realtime?intent=transcription";
 const COMMIT_TIMEOUT_MS = 12_000;
@@ -23,7 +23,18 @@ export class OpenAITranscriptionProvider implements TranscriptionProvider {
   readonly providerId = "openai";
 
   async transcribe(opts: TranscribeOptions): Promise<TranscribeResult> {
-    return transcribeWithAiSdk(opts, createOpenAI, this.providerId);
+    // gpt-live-transcribe has no file endpoint (v1/audio/transcriptions). Its
+    // file counterpart is gpt-transcribe, so a batch call (meetings, imports,
+    // dictation without streaming) uses that model.
+    const model =
+      stripProviderPrefix(opts.model) === "gpt-live-transcribe"
+        ? "gpt-transcribe"
+        : opts.model;
+    return transcribeWithAiSdk(
+      { ...opts, model },
+      createOpenAI,
+      this.providerId,
+    );
   }
 
   supportsStreaming(modelId: string): boolean {
@@ -96,7 +107,10 @@ export class OpenAITranscriptionProvider implements TranscriptionProvider {
 
     ws.on("open", () => {
       const transcription: Record<string, unknown> = { model: short };
-      if (language) transcription.language = language;
+      if (language) {
+        if (takesLanguagesList(short)) transcription.languages = [language];
+        else transcription.language = language;
+      }
       if (bias?.kind === "prompt") transcription.prompt = bias.text;
 
       ws.send(

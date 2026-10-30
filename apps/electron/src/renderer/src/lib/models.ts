@@ -237,11 +237,23 @@ export const VOICE_META: Record<
     cost: 0.111,
     note: "Highest-accuracy Groq Whisper — supports translation",
   },
-  "openai/gpt-4o-transcribe": {
+  "openai/gpt-live-transcribe": {
+    speed: 5,
+    quality: 5,
+    cost: 1.02,
+    note: "OpenAI live streaming model with the lowest delay",
+  },
+  "openai/gpt-transcribe": {
     speed: 3,
     quality: 5,
+    cost: 0.27,
+    note: "Most accurate OpenAI model for files and committed turns",
+  },
+  "openai/gpt-4o-transcribe": {
+    speed: 3,
+    quality: 4,
     cost: 0.18,
-    note: "Most accurate overall",
+    note: "Legacy: OpenAI removes it on 2027-02-26. Use GPT Transcribe.",
   },
   "deepgram/nova-3": {
     speed: 4,

@@ -3,6 +3,7 @@ import type { PostProcessParams } from "@openstyle/stt";
 import type { CleanupSampling } from "@openstyle/validations";
 import { parseServerModelId, SERVER_PROVIDER_ID } from "@openstyle/validations";
 import type { LanguageModel } from "ai";
+import { wrapLanguageModel } from "ai";
 import {
   MLX_LLM_PREFIX_CACHE_HEADER,
   MLX_LLM_PROVIDER_ID,
@@ -151,6 +152,9 @@ export function groqCleanupProviderOptions(
 
   switch (shortId) {
     case "qwen/qwen3-32b":
+    // Qwen 3.8 27B takes reasoning_effort none / default / low / medium / high
+    // (console.groq.com/docs/reasoning, 2026-10-30).
+    case "qwen/qwen3.8-27b":
       return {
         groq: {
           reasoningFormat: "hidden",
@@ -367,6 +371,32 @@ function taskSamplingFetch(
   });
 }
 
+/**
+ * Gemini 3.5 Flash-Lite, Gemini 3.6 and later (Gemini 3.8, Gemini 4) ignore
+ * `temperature`, `top_p` and `top_k`, and the Gemini API will answer HTTP 400
+ * to them in a later generation (ai.google.dev/gemini-api/docs/
+ * whats-new-gemini-3.6, "Sampling parameter deprecation").
+ */
+export function googleIgnoresSampling(modelId: string): boolean {
+  return /^gemini-(?:3\.(?:[5-9]|\d{2,})\b|[4-9])/.test(modelId);
+}
+
+/** Drop the sampling parameters from every call to the model. */
+function withoutSampling(model: LanguageModel): LanguageModel {
+  if (typeof model === "string") return model;
+  return wrapLanguageModel({
+    model,
+    middleware: {
+      transformParams: async ({ params }) => ({
+        ...params,
+        temperature: undefined,
+        topP: undefined,
+        topK: undefined,
+      }),
+    },
+  });
+}
+
 const PROVIDERS: LlmProvider[] = [
   {
     providerId: "openai",
@@ -401,7 +431,8 @@ const PROVIDERS: LlmProvider[] = [
     providerId: "google",
     createModel: async (modelId, apiKey) => {
       const { createGoogle } = await import("@ai-sdk/google");
-      return createGoogle({ apiKey }).chat(modelId);
+      const model = createGoogle({ apiKey }).chat(modelId);
+      return googleIgnoresSampling(modelId) ? withoutSampling(model) : model;
     },
   },
   {
@@ -436,7 +467,7 @@ const PROVIDERS: LlmProvider[] = [
   },
   {
     // Vercel AI Gateway — OpenAI-compatible chat-completions API. Model IDs are
-    // `<vendor>/<model>` (e.g. `anthropic/claude-opus-4.8`), used as-is.
+    // `<vendor>/<model>` (e.g. `anthropic/claude-sonnet-5.5`), used as-is.
     providerId: "vercel",
     createModel: async (modelId, apiKey) => {
       const { createOpenAI } = await import("@ai-sdk/openai");

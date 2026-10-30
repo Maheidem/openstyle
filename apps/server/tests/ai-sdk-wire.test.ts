@@ -212,7 +212,7 @@ const cleanupCases: Array<{
   {
     id: "WB2 groq",
     provider: "groq",
-    model: () => "groq/qwen/qwen3-32b",
+    model: () => "groq/openai/gpt-oss-120b",
     reply: openAiReply,
   },
   {

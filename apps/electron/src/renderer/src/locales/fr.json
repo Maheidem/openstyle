@@ -785,6 +785,12 @@
       "confirmTitle": "Ce modèle risque d'être trop lourd pour ce Mac",
       "confirmMsg": "<b>{{name}}</b> nécessite environ {{need}} Go de mémoire. Ce Mac a {{ram}} Go. Le modèle peut être très lent ou ne pas démarrer. Le téléchargement fait {{size}}.",
       "confirmAction": "Télécharger quand même"
+    },
+    "retiredNotice": {
+      "title": "{{provider}} a retiré {{from}}",
+      "desc": "Openstyle utilise maintenant {{to}} pour le nettoyage par IA.",
+      "action": "Changer",
+      "dismiss": "Ignorer"
     }
   },
   "shell": {

@@ -785,6 +785,12 @@
       "confirmTitle": "このモデルはこの Mac では容量不足の可能性があります",
       "confirmMsg": "<b>{{name}}</b> には約 {{need}} GB のメモリが必要です。この Mac のメモリは {{ram}} GB です。非常に遅くなるか、起動しない可能性があります。ダウンロードサイズは {{size}} です。",
       "confirmAction": "このままダウンロード"
+    },
+    "retiredNotice": {
+      "title": "{{provider}} は {{from}} を終了しました",
+      "desc": "Openstyle は AI クリーンアップに {{to}} を使います。",
+      "action": "変更",
+      "dismiss": "閉じる"
     }
   },
   "shell": {
