@@ -25,6 +25,8 @@ The answer has: `folder` (id, name, description, color), `counts` (meetings, sum
 
 Rule: the existing `sameItem` of `workflow/schemas.ts`. The same rule removes duplicates inside one summary. Two entries are the same when the text is equal (case and spaces aside), or when the share of the content words of the shorter entry that the other entry holds is at least 0.8 (0.7 when the shorter entry has 5 words or more). An entry with fewer than 3 content words only equals the same text.
 
+Numbers: two entries must also hold the same numbers (`sameOverviewItem`). `sameItem` drops words of fewer than 3 letters, so "above force 6" and "above force 7" look equal to it. A changed number is a changed decision.
+
 Why not token Jaccard: the app already measured `sameItem` on real summaries (comment in `schemas.ts`). A second rule would give a different answer on the same text.
 
 Grouping: code walks the meetings from oldest to newest. An entry joins the first group whose first (oldest) text it matches. Otherwise it starts a group. The group shows the oldest wording. Action items also need an owner and a due that agree (absent, or equal). The group takes the newest owner and due that exist.

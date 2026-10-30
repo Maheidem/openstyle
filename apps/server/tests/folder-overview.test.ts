@@ -159,6 +159,22 @@ describe("groupItems (the de-dup rule)", () => {
     expect(groups).toHaveLength(3);
   });
 
+  it("keeps entries apart that differ in a number", () => {
+    const groups = groupItems(
+      [
+        raw("a", 1, "Send alerts only for storms above force 6"),
+        raw("b", 2, "Send alerts only for storms above force 7"),
+        raw("c", 3, "Send alerts only for storms above force 6"),
+      ],
+      false,
+    );
+    expect(groups.map((g) => g.text)).toEqual([
+      "Send alerts only for storms above force 6",
+      "Send alerts only for storms above force 7",
+    ]);
+    expect(groups[0]?.sources).toHaveLength(2);
+  });
+
   it("keeps a short entry apart unless the text is equal", () => {
     expect(
       groupItems([raw("a", 1, "Go live"), raw("b", 2, "Go live now")], false),

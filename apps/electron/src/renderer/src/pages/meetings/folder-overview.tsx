@@ -159,17 +159,28 @@ function ActionItems({
   const toggle = async (key: string, value: boolean) => {
     setBusyKey(key);
     setFailed(false);
+    // Show the mark at once. The refresh after the request keeps the server
+    // state, also when the request fails.
+    const queryKey = queryKeys.meetings.folderOverview(folderId);
+    queryClient.setQueryData<FolderOverview>(
+      queryKey,
+      (old) =>
+        old && {
+          ...old,
+          action_items: old.action_items.map((a) =>
+            a.key === key ? { ...a, done: value } : a,
+          ),
+        },
+    );
     try {
       const res = await getClient().api.meetings.folders[":id"]["action-items"][
         ":key"
       ].$put({ param: { id: folderId, key }, json: { done: value } });
       if (!res.ok) setFailed(true);
-      await queryClient.invalidateQueries({
-        queryKey: queryKeys.meetings.folderOverview(folderId),
-      });
     } catch {
       setFailed(true);
     } finally {
+      await queryClient.invalidateQueries({ queryKey });
       setBusyKey(null);
     }
   };

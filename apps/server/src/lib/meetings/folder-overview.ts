@@ -47,6 +47,17 @@ export function actionItemKey(meetingId: string, task: string): string {
     .slice(0, 16);
 }
 
+/** The numbers of a text, sorted. `sameItem` drops short words, so "force 6"
+ * and "force 7" look the same to it. */
+function numbersOf(text: string): string {
+  return (text.match(/\d+(?:[.,]\d+)?/g) ?? []).sort().join(" ");
+}
+
+/** `sameItem`, and the two texts hold the same numbers. */
+export function sameOverviewItem(a: string, b: string): boolean {
+  return sameItem(a, b) && numbersOf(a) === numbersOf(b);
+}
+
 /** Two owners or two dues agree when one is absent or both are the same text. */
 const agree = (a: string | null, b: string | null) =>
   a === null || b === null || normalizeItemText(a) === normalizeItemText(b);
@@ -80,7 +91,7 @@ export function groupItems(
     const key = actionItemKey(item.source.meeting_id, item.text);
     const group = groups.find(
       (g) =>
-        sameItem(g.text, item.text) &&
+        sameOverviewItem(g.text, item.text) &&
         (!byOwner || (agree(g.owner, item.owner) && agree(g.due, item.due))),
     );
     if (!group) {
