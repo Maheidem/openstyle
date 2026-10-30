@@ -533,6 +533,14 @@ gh run watch <runId> --repo Maheidem/openstyle --exit-status
 
 `package=true` also builds the worker and the signed, notarized package (the same path as the release branch). A PR never builds the package, so use `package=true` when a packaging, native or signing file changed since the last release. Use `package=false` when no packaging, native or worker file changed since the last release: it runs Checks and the macOS app + E2E only. A push to main runs no CI (since 2026-10-27), so this manual run is the only CI on the merged code. The Electron E2E suite also runs locally next to the installed app, in quiet mode only (see the live-testing skill). Also run `./node_modules/.bin/biome` and `pnpm run knip` directly (an output-filter wrapper once reported a false knip exit code).
 
+## Stable release notes after a Dev series (measured 2026-10-30, Craft 3.1.0)
+
+- `craft prepare` builds the changelog from the commits since the latest tag that `git describe --tags --abbrev=0` finds. For Stable 2.25.0 that tag is the last alpha, not 2.24.0. So Craft alone gives the Stable notes only the changes since the last alpha.
+- If CHANGELOG.md already has a `## <version>` section with text, Craft keeps it and does not build it again. A `## Unreleased` section with text is renamed to the version, but it also applies to every alpha, so do not use it during a Dev series.
+- So a person maintains a `## 2.25.0` section at the top of CHANGELOG.md (user-facing, short, STE). Before the Stable release, add every change since the last alpha. Compare it with the list from `GITHUB_TOKEN=<the repo gh token> npx @sentry/craft@3.1.0 changelog --since 2.24.0`.
+- For one entry in the section of the next alpha, put `### Changelog Entry` in the PR body, then a heading (for example `### Notes`) before the PR footer. Without the closing heading, the footer lines become entries.
+- Preview: clone the branch from GitHub into a scratch folder, run `npx @sentry/craft@3.1.0 prepare <version> --no-push --no-input --no-git-checks --rev HEAD` with `GITHUB_TOKEN` set, read the section, and delete the clone.
+
 ## main is protected (since 2026-10-08)
 
 No direct push to main. The hand-written changelog and any pre-release merge go through a PR (`docs/changelog-<version>`) with green `CI Status`, squash-merged (auto-merge). That PR changes only `*.md`, so its CI skips the heavy jobs. It is not the pre-release check: use the manual full run above. Craft's release merge into main still works: the release bot (app 4715859) is a bypass actor of the ruleset. Since 2026-10-27 the owner is one too, for the push of the local release (guard hook rule h blocks other pushes to main). A fix needed on `release/<version>` is pushed there (not protected) and must also reach main through a PR.

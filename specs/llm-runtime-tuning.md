@@ -433,3 +433,4 @@ Evidence (gold eval, `pnpm meeting:eval --gold`, Gemma 4 E2B, fixed worker, 3 ru
 | 1.0 (vendor Instruct value) | hard fails in 4 of 6 meeting runs | 6.0 (range 5 to 7) |
 | 0 | 0 in 6 meeting runs | 8 (range 8 to 8) |
 
+Check of the built default (this change, one `pnpm meeting:eval --gold --keep` run per gold meeting, no `--task-params`, worker built from the branch): all 28 calls of the run have `temperature` 0 on the wire (`llm_calls.params_json`, `capturedFrom` wire) and source `builtin:model:gemma-4-e2b-qat-4bit:instruct`. With the same ASR transcripts as the earlier temperature 0 runs, the scores are equal: summary matched 8 of 13 (5578edb0 3 of 6, ca70f895 5 of 7), tags P 0.70 R 0.50, speakers 2 of 6, 0 hard fails. A run with a fresh transcript (another ASR hash) gave 10 of 13 and 0 hard fails: the transcript changes the score, the temperature does not add noise.
