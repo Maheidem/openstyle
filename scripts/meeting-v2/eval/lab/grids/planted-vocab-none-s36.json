@@ -1,0 +1,7 @@
+{
+  "name": "planted-vocab-none-s36",
+  "description": "A planted regression for the baseline check: the baseline config with an empty vocabulary. lab compare must flag it as worse on spans_all.",
+  "stage": "asr",
+  "corpus": "silver-14-s36",
+  "base": { "owner_name": "env", "vocabulary": "none" }
+}
