@@ -450,16 +450,6 @@ test.beforeAll(async () => {
       }),
     ),
   ).toBe(200);
-  expect(
-    await apiPut(
-      "llm_task_assignments",
-      JSON.stringify({
-        cleanup: { mode: "preset", presetId: P1.id },
-        meetingEnhance: { mode: "preset", presetId: P2.id },
-      }),
-    ),
-  ).toBe(200);
-
   // An own server that lists the two models, so the Model override selector
   // has real options for the §6.3 "modelOverride survives the fork" proof.
   modelServer = createHttpServer((req, res) => {
@@ -509,6 +499,18 @@ test.beforeAll(async () => {
     });
     expect(r.status, `seed model ${model_id}`).toBe(201);
   }
+
+  // The links belong to the model that the task runs on, so the assignments
+  // are saved after the default model exists (the Models page does the same).
+  expect(
+    await apiPut(
+      "llm_task_assignments",
+      JSON.stringify({
+        cleanup: { mode: "preset", presetId: P1.id },
+        meetingEnhance: { mode: "preset", presetId: P2.id },
+      }),
+    ),
+  ).toBe(200);
 
   // 3. main-process profile: skip onboarding, point at the isolated server.
   writeFileSync(
@@ -713,11 +715,11 @@ test("02 cleanup row EXPANDED: Params track + full PresetActionRow + Yours badge
   const p = panel();
 
   for (const label of [
-    "Auto",
+    "Auto (Qwen 3.8 \u2013 Instruct)",
     "Careful cleanup",
     "Punchy edit",
-    "Qwen thinking",
-    "Qwen fast",
+    "Qwen 3.8 \u2013 Thinking (xhigh)",
+    "Qwen 3.8 \u2013 Instruct",
     "Custom…",
     "+ New preset",
   ]) {
@@ -794,7 +796,7 @@ test("02 cleanup row EXPANDED: Params track + full PresetActionRow + Yours badge
     "02b",
     "track-single-row-1440",
     "Same row at a 1440px viewport",
-    "The Params track's single-row flex variant at >=1360px: Auto · Qwen thinking · Qwen fast · Careful cleanup (selected) · Punchy edit · Custom… · + New preset on one line, with the action row beneath. Rest of the suite runs at this width.",
+    "The Params track's single-row flex variant at >=1360px: Auto · Qwen 3.8 \u2013 Thinking (xhigh) · Qwen 3.8 \u2013 Instruct · Careful cleanup (selected) · Punchy edit · Custom… · + New preset on one line, with the action row beneath. Rest of the suite runs at this width.",
     section(),
   );
 });
@@ -804,7 +806,7 @@ test("02 cleanup row EXPANDED: Params track + full PresetActionRow + Yours badge
 // ---------------------------------------------------------------------------
 
 test("03 builtin selected: primary button reads 'Duplicate to edit', there is NO Delete", async () => {
-  await clickTrack("Qwen fast");
+  await clickTrack("Qwen 3.8 \u2013 Instruct");
   const p = panel();
 
   const dup = p
@@ -849,12 +851,12 @@ test("03 builtin selected: primary button reads 'Duplicate to edit', there is NO
   await capture(
     "03",
     "builtin-no-delete",
-    "Cleanup row with builtin 'Qwen fast' selected",
-    "'Qwen fast' selected in the track; action row badge reads 'Built-in'; buttons are 'Duplicate to edit' · Rename · Duplicate and there is deliberately NO Delete; fork warning caption beneath.",
+    "Cleanup row with builtin 'Qwen 3.8 \u2013 Instruct' selected",
+    "'Qwen 3.8 \u2013 Instruct' selected in the track; action row badge reads 'Built-in'; buttons are 'Duplicate to edit' · Rename · Duplicate and there is deliberately NO Delete; fork warning caption beneath.",
     p,
   );
 
-  await assertNoRawUuid("03", ["builtin:qwen-fast"]);
+  await assertNoRawUuid("03", ["builtin:model:qwen3.8:instruct"]);
 });
 
 // ---------------------------------------------------------------------------
@@ -1054,7 +1056,7 @@ test("07 Duplicate creates a '… copy' preset in the picker AND in the blob", a
     "07",
     "duplicated-copy",
     "Duplicate — the new '… copy' preset",
-    "Params track now lists 'Careful cleanup v2 copy' (selected) alongside Auto / Qwen thinking / Qwen fast / Punchy edit / Custom… / + New preset; action row shows Yours + Edit params · Rename · Duplicate · Delete.",
+    "Params track now lists 'Careful cleanup v2 copy' (selected) alongside Auto / Qwen 3.8 \u2013 Thinking (xhigh) / Qwen 3.8 \u2013 Instruct / Punchy edit / Custom… / + New preset; action row shows Yours + Edit params · Rename · Duplicate · Delete.",
     panel(),
   );
 
@@ -1342,18 +1344,20 @@ test("10 dangling assignment renders 'Preset no longer available', never a raw u
 // 11 — built-in fork path
 // ---------------------------------------------------------------------------
 
-test("11 builtin fork: editing 'Qwen fast' writes a new user_* copy, keeps modelOverride", async () => {
+test("11 builtin fork: editing 'Qwen 3.8 \u2013 Instruct' writes a new user_* copy, keeps modelOverride", async () => {
   await expandCleanup();
-  await clickTrack("Qwen fast");
   const p = panel();
 
-  // set a per-task model override BEFORE the fork (§6.3 preservation)
+  // set a per-task model override BEFORE the fork (§6.3 preservation). A
+  // profile is linked to the model of its task, so the override comes first
+  // and the built-in profile is picked for that model.
   await p.getByRole("combobox").first().click();
   const opt = page.getByRole("option", { name: /Local Qwen 27B/ }).first();
   await opt.waitFor({ state: "visible", timeout: 15_000 });
   const oRes = waitForSettingsPut("llm_task_assignments");
   await opt.click();
   expect((await oRes).status()).toBe(200);
+  await clickTrack("Qwen 3.8 \u2013 Instruct");
 
   record(
     "11",
@@ -1369,7 +1373,7 @@ test("11 builtin fork: editing 'Qwen fast' writes a new user_* copy, keeps model
     "11a",
     "builtin-fork-warning",
     "Built-in selected + model override set",
-    "Cleanup row on builtin 'Qwen fast': Built-in badge, 'Duplicate to edit' · Rename · Duplicate (NO Delete), fork warning caption 'Editing or renaming saves a copy you own…', Model select showing 'Local Qwen 27B'.",
+    "Cleanup row on builtin 'Qwen 3.8 \u2013 Instruct': Built-in badge, 'Duplicate to edit' · Rename · Duplicate (NO Delete), fork warning caption 'Editing or renaming saves a copy you own…', Model select showing 'Local Qwen 27B'.",
     section(),
   );
 
@@ -1385,7 +1389,7 @@ test("11 builtin fork: editing 'Qwen fast' writes a new user_* copy, keeps model
   record(
     "11",
     "builtin edit opens EDITABLE with a prefilled copy name + 'Save as copy'",
-    forkName === "Qwen fast copy" &&
+    forkName === "Qwen 3.8 \u2013 Instruct copy" &&
       (await panel()
         .getByRole("button", { name: "Save as copy", exact: true })
         .count()) > 0,
@@ -1396,7 +1400,7 @@ test("11 builtin fork: editing 'Qwen fast' writes a new user_* copy, keeps model
     "11b",
     "builtin-fork-editor",
     "Built-in fork editor",
-    "Raw-JSON editor opened from 'Duplicate to edit' — editable, Name field prefilled 'Qwen fast copy', Save labelled 'Save as copy'.",
+    "Raw-JSON editor opened from 'Duplicate to edit' — editable, Name field prefilled 'Qwen 3.8 \u2013 Instruct copy', Save labelled 'Save as copy'.",
     panel(),
   );
 
@@ -1468,7 +1472,7 @@ test("11 builtin fork: editing 'Qwen fast' writes a new user_* copy, keeps model
     "11c",
     "builtin-fork-landed",
     "After the fork",
-    "Cleanup row owned by 'Qwen fast copy' — Yours badge, four user buttons including Delete, Model select still showing the Local Qwen 27B override.",
+    "Cleanup row owned by 'Qwen 3.8 \u2013 Instruct copy' — Yours badge, four user buttons including Delete, Model select still showing the Local Qwen 27B override.",
     panel(),
   );
 
