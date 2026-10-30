@@ -126,13 +126,14 @@ describe("planTail", () => {
   });
 
   it("cuts an open tail that is longer than 20 s at a quiet frame", () => {
-    // 30 s of speech with one dip at 15 s.
-    const pcm = concat(speech(15_000, 1), silence(40), speech(15_000, 2));
-    const plan = planTail(pcm, 0);
+    // 30 s of speech with a short dip every 3 s (the gate stays open).
+    const parts: Int16Array[] = [];
+    for (let k = 0; k < 10; k++) parts.push(speech(2900, k + 1), silence(100));
+    const plan = planTail(concat(...parts), 0);
     const all = [...plan.closed, ...(plan.open ? [plan.open] : [])];
     expect(all.length).toBeGreaterThanOrEqual(2);
     for (const seg of all) {
-      expect(seg.endMs - seg.startMs).toBeLessThanOrEqual(MAX_OPEN_MS + 1000);
+      expect(seg.endMs - seg.startMs).toBeLessThanOrEqual(MAX_OPEN_MS);
     }
   });
 
@@ -193,6 +194,8 @@ describe("live loop", () => {
   }
 
   beforeEach(() => {
+    // The test setup installs fake timers. The loop needs real ones.
+    vi.useRealTimers();
     dir = mkdtempSync(join(tmpdir(), "openstyle-live-loop-"));
     texts.length = 0;
     dictation = false;
