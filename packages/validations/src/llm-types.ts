@@ -5,7 +5,7 @@ import type { SpeakerVerdict } from "./meeting-types.js";
 // no runtime code. Use `import type` to read it.
 
 /** A new consumer adds its word here in its own PR. "test": platform tests. */
-export type LlmScope = "meeting" | "dictation" | "test";
+export type LlmScope = "meeting" | "dictation" | "folder" | "test";
 
 /** An "enhance" run also holds the chained summarize steps. */
 export type LlmRunKind = "enhance" | "summarize";

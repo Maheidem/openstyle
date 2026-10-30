@@ -1,7 +1,7 @@
 import type { LlmParamsLedger } from "@openstyle/validations";
 import type {
   GatewayErrorKind,
-  LlmStepId,
+  GatewayStepId,
   StructuredMode,
   TokenUsage,
   UnifiedFinishReason,
@@ -29,7 +29,7 @@ export const MAX_RETRY_WAIT_MS = 60_000;
 /** Facts about the call that failed (or that succeeded, for the result). */
 export interface CallFacts {
   callId: number | null;
-  step: LlmStepId;
+  step: GatewayStepId;
   unitKey: string;
   attempt: number | null;
   finishReason: UnifiedFinishReason | null;
@@ -331,7 +331,7 @@ export function emptyLedger(structuredMode: StructuredMode): LlmParamsLedger {
 
 /** Facts for an error that happens before any request was sent. */
 export function blankFacts(a: {
-  step: LlmStepId;
+  step: GatewayStepId;
   unitKey: string;
   modelRequested: string;
   structuredMode?: StructuredMode;

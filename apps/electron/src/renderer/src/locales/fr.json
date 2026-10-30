@@ -796,6 +796,14 @@
     "githubRepo": "Dépôt GitHub"
   },
   "meetings": {
+    "folderSuggest": {
+      "suggest": "Suggérer",
+      "running": "Rédaction…",
+      "hint": "Rédige une description à partir des résumés des réunions de ce dossier. Le texte n’est enregistré que lorsque vous cliquez sur Enregistrer.",
+      "noSummaries": "Aucune réunion de ce dossier n’a de résumé. Résumez d’abord une réunion.",
+      "noModel": "Aucun modèle d’IA n’est configuré. Ajoutez-en un dans Paramètres > Modèles.",
+      "failed": "Impossible de rédiger une description. Réessayez."
+    },
     "folders": {
       "title": "Dossiers",
       "new": "Nouveau dossier",

@@ -959,6 +959,14 @@
     "githubRepo": "GitHub repo"
   },
   "meetings": {
+    "folderSuggest": {
+      "suggest": "Suggest",
+      "running": "Writing…",
+      "hint": "Write a description from the summaries of the meetings in this folder. The text is not saved until you click Save.",
+      "noSummaries": "No meeting in this folder has a summary. Summarize a meeting first.",
+      "noModel": "No AI model is set up. Add one in Settings > Models.",
+      "failed": "Could not write a description. Try again."
+    },
     "folders": {
       "title": "Folders",
       "new": "New folder",

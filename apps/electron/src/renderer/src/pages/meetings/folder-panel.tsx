@@ -6,6 +6,7 @@ import { ChevronLeft, LockKeyhole, Mic, Pencil, Trash2 } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { FolderIcon, FolderNameInput } from "./folder-controls";
+import { SuggestDescriptionButton } from "./folder-description-suggest";
 import { FolderMeetingRow } from "./folder-tree";
 import {
   FolderRequestError,
@@ -56,6 +57,7 @@ export function FolderPanel({
   );
   const [blockedCount, setBlockedCount] = useState(folder.meeting_count);
   const [busy, setBusy] = useState(false);
+  const [suggesting, setSuggesting] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const descriptionRef = useRef<HTMLTextAreaElement>(null);
   useEffect(() => {
@@ -182,15 +184,15 @@ export function FolderPanel({
             value={description}
             onChange={(event) => setDescription(event.target.value)}
             aria-label={t("meetings.folders.description")}
-            disabled={busy}
+            disabled={busy || suggesting}
             onKeyDown={(event) => {
               if (event.key === "Escape" && !busy) setDescriptionOpen(false);
             }}
           />
-          <div className="mt-2 flex gap-2">
+          <div className="mt-2 flex flex-wrap gap-2">
             <Button
               size="xs"
-              disabled={busy}
+              disabled={busy || suggesting}
               onClick={() => void saveDescription()}
             >
               {t("meetings.save")}
@@ -203,6 +205,12 @@ export function FolderPanel({
             >
               {t("meetings.cancel")}
             </Button>
+            <SuggestDescriptionButton
+              folderId={folder.id}
+              disabled={busy}
+              onRunning={setSuggesting}
+              onSuggestion={setDescription}
+            />
           </div>
         </div>
       ) : (

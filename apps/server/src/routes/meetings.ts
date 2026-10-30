@@ -121,6 +121,7 @@ import { getProvider } from "../lib/streaming/registry.js";
 import { loadVocabularyTerms } from "../lib/vocabulary.js";
 import { mergeContextVocabTerms } from "../lib/vocabulary-bias.js";
 import { WHISPER_PROVIDER_ID } from "../lib/whisper/constants.js";
+import { meetingFolderSuggest } from "./meeting-folder-suggest.js";
 import { meetingFolders, meetingMoves } from "./meeting-folders.js";
 import { meetingTagEdit, meetingTagList } from "./meeting-tags.js";
 
@@ -1126,6 +1127,7 @@ function startRunResponse(
 
 const meetings = new Hono()
   .route("/folders", meetingFolders)
+  .route("/folders", meetingFolderSuggest)
   .route("/tags", meetingTagList)
   .route("/", meetingMoves)
   .route("/", meetingTagEdit)

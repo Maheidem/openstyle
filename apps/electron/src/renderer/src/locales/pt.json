@@ -795,6 +795,14 @@
     "githubRepo": "Repositório do GitHub"
   },
   "meetings": {
+    "folderSuggest": {
+      "suggest": "Sugerir",
+      "running": "Escrevendo…",
+      "hint": "Escreve uma descrição a partir dos resumos das reuniões desta pasta. O texto só é salvo quando você clica em Salvar.",
+      "noSummaries": "Nenhuma reunião desta pasta tem resumo. Resuma uma reunião primeiro.",
+      "noModel": "Nenhum modelo de IA está configurado. Adicione um em Configurações > Modelos.",
+      "failed": "Não foi possível escrever uma descrição. Tente novamente."
+    },
     "folders": {
       "title": "Pastas",
       "new": "Nova pasta",

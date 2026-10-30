@@ -796,6 +796,14 @@
     "githubRepo": "GitHub-Repository"
   },
   "meetings": {
+    "folderSuggest": {
+      "suggest": "Vorschlagen",
+      "running": "Wird geschrieben…",
+      "hint": "Schreibt eine Beschreibung aus den Zusammenfassungen der Meetings in diesem Ordner. Der Text wird erst gespeichert, wenn du auf Speichern klickst.",
+      "noSummaries": "Kein Meeting in diesem Ordner hat eine Zusammenfassung. Fasse zuerst ein Meeting zusammen.",
+      "noModel": "Kein KI-Modell ist eingerichtet. Füge eines unter Einstellungen > Modelle hinzu.",
+      "failed": "Die Beschreibung konnte nicht geschrieben werden. Versuche es erneut."
+    },
     "folders": {
       "title": "Ordner",
       "new": "Neuer Ordner",

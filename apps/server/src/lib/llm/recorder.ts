@@ -49,7 +49,7 @@ export interface NewRun {
   /** Scope "meeting": also written to meeting_id. Other scopes: meeting_id NULL. */
   scopeId: string;
   /** "dictation": the call record of one dictation (lib/dictation/record.ts). */
-  kind: LlmRunKind | "dictation";
+  kind: LlmRunKind | "dictation" | "folderDescription";
   startedBy: "auto" | "button";
   graphVersion: number;
   /** Epoch ms. */

@@ -23,7 +23,7 @@ import type {
   CallSink,
   ChatTurn,
   GatewayErrorKind,
-  LlmStepId,
+  GatewayStepId,
   StructuredMode,
   TokenUsage,
   UnifiedFinishReason,
@@ -82,7 +82,7 @@ export interface StepSchema<T> {
 export type CreateModel = typeof createChatModel;
 
 export interface CallStructuredInput<T> {
-  step: LlmStepId;
+  step: GatewayStepId;
   runId: string;
   unitKey: string;
   chunkIndex: number | null;
