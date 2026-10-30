@@ -49,18 +49,25 @@ export const batchSkipReasonSchema = z.enum([
 ]);
 export type BatchSkipReason = z.infer<typeof batchSkipReasonSchema>;
 
+/** Why a run that started did not finish well. */
+export const batchFailReasonSchema = z.enum(["run_failed", "partly_done"]);
+export type BatchFailReason = z.infer<typeof batchFailReasonSchema>;
+
 /** The state of the batch queue. The queue lives in memory only. */
 export const meetingBatchStateSchema = z.object({
   /** True while an item runs or waits. */
   active: z.boolean(),
   /** The items of the current batch (since the queue was last empty). */
   total: z.number().int().nonnegative(),
-  /** Items that ran to the end (also when the run itself failed). */
+  /** Items whose run ended well. */
   done: z.number().int().nonnegative(),
   skipped: z.number().int().nonnegative(),
+  /** Items that started, but whose run failed or did only part of its work. */
+  failed: z.number().int().nonnegative(),
   /** Items that the user cancelled before they started. */
   cancelled: z.number().int().nonnegative(),
   skip_reasons: z.partialRecord(batchSkipReasonSchema, z.number().int()),
+  fail_reasons: z.partialRecord(batchFailReasonSchema, z.number().int()),
   current: z
     .object({
       meeting_id: z.string(),

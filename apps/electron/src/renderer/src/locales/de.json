@@ -939,6 +939,7 @@
         "waiting": "Wartend: {{count}}",
         "doneCount": "Fertig: {{count}}",
         "skipped": "Übersprungen: {{count}}",
+        "failed": "Fehlgeschlagen: {{count}}",
         "cancelledCount": "Abgebrochen: {{count}}",
         "memoryNote": "Wenn du die App beendest, stoppt die Warteschlange.",
         "cancel": "Rest abbrechen",
@@ -951,6 +952,10 @@
           "no_transcript": "Kein Transkript",
           "no_llm": "Kein KI-Modell",
           "refused": "Konnte nicht starten"
+        },
+        "failReason": {
+          "run_failed": "Lauf fehlgeschlagen",
+          "partly_done": "Nur teilweise erledigt"
         },
         "select": "Auswählen",
         "selectDone": "Fertig",

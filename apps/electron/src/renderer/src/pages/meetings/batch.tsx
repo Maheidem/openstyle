@@ -1,8 +1,4 @@
-import type {
-  BatchSkipReason,
-  MeetingBatchState,
-  MeetingStage,
-} from "@openstyle/validations";
+import type { MeetingBatchState, MeetingStage } from "@openstyle/validations";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -94,7 +90,7 @@ export function useMeetingBatch(enabled: boolean) {
   // Each step of the queue changes what the folders need: refresh the
   // counts, the lists and the open meeting.
   const step = data
-    ? `${data.done}/${data.skipped}/${data.cancelled}/${data.current?.meeting_id ?? ""}/${data.active}`
+    ? `${data.done}/${data.skipped}/${data.failed}/${data.cancelled}/${data.current?.meeting_id ?? ""}/${data.active}`
     : null;
   useEffect(() => {
     if (step === null) return;
@@ -129,7 +125,7 @@ export function useMeetingBatch(enabled: boolean) {
 /** A key that changes when a new batch starts or the batch moves on. The
  * rail hides a finished batch until this key changes. */
 export function batchKey(state: MeetingBatchState): string {
-  return `${state.total}/${state.done}/${state.skipped}/${state.cancelled}`;
+  return `${state.total}/${state.done}/${state.skipped}/${state.failed}/${state.cancelled}`;
 }
 
 /** The stage counts of a folder, with one "Run on N" button per stage. */
@@ -285,18 +281,25 @@ export function BatchConfirmDialog({
   );
 }
 
-/** The skip reasons as one line: "no audio: 1 · already done: 2". */
-function skipLine(
-  reasons: MeetingBatchState["skip_reasons"],
+/** The skip and fail reasons as one line: "no audio: 1 · run failed: 2". */
+function reasonLine(
+  state: MeetingBatchState,
   t: (key: string) => string,
 ): string {
-  return Object.entries(reasons)
-    .filter(([, n]) => (n ?? 0) > 0)
-    .map(
-      ([reason, n]) =>
-        `${t(`meetings.folders.batch.skipReason.${reason as BatchSkipReason}`)}: ${n}`,
-    )
-    .join(" · ");
+  const line = (
+    reasons: Record<string, number | undefined>,
+    group: "skipReason" | "failReason",
+  ) =>
+    Object.entries(reasons)
+      .filter(([, n]) => (n ?? 0) > 0)
+      .map(
+        ([reason, n]) =>
+          `${t(`meetings.folders.batch.${group}.${reason}`)}: ${n}`,
+      );
+  return [
+    ...line(state.skip_reasons, "skipReason"),
+    ...line(state.fail_reasons, "failReason"),
+  ].join(" · ");
 }
 
 /** The progress of the batch queue: n of N, the meeting in work, Cancel. */
@@ -310,9 +313,9 @@ export function BatchProgressCard({
   onClose: () => void;
 }) {
   const { t } = useTranslation();
-  const finished = state.done + state.skipped + state.cancelled;
+  const finished = state.done + state.skipped + state.failed + state.cancelled;
   const stage = state.current?.stage ?? state.pending[0]?.stage ?? null;
-  const reasons = skipLine(state.skip_reasons, t);
+  const reasons = reasonLine(state, t);
   return (
     <section
       aria-label={t("meetings.folders.batch.progressLabel")}
@@ -365,6 +368,8 @@ export function BatchProgressCard({
           t("meetings.folders.batch.doneCount", { count: state.done }),
           state.skipped > 0 &&
             t("meetings.folders.batch.skipped", { count: state.skipped }),
+          state.failed > 0 &&
+            t("meetings.folders.batch.failed", { count: state.failed }),
           state.cancelled > 0 &&
             t("meetings.folders.batch.cancelledCount", {
               count: state.cancelled,

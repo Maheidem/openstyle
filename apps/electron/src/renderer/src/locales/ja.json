@@ -939,6 +939,7 @@
         "waiting": "待機中: {{count}}",
         "doneCount": "完了: {{count}}",
         "skipped": "スキップ: {{count}}",
+        "failed": "失敗: {{count}}",
         "cancelledCount": "キャンセル: {{count}}",
         "memoryNote": "アプリを終了するとキューは止まります。",
         "cancel": "残りをキャンセル",
@@ -951,6 +952,10 @@
           "no_transcript": "文字起こしなし",
           "no_llm": "AIモデルなし",
           "refused": "開始できません"
+        },
+        "failReason": {
+          "run_failed": "実行に失敗",
+          "partly_done": "一部のみ完了"
         },
         "select": "選択",
         "selectDone": "完了",

@@ -3,6 +3,7 @@ import { describe, expect, it } from "vitest";
 import {
   type BatchQueueDeps,
   createBatchQueue,
+  type StageOutcome,
 } from "../src/lib/meetings/batch-queue.js";
 import type { StageBlock } from "../src/lib/meetings/stage-needs.js";
 
@@ -15,6 +16,7 @@ function world(
     needs?: (id: string, stage: MeetingStage) => boolean;
     block?: (id: string, stage: MeetingStage) => StageBlock | null;
     refuse?: Set<string>;
+    outcome?: (id: string) => StageOutcome;
   } = {},
 ) {
   const running = new Map<string, () => void>();
@@ -31,8 +33,9 @@ function world(
       running.set(id, end.resolve);
       maxRunning = Math.max(maxRunning, running.size);
       ends.set(id, end.promise);
-      return { ok: true };
+      return { ok: true, runId: `run-${id}` };
     },
+    outcome: (id) => o.outcome?.(id) ?? "ok",
     waitForEnd: (id) =>
       id === outside ? outsideEnd.promise : (ends.get(id) ?? Promise.resolve()),
     cancel: (id) => {
@@ -106,6 +109,38 @@ describe("batch queue", () => {
       current: null,
       pending: [],
     });
+  });
+
+  it("counts a run that failed or did part of its work as failed, never as done", async () => {
+    const w = world({
+      outcome: (id) =>
+        id === "bad" ? "failed" : id === "half" ? "partial" : "ok",
+    });
+    const q = createBatchQueue(w.deps);
+    q.enqueue(["good", "bad", "half"], "enhance", true);
+    for (const id of ["good", "bad", "half"]) {
+      await flush();
+      w.finish(id);
+    }
+    await q.idle();
+    expect(q.state()).toMatchObject({
+      total: 3,
+      done: 1,
+      failed: 2,
+      fail_reasons: { run_failed: 1, partly_done: 1 },
+      skipped: 0,
+      cancelled: 0,
+    });
+  });
+
+  it("counts a run that was cancelled outside the batch as cancelled", async () => {
+    const w = world({ outcome: () => "cancelled" });
+    const q = createBatchQueue(w.deps);
+    q.enqueue(["a"], "enhance", true);
+    await flush();
+    w.finish("a");
+    await q.idle();
+    expect(q.state()).toMatchObject({ done: 0, failed: 0, cancelled: 1 });
   });
 
   it("skips a folder item that no longer needs the stage, but runs a selected item", async () => {

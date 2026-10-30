@@ -1,5 +1,6 @@
 import { createAppLogger, errorMessage } from "@openstyle/utils";
 import type {
+  BatchFailReason,
   BatchSkipReason,
   MeetingBatchState,
   MeetingStage,
@@ -19,8 +20,14 @@ const log = createAppLogger("meetings");
  * normal run path, and the LLM lane orders their calls.
  */
 export interface BatchQueueDeps {
-  /** Start the stage on the meeting, with the guards of its route. */
-  start(id: string, stage: MeetingStage): { ok: true } | { ok: false };
+  /** Start the stage on the meeting, with the guards of its route. `runId`
+   * names the workflow run of Summarize and Enhance. */
+  start(
+    id: string,
+    stage: MeetingStage,
+  ): { ok: true; runId?: string } | { ok: false };
+  /** How the job that just ended did. Called after `waitForEnd`. */
+  outcome(id: string, stage: MeetingStage, runId?: string): StageOutcome;
   /** Resolves when the job that holds the meeting's slot ends. */
   waitForEnd(id: string): Promise<void>;
   /** Ask the running job of the meeting to stop (the normal cancel). */
@@ -34,6 +41,9 @@ export interface BatchQueueDeps {
   runningTranscription(): string | null;
   title(id: string): string | null;
 }
+
+/** How a started job ended. `partial` wrote a part of its work. */
+export type StageOutcome = "ok" | "partial" | "failed" | "cancelled";
 
 interface Item {
   id: string;
@@ -64,11 +74,14 @@ export function createBatchQueue(deps: BatchQueueDeps): BatchQueue {
   let total = 0;
   let done = 0;
   let cancelled = 0;
+  let failReasons: Partial<Record<BatchFailReason, number>> = {};
   let skipReasons: Partial<Record<BatchSkipReason, number>> = {};
   let running: Promise<void> | null = null;
   /** The user cancelled the batch while `current` waited or ran. */
   let currentCancelled = false;
 
+  const failed = () =>
+    Object.values(failReasons).reduce((sum, n) => sum + (n ?? 0), 0);
   const skipped = () =>
     Object.values(skipReasons).reduce((sum, n) => sum + (n ?? 0), 0);
 
@@ -78,8 +91,10 @@ export function createBatchQueue(deps: BatchQueueDeps): BatchQueue {
       total,
       done,
       skipped: skipped(),
+      failed: failed(),
       cancelled,
       skip_reasons: { ...skipReasons },
+      fail_reasons: { ...failReasons },
       current: current && {
         meeting_id: current.id,
         title: deps.title(current.id),
@@ -92,6 +107,13 @@ export function createBatchQueue(deps: BatchQueueDeps): BatchQueue {
   function skip(item: Item, reason: BatchSkipReason): void {
     skipReasons = { ...skipReasons, [reason]: (skipReasons[reason] ?? 0) + 1 };
     log.info(`batch: skipped ${item.stage} on meeting ${item.id} (${reason})`);
+  }
+
+  function fail(item: Item, reason: BatchFailReason): void {
+    failReasons = { ...failReasons, [reason]: (failReasons[reason] ?? 0) + 1 };
+    log.warn(
+      `batch: ${item.stage} on meeting ${item.id} did not finish (${reason})`,
+    );
   }
 
   async function runOne(item: Item): Promise<void> {
@@ -113,16 +135,23 @@ export function createBatchQueue(deps: BatchQueueDeps): BatchQueue {
       skip(item, block);
       return;
     }
-    if (!deps.start(item.id, item.stage).ok) {
+    const started = deps.start(item.id, item.stage);
+    if (!started.ok) {
       skip(item, "refused");
       return;
     }
     log.info(`batch: started ${item.stage} on meeting ${item.id}`);
     await deps.waitForEnd(item.id);
-    // A cancelled job ends early. It counts as cancelled, not as done.
-    if (currentCancelled) cancelled += 1;
+    // The end of the job is not the end of the work: the run can fail and
+    // still release its slot. Only a run that ended well counts as done.
+    const outcome = currentCancelled
+      ? "cancelled"
+      : deps.outcome(item.id, item.stage, started.runId);
+    if (outcome === "cancelled") cancelled += 1;
+    else if (outcome === "failed") fail(item, "run_failed");
+    else if (outcome === "partial") fail(item, "partly_done");
     else done += 1;
-    log.info(`batch: ended ${item.stage} on meeting ${item.id}`);
+    log.info(`batch: ended ${item.stage} on meeting ${item.id} (${outcome})`);
   }
 
   async function drain(): Promise<void> {
@@ -150,6 +179,7 @@ export function createBatchQueue(deps: BatchQueueDeps): BatchQueue {
         total = 0;
         done = 0;
         cancelled = 0;
+        failReasons = {};
         skipReasons = {};
       }
       const queued = (id: string) =>

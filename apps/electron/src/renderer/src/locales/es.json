@@ -939,6 +939,7 @@
         "waiting": "En espera: {{count}}",
         "doneCount": "Listas: {{count}}",
         "skipped": "Omitidas: {{count}}",
+        "failed": "Con error: {{count}}",
         "cancelledCount": "Canceladas: {{count}}",
         "memoryNote": "Si cierras la app, la cola se detiene.",
         "cancel": "Cancelar el resto",
@@ -951,6 +952,10 @@
           "no_transcript": "Sin transcripción",
           "no_llm": "Sin modelo de IA",
           "refused": "No se pudo iniciar"
+        },
+        "failReason": {
+          "run_failed": "La ejecución falló",
+          "partly_done": "Hecha en parte"
         },
         "select": "Seleccionar",
         "selectDone": "Listo",

@@ -1102,6 +1102,7 @@
         "waiting": "Waiting: {{count}}",
         "doneCount": "Done: {{count}}",
         "skipped": "Skipped: {{count}}",
+        "failed": "Failed: {{count}}",
         "cancelledCount": "Cancelled: {{count}}",
         "memoryNote": "If you quit the app, the queue stops.",
         "cancel": "Cancel the rest",
@@ -1114,6 +1115,10 @@
           "no_transcript": "No transcript",
           "no_llm": "No AI model",
           "refused": "Could not start"
+        },
+        "failReason": {
+          "run_failed": "Run failed",
+          "partly_done": "Done in part"
         },
         "select": "Select",
         "selectDone": "Done",

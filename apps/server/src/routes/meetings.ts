@@ -8,6 +8,7 @@ import {
   calendarEventSchema,
   MEETINGS_DIR_NAME,
   type MeetingDetail,
+  type MeetingStage,
   MIC_WAV,
   meetingBatchErrorSchema,
   meetingBatchStateSchema,
@@ -38,7 +39,11 @@ import {
   type WaitForDictationIdleOptions,
   waitForDictationIdle,
 } from "../lib/dictation-activity.js";
-import { createBatchQueue } from "../lib/meetings/batch-queue.js";
+import { createRunAdmin } from "../lib/llm/recorder.js";
+import {
+  createBatchQueue,
+  type StageOutcome,
+} from "../lib/meetings/batch-queue.js";
 import { meetingBiasTerms } from "../lib/meetings/bias-terms.js";
 import {
   applyDiarization,
@@ -1370,6 +1375,36 @@ function startRunResponse(
 }
 
 /**
+ * How a stage that the batch started did, once its job released the slot.
+ * Summarize and Enhance: the status of the run row. Transcribe: the meeting
+ * still needs the stage when the transcription failed or kept failed chunks.
+ */
+function stageOutcome(
+  id: string,
+  stage: MeetingStage,
+  runId?: string,
+): StageOutcome {
+  if (stage === "transcribe") {
+    if (!needsStage(id, "transcribe")) return "ok";
+    const status = getMeetingRow(id)?.status;
+    return status === "transcribed" || status === "summarized"
+      ? "partial"
+      : "failed";
+  }
+  const run = runId ? createRunAdmin(getDb()).getRun(runId) : null;
+  switch (run?.status) {
+    case "succeeded":
+      return "ok";
+    case "partial":
+      return "partial";
+    case "cancelled":
+      return "cancelled";
+    default:
+      return "failed";
+  }
+}
+
+/**
  * The batch queue (specs/meeting-folder-batch.md 3). One per process, in
  * memory only. It starts each stage with the same function as the route.
  */
@@ -1380,6 +1415,7 @@ const batchQueue = createBatchQueue({
   cancel: (id) => {
     requestCancel(id);
   },
+  outcome: stageOutcome,
   needsStage,
   stageBlock,
   runningTranscription: () =>
