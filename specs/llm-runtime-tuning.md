@@ -398,3 +398,11 @@ This Mac now reports `max_recommended_working_set_size` 130,566,586,368 B (121.6
 `pnpm meeting:eval` E2B on 5578edb0 and ca70f895, main and branch with the same new worker: the 6 pack files have the same sha256, the same tokens (34,845 / 1,848 and 76,727 / 10,652), and 0 hard fails on both meetings in both arms.
 
 Real app (Test Runner, quiet mode, fictional data, 0 privacy prompts), dictation every 16 to 19 s during 5 Summarize rounds on 26B-A4B: dictation idle p50 / p95 275 / 321 ms (n 10), during Summarize 1,252 / 1,634 ms, max 1,634 ms (n 15, all HTTP 200); 5 of 5 Summarize runs succeeded (50 to 55 s); the status showed E2B pinned with Keep ready for cleanup and 26B-A4B with Keep ready for Summarize, P sum 21.40 GiB. Keep ready toggles persist after a restart (`{"cleanup":false,"meetingSummarize":true}` before and after); the engine-not-ready notice shows (neutral, clock icon) with a stale runtime and a dead download URL, and when the URL serves the archive, Enhance starts again by itself (`started_by: auto`, `succeeded`, 48 s).
+
+## 13. Built-in model profiles (2026-10-30)
+
+A built-in MLX model has a built-in profile (`BUILTIN_MODEL_PRESETS`, `packages/validations/src/llm-task-profiles.ts`). The app uses it for a task when the user linked no profile to that model and task. A profile that the user links to a task belongs to the model that the task runs on (setting `llm_profile_links`, (model, task) to profile). It does not follow the task to another model.
+
+The profile values are the pure values of Unsloth and the vendor, temperature included (Gemma and Nemotron: temperature 1.0, top_p 0.95, top_k 64; Qwen non-thinking: 0.7, 0.8, 20, min_p 0, presence_penalty 1.5; Qwen thinking: 1.0, 0.95, 20, presence_penalty 0). The task default of temperature 0 (`LLM_TASK_PROFILES`) is only a fallback for a model or a call without a profile value. `max_tokens` stays derived from the task.
+
+Side effect: a meeting run is no longer byte-identical between two runs. The measurements in sections 4.3 and 10 compare outputs at temperature 0. A comparison of two runs on a built-in model now needs a link with `temperature: 0`.

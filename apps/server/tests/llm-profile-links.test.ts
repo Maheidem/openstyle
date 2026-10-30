@@ -8,6 +8,7 @@ import {
   writeSetting,
 } from "../src/lib/db.js";
 import { readProfileLinks } from "../src/lib/llm/profile-links.js";
+import { mergeSamplingIntoBody } from "../src/lib/llm/registry.js";
 import { resolveTaskCall } from "../src/lib/llm/task-profiles.js";
 import { MLX_LLM_MODELS } from "../src/lib/mlx-llm/constants.js";
 import { jsonRequest } from "./helpers/http.js";
@@ -157,5 +158,52 @@ describe("PUT /api/settings/llm_task_assignments", () => {
     expect(readProfileLinks()[qwenKey]?.meetingEnhance?.presetId).toBe(
       "builtin:qwen-fast",
     );
+  });
+});
+
+describe("built-in profile values", () => {
+  it("Gemma sends its own temperature, over the task default of 0", async () => {
+    seedDefault(E2B);
+    const resolved = await resolveTaskCall("meetingEnhance", {
+      autoMaxOutputTokens: 900,
+    });
+    expect(resolved.temperature).toBe(0); // SDK fallback of the task
+    const body = JSON.parse(
+      mergeSamplingIntoBody(
+        JSON.stringify({
+          model: "m",
+          temperature: resolved.temperature,
+          max_tokens: 900,
+        }),
+        resolved.samplingParams,
+      ),
+    );
+    expect(body).toMatchObject({
+      temperature: 1.0,
+      top_p: 0.95,
+      top_k: 64,
+      max_tokens: 900,
+    });
+    expect(body).not.toHaveProperty("presence_penalty");
+  });
+
+  it("Qwen has a non-thinking set (the default) and a thinking set", async () => {
+    seedDefault(QWEN);
+    const fast = await resolveTaskCall("meetingEnhance", {
+      autoMaxOutputTokens: 900,
+    });
+    expect(fast.samplingParams).toMatchObject({
+      temperature: 0.7,
+      top_p: 0.8,
+      presence_penalty: 1.5,
+    });
+    const thinking = BUILTIN_MODEL_PRESETS.find(
+      (p) => p.model === "qwen3.8-27b-4bit",
+    );
+    expect(thinking?.thinkingParams).toMatchObject({
+      temperature: 1.0,
+      top_p: 0.95,
+      presence_penalty: 0,
+    });
   });
 });

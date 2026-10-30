@@ -46,7 +46,12 @@ export interface LlmParameterPreset {
   params: Record<string, unknown>;
   /** Built-in model profile only: the catalog id of the model it is for. */
   model?: string;
-  /** Built-in model profile only: values of one task, over `params`. */
+  /**
+   * Built-in model profile only: values for a call with thinking on, over
+   * `params` (a model such as Qwen has one parameter set for each mode).
+   */
+  thinkingParams?: Record<string, unknown>;
+  /** Built-in model profile only: values of one task, over the values above. */
   taskParams?: Partial<Record<LlmTaskId, Record<string, unknown>>>;
   createdAt: string; // ISO
   updatedAt: string; // ISO
@@ -132,28 +137,64 @@ const QWEN_STARTER_PRESETS: readonly LlmParameterPreset[] = [
  * Built-in profile of each built-in MLX model (catalog ids of
  * `apps/server/src/lib/mlx-llm/constants.ts`; a server test keeps the two
  * lists equal). The app uses it for a task when the user linked no profile
- * to that model and task. The values are placeholders: the current defaults
- * of the app (no sampling value of its own), until the researched values of
- * each vendor are added here, per model and per task (`taskParams`).
+ * to that model and task. Owner decision 2026-10-30: pure ideal values,
+ * temperature included, no task override. The values are the ones that Unsloth
+ * and the vendor recommend for each model (research: "Model sampling
+ * profiles", section 9). `max_tokens` is not in a profile: it stays derived
+ * from the task, so a profile can never lift a call past the window.
  */
 const builtinModelProfile = (
   model: string,
   name: string,
+  params: Record<string, unknown>,
+  thinkingParams?: Record<string, unknown>,
 ): LlmParameterPreset => ({
   id: `builtin:model:${model}`,
   name,
-  params: {},
+  params,
+  ...(thinkingParams ? { thinkingParams } : {}),
   model,
   createdAt: "2026-10-30T00:00:00.000Z",
   updatedAt: "2026-10-30T00:00:00.000Z",
 });
 
+/** Gemma 4 and the Gemma-based Nemotron: one set for every mode. */
+const GEMMA_SAMPLING = { temperature: 1.0, top_p: 0.95, top_k: 64 };
+
 export const BUILTIN_MODEL_PRESETS: readonly LlmParameterPreset[] = [
-  builtinModelProfile("gemma-4-e2b-qat-4bit", "Gemma 4 E2B"),
-  builtinModelProfile("gemma-4-e4b-qat-4bit", "Gemma 4 E4B"),
-  builtinModelProfile("nemotron-3.5-bolt-e4b-4bit", "Nemotron 3.5 Bolt E4B"),
-  builtinModelProfile("gemma-4-26b-a4b-qat-4bit", "Gemma 4 26B-A4B"),
-  builtinModelProfile("qwen3.8-27b-4bit", "Qwen3.8 27B"),
+  builtinModelProfile("gemma-4-e2b-qat-4bit", "Gemma 4 E2B", GEMMA_SAMPLING),
+  builtinModelProfile("gemma-4-e4b-qat-4bit", "Gemma 4 E4B", GEMMA_SAMPLING),
+  builtinModelProfile(
+    "nemotron-3.5-bolt-e4b-4bit",
+    "Nemotron 3.5 Bolt E4B",
+    GEMMA_SAMPLING,
+  ),
+  builtinModelProfile(
+    "gemma-4-26b-a4b-qat-4bit",
+    "Gemma 4 26B-A4B",
+    GEMMA_SAMPLING,
+  ),
+  // Qwen: the non-thinking set is the app default; thinking has its own.
+  builtinModelProfile(
+    "qwen3.8-27b-4bit",
+    "Qwen3.8 27B",
+    {
+      temperature: 0.7,
+      top_p: 0.8,
+      top_k: 20,
+      min_p: 0.0,
+      repetition_penalty: 1.0,
+      presence_penalty: 1.5,
+    },
+    {
+      temperature: 1.0,
+      top_p: 0.95,
+      top_k: 20,
+      min_p: 0.0,
+      repetition_penalty: 1.0,
+      presence_penalty: 0.0,
+    },
+  ),
 ];
 
 export const BUILTIN_LLM_PRESETS: readonly LlmParameterPreset[] = [

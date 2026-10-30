@@ -246,7 +246,11 @@ describe("provider resolution and the local / ownServer split (3.4)", () => {
       });
       expect(resolved.provider).toBe(MLX_LLM_PROVIDER_ID);
       expect(resolved.modelId).toBe(`${MLX_LLM_PROVIDER_ID}/${GEMMA_E2B}`);
+      // No link: the built-in profile of Gemma 4 E2B, with its own values.
       expect(resolved.samplingParams).toEqual({
+        temperature: 1.0,
+        top_p: 0.95,
+        top_k: 64,
         chat_template_kwargs: { enable_thinking: false },
       });
     } finally {
