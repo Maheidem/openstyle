@@ -277,6 +277,8 @@ function resolveProfileParams(
 ): {
   params: Record<string, unknown>;
   source: ResolvedTaskCall["source"];
+  /** The default built-in profile: the user chose none of its keys. */
+  soft?: boolean;
 } {
   const link = readProfileLinks()[profileLinkKey(provider, modelId)]?.[taskId];
   if (link) {
@@ -297,6 +299,7 @@ function resolveProfileParams(
     return {
       params: { ...builtin.params, ...builtin.taskParams?.[taskId] },
       source: { mode: "preset", presetId: builtin.id },
+      soft: true,
     };
   }
   if (
@@ -452,11 +455,11 @@ export async function resolveTaskCall(
   // The profile of this model for this task: the link the user made for this
   // model and task, else the built-in profile of a built-in model, else auto.
   // A link made for another model never applies (profile-links.ts).
-  const { params: rawParams, source } = resolveProfileParams(
-    taskId,
-    provider,
-    modelId,
-  ); // §6.1 — {} for "auto"
+  const {
+    params: rawParams,
+    source,
+    soft,
+  } = resolveProfileParams(taskId, provider, modelId); // §6.1 — {} for "auto"
   const { kept: strippedParams, dropped: deniedKeys } = stripDenylistedKeys(
     taskId,
     rawParams,
@@ -525,14 +528,18 @@ export async function resolveTaskCall(
       }
     }
   }
-  const presetKeys = {
-    topLevel: Object.keys(restParams),
-    chatTemplateKwargs:
-      typeof presetChatTemplateKwargs === "object" &&
-      presetChatTemplateKwargs !== null
-        ? Object.keys(presetChatTemplateKwargs)
-        : [],
-  };
+  // The keys that the user set. The default built-in profile sets none: the
+  // gateway plan (a bounded reasoning step) may still change its keys.
+  const presetKeys = soft
+    ? { topLevel: [], chatTemplateKwargs: [] }
+    : {
+        topLevel: Object.keys(restParams),
+        chatTemplateKwargs:
+          typeof presetChatTemplateKwargs === "object" &&
+          presetChatTemplateKwargs !== null
+            ? Object.keys(presetChatTemplateKwargs)
+            : [],
+      };
 
   return {
     provider,

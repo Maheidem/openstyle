@@ -133,78 +133,104 @@ const QWEN_STARTER_PRESETS: readonly LlmParameterPreset[] = [
 ];
 
 /**
- * The built-in profiles are data: one parameter set for each (model id, mode).
- * Each built-in MLX model has two, Instruct and Thinking (catalog ids of
- * `apps/server/src/lib/mlx-llm/constants.ts`; a server test keeps the two
- * lists equal). The app uses the Instruct profile of the model for a task
- * when the user linked no profile to that model and task. The user can link
- * the Thinking profile (or any other) per model and task.
+ * The built-in profiles are data: one parameter set for each (family key,
+ * mode). A family is one built-in MLX model (Gemma 4, Nemotron: the key is its
+ * catalog id) or one Qwen generation and size (the key is `qwen3.8`,
+ * `qwen3.6-27b`, `qwen3.6-35b-a3b`, `qwen3.5`). Each family has an Instruct
+ * and a Thinking profile. The app uses the Instruct profile for a task when
+ * the user linked no profile to that model and task. A user link always wins.
  *
- * The values are PLACEHOLDERS until the validated table is added (owner
- * decision 2026-10-30: pure values, temperature included, no task override).
- * `max_tokens` is never in a profile: it stays derived from the task, so a
- * profile cannot lift a call past the context window.
+ * Values: the validated table of 2026-10-30 (Unsloth and the vendor card; the
+ * sources are in the PR body). Every profile sends `enable_thinking`
+ * explicitly. No profile sets `max_tokens`: it stays derived from the task,
+ * so a profile cannot lift a call past the context window. No task overrides
+ * the temperature of a profile (owner decision: pure values).
  */
-interface BuiltinModelDef {
-  model: string;
+interface BuiltinFamilyDef {
+  key: string;
   name: string;
   instruct: Record<string, unknown>;
   thinking: Record<string, unknown>;
 }
 
-const GEMMA_SAMPLING = {
-  temperature: 1.0,
-  top_p: 0.95,
-  top_k: 64,
-  repetition_penalty: 1.0,
-};
-const gemma = (model: string, name: string): BuiltinModelDef => ({
-  model,
-  name,
-  instruct: {
-    ...GEMMA_SAMPLING,
-    chat_template_kwargs: { enable_thinking: false },
-  },
-  thinking: {
-    ...GEMMA_SAMPLING,
-    chat_template_kwargs: { enable_thinking: true },
-  },
+const think = (on: boolean, more: Record<string, unknown> = {}) => ({
+  chat_template_kwargs: { enable_thinking: on, ...more },
 });
 
-const BUILTIN_MODEL_DEFS: readonly BuiltinModelDef[] = [
+const gemma = (key: string, name: string): BuiltinFamilyDef => {
+  const sampling = {
+    temperature: 1.0,
+    top_p: 0.95,
+    top_k: 64,
+    repetition_penalty: 1.0,
+  };
+  return {
+    key,
+    name,
+    instruct: { ...sampling, ...think(false) },
+    thinking: { ...sampling, ...think(true) },
+  };
+};
+
+const NEMOTRON_SAMPLING = { temperature: 1.0, top_p: 0.95, top_k: 64 };
+
+const QWEN_BASE = { top_k: 20, min_p: 0.0, repetition_penalty: 1.0 };
+const QWEN_INSTRUCT = {
+  ...QWEN_BASE,
+  temperature: 0.7,
+  top_p: 0.8,
+  presence_penalty: 1.5,
+  ...think(false),
+};
+const qwenThinking = (
+  presence: number,
+  more: Record<string, unknown> = {},
+) => ({
+  ...QWEN_BASE,
+  temperature: 1.0,
+  top_p: 0.95,
+  presence_penalty: presence,
+  ...think(true, more),
+});
+
+const BUILTIN_FAMILY_DEFS: readonly BuiltinFamilyDef[] = [
   gemma("gemma-4-e2b-qat-4bit", "Gemma 4 E2B"),
   gemma("gemma-4-e4b-qat-4bit", "Gemma 4 E4B"),
-  gemma("nemotron-3.5-bolt-e4b-4bit", "Nemotron 3.5 Bolt E4B"),
   gemma("gemma-4-26b-a4b-qat-4bit", "Gemma 4 26B-A4B"),
   {
-    model: "qwen3.8-27b-4bit",
-    name: "Qwen3.8 27B",
-    instruct: {
-      temperature: 0.7,
-      top_p: 0.8,
-      top_k: 20,
-      min_p: 0.0,
-      repetition_penalty: 1.0,
-      presence_penalty: 1.5,
-      chat_template_kwargs: {
-        enable_thinking: false,
-        preserve_thinking: false,
-        reasoning_effort: "none",
-      },
-    },
-    thinking: {
-      temperature: 1.0,
-      top_p: 0.95,
-      top_k: 20,
-      min_p: 0.0,
-      repetition_penalty: 1.0,
-      presence_penalty: 0.0,
-      chat_template_kwargs: {
-        enable_thinking: true,
-        preserve_thinking: false,
-        reasoning_effort: "xhigh",
-      },
-    },
+    key: "nemotron-3.5-bolt-e4b-4bit",
+    name: "Nemotron 3.5 Bolt E4B",
+    instruct: { ...NEMOTRON_SAMPLING, ...think(false) },
+    thinking: { ...NEMOTRON_SAMPLING, ...think(true) },
+  },
+  {
+    key: "qwen3.8",
+    name: "Qwen 3.8",
+    instruct: QWEN_INSTRUCT,
+    // The 3.8 template accepts reasoning_effort xhigh, medium and low only,
+    // and only with thinking on. The Instruct profile does not send it.
+    thinking: qwenThinking(0.0, {
+      preserve_thinking: false,
+      reasoning_effort: "xhigh",
+    }),
+  },
+  {
+    key: "qwen3.6-27b",
+    name: "Qwen 3.6 27B",
+    instruct: QWEN_INSTRUCT,
+    thinking: qwenThinking(0.0, { preserve_thinking: false }),
+  },
+  {
+    key: "qwen3.6-35b-a3b",
+    name: "Qwen 3.6 35B-A3B",
+    instruct: QWEN_INSTRUCT,
+    thinking: qwenThinking(1.5, { preserve_thinking: false }),
+  },
+  {
+    key: "qwen3.5",
+    name: "Qwen 3.5",
+    instruct: QWEN_INSTRUCT,
+    thinking: qwenThinking(1.5),
   },
 ];
 
@@ -214,19 +240,85 @@ const MODE_LABEL: Record<BuiltinProfileMode, string> = {
 };
 
 export const BUILTIN_MODEL_PRESETS: readonly LlmParameterPreset[] =
-  BUILTIN_MODEL_DEFS.flatMap((d) =>
+  BUILTIN_FAMILY_DEFS.flatMap((d) =>
     (["instruct", "thinking"] as const).map(
       (mode): LlmParameterPreset => ({
-        id: `builtin:model:${d.model}:${mode}`,
+        id: `builtin:model:${d.key}:${mode}`,
         name: `${d.name} \u2013 ${MODE_LABEL[mode]}`,
         params: d[mode],
-        model: d.model,
+        model: d.key,
         mode,
         createdAt: "2026-10-30T00:00:00.000Z",
         updatedAt: "2026-10-30T00:00:00.000Z",
       }),
     ),
   );
+
+/** Words in a model id that mean a different model from the plain chat model. */
+const QWEN_REJECT =
+  /coder|embed|rerank|(?:^|[-_ .])vl(?:$|[-_ .])|audio|asr|omni|math|base/;
+
+/** Sizes (after the version) that the Qwen profiles cover, per generation. */
+const QWEN_FAMILIES: Record<string, Record<string, string>> = {
+  "3.8": { "27b": "qwen3.8", flash: "qwen3.8", "flash-next": "qwen3.8" },
+  "3.6": { "27b": "qwen3.6-27b", "35b-a3b": "qwen3.6-35b-a3b" },
+  "3.5": Object.fromEntries(
+    ["0.8b", "2b", "4b", "9b", "27b", "35b-a3b", "122b-a10b"].map((z) => [
+      z,
+      "qwen3.5",
+    ]),
+  ),
+};
+
+/**
+ * The Qwen family key of a model id (an own server, a cloud or an MLX id), or
+ * null. Conservative: the id must name the version AND a covered size right
+ * after it, for example `Qwen3.6-35B-A3B`, `qwen3.5-27b`,
+ * `mlx-community/Qwen3.6-27B-4bit`, `Qwen3.6-35B-A3B-UD-Q4_K_M.gguf`. A quant
+ * or format suffix is fine. A coder, vision, base, audio, embedding or
+ * reranker variant, an unknown size (`397B-A17B`) or an unknown version gives
+ * null: no match means no automatic profile.
+ */
+export function qwenFamilyKey(modelId: string): string | null {
+  const id = modelId.toLowerCase();
+  const m =
+    /(?:^|[^a-z0-9])qwen[-_ ]?3[._]([568])[-_ ]?([a-z0-9.]+(?:[-_ ]a\d+(?:\.\d+)?b)?)/.exec(
+      id,
+    );
+  if (!m) return null;
+  if (QWEN_REJECT.test(id)) return null;
+  const size = (m[2] ?? "").replace(/_/g, "-").replace(/ /g, "-");
+  // "35b-a3b", "27b", "flash-next" ... the size token ends at the first quant
+  // or format word; try the longest covered size that the token starts with.
+  const sizes = QWEN_FAMILIES[`3.${m[1]}`] ?? {};
+  const hit = Object.keys(sizes)
+    .sort((a, b) => b.length - a.length)
+    .find((z) => size === z || size.startsWith(`${z}-`));
+  return hit ? (sizes[hit] ?? null) : null;
+}
+
+/**
+ * The family key of the built-in profile of a model, or null. A built-in MLX
+ * model matches by its catalog id (Gemma, Nemotron) or by the Qwen rule. Any
+ * other model (own server, cloud) matches by the Qwen rule only.
+ */
+export function builtinProfileKey(
+  modelId: string,
+  native: boolean,
+): string | null {
+  if (native && BUILTIN_FAMILY_DEFS.some((d) => d.key === modelId)) {
+    return modelId;
+  }
+  return qwenFamilyKey(modelId);
+}
+
+/** The built-in profile for a family key and mode. */
+export function builtinProfile(
+  key: string,
+  mode: BuiltinProfileMode = "instruct",
+): LlmParameterPreset | undefined {
+  return BUILTIN_MODEL_PRESETS.find((p) => p.model === key && p.mode === mode);
+}
 
 export const BUILTIN_LLM_PRESETS: readonly LlmParameterPreset[] = [
   ...QWEN_STARTER_PRESETS,

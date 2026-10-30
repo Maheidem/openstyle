@@ -311,7 +311,8 @@ exports[`W12, every provider and mode puts its structured-output field on the wi
       },
       "type": "json_schema",
     },
-    "temperature": 0,
+    "temperature": 0.7,
+    "top_p": 0.8,
   },
   "url": "https://api.groq.com/openai/v1/chat/completions",
 }
@@ -606,7 +607,7 @@ Return one JSON object that matches this JSON Schema. Return no other text.
         "role": "user",
       },
     ],
-    "model": "Qwen3.8-27B",
+    "model": "Test-Model-27B",
     "temperature": 0,
   },
   "url": "http://127.0.0.1:8123/v1/chat/completions",
@@ -630,7 +631,7 @@ exports[`W12, every provider and mode puts its structured-output field on the wi
         "role": "user",
       },
     ],
-    "model": "Qwen3.8-27B",
+    "model": "Test-Model-27B",
     "response_format": {
       "json_schema": {
         "name": "correct_chunk",

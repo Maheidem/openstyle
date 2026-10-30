@@ -1,6 +1,7 @@
 import { createAppLogger } from "@openstyle/utils";
 import {
-  BUILTIN_MODEL_PRESETS,
+  builtinProfile,
+  builtinProfileKey,
   type LlmParameterPreset,
   type LlmProfileLinks,
   type LlmTaskAssignments,
@@ -21,21 +22,21 @@ const log = createAppLogger("llm-profile-links");
 // profile that the app uses when no link exists.
 
 /**
- * The built-in profile of a built-in MLX model, or undefined. The default of
- * every stage is the Instruct profile.
+ * The built-in profile of a model, or undefined. A built-in MLX model has one
+ * by its catalog id, and a model of any provider has one when its id clearly
+ * names a Qwen version and size (`builtinProfileKey`). The default of every
+ * stage is the Instruct profile.
  */
 export function builtinProfileFor(
   provider: string,
   modelId: string,
   mode: "instruct" | "thinking" = "instruct",
 ): LlmParameterPreset | undefined {
-  if (provider !== MLX_LLM_PROVIDER_ID) return undefined;
   const short = modelId.startsWith(`${provider}/`)
     ? modelId.slice(provider.length + 1)
     : modelId;
-  return BUILTIN_MODEL_PRESETS.find(
-    (p) => p.model === short && p.mode === mode,
-  );
+  const key = builtinProfileKey(short, provider === MLX_LLM_PROVIDER_ID);
+  return key ? builtinProfile(key, mode) : undefined;
 }
 
 /**

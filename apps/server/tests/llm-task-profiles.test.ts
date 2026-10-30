@@ -75,7 +75,7 @@ beforeEach(() => {
     apiKey: null,
     flavor: "omlx",
   }).id;
-  seedDefaultLlm("server", serverModelId(serverId, "Qwen3.8-27B"));
+  seedDefaultLlm("server", serverModelId(serverId, "Test-Model-27B"));
 });
 
 afterEach(() => {
@@ -324,7 +324,7 @@ describe("resolveTaskCall — model override (§6.3, §11)", () => {
       resolved = await resolveTaskCall("cleanup", { autoMaxOutputTokens: 512 });
     });
     expect(resolved!.provider).toBe("server");
-    expect(resolved!.modelId).toBe(serverModelId(serverId, "Qwen3.8-27B"));
+    expect(resolved!.modelId).toBe(serverModelId(serverId, "Test-Model-27B"));
     expect(out).toMatch(/anthropic/);
   });
 
@@ -383,7 +383,7 @@ describe("resolveTaskCall — server model override (§6.3, §6.2)", () => {
     const out = await captureStdout(async () => {
       resolved = await resolveTaskCall("cleanup", { autoMaxOutputTokens: 512 });
     });
-    expect(resolved!.modelId).toBe(serverModelId(serverId, "Qwen3.8-27B"));
+    expect(resolved!.modelId).toBe(serverModelId(serverId, "Test-Model-27B"));
     expect(out).toMatch(/server is no longer in the list/);
   });
 });
@@ -556,7 +556,7 @@ describe("server provider wiring — taskContext, not a direct DB read (§8.1)",
           id: "1",
           object: "chat.completion",
           created: 0,
-          model: "Qwen3.8-27B",
+          model: "Test-Model-27B",
           choices: [
             {
               index: 0,
@@ -571,7 +571,7 @@ describe("server provider wiring — taskContext, not a direct DB read (§8.1)",
     });
     const model = await createChatModel(
       "server",
-      serverModelId(serverId, "Qwen3.8-27B"),
+      serverModelId(serverId, "Test-Model-27B"),
       taskContext,
     );
     await generateText({ model, prompt: "hi", temperature: 0 });

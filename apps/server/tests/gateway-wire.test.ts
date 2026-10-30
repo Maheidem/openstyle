@@ -43,7 +43,7 @@ import {
 import { getOwnServer, insertOwnServer } from "../src/lib/own-servers.js";
 import { putTaskAssignments } from "./helpers/task-assignments.js";
 
-const MODEL = "Qwen3.8-27B";
+const MODEL = "Test-Model-27B";
 const VALID = '{"corrections":[]}';
 const jsonHeaders = { "content-type": "application/json" };
 

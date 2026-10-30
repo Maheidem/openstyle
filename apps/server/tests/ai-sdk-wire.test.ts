@@ -248,7 +248,7 @@ const cleanupCases: Array<{
   {
     id: "WB8 server",
     provider: "server",
-    model: () => serverModelId(serverId, "Qwen3.8-27B"),
+    model: () => serverModelId(serverId, "Test-Model-27B"),
     reply: openAiReply,
   },
 ];
@@ -282,12 +282,12 @@ describe("stt postProcess wire body, preset (WB9)", () => {
     const assignments: LlmTaskAssignments = {
       cleanup: { mode: "preset", presetId: "builtin:qwen-thinking" },
     };
-    seedDefaultLlm("server", serverModelId(serverId, "Qwen3.8-27B"));
+    seedDefaultLlm("server", serverModelId(serverId, "Test-Model-27B"));
     putTaskAssignments(assignments);
     const calls = spyFetch(openAiReply);
     const { result, errors } = await runCleanup(
       "server",
-      serverModelId(serverId, "Qwen3.8-27B"),
+      serverModelId(serverId, "Test-Model-27B"),
       "unused",
     );
     expect(errors).toEqual([]);
