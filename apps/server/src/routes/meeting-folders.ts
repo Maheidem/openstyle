@@ -16,16 +16,33 @@ import {
   meetingFolderExists,
   meetingFolderNameExists,
 } from "../lib/meetings/folders.js";
+import {
+  stageCountColumns,
+  stageCountsOf,
+} from "../lib/meetings/stage-needs.js";
 import { moveMeetingIndex } from "../lib/search/indexer.js";
 
+// The stage counts come from the shared "needs stage" rules
+// (specs/meeting-folder-batch.md 2), in the same query as the other facts.
 const folderSelect = `SELECT f.*, COUNT(m.id) AS meeting_count,
   MIN(m.started_at) AS first_meeting_at, MAX(m.started_at) AS last_meeting_at,
-  COALESCE(SUM(m.duration_ms), 0) AS total_duration_ms
+  COALESCE(SUM(m.duration_ms), 0) AS total_duration_ms, ${stageCountColumns}
   FROM meeting_folders f LEFT JOIN meetings m ON m.folder_id = f.id`;
 
+type FolderRow = Record<string, unknown> & Parameters<typeof stageCountsOf>[0];
+
+function withStageCounts(row: FolderRow) {
+  return meetingFolderSchema.parse({
+    ...row,
+    stage_counts: stageCountsOf(row),
+  });
+}
+
 function readFolder(id: string) {
-  return meetingFolderSchema.parse(
-    getDb().prepare(`${folderSelect} WHERE f.id = ? GROUP BY f.id`).get(id),
+  return withStageCounts(
+    getDb()
+      .prepare(`${folderSelect} WHERE f.id = ? GROUP BY f.id`)
+      .get(id) as FolderRow,
   );
 }
 
@@ -46,11 +63,13 @@ export const meetingFolders = new Hono()
   .get("/", (c) =>
     c.json(
       meetingFoldersResponseSchema.parse({
-        items: getDb()
-          .prepare(
-            `${folderSelect} GROUP BY f.id ORDER BY f.name COLLATE NOCASE, f.id`,
-          )
-          .all(),
+        items: (
+          getDb()
+            .prepare(
+              `${folderSelect} GROUP BY f.id ORDER BY f.name COLLATE NOCASE, f.id`,
+            )
+            .all() as FolderRow[]
+        ).map(withStageCounts),
       }),
     ),
   )

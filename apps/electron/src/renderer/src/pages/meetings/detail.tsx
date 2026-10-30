@@ -97,6 +97,7 @@ import {
   segmentSpeakerLabel,
 } from "./shared";
 import { attendeeNameOptions, SpeakersDialog } from "./speakers";
+import { SummaryVersions } from "./summary-versions";
 import { MeetingTagLine } from "./tag-controls";
 import { useAllTags, useSaveMeetingTags } from "./tags-data";
 import type { SearchFocus, SpeakersResponse, TranscriptSegment } from "./types";
@@ -158,6 +159,9 @@ export function MeetingDetailView({
   // advanced mode.
   const [inspector, setInspector] = useState<InspectorTarget | null>(null);
   const [rediarizeConfirmOpen, setRediarizeConfirmOpen] = useState(false);
+  // specs/meeting-folder-batch.md 4: a re-transcribe says what happens to
+  // the transcript and to the confirmed speaker names before it starts.
+  const [retranscribeConfirmOpen, setRetranscribeConfirmOpen] = useState(false);
   // Per-session viewing preference (Phase C, specs/meeting-transcription-
   // quality.md §6.6), not persisted meeting state — a segment Enhance left
   // unchanged (omitted from its JSON response) still renders correctly in
@@ -257,6 +261,13 @@ export function MeetingDetailView({
   const hasConfirmedSpeakerState = (speakersData?.speakers ?? []).some(
     (s) => s.displayName !== null || s.mergedInto !== null,
   );
+  const confirmedNames = [
+    ...new Set(
+      (speakersData?.speakers ?? []).flatMap((s) =>
+        s.displayName ? [s.displayName] : [],
+      ),
+    ),
+  ];
 
   // Persisted run status replaces the old component error state (8.9): the
   // newest run of each kind feeds the failure, interrupted and success notices.
@@ -678,7 +689,8 @@ export function MeetingDetailView({
         ? t("meetings.retranscribe")
         : t("meetings.transcribe"),
       icon: AudioLines,
-      onClick: () => void transcribe(),
+      onClick: () =>
+        hasTranscript ? setRetranscribeConfirmOpen(true) : void transcribe(),
       disabled: !canTranscribe,
     },
   ];
@@ -1152,6 +1164,25 @@ export function MeetingDetailView({
         </InlineNotice>
       )}
 
+      {(meeting.speaker_names_lost?.length ?? 0) > 0 && !transcribing && (
+        <InlineNotice tone="neutral" icon={UserCog}>
+          <span data-testid="meeting-speaker-names-lost">
+            {t("meetings.speakerNamesLost", {
+              names: meeting.speaker_names_lost?.join(", "),
+            })}{" "}
+            {hasTranscript && (
+              <button
+                type="button"
+                className="font-semibold underline decoration-border underline-offset-4"
+                onClick={() => setSpeakersOpen(true)}
+              >
+                {t("meetings.speakers")}
+              </button>
+            )}
+          </span>
+        </InlineNotice>
+      )}
+
       {enhanceNote !== null && !actionError && (
         <InlineNotice tone="neutral" icon={WandSparkles}>
           <span data-testid="meetings-enhance-note">
@@ -1379,6 +1410,12 @@ export function MeetingDetailView({
                 </p>
               </div>
             )}
+            {tab === "summary" && (
+              <SummaryVersions
+                id={id}
+                current={meeting.summary?.created_at ?? null}
+              />
+            )}
           </TabsContent>
         </div>
       </Tabs>
@@ -1427,6 +1464,39 @@ export function MeetingDetailView({
           });
         }}
       />
+
+      <AlertDialog
+        open={retranscribeConfirmOpen}
+        onOpenChange={setRetranscribeConfirmOpen}
+      >
+        <AlertDialogContent data-testid="retranscribe-confirm">
+          <AlertDialogHeader>
+            <AlertDialogTitle>
+              {t("meetings.retranscribeConfirm.title")}
+            </AlertDialogTitle>
+            <AlertDialogDescription asChild>
+              <div className="space-y-2">
+                <p>{t("meetings.retranscribeConfirm.body")}</p>
+                {appSettings?.[SETTINGS_KEYS.meetingEnhanceAutoRun] ===
+                  "true" && <p>{t("meetings.retranscribeConfirm.auto")}</p>}
+                <p>
+                  {confirmedNames.length > 0
+                    ? t("meetings.retranscribeConfirm.names", {
+                        names: confirmedNames.join(", "),
+                      })
+                    : t("meetings.retranscribeConfirm.noNames")}
+                </p>
+              </div>
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>{t("meetings.cancel")}</AlertDialogCancel>
+            <AlertDialogAction onClick={() => void transcribe()}>
+              {t("meetings.retranscribe")}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
 
       <AlertDialog
         open={rediarizeConfirmOpen}

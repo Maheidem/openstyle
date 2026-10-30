@@ -21,6 +21,7 @@ export function FolderMeetingRow({
   onOpen,
   onMove,
   table = false,
+  check,
 }: {
   meeting: MeetingListItem;
   folders: MeetingFolder[];
@@ -28,9 +29,59 @@ export function FolderMeetingRow({
   onOpen: () => void;
   onMove: (folderId: string | null) => void;
   table?: boolean;
+  /** Selection mode of the folder page (specs/meeting-folder-batch.md): a
+   * click toggles the check box instead of opening the meeting. */
+  check?: { checked: boolean; onToggle: (range: boolean) => void };
 }) {
   const { t, i18n } = useTranslation();
   const [dragging, setDragging] = useState(false);
+  const facts = (
+    <>
+      <span className="min-w-0 truncate text-[12.5px] font-medium">
+        {meeting.title || t("meetings.untitled")}
+      </span>
+      <span className="flex min-w-0 items-center justify-between gap-2">
+        <span className="mono text-muted-foreground min-w-0 truncate text-[10px]">
+          {formatTimestamp(meeting.started_at, i18n.language)} ·{" "}
+          {formatClockDuration(meeting.duration_ms)}
+        </span>
+        {meeting.job ? (
+          <JobBadge job={meeting.job} />
+        ) : (
+          <StatusBadge status={meeting.display_status ?? meeting.status} />
+        )}
+      </span>
+    </>
+  );
+  if (check) {
+    // A label: a click on the row or on the box toggles once. Shift-click
+    // selects the range from the last click.
+    return (
+      // biome-ignore lint/a11y/useKeyWithClickEvents: Space on the focused check box clicks it, and that click reaches this handler
+      <label
+        data-testid="meeting-select-row"
+        onClick={(event) => {
+          event.preventDefault();
+          check.onToggle(event.shiftKey);
+        }}
+        className={cn(
+          "hover:bg-accent/50 flex w-full min-w-0 cursor-default items-center gap-2.5 px-2.5 py-2 text-left transition-colors",
+          check.checked &&
+            "bg-[var(--accent-passive-tint)] text-[var(--accent-passive-ink)]",
+          table && "border-b border-b-border last:border-b-0",
+        )}
+      >
+        <input
+          type="checkbox"
+          checked={check.checked}
+          onChange={() => {}}
+          aria-label={meeting.title || t("meetings.untitled")}
+          className="size-3.5 shrink-0 accent-[var(--accent-passive-ink)]"
+        />
+        <span className="flex min-w-0 flex-1 flex-col gap-1">{facts}</span>
+      </label>
+    );
+  }
   return (
     <MeetingContextMenu
       meeting={meeting}
@@ -57,20 +108,7 @@ export function FolderMeetingRow({
           table && "rounded-none border-b border-b-border last:border-b-0",
         )}
       >
-        <span className="min-w-0 truncate text-[12.5px] font-medium">
-          {meeting.title || t("meetings.untitled")}
-        </span>
-        <span className="flex min-w-0 items-center justify-between gap-2">
-          <span className="mono text-muted-foreground min-w-0 truncate text-[10px]">
-            {formatTimestamp(meeting.started_at, i18n.language)} ·{" "}
-            {formatClockDuration(meeting.duration_ms)}
-          </span>
-          {meeting.job ? (
-            <JobBadge job={meeting.job} />
-          ) : (
-            <StatusBadge status={meeting.display_status ?? meeting.status} />
-          )}
-        </span>
+        {facts}
       </button>
     </MeetingContextMenu>
   );

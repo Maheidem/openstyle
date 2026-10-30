@@ -1,10 +1,24 @@
-import type { MeetingListItem } from "@openstyle/validations";
+import type { MeetingListItem, MeetingStage } from "@openstyle/validations";
 import { Button } from "@renderer/components/ui/button";
 import { Textarea } from "@renderer/components/ui/textarea";
 import { formatClockDuration } from "@renderer/lib/format";
-import { ChevronLeft, LockKeyhole, Mic, Pencil, Trash2 } from "lucide-react";
+import {
+  CheckSquare,
+  ChevronLeft,
+  LockKeyhole,
+  Mic,
+  Pencil,
+  Trash2,
+} from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
+import {
+  BatchConfirmDialog,
+  type BatchRequest,
+  FolderStageCard,
+  MeetingBulkBar,
+  toggleSelection,
+} from "./batch";
 import { FolderIcon, FolderNameInput } from "./folder-controls";
 import { FolderMeetingRow } from "./folder-tree";
 import {
@@ -25,6 +39,8 @@ export function FolderPanel({
   onOpen,
   onMove,
   onBack,
+  onStartBatch,
+  autoRun = false,
 }: {
   folder: MeetingFolder;
   folders: MeetingFolder[];
@@ -40,8 +56,45 @@ export function FolderPanel({
   onOpen: (id: string) => void;
   onMove: (meeting: MeetingListItem, folderId: string | null) => void;
   onBack: () => void;
+  /** Start a batch (specs/meeting-folder-batch.md). False: it did not start. */
+  onStartBatch: (request: BatchRequest) => Promise<boolean>;
+  /** The setting "run Enhance after each transcript" is on. */
+  autoRun?: boolean;
 }) {
   const { t, i18n } = useTranslation();
+  // Selection mode of the meeting list: the checked ids, the last clicked
+  // id (the start of a shift-click range) and the stage of the bulk bar.
+  const [selecting, setSelecting] = useState(false);
+  const [checked, setChecked] = useState<Set<string>>(() => new Set());
+  const [anchor, setAnchor] = useState<string | null>(null);
+  const [bulkStage, setBulkStage] = useState<MeetingStage>("summarize");
+  const [confirm, setConfirm] = useState<BatchRequest | null>(null);
+  // Keep only the ids that are still in the list (a move or a delete).
+  const visibleChecked = meetings.filter((m) => checked.has(m.id));
+  const toggle = (id: string, range: boolean) => {
+    setChecked(
+      toggleSelection(
+        meetings.map((m) => m.id),
+        checked,
+        anchor,
+        id,
+        range,
+      ),
+    );
+    setAnchor(id);
+  };
+  const stopSelecting = () => {
+    setSelecting(false);
+    setChecked(new Set());
+    setAnchor(null);
+  };
+  const startBatch = async (request: BatchRequest) => {
+    setConfirm(null);
+    setError(null);
+    if (!(await onStartBatch(request))) {
+      setError(t("meetings.folders.batch.startFailed"));
+    } else if ("meeting_ids" in request) stopSelecting();
+  };
   const [renaming, setRenaming] = useState(false);
   const [descriptionOpen, setDescriptionOpen] = useState(
     initialAction === "description",
@@ -305,7 +358,35 @@ export function FolderPanel({
           </div>
         ))}
       </div>
-      <h3 className="eyebrow">{t("meetings.folders.meetingsInFolder")}</h3>
+      <FolderStageCard
+        folder={folder}
+        onRun={(stage, count) =>
+          setConfirm({ stage, folder_id: folder.id, count })
+        }
+      />
+      <div className="flex items-center justify-between gap-2">
+        <h3 className="eyebrow">{t("meetings.folders.meetingsInFolder")}</h3>
+        {meetings.length > 0 && !loading && !failed && (
+          <Button
+            variant="ghost"
+            size="xs"
+            onClick={() => (selecting ? stopSelecting() : setSelecting(true))}
+            data-testid="meeting-select-toggle"
+          >
+            <CheckSquare />
+            {t(
+              selecting
+                ? "meetings.folders.batch.selectDone"
+                : "meetings.folders.batch.select",
+            )}
+          </Button>
+        )}
+      </div>
+      {selecting && (
+        <p className="text-muted-foreground mt-1 text-[11px]">
+          {t("meetings.folders.batch.selectHint")}
+        </p>
+      )}
       {loading || failed ? (
         <p
           className="text-muted-foreground py-5 text-xs"
@@ -325,6 +406,14 @@ export function FolderPanel({
               onOpen={() => onOpen(meeting.id)}
               onMove={(id) => onMove(meeting, id)}
               table
+              check={
+                selecting
+                  ? {
+                      checked: checked.has(meeting.id),
+                      onToggle: (range) => toggle(meeting.id, range),
+                    }
+                  : undefined
+              }
             />
           ))}
         </div>
@@ -333,6 +422,30 @@ export function FolderPanel({
           {t("meetings.folders.emptyPanel")}
         </p>
       )}
+      {selecting && (
+        <MeetingBulkBar
+          count={visibleChecked.length}
+          total={meetings.length}
+          stage={bulkStage}
+          onStage={setBulkStage}
+          onRun={() =>
+            setConfirm({
+              stage: bulkStage,
+              meeting_ids: visibleChecked.map((m) => m.id),
+              count: visibleChecked.length,
+            })
+          }
+          onSelectAll={() => setChecked(new Set(meetings.map((m) => m.id)))}
+          onClear={() => setChecked(new Set())}
+          onDone={stopSelecting}
+        />
+      )}
+      <BatchConfirmDialog
+        request={confirm}
+        autoRun={autoRun}
+        onConfirm={(request) => void startBatch(request)}
+        onClose={() => setConfirm(null)}
+      />
       {folder.meeting_count > meetings.length && !loading && !failed && (
         <p className="text-muted-foreground mb-5 text-xs">
           {t("meetings.folders.listLimit", {

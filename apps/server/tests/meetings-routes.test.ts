@@ -432,6 +432,9 @@ describe("POST /api/meetings/:id/transcribe", () => {
       )
       .get() as { c: number };
     expect(count.c).toBe(0);
+    // The new run has no speaker labels to match: the confirmed name is
+    // listed as not kept (specs/meeting-folder-batch.md 4).
+    expect((await getMeeting("m1")).speaker_names_lost).toEqual(["Ana"]);
   });
 });
 

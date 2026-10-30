@@ -9,6 +9,7 @@ import {
   setJobKind,
   setProgress,
   updateProgress,
+  waitForRelease,
 } from "../src/lib/meetings/job-registry.js";
 
 const progress = () => ({ done: 0, total: 0, failed: 0 });
@@ -130,5 +131,27 @@ describe("job registry controller and kind", () => {
     expect(getJob("m1")?.kind).toBe("summarize");
     setJobKind("m2", "summarize");
     expect(hasJob("m2")).toBe(false);
+  });
+});
+
+describe("waitForRelease", () => {
+  it("resolves at once when no job holds the slot", async () => {
+    await expect(waitForRelease("m1")).resolves.toBeUndefined();
+  });
+
+  it("resolves when the job releases its slot, also when a new job claims it at once", async () => {
+    claimJob("m1", "transcribe", progress());
+    let ended = false;
+    const wait = waitForRelease("m1").then(() => {
+      ended = true;
+    });
+    await Promise.resolve();
+    expect(ended).toBe(false);
+    // The transcribe job hands the slot to its auto-run in the same tick.
+    releaseJob("m1");
+    claimJob("m1", "enhance", progress());
+    await wait;
+    expect(ended).toBe(true);
+    expect(getJob("m1")?.kind).toBe("enhance");
   });
 });

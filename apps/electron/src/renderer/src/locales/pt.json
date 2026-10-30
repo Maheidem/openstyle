@@ -845,7 +845,65 @@
       "emptyUnfiled": "Todas as reuniões estão em pastas.",
       "railHint": "Arraste uma reunião para uma pasta para movê-la. Clique com o botão direito em uma reunião para mais ações.",
       "railLabel": "Reuniões e pastas",
-      "recordsInto": "Grava em"
+      "recordsInto": "Grava em",
+      "batch": {
+        "stagesTitle": "Etapas a executar",
+        "nothing": "Todas as reuniões desta pasta estão prontas.",
+        "needCount": "Precisam: {{count}}",
+        "blockedAudio": "Sem áudio: {{count}}",
+        "blockedLlm": "Sem modelo de IA: {{count}}",
+        "blockedAudioHint": "A configuração de retenção apagou o áudio destas reuniões. O app não pode transcrevê-las novamente.",
+        "blockedLlmHint": "Configure um modelo de IA em Configurações > Modelos. Depois o app pode resumir e aprimorar estas reuniões.",
+        "run": "Executar em {{count}}",
+        "stage": {
+          "transcribe": "Transcrever",
+          "summarize": "Resumir",
+          "enhance": "Aprimorar"
+        },
+        "confirmTitle": "Executar {{stage}} agora?",
+        "confirmSelectedTitle": "Executar {{stage}} nas reuniões selecionadas?",
+        "confirmCount": "Reuniões na fila: {{count}}.",
+        "explain": {
+          "transcribe": "O app transcreve uma reunião por vez. A nova transcrição substitui a transcrição anterior.",
+          "transcribeAuto": "Depois de cada transcrição, Aprimorar e Resumir são executados de novo.",
+          "names": "Um nome de interlocutor confirmado fica quando o novo interlocutor corresponde claramente ao anterior. Os outros interlocutores ficam sem nome, e a página da reunião mostra os nomes que o app não conseguiu manter.",
+          "summarize": "Um resumo novo substitui o resumo atual. O resumo atual fica em Versões anteriores.",
+          "enhance": "Aprimorar corrige a transcrição e depois cria um resumo novo. O resumo atual fica em Versões anteriores.",
+          "rerun": "A etapa é executada também nas reuniões que estão prontas."
+        },
+        "queueNote": "A fila fica só na memória do app. Se você fechar o app, a fila para. Depois a pasta mostra as reuniões que ainda precisam da etapa.",
+        "start": "Iniciar",
+        "startFailed": "Não foi possível iniciar o lote. Tente de novo.",
+        "progressLabel": "Progresso do lote",
+        "progressTitle": "Lote: {{stage}}",
+        "finished": "Lote concluído",
+        "progress": "{{done}} de {{total}}",
+        "now": "Agora: {{title}}",
+        "waiting": "Aguardando: {{count}}",
+        "doneCount": "Prontas: {{count}}",
+        "skipped": "Ignoradas: {{count}}",
+        "cancelledCount": "Canceladas: {{count}}",
+        "memoryNote": "Se você fechar o app, a fila para.",
+        "cancel": "Cancelar o resto",
+        "close": "Fechar",
+        "skipReason": {
+          "gone": "Apagada",
+          "not_needed": "Já pronta",
+          "busy": "Ocupada",
+          "no_audio": "Sem áudio",
+          "no_transcript": "Sem transcrição",
+          "no_llm": "Sem modelo de IA",
+          "refused": "Não foi possível iniciar"
+        },
+        "select": "Selecionar",
+        "selectDone": "Concluir",
+        "selectAll": "Selecionar tudo",
+        "clearSelection": "Limpar",
+        "selectedCount": "Selecionadas: {{count}}",
+        "selectHint": "Clique em uma reunião para selecioná-la. Shift-clique seleciona um intervalo.",
+        "bulkLabel": "Ações para as reuniões selecionadas",
+        "runSelected": "Executar"
+      }
     },
     "search": {
       "label": "Buscar reuniões",
@@ -1116,6 +1174,21 @@
         "chunks": "Trechos",
         "model": "Modelo de busca"
       }
+    },
+    "retranscribeConfirm": {
+      "title": "Transcrever esta reunião novamente?",
+      "body": "A nova transcrição substitui a transcrição atual. O resumo atual fica até que um resumo novo o substitua.",
+      "auto": "Depois da transcrição, Aprimorar e Resumir são executados de novo.",
+      "names": "Nomes de interlocutores confirmados: {{names}}. Um nome fica quando o interlocutor corresponde claramente. Os outros interlocutores ficam sem nome, e esta página mostra os nomes que o app não conseguiu manter.",
+      "noNames": "Esta reunião não tem nomes de interlocutores confirmados."
+    },
+    "speakerNamesLost": "A nova transcrição não conseguiu manter estes nomes de interlocutores: {{names}}. Nomeie os interlocutores de novo.",
+    "summaryVersions": {
+      "title": "Versões anteriores",
+      "replaced": "Substituído {{date}}",
+      "readOnly": "Versão anterior (somente leitura)",
+      "close": "Fechar",
+      "partial": "Parcial"
     }
   },
   "help": {

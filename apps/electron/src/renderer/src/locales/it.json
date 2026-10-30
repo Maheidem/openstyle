@@ -845,7 +845,65 @@
       "emptyUnfiled": "Tutte le riunioni sono in cartelle.",
       "railHint": "Trascina una riunione su una cartella per spostarla. Fai clic destro su una riunione per altre azioni.",
       "railLabel": "Riunioni e cartelle",
-      "recordsInto": "Registra in"
+      "recordsInto": "Registra in",
+      "batch": {
+        "stagesTitle": "Passaggi da eseguire",
+        "nothing": "Tutte le riunioni di questa cartella sono complete.",
+        "needCount": "Da fare: {{count}}",
+        "blockedAudio": "Senza audio: {{count}}",
+        "blockedLlm": "Senza modello di IA: {{count}}",
+        "blockedAudioHint": "L’impostazione di conservazione ha eliminato l’audio di queste riunioni. L’app non può trascriverle di nuovo.",
+        "blockedLlmHint": "Configura un modello di IA in Impostazioni > Modelli. Poi l’app può riepilogare e migliorare queste riunioni.",
+        "run": "Esegui su {{count}}",
+        "stage": {
+          "transcribe": "Trascrivi",
+          "summarize": "Riepiloga",
+          "enhance": "Migliora"
+        },
+        "confirmTitle": "Eseguire {{stage}} ora?",
+        "confirmSelectedTitle": "Eseguire {{stage}} sulle riunioni selezionate?",
+        "confirmCount": "Riunioni in coda: {{count}}.",
+        "explain": {
+          "transcribe": "L’app trascrive una riunione alla volta. La nuova trascrizione sostituisce la trascrizione precedente.",
+          "transcribeAuto": "Dopo ogni trascrizione, Migliora e Riepiloga vengono eseguiti di nuovo.",
+          "names": "Un nome di partecipante confermato resta quando il nuovo partecipante corrisponde chiaramente a quello precedente. Gli altri partecipanti restano senza nome, e la pagina della riunione mostra i nomi che l’app non ha potuto mantenere.",
+          "summarize": "Un nuovo riepilogo sostituisce il riepilogo attuale. Il riepilogo attuale resta in Versioni precedenti.",
+          "enhance": "Migliora corregge la trascrizione e poi crea un nuovo riepilogo. Il riepilogo attuale resta in Versioni precedenti.",
+          "rerun": "Il passaggio viene eseguito anche sulle riunioni complete."
+        },
+        "queueNote": "La coda è solo nella memoria dell’app. Se chiudi l’app, la coda si ferma. Poi la cartella mostra le riunioni che hanno ancora bisogno del passaggio.",
+        "start": "Avvia",
+        "startFailed": "Impossibile avviare il lotto. Riprova.",
+        "progressLabel": "Avanzamento del lotto",
+        "progressTitle": "Lotto: {{stage}}",
+        "finished": "Lotto completato",
+        "progress": "{{done}} di {{total}}",
+        "now": "Ora: {{title}}",
+        "waiting": "In attesa: {{count}}",
+        "doneCount": "Completate: {{count}}",
+        "skipped": "Saltate: {{count}}",
+        "cancelledCount": "Annullate: {{count}}",
+        "memoryNote": "Se chiudi l’app, la coda si ferma.",
+        "cancel": "Annulla il resto",
+        "close": "Chiudi",
+        "skipReason": {
+          "gone": "Eliminata",
+          "not_needed": "Già completa",
+          "busy": "Occupata",
+          "no_audio": "Senza audio",
+          "no_transcript": "Senza trascrizione",
+          "no_llm": "Senza modello di IA",
+          "refused": "Avvio non riuscito"
+        },
+        "select": "Seleziona",
+        "selectDone": "Fine",
+        "selectAll": "Seleziona tutto",
+        "clearSelection": "Cancella",
+        "selectedCount": "Selezionate: {{count}}",
+        "selectHint": "Fai clic su una riunione per selezionarla. Maiusc-clic seleziona un intervallo.",
+        "bulkLabel": "Azioni per le riunioni selezionate",
+        "runSelected": "Esegui"
+      }
     },
     "search": {
       "label": "Cerca nelle riunioni",
@@ -1116,6 +1174,21 @@
         "chunks": "Frammenti",
         "model": "Modello di ricerca"
       }
+    },
+    "retranscribeConfirm": {
+      "title": "Trascrivere di nuovo questa riunione?",
+      "body": "La nuova trascrizione sostituisce la trascrizione attuale. Il riepilogo attuale resta finché un nuovo riepilogo non lo sostituisce.",
+      "auto": "Dopo la trascrizione, Migliora e Riepiloga vengono eseguiti di nuovo.",
+      "names": "Nomi dei partecipanti confermati: {{names}}. Un nome resta quando il suo partecipante corrisponde chiaramente. Gli altri partecipanti restano senza nome, e questa pagina mostra i nomi che l’app non ha potuto mantenere.",
+      "noNames": "Questa riunione non ha nomi di partecipanti confermati."
+    },
+    "speakerNamesLost": "La nuova trascrizione non ha potuto mantenere questi nomi di partecipanti: {{names}}. Assegna di nuovo i nomi ai partecipanti.",
+    "summaryVersions": {
+      "title": "Versioni precedenti",
+      "replaced": "Sostituito {{date}}",
+      "readOnly": "Versione precedente (sola lettura)",
+      "close": "Chiudi",
+      "partial": "Parziale"
     }
   },
   "help": {

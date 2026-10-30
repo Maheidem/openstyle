@@ -18,6 +18,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { Navigate, useSearchParams } from "react-router";
 import { SETTINGS_KEYS } from "../../../../shared/settings-keys";
+import { BatchProgressCard, batchKey, useMeetingBatch } from "./batch";
 import { MeetingDetailView } from "./detail";
 import { EnhancePromptDialog } from "./enhance-prompt-dialog";
 import { FolderPanel } from "./folder-panel";
@@ -146,6 +147,14 @@ export default function MeetingsPage(): React.JSX.Element {
   );
   const activeFolder = folders.find((folder) => folder.id === selectedFolderId);
   const searchStatus = useSearchStatus(enabled);
+  // The batch queue (specs/meeting-folder-batch.md). A finished batch stays
+  // in the rail until the user closes it or a new batch starts.
+  const batch = useMeetingBatch(enabled);
+  const [closedBatch, setClosedBatch] = useState<string | null>(null);
+  const showBatch =
+    batch.state !== undefined &&
+    batch.state.total > 0 &&
+    (batch.state.active || closedBatch !== batchKey(batch.state));
   const folderGroup = groups.get(selectedFolderId);
 
   const openFolderId = openMeeting?.folder_id;
@@ -329,6 +338,15 @@ export default function MeetingsPage(): React.JSX.Element {
                 {recordingCard}
               </MeetingImportRail>
             )}
+            {showBatch && batch.state && (
+              <BatchProgressCard
+                state={batch.state}
+                onCancel={() => void batch.cancel()}
+                onClose={() =>
+                  batch.state && setClosedBatch(batchKey(batch.state))
+                }
+              />
+            )}
             {(folderData.isError || listFailed) && (
               <p className="text-destructive mb-3 text-xs" role="alert">
                 {t("meetings.folders.loadFailed")}
@@ -459,6 +477,11 @@ export default function MeetingsPage(): React.JSX.Element {
                 onOpen={open}
                 onMove={(meeting, id) => void move(meeting, id)}
                 onBack={back}
+                onStartBatch={batch.start}
+                autoRun={
+                  enhanceSettings?.[SETTINGS_KEYS.meetingEnhanceAutoRun] ===
+                  "true"
+                }
               />
             ) : activeId ? (
               <MeetingDetailView
