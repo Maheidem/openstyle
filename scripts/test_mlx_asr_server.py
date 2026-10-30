@@ -853,11 +853,15 @@ class JsonGrammarTests(unittest.TestCase):
         with self.assertRaises(RuntimeError):
             grammar(np.array([1, 99]), "L")
 
-    def test_stopped_matcher_returns_logits(self) -> None:
+    def test_stopped_matcher_still_masks(self) -> None:
+        # The grammar is complete: its mask allows the stop token only. Raw
+        # logits here would let the model write text after a complete answer.
         grammar, matcher = self._grammar(think=None)
         grammar(np.array([1]), "L")
         matcher.stopped = True
-        self.assertEqual(grammar(np.array([1, 0]), "L"), "L")
+        kind, words = grammar(np.array([1, 0]), "L")
+        self.assertEqual((kind, words[0]), ("masked", 1))
+        self.assertEqual(matcher.consumed, [])
 
 
 class ContextGuardTests(unittest.TestCase):

@@ -45,6 +45,7 @@ import {
   plannedSummaryCalls,
   renderSummaryMarkdown,
   repairCutAnswer,
+  repairCutOverview,
   summaryCallsFor,
   withoutDuringCall,
   withSupportedOwners,
@@ -145,6 +146,13 @@ export function overviewMaxOutput(
   return appliesSizeLimits(profile)
     ? Math.min(summaryLimit, stageMaxOutput(OVERVIEW_BOUNDED_TOKENS, profile))
     : summaryLimit;
+}
+
+/** The answer of a list stage with no item: each list field of the stage is `[]`. */
+function emptyStageAnswer(stage: SummaryStage): SummaryStageAnswer {
+  return Object.fromEntries(
+    SUMMARY_STAGE_LISTS[stage].map((key) => [key, []]),
+  ) as SummaryStageAnswer;
 }
 
 /** A part is split for a cut answer only when each half keeps this many tokens (4.0.5). */
@@ -387,10 +395,15 @@ export function makeSummarizeNode(deps: WorkflowDeps) {
     const repaired = new Map<string, NodeFailure>();
 
     /**
-     * A leaf that failed `length` at the end of the route, with a cut answer
-     * that closes into a valid answer of its stage, becomes `ok` with the
-     * repaired object (PR #258). Its failure stays in `repaired`: the step
-     * row is `partial` and the result is marked partial.
+     * A leaf that failed `length` at the end of the route, with a cut answer,
+     * becomes `ok` with the answer that the cut text still holds (PR #258):
+     * the complete items of a list stage, the whole sentences of the overview.
+     * When the cut text holds none, the leaf gets an empty answer. One cut
+     * answer must not throw away the work of the other stages: the summary is
+     * saved and marked `partial`. A cut with no text at all (the call wrote
+     * nothing, or an input that was too long) stays a failure. The failure of
+     * the leaf stays in `repaired`: the step row is `partial` and the result
+     * is marked partial.
      */
     const repairLeaves = <M>(
       stage: SummaryStage,
@@ -402,14 +415,16 @@ export function makeSummarizeNode(deps: WorkflowDeps) {
         }
         const cut = cutAnswers.get(leaf.key);
         if (!cut?.cutText) return leaf;
-        const object = repairCutAnswer(
-          cut.cutText,
-          summaryStageStepSchema(stage, {
-            sizeLimits: appliesSizeLimits(profile),
-          }).zod,
-          SUMMARY_STAGE_LISTS[stage],
-        );
-        if (object === null) return leaf;
+        const object: SummaryStageAnswer =
+          stage === "overview"
+            ? { overview: repairCutOverview(cut.cutText) }
+            : (repairCutAnswer(
+                cut.cutText,
+                summaryStageStepSchema(stage, {
+                  sizeLimits: appliesSizeLimits(profile),
+                }).zod,
+                SUMMARY_STAGE_LISTS[stage],
+              ) ?? emptyStageAnswer(stage));
         repaired.set(leaf.key, leaf.failure);
         const f = cut.facts;
         const result: CallStructuredResult<SummaryStageAnswer> = {
