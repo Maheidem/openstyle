@@ -72,6 +72,16 @@ describe("locale files", () => {
       key.startsWith("meetings.tags."),
     ),
     "speaker-attendee-picker": ["meetings.speakerNamePickHint"],
+    // The re-transcribe confirmation, the "names not kept" note and the
+    // previous summaries (specs/meeting-folder-batch.md). They tell the user
+    // what a re-run does to names and summaries, so every locale carries them.
+    // The batch keys are under meetings.folders and the group above.
+    "folder-batch-detail": Object.keys(en).filter(
+      (key) =>
+        key.startsWith("meetings.retranscribeConfirm.") ||
+        key.startsWith("meetings.summaryVersions.") ||
+        key === "meetings.speakerNamesLost",
+    ),
     // The phase labels of the Enhance and Summarize progress card. It is a
     // primary surface, so every locale carries them.
     "workflow-progress": Object.keys(en).filter((key) =>

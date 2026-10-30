@@ -70,6 +70,9 @@ export interface MeetingDetail extends MeetingListItem {
   /** True = the audio retention sweep never deletes this meeting's audio
    * (eval gold meetings). Set with PATCH {"retentionExempt"}. */
   retention_exempt?: boolean;
+  /** Confirmed speaker names that the last re-transcribe could not keep
+   * (specs/meeting-folder-batch.md 4). Empty or absent: none. */
+  speaker_names_lost?: string[];
   /** The meeting's tag names, sorted (issue #231). */
   tags: string[];
   /** The linked calendar event, or null (specs/calendar-eventkit.md). */

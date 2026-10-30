@@ -53,6 +53,11 @@ const folder = {
   first_meeting_at: null,
   last_meeting_at: null,
   total_duration_ms: 0,
+  stage_counts: {
+    transcribe: { ready: 0, blocked: 0 },
+    summarize: { ready: 0, blocked: 0 },
+    enhance: { ready: 0, blocked: 0 },
+  },
 };
 const response = (body: unknown, ok = true) => ({ ok, json: async () => body });
 

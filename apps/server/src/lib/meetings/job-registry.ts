@@ -87,6 +87,9 @@ const cancellations = new Set<string>();
  * (specs/meeting-enhance-agentic.md 3.4.5). */
 const controllers = new Map<string, AbortController>();
 
+/** The callers of `waitForRelease`, per meeting. */
+const releaseWaiters = new Map<string, Array<() => void>>();
+
 /** True when a job holds the slot for this meeting. */
 export function hasJob(id: string): boolean {
   return jobs.has(id);
@@ -118,6 +121,24 @@ export function releaseJob(id: string): void {
   jobKinds.delete(id);
   cancellations.delete(id);
   controllers.delete(id);
+  const waiters = releaseWaiters.get(id);
+  releaseWaiters.delete(id);
+  for (const resolve of waiters ?? []) resolve();
+}
+
+/**
+ * Resolves when the job that holds the slot now releases it, at once when no
+ * job holds it. The batch queue waits with it for one meeting's job
+ * (specs/meeting-folder-batch.md 3). A transcribe job that hands the slot to
+ * its auto-run releases it first, so the wait ends with the transcription.
+ */
+export function waitForRelease(id: string): Promise<void> {
+  if (!jobs.has(id)) return Promise.resolve();
+  return new Promise((resolve) => {
+    const waiters = releaseWaiters.get(id) ?? [];
+    waiters.push(resolve);
+    releaseWaiters.set(id, waiters);
+  });
 }
 
 /** Change the kind of the job that holds the slot. A chained run starts as

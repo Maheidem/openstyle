@@ -10,6 +10,7 @@ export * from "./jobs.js";
 export * from "./language-list.js";
 export * from "./llm-task-profiles.js";
 export * from "./llm-types.js";
+export * from "./meeting-batch.js";
 export * from "./meeting-calendar.js";
 export * from "./meeting-files.js";
 export * from "./meeting-folders.js";

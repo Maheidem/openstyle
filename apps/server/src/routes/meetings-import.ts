@@ -356,6 +356,8 @@ export function createMeetingsImportRoute(opts: { maxBytes?: number } = {}) {
         meetingDetailResponseSchema.parse({
           ...(row ? omitCalendarColumns(row) : row),
           retention_exempt: row?.retention_exempt === 1,
+          // A new meeting: no re-transcribe lost any speaker name.
+          speaker_names_lost: [],
           display_status: row?.status,
           tags: [],
           calendar: row ? toCalendarEvent(row) : null,

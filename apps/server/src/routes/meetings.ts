@@ -9,15 +9,19 @@ import {
   MEETINGS_DIR_NAME,
   type MeetingDetail,
   MIC_WAV,
+  meetingBatchErrorSchema,
+  meetingBatchStateSchema,
   meetingDetailResponseSchema,
   meetingFolderErrorSchema,
   meetingFolderFilterSchema,
   meetingFolderIdSchema,
   meetingListResponseSchema,
   meetingStartResponseSchema,
+  meetingSummaryVersionsResponseSchema,
   type StartRunResponse,
   SYNC_JSON,
   SYSTEM_WAV,
+  startMeetingBatchSchema,
 } from "@openstyle/validations";
 import { type Context, Hono } from "hono";
 import { z } from "zod";
@@ -34,6 +38,7 @@ import {
   type WaitForDictationIdleOptions,
   waitForDictationIdle,
 } from "../lib/dictation-activity.js";
+import { createBatchQueue } from "../lib/meetings/batch-queue.js";
 import { meetingBiasTerms } from "../lib/meetings/bias-terms.js";
 import {
   applyDiarization,
@@ -56,10 +61,12 @@ import {
   getJobKind,
   hasJob,
   isCancelRequested,
+  listJobs,
   type MeetingJobKind,
   releaseJob,
   requestCancel,
   setProgress,
+  waitForRelease,
 } from "../lib/meetings/job-registry.js";
 import { resolveMeetingLanguage } from "../lib/meetings/language.js";
 import {
@@ -68,10 +75,22 @@ import {
   splitAlignedChunk,
 } from "../lib/meetings/segmenter.js";
 import {
+  carrySpeakerRows,
+  type LabeledSpan,
+  matchSpeakerLabels,
+  type SpeakerRow,
+} from "../lib/meetings/speaker-carry.js";
+import {
+  folderMeetingsNeeding,
+  needsStage,
+  stageBlock,
+} from "../lib/meetings/stage-needs.js";
+import {
   getMeetingRow,
   type MeetingRow,
   meetingDisplayStatus,
   omitCalendarColumns,
+  parseLostNames,
   toCalendarEvent,
 } from "../lib/meetings/store.js";
 import { getMeetingTags } from "../lib/meetings/tags.js";
@@ -687,7 +706,11 @@ async function speechSpansFor(wavPath: string) {
   return detectSpeechSpans(wavPath, durationMs, testOverrides.vadDeps);
 }
 
-async function runTranscribeJob(id: string, audioDir: string): Promise<void> {
+async function runTranscribeJob(
+  id: string,
+  audioDir: string,
+  speakers: SpeakerSnapshot,
+): Promise<void> {
   const db = getDb();
   // Set when the auto-run handoff below hands the slot to a workflow run
   // (specs/meeting-enhance-agentic.md 3.4.2): the outer finally must then
@@ -958,6 +981,9 @@ async function runTranscribeJob(id: string, audioDir: string): Promise<void> {
     } else if (diarSegments !== null) {
       applyDiarization(id, diarSegments);
     }
+    // specs/meeting-folder-batch.md 4: the new labels are written. Map the
+    // confirmed names of the old run onto them before the status flip.
+    restoreSpeakerNames(id, speakers);
 
     const failed = results.filter((r) => r.status === "failed").length;
     db.prepare("UPDATE meetings SET status = ?, error = ? WHERE id = ?").run(
@@ -1096,6 +1122,226 @@ const stopSchema = z.object({
   error: z.string().max(4096).optional(),
 });
 
+/** Why a stage did not start: the HTTP status and the error line of its
+ * route. The batch queue counts it as a skipped meeting. */
+interface StageRefusal {
+  ok: false;
+  status: 404 | 409 | 500;
+  error: string;
+  code?: "no_llm";
+}
+
+function refused(
+  status: 404 | 409 | 500,
+  error: string,
+  code?: "no_llm",
+): StageRefusal {
+  return { ok: false, status, error, ...(code && { code }) };
+}
+
+/** The old system segments and speaker rows of a meeting, read before a
+ * re-transcribe deletes them (specs/meeting-folder-batch.md 4). */
+interface SpeakerSnapshot {
+  spans: LabeledSpan[];
+  rows: SpeakerRow[];
+}
+
+function snapshotSpeakers(id: string): SpeakerSnapshot {
+  const db = getDb();
+  const spans = (
+    db
+      .prepare(
+        `SELECT start_ms, end_ms, speaker_label FROM meeting_segments
+         WHERE meeting_id = ? AND source = 'system' AND speaker_label IS NOT NULL`,
+      )
+      .all(id) as unknown as {
+      start_ms: number;
+      end_ms: number;
+      speaker_label: string;
+    }[]
+  ).map((r) => ({
+    startMs: r.start_ms,
+    endMs: r.end_ms,
+    label: r.speaker_label,
+  }));
+  const rows = db
+    .prepare(
+      `SELECT speaker_label, display_name, suggested_name, suggested_evidence,
+              suggested_kind, merged_into, confirmed_at, updated_at
+       FROM meeting_speakers WHERE meeting_id = ?`,
+    )
+    .all(id) as unknown as SpeakerRow[];
+  return { spans, rows };
+}
+
+/** The confirmed names of the rows, sorted, as the JSON of
+ * `meetings.speaker_names_lost`, or null when there is none. */
+function namesJson(names: string[]): string | null {
+  return names.length > 0 ? JSON.stringify(names) : null;
+}
+
+/**
+ * Give the new speaker labels the names of the old run where the time
+ * overlap matches clearly (speaker-carry.ts), and record the names that could
+ * not be kept. Runs after the new labels are written and before the status
+ * flip, so the auto-run Enhance sees the kept names. Never throws: a failure
+ * keeps the "all names lost" value that the start wrote.
+ */
+function restoreSpeakerNames(id: string, snapshot: SpeakerSnapshot): void {
+  if (snapshot.rows.length === 0) return;
+  const db = getDb();
+  try {
+    const newSpans = (
+      db
+        .prepare(
+          `SELECT start_ms, end_ms, speaker_label FROM meeting_segments
+           WHERE meeting_id = ? AND source = 'system' AND speaker_label IS NOT NULL`,
+        )
+        .all(id) as unknown as {
+        start_ms: number;
+        end_ms: number;
+        speaker_label: string;
+      }[]
+    ).map((r) => ({
+      startMs: r.start_ms,
+      endMs: r.end_ms,
+      label: r.speaker_label,
+    }));
+    const map = matchSpeakerLabels(snapshot.spans, newSpans);
+    const { rows, lost } = carrySpeakerRows(snapshot.rows, map);
+    const insert = db.prepare(
+      `INSERT INTO meeting_speakers
+         (meeting_id, speaker_label, display_name, suggested_name,
+          suggested_evidence, suggested_kind, merged_into, updated_at, confirmed_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+    );
+    withTransaction(db, () => {
+      db.prepare("DELETE FROM meeting_speakers WHERE meeting_id = ?").run(id);
+      for (const r of rows) {
+        insert.run(
+          id,
+          r.speaker_label,
+          r.display_name,
+          r.suggested_name,
+          r.suggested_evidence,
+          r.suggested_kind,
+          r.merged_into,
+          r.updated_at,
+          r.confirmed_at,
+        );
+      }
+      db.prepare("UPDATE meetings SET speaker_names_lost = ? WHERE id = ?").run(
+        namesJson(lost),
+        id,
+      );
+    });
+    // Counts only: the names stay out of the log.
+    log.info(
+      `meeting ${id}: speaker rows kept ${rows.length} of ${snapshot.rows.length}, names not kept: ${lost.length}`,
+    );
+  } catch (err) {
+    log.warn(`meeting ${id}: speaker names not restored: ${errorMessage(err)}`);
+  }
+}
+
+/**
+ * Start a full (re-)transcription with the guards of POST /:id/transcribe.
+ * The route and the batch queue use it.
+ */
+function startTranscribe(id: string): { ok: true } | StageRefusal {
+  const db = getDb();
+  const row = getMeetingRow(id);
+  if (!row) return refused(404, "Not found");
+  if (row.status === "recording") {
+    return refused(409, "Meeting is still recording");
+  }
+  if (hasJob(id)) return refused(409, runningJobMessage(getJobKind(id)));
+  if (!row.audio_dir) return refused(409, "Meeting has no audio directory");
+  // specs/meeting-folder-batch.md 4: read the old labels and names before
+  // the deletes below. Until the new run maps them back, every confirmed
+  // name counts as not kept: a crash, a cancel or a failure leaves it so,
+  // and the meeting page says which names to set again.
+  const speakers = snapshotSpeakers(id);
+  const confirmed = [
+    ...new Set(
+      speakers.rows.flatMap((r) => (r.display_name ? [r.display_name] : [])),
+    ),
+  ].sort();
+  db.prepare(
+    `UPDATE meetings SET status = 'transcribing', error = NULL,
+       speaker_names_lost = ? WHERE id = ?`,
+  ).run(namesJson(confirmed), id);
+  // A re-run replaces the previous transcript wholesale.
+  db.prepare("DELETE FROM meeting_segments WHERE meeting_id = ?").run(id);
+  // specs/meeting-speaker-naming.md §6.3: fresh segment ids and (if
+  // diarization runs again) a fresh clustering means label "3" from the
+  // old run has no guaranteed relationship to label "3" from the new one
+  // — a stale name/merge mapping would silently misattribute a confirmed
+  // name to a different, unrelated voice. restoreSpeakerNames maps the
+  // names back by time overlap when the new labels are written.
+  db.prepare("DELETE FROM meeting_speakers WHERE meeting_id = ?").run(id);
+  // Phase 4 (specs/meeting-transcription-v2.md §3.4): the old run's
+  // diarizer turns go with the old segments — the new run re-diarizes
+  // and re-writes them (or the measurement sees none, not stale ones).
+  db.prepare("DELETE FROM meeting_diarizer_turns WHERE meeting_id = ?").run(id);
+  claimJob(id, "transcribe", { done: 0, total: 0, failed: 0 });
+  void runTranscribeJob(id, row.audio_dir, speakers);
+  return { ok: true };
+}
+
+/**
+ * Start Summarize, or Enhance chained into Summarize, with the guards of
+ * POST /:id/summarize and /:id/enhance. The routes and the batch queue use
+ * it. `startRun` claims the job slot before its first await.
+ */
+function startLlmStage(
+  id: string,
+  stage: "summarize" | "enhance",
+): { ok: true; runId: string } | StageRefusal {
+  const row = getMeetingRow(id);
+  if (!row) return refused(404, "Not found");
+  if (row.status !== "transcribed" && row.status !== "summarized") {
+    return refused(409, `Meeting has no transcript to ${stage}`);
+  }
+  // The shared job registry that /transcribe, /retry-failed and /diarize
+  // check: an Enhance run reading meeting_segments mid-write from a running
+  // transcribe job would see a half-written transcript.
+  if (hasJob(id)) {
+    return refused(
+      409,
+      stage === "summarize"
+        ? "A job is already running"
+        : runningJobMessage(getJobKind(id)),
+    );
+  }
+  if (loadMergedTranscript(id, row.audio_dir).length === 0) {
+    return refused(409, "Transcript is empty");
+  }
+  if (!getDefaultModels().llm) {
+    return refused(
+      409,
+      "No AI model is set up. Add one in Settings > Models.",
+      "no_llm",
+    );
+  }
+  const started = startRun(
+    {
+      meetingId: id,
+      stages: stage === "enhance" ? ["enhance", "summarize"] : ["summarize"],
+      trigger: "button",
+    },
+    testOverrides.workflowDeps,
+  );
+  if (!started.ok) {
+    if (started.reason === "job_running") {
+      return refused(409, runningJobMessage(getJobKind(id)));
+    }
+    if (started.reason === "no_meeting") return refused(404, "Not found");
+    return refused(500, "The run could not be started");
+  }
+  return { ok: true, runId: started.runId };
+}
+
 /**
  * Start a workflow run for a button click and answer 202 with the run id
  * (specs/meeting-enhance-agentic.md 3.4.2). The route made its guards before.
@@ -1104,25 +1350,56 @@ const stopSchema = z.object({
 function startRunResponse(
   c: Context,
   id: string,
-  stages: ("enhance" | "summarize")[],
+  stage: "summarize" | "enhance",
 ) {
-  const started = startRun(
-    { meetingId: id, stages, trigger: "button" },
-    testOverrides.workflowDeps,
-  );
+  const started = startLlmStage(id, stage);
   if (!started.ok) {
-    if (started.reason === "job_running") {
-      return c.json({ error: runningJobMessage(getJobKind(id)) }, 409);
-    }
-    if (started.reason === "no_meeting") {
-      return c.json({ error: "Not found" }, 404);
-    }
-    return c.json({ error: "The run could not be started" }, 500);
+    return c.json(
+      { error: started.error, ...(started.code && { code: started.code }) },
+      started.status,
+    );
   }
   return c.json(
     { ok: true, id, runId: started.runId } satisfies StartRunResponse,
     202,
   );
+}
+
+/**
+ * The batch queue (specs/meeting-folder-batch.md 3). One per process, in
+ * memory only. It starts each stage with the same function as the route.
+ */
+const batchQueue = createBatchQueue({
+  start: (id, stage) =>
+    stage === "transcribe" ? startTranscribe(id) : startLlmStage(id, stage),
+  waitForEnd: waitForRelease,
+  cancel: (id) => {
+    requestCancel(id);
+  },
+  needsStage,
+  stageBlock,
+  runningTranscription: () =>
+    listJobs().find((j) => j.kind === "transcribe" || j.kind === "retry-failed")
+      ?.id ?? null,
+  title: (id) => getMeetingRow(id)?.title ?? null,
+});
+
+/** Test seam: wait until the batch queue is empty. */
+export function __batchQueueIdle(): Promise<void> {
+  return batchQueue.idle();
+}
+
+function invalidBatchRequest(result: { success: boolean }, c: Context) {
+  if (!result.success) {
+    return c.json(
+      meetingBatchErrorSchema.parse({
+        error: "Invalid request",
+        code: "invalid_request",
+      }),
+      400,
+    );
+  }
+  return undefined;
 }
 
 const meetings = new Hono()
@@ -1168,6 +1445,38 @@ const meetings = new Hono()
       }),
     );
   })
+  // The batch queue (specs/meeting-folder-batch.md 3). Registered before
+  // "/:id" so "batch" is not read as a meeting id.
+  .get("/batch", (c) =>
+    c.json(meetingBatchStateSchema.parse(batchQueue.state())),
+  )
+  .post(
+    "/batch",
+    zValidator("json", startMeetingBatchSchema, invalidBatchRequest),
+    (c) => {
+      const input = c.req.valid("json");
+      if ("folder_id" in input) {
+        if (!meetingFolderExists(input.folder_id)) {
+          return c.json(
+            meetingBatchErrorSchema.parse({
+              error: "Folder not found",
+              code: "folder_not_found",
+            }),
+            404,
+          );
+        }
+        const ids = folderMeetingsNeeding(input.folder_id, input.stage);
+        return c.json(batchQueue.enqueue(ids, input.stage, true), 202);
+      }
+      return c.json(
+        batchQueue.enqueue(input.meeting_ids, input.stage, false),
+        202,
+      );
+    },
+  )
+  // Drop the waiting items. The running item stops through the normal
+  // cancel of its job (POST /:id/cancel-transcribe).
+  .post("/batch/cancel", (c) => c.json(batchQueue.cancel()))
   // Boot-time orphan sweep: rows a crash/force-quit left in 'recording'
   // (recorder died mid-session) or 'transcribing' (the in-process server
   // died mid-job — the job is gone with it). The Electron sweep branches on
@@ -1384,37 +1693,8 @@ const meetings = new Hono()
   // Kick the async transcription job: 202 immediately, poll GET /:id.
   .post("/:id/transcribe", (c) => {
     const id = c.req.param("id");
-    const db = getDb();
-    const row = getMeetingRow(id);
-    if (!row) return c.json({ error: "Not found" }, 404);
-    if (row.status === "recording") {
-      return c.json({ error: "Meeting is still recording" }, 409);
-    }
-    if (hasJob(id)) {
-      return c.json({ error: runningJobMessage(getJobKind(id)) }, 409);
-    }
-    if (!row.audio_dir) {
-      return c.json({ error: "Meeting has no audio directory" }, 409);
-    }
-    db.prepare(
-      "UPDATE meetings SET status = 'transcribing', error = NULL WHERE id = ?",
-    ).run(id);
-    // A re-run replaces the previous transcript wholesale.
-    db.prepare("DELETE FROM meeting_segments WHERE meeting_id = ?").run(id);
-    // specs/meeting-speaker-naming.md §6.3: fresh segment ids and (if
-    // diarization runs again) a fresh clustering means label "3" from the
-    // old run has no guaranteed relationship to label "3" from the new one
-    // — a stale name/merge mapping would silently misattribute a confirmed
-    // name to a different, unrelated voice.
-    db.prepare("DELETE FROM meeting_speakers WHERE meeting_id = ?").run(id);
-    // Phase 4 (specs/meeting-transcription-v2.md §3.4): the old run's
-    // diarizer turns go with the old segments — the new run re-diarizes
-    // and re-writes them (or the measurement sees none, not stale ones).
-    db.prepare("DELETE FROM meeting_diarizer_turns WHERE meeting_id = ?").run(
-      id,
-    );
-    claimJob(id, "transcribe", { done: 0, total: 0, failed: 0 });
-    void runTranscribeJob(id, row.audio_dir);
+    const started = startTranscribe(id);
+    if (!started.ok) return c.json({ error: started.error }, started.status);
     return c.json({ ok: true, id }, 202);
   })
   // Cancel a running transcription job (T1-1). Asks the job to stop via a
@@ -1899,6 +2179,11 @@ const meetings = new Hono()
              updated_at = excluded.updated_at,
              confirmed_at = excluded.confirmed_at`,
         ).run(id, label, newDisplayName, newMergedInto, now, now);
+        // The user names the speakers again: the "names not kept" note of
+        // the last re-transcribe has done its job.
+        db.prepare(
+          "UPDATE meetings SET speaker_names_lost = NULL WHERE id = ?",
+        ).run(id);
       });
 
       const row = db
@@ -1916,62 +2201,41 @@ const meetings = new Hono()
   // takes the meeting's job slot before the first await, the renderer polls
   // GET /:id for `job` (progress, queued) and for the persisted `summary`, and
   // reads the run record for a failure (specs/meeting-enhance-agentic.md 3.4.2).
-  .post("/:id/summarize", (c) => {
-    const id = c.req.param("id");
-    const row = getMeetingRow(id);
-    if (!row) return c.json({ error: "Not found" }, 404);
-    if (row.status !== "transcribed" && row.status !== "summarized") {
-      return c.json({ error: "Meeting has no transcript to summarize" }, 409);
-    }
-    if (hasJob(id)) {
-      return c.json({ error: "A job is already running" }, 409);
-    }
-    const merged = loadMergedTranscript(id, row.audio_dir);
-    if (merged.length === 0) {
-      return c.json({ error: "Transcript is empty" }, 409);
-    }
-    if (!getDefaultModels().llm) {
-      return c.json(
-        {
-          error: "No AI model is set up. Add one in Settings > Models.",
-          code: "no_llm",
-        },
-        409,
-      );
-    }
-    return startRunResponse(c, id, ["summarize"]);
-  })
+  .post("/:id/summarize", (c) =>
+    startRunResponse(c, c.req.param("id"), "summarize"),
+  )
   // LLM cleanup pass (Enhance) over the merged transcript. It starts one
   // run with the stages `enhance` and `summarize` (3.6). 202 + background run
   // + poll, like /summarize. Never destructive: only UPDATEs
   // meeting_segments.enhanced_text on existing rows.
-  .post("/:id/enhance", (c) => {
+  .post("/:id/enhance", (c) =>
+    startRunResponse(c, c.req.param("id"), "enhance"),
+  )
+  // The previous summaries of a meeting, newest first (specs/meeting-folder-
+  // batch.md 5). The save copies a summary here when a new one replaces it.
+  .get("/:id/summary-versions", (c) => {
     const id = c.req.param("id");
-    const row = getMeetingRow(id);
-    if (!row) return c.json({ error: "Not found" }, 404);
-    if (row.status !== "transcribed" && row.status !== "summarized") {
-      return c.json({ error: "Meeting has no transcript to enhance" }, 409);
-    }
-    // The shared job registry that /transcribe, /retry-failed and /diarize
-    // check: an Enhance run reading meeting_segments mid-write from a running
-    // transcribe job would see a half-written transcript.
-    if (hasJob(id)) {
-      return c.json({ error: runningJobMessage(getJobKind(id)) }, 409);
-    }
-    const merged = loadMergedTranscript(id, row.audio_dir);
-    if (merged.length === 0) {
-      return c.json({ error: "Transcript is empty" }, 409);
-    }
-    if (!getDefaultModels().llm) {
-      return c.json(
-        {
-          error: "No AI model is set up. Add one in Settings > Models.",
-          code: "no_llm",
-        },
-        409,
-      );
-    }
-    return startRunResponse(c, id, ["enhance", "summarize"]);
+    if (!getMeetingRow(id)) return c.json({ error: "Not found" }, 404);
+    const rows = getDb()
+      .prepare(
+        `SELECT id, markdown, llm_provider, llm_model, created_at, replaced_at,
+                partial
+         FROM meeting_summary_versions WHERE meeting_id = ? ORDER BY id DESC`,
+      )
+      .all(id) as unknown as Array<{
+      id: number;
+      markdown: string | null;
+      llm_provider: string | null;
+      llm_model: string | null;
+      created_at: number | null;
+      replaced_at: number;
+      partial: number | null;
+    }>;
+    return c.json(
+      meetingSummaryVersionsResponseSchema.parse({
+        items: rows.map((r) => ({ ...r, partial: r.partial === 1 })),
+      }),
+    );
   })
   // Merged, speaker-labeled ("Me"/"Them") transcript.
   .get("/:id/transcript", (c) => {
@@ -2011,6 +2275,7 @@ const meetings = new Hono()
       meetingDetailResponseSchema.parse({
         ...omitCalendarColumns(row),
         retention_exempt: row.retention_exempt === 1,
+        speaker_names_lost: parseLostNames(row),
         display_status: meetingDisplayStatus(row),
         tags: getMeetingTags(id),
         calendar: toCalendarEvent(row),

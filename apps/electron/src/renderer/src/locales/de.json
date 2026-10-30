@@ -854,7 +854,65 @@
       "emptyUnfiled": "Alle Meetings sind in Ordnern.",
       "railHint": "Ziehe ein Meeting auf einen Ordner, um es zu verschieben. Ein Rechtsklick zeigt weitere Aktionen.",
       "railLabel": "Meetings und Ordner",
-      "recordsInto": "Aufnahme in"
+      "recordsInto": "Aufnahme in",
+      "batch": {
+        "stagesTitle": "Auszuführende Schritte",
+        "nothing": "Alle Meetings in diesem Ordner sind fertig.",
+        "needCount": "Nötig: {{count}}",
+        "blockedAudio": "Kein Audio: {{count}}",
+        "blockedLlm": "Kein KI-Modell: {{count}}",
+        "blockedAudioHint": "Die Aufbewahrungseinstellung hat das Audio dieser Meetings gelöscht. Die App kann sie nicht erneut transkribieren.",
+        "blockedLlmHint": "Richte unter Einstellungen > Modelle ein KI-Modell ein. Dann kann die App diese Meetings zusammenfassen und verbessern.",
+        "run": "Ausführen für {{count}}",
+        "stage": {
+          "transcribe": "Transkribieren",
+          "summarize": "Zusammenfassen",
+          "enhance": "Verbessern"
+        },
+        "confirmTitle": "{{stage}} jetzt ausführen?",
+        "confirmSelectedTitle": "{{stage}} für die ausgewählten Meetings ausführen?",
+        "confirmCount": "Meetings in der Warteschlange: {{count}}.",
+        "explain": {
+          "transcribe": "Die App transkribiert ein Meeting nach dem anderen. Das neue Transkript ersetzt das alte Transkript.",
+          "transcribeAuto": "Nach jedem Transkript laufen Verbessern und Zusammenfassen erneut.",
+          "names": "Ein bestätigter Sprechername bleibt, wenn der neue Sprecher eindeutig zum alten Sprecher passt. Andere Sprecher bleiben ohne Namen, und die Meeting-Seite zeigt die Namen, die die App nicht behalten konnte.",
+          "summarize": "Eine neue Zusammenfassung ersetzt die aktuelle Zusammenfassung. Die aktuelle Zusammenfassung bleibt unter Frühere Versionen.",
+          "enhance": "Verbessern korrigiert das Transkript und erstellt dann eine neue Zusammenfassung. Die aktuelle Zusammenfassung bleibt unter Frühere Versionen.",
+          "rerun": "Der Schritt läuft auch für Meetings, die fertig sind."
+        },
+        "queueNote": "Die Warteschlange ist nur im Speicher der App. Wenn du die App beendest, stoppt die Warteschlange. Der Ordner zeigt dann die Meetings, die den Schritt noch brauchen.",
+        "start": "Starten",
+        "startFailed": "Der Stapel konnte nicht starten. Versuche es erneut.",
+        "progressLabel": "Fortschritt des Stapels",
+        "progressTitle": "Stapel: {{stage}}",
+        "finished": "Stapel fertig",
+        "progress": "{{done}} von {{total}}",
+        "now": "Jetzt: {{title}}",
+        "waiting": "Wartend: {{count}}",
+        "doneCount": "Fertig: {{count}}",
+        "skipped": "Übersprungen: {{count}}",
+        "cancelledCount": "Abgebrochen: {{count}}",
+        "memoryNote": "Wenn du die App beendest, stoppt die Warteschlange.",
+        "cancel": "Rest abbrechen",
+        "close": "Schließen",
+        "skipReason": {
+          "gone": "Gelöscht",
+          "not_needed": "Schon fertig",
+          "busy": "Beschäftigt",
+          "no_audio": "Kein Audio",
+          "no_transcript": "Kein Transkript",
+          "no_llm": "Kein KI-Modell",
+          "refused": "Konnte nicht starten"
+        },
+        "select": "Auswählen",
+        "selectDone": "Fertig",
+        "selectAll": "Alle auswählen",
+        "clearSelection": "Leeren",
+        "selectedCount": "Ausgewählt: {{count}}",
+        "selectHint": "Klicke auf ein Meeting, um es auszuwählen. Umschalt-Klick wählt einen Bereich.",
+        "bulkLabel": "Aktionen für die ausgewählten Meetings",
+        "runSelected": "Ausführen"
+      }
     },
     "search": {
       "label": "Besprechungen durchsuchen",
@@ -1125,6 +1183,21 @@
         "chunks": "Abschnitte",
         "model": "Suchmodell"
       }
+    },
+    "retranscribeConfirm": {
+      "title": "Dieses Meeting erneut transkribieren?",
+      "body": "Das neue Transkript ersetzt das aktuelle Transkript. Die aktuelle Zusammenfassung bleibt, bis eine neue Zusammenfassung sie ersetzt.",
+      "auto": "Nach dem Transkript laufen Verbessern und Zusammenfassen erneut.",
+      "names": "Bestätigte Sprechernamen: {{names}}. Ein Name bleibt, wenn sein Sprecher eindeutig passt. Andere Sprecher bleiben ohne Namen, und diese Seite zeigt die Namen, die die App nicht behalten konnte.",
+      "noNames": "Dieses Meeting hat keine bestätigten Sprechernamen."
+    },
+    "speakerNamesLost": "Das neue Transkript konnte diese Sprechernamen nicht behalten: {{names}}. Benenne die Sprecher erneut.",
+    "summaryVersions": {
+      "title": "Frühere Versionen",
+      "replaced": "Ersetzt {{date}}",
+      "readOnly": "Frühere Version (nur lesen)",
+      "close": "Schließen",
+      "partial": "Unvollständig"
     }
   },
   "help": {

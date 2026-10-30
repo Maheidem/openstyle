@@ -1032,7 +1032,65 @@
       "emptyUnfiled": "All meetings are in folders.",
       "railHint": "Drag a meeting onto a folder to move it. Right-click a meeting for more actions.",
       "railLabel": "Meetings and folders",
-      "recordsInto": "Records into"
+      "recordsInto": "Records into",
+      "batch": {
+        "stagesTitle": "Stages to run",
+        "nothing": "All meetings in this folder are done.",
+        "needCount": "Need it: {{count}}",
+        "blockedAudio": "No audio: {{count}}",
+        "blockedLlm": "No AI model: {{count}}",
+        "blockedAudioHint": "The retention setting deleted the audio of these meetings. The app cannot transcribe them again.",
+        "blockedLlmHint": "Set up an AI model in Settings > Models. Then the app can summarize and enhance these meetings.",
+        "run": "Run on {{count}}",
+        "stage": {
+          "transcribe": "Transcribe",
+          "summarize": "Summarize",
+          "enhance": "Enhance"
+        },
+        "confirmTitle": "Run {{stage}} now?",
+        "confirmSelectedTitle": "Run {{stage}} on the selected meetings?",
+        "confirmCount": "Meetings in the queue: {{count}}.",
+        "explain": {
+          "transcribe": "The app transcribes one meeting at a time. The new transcript replaces the old transcript.",
+          "transcribeAuto": "After each transcript, Enhance and Summarize run again.",
+          "names": "A confirmed speaker name stays when the new speaker matches the old speaker clearly. Other speakers stay unnamed, and the meeting page shows the names that the app could not keep.",
+          "summarize": "A new summary replaces the current summary. The current summary stays under Previous versions.",
+          "enhance": "Enhance corrects the transcript and then makes a new summary. The current summary stays under Previous versions.",
+          "rerun": "The stage runs also on meetings that are done."
+        },
+        "queueNote": "The queue is only in the app memory. If you quit the app, the queue stops. The folder then shows the meetings that still need the stage.",
+        "start": "Start",
+        "startFailed": "Could not start the batch. Try again.",
+        "progressLabel": "Batch progress",
+        "progressTitle": "Batch: {{stage}}",
+        "finished": "Batch finished",
+        "progress": "{{done}} of {{total}}",
+        "now": "Now: {{title}}",
+        "waiting": "Waiting: {{count}}",
+        "doneCount": "Done: {{count}}",
+        "skipped": "Skipped: {{count}}",
+        "cancelledCount": "Cancelled: {{count}}",
+        "memoryNote": "If you quit the app, the queue stops.",
+        "cancel": "Cancel the rest",
+        "close": "Close",
+        "skipReason": {
+          "gone": "Deleted",
+          "not_needed": "Already done",
+          "busy": "Busy",
+          "no_audio": "No audio",
+          "no_transcript": "No transcript",
+          "no_llm": "No AI model",
+          "refused": "Could not start"
+        },
+        "select": "Select",
+        "selectDone": "Done",
+        "selectAll": "Select all",
+        "clearSelection": "Clear",
+        "selectedCount": "Selected: {{count}}",
+        "selectHint": "Click a meeting to select it. Shift-click selects a range.",
+        "bulkLabel": "Actions for the selected meetings",
+        "runSelected": "Run"
+      }
     },
     "search": {
       "label": "Search meetings",
@@ -1457,7 +1515,22 @@
       "saveFailed": "The tags were not saved. Try again.",
       "showAll": "Show all tags"
     },
-    "moreActions": "More actions"
+    "moreActions": "More actions",
+    "retranscribeConfirm": {
+      "title": "Transcribe this meeting again?",
+      "body": "The new transcript replaces the current transcript. The current summary stays until a new summary replaces it.",
+      "auto": "After the transcript, Enhance and Summarize run again.",
+      "names": "Confirmed speaker names: {{names}}. A name stays when its speaker matches clearly. Other speakers stay unnamed, and this page shows the names that the app could not keep.",
+      "noNames": "This meeting has no confirmed speaker names."
+    },
+    "speakerNamesLost": "The new transcript could not keep these speaker names: {{names}}. Name the speakers again.",
+    "summaryVersions": {
+      "title": "Previous versions",
+      "replaced": "Replaced {{date}}",
+      "readOnly": "Previous version (read only)",
+      "close": "Close",
+      "partial": "Partial"
+    }
   },
   "help": {
     "hotkeys": {

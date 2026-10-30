@@ -854,7 +854,65 @@
       "emptyUnfiled": "すべてのミーティングはフォルダー内にあります。",
       "railHint": "ミーティングをフォルダーにドラッグして移動できます。右クリックすると他の操作が表示されます。",
       "railLabel": "ミーティングとフォルダー",
-      "recordsInto": "録音の保存先"
+      "recordsInto": "録音の保存先",
+      "batch": {
+        "stagesTitle": "実行する処理",
+        "nothing": "このフォルダーのミーティングはすべて完了しています。",
+        "needCount": "必要: {{count}}",
+        "blockedAudio": "音声なし: {{count}}",
+        "blockedLlm": "AIモデルなし: {{count}}",
+        "blockedAudioHint": "保持設定によって、これらのミーティングの音声は削除されました。アプリはもう一度文字起こしできません。",
+        "blockedLlmHint": "設定 > モデルでAIモデルを設定してください。その後、アプリはこれらのミーティングを要約・強化できます。",
+        "run": "{{count}} 件で実行",
+        "stage": {
+          "transcribe": "文字起こし",
+          "summarize": "要約",
+          "enhance": "強化"
+        },
+        "confirmTitle": "{{stage}} を今すぐ実行しますか？",
+        "confirmSelectedTitle": "選択したミーティングで {{stage}} を実行しますか？",
+        "confirmCount": "キュー内のミーティング: {{count}}。",
+        "explain": {
+          "transcribe": "アプリはミーティングを1件ずつ文字起こしします。新しい文字起こしは古い文字起こしを置き換えます。",
+          "transcribeAuto": "文字起こしのたびに、強化と要約がもう一度実行されます。",
+          "names": "確認済みの話者名は、新しい話者が古い話者とはっきり一致するときに残ります。ほかの話者は名前なしになり、ミーティングのページに残せなかった名前が表示されます。",
+          "summarize": "新しい要約は現在の要約を置き換えます。現在の要約は「以前のバージョン」に残ります。",
+          "enhance": "強化は文字起こしを修正し、そのあと新しい要約を作ります。現在の要約は「以前のバージョン」に残ります。",
+          "rerun": "完了済みのミーティングでも処理を実行します。"
+        },
+        "queueNote": "キューはアプリのメモリ内にだけあります。アプリを終了するとキューは止まります。そのあと、フォルダーにはまだ処理が必要なミーティングが表示されます。",
+        "start": "開始",
+        "startFailed": "一括処理を開始できませんでした。もう一度お試しください。",
+        "progressLabel": "一括処理の進行状況",
+        "progressTitle": "一括処理: {{stage}}",
+        "finished": "一括処理が完了しました",
+        "progress": "{{done}} / {{total}}",
+        "now": "処理中: {{title}}",
+        "waiting": "待機中: {{count}}",
+        "doneCount": "完了: {{count}}",
+        "skipped": "スキップ: {{count}}",
+        "cancelledCount": "キャンセル: {{count}}",
+        "memoryNote": "アプリを終了するとキューは止まります。",
+        "cancel": "残りをキャンセル",
+        "close": "閉じる",
+        "skipReason": {
+          "gone": "削除済み",
+          "not_needed": "完了済み",
+          "busy": "処理中",
+          "no_audio": "音声なし",
+          "no_transcript": "文字起こしなし",
+          "no_llm": "AIモデルなし",
+          "refused": "開始できません"
+        },
+        "select": "選択",
+        "selectDone": "完了",
+        "selectAll": "すべて選択",
+        "clearSelection": "選択を解除",
+        "selectedCount": "選択中: {{count}}",
+        "selectHint": "ミーティングをクリックして選択します。Shift+クリックで範囲を選択します。",
+        "bulkLabel": "選択したミーティングの操作",
+        "runSelected": "実行"
+      }
     },
     "search": {
       "label": "会議を検索",
@@ -1125,6 +1183,21 @@
         "chunks": "チャンク",
         "model": "検索モデル"
       }
+    },
+    "retranscribeConfirm": {
+      "title": "このミーティングをもう一度文字起こししますか？",
+      "body": "新しい文字起こしは現在の文字起こしを置き換えます。現在の要約は、新しい要約に置き換えられるまで残ります。",
+      "auto": "文字起こしのあと、強化と要約がもう一度実行されます。",
+      "names": "確認済みの話者名: {{names}}。話者がはっきり一致するとき、名前は残ります。ほかの話者は名前なしになり、このページに残せなかった名前が表示されます。",
+      "noNames": "このミーティングには確認済みの話者名がありません。"
+    },
+    "speakerNamesLost": "新しい文字起こしでは次の話者名を残せませんでした: {{names}}。もう一度話者に名前を付けてください。",
+    "summaryVersions": {
+      "title": "以前のバージョン",
+      "replaced": "{{date}} に置き換え",
+      "readOnly": "以前のバージョン（読み取り専用）",
+      "close": "閉じる",
+      "partial": "一部のみ"
     }
   },
   "help": {

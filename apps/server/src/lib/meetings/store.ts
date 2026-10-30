@@ -23,6 +23,9 @@ export interface MeetingRow {
   context: string | null;
   /** 1 = the audio retention sweep skips this meeting (schema 47). */
   retention_exempt: number;
+  /** JSON array of the confirmed speaker names that the last re-transcribe
+   * could not keep (schema 48). NULL means none. */
+  speaker_names_lost: string | null;
   error: string | null;
   created_at: number | null;
   /** Linked calendar event (specs/calendar-eventkit.md). All NULL when the
@@ -73,9 +76,10 @@ export function toCalendarEvent(row: MeetingRow): CalendarEvent | null {
 }
 
 /**
- * The row without the six calendar columns. List and detail responses use it,
- * so raw attendee JSON (with emails) never leaves the server. The detail
- * response adds the `calendar` object instead.
+ * The row without the six calendar columns and the raw JSON of
+ * `speaker_names_lost`. List and detail responses use it, so raw attendee
+ * JSON (with emails) never leaves the server. The detail response adds the
+ * `calendar` object and the parsed names instead.
  */
 export function omitCalendarColumns(row: MeetingRow) {
   const {
@@ -85,9 +89,23 @@ export function omitCalendarColumns(row: MeetingRow) {
     calendar_end: _end,
     calendar_url: _url,
     calendar_attendees: _attendees,
+    speaker_names_lost: _lost,
     ...rest
   } = row;
   return rest;
+}
+
+/** The names of `speaker_names_lost`. A bad or missing value gives []. */
+export function parseLostNames(row: Pick<MeetingRow, "speaker_names_lost">) {
+  if (!row.speaker_names_lost) return [];
+  try {
+    const parsed: unknown = JSON.parse(row.speaker_names_lost);
+    return Array.isArray(parsed)
+      ? parsed.filter((n): n is string => typeof n === "string")
+      : [];
+  } catch {
+    return [];
+  }
 }
 
 /** One `meetings` row by id, or undefined when no row has that id. */

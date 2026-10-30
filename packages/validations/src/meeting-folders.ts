@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { folderStageCountsSchema } from "./meeting-batch.js";
 
 export const meetingFolderIdSchema = z.string().min(1).max(128);
 const folderNameSchema = z.string().trim().min(1).max(60);
@@ -44,6 +45,8 @@ export const meetingFolderSchema = z.object({
   first_meeting_at: z.number().nullable(),
   last_meeting_at: z.number().nullable(),
   total_duration_ms: z.number().nonnegative(),
+  /** What the folder's meetings still need (specs/meeting-folder-batch.md). */
+  stage_counts: folderStageCountsSchema,
 });
 
 export const meetingFoldersResponseSchema = z.object({

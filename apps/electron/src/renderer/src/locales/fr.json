@@ -854,7 +854,65 @@
       "emptyUnfiled": "Toutes les réunions sont dans des dossiers.",
       "railHint": "Faites glisser une réunion sur un dossier pour la déplacer. Un clic droit sur une réunion affiche d’autres actions.",
       "railLabel": "Réunions et dossiers",
-      "recordsInto": "Enregistrement dans"
+      "recordsInto": "Enregistrement dans",
+      "batch": {
+        "stagesTitle": "Étapes à exécuter",
+        "nothing": "Toutes les réunions de ce dossier sont terminées.",
+        "needCount": "À faire : {{count}}",
+        "blockedAudio": "Sans audio : {{count}}",
+        "blockedLlm": "Sans modèle d’IA : {{count}}",
+        "blockedAudioHint": "Le réglage de conservation a supprimé l’audio de ces réunions. L’app ne peut pas les transcrire à nouveau.",
+        "blockedLlmHint": "Configurez un modèle d’IA dans Paramètres > Modèles. Ensuite, l’app peut résumer et améliorer ces réunions.",
+        "run": "Exécuter sur {{count}}",
+        "stage": {
+          "transcribe": "Transcrire",
+          "summarize": "Résumer",
+          "enhance": "Améliorer"
+        },
+        "confirmTitle": "Exécuter {{stage}} maintenant ?",
+        "confirmSelectedTitle": "Exécuter {{stage}} sur les réunions sélectionnées ?",
+        "confirmCount": "Réunions dans la file : {{count}}.",
+        "explain": {
+          "transcribe": "L’app transcrit une réunion à la fois. La nouvelle transcription remplace l’ancienne transcription.",
+          "transcribeAuto": "Après chaque transcription, Améliorer et Résumer s’exécutent à nouveau.",
+          "names": "Un nom d’intervenant confirmé reste quand le nouvel intervenant correspond clairement à l’ancien. Les autres intervenants restent sans nom, et la page de la réunion affiche les noms que l’app n’a pas pu garder.",
+          "summarize": "Un nouveau résumé remplace le résumé actuel. Le résumé actuel reste dans Versions précédentes.",
+          "enhance": "Améliorer corrige la transcription, puis crée un nouveau résumé. Le résumé actuel reste dans Versions précédentes.",
+          "rerun": "L’étape s’exécute aussi sur les réunions terminées."
+        },
+        "queueNote": "La file est seulement dans la mémoire de l’app. Si vous quittez l’app, la file s’arrête. Le dossier affiche alors les réunions qui ont encore besoin de l’étape.",
+        "start": "Démarrer",
+        "startFailed": "Impossible de démarrer le lot. Réessayez.",
+        "progressLabel": "Progression du lot",
+        "progressTitle": "Lot : {{stage}}",
+        "finished": "Lot terminé",
+        "progress": "{{done}} sur {{total}}",
+        "now": "En cours : {{title}}",
+        "waiting": "En attente : {{count}}",
+        "doneCount": "Terminées : {{count}}",
+        "skipped": "Ignorées : {{count}}",
+        "cancelledCount": "Annulées : {{count}}",
+        "memoryNote": "Si vous quittez l’app, la file s’arrête.",
+        "cancel": "Annuler le reste",
+        "close": "Fermer",
+        "skipReason": {
+          "gone": "Supprimée",
+          "not_needed": "Déjà terminée",
+          "busy": "Occupée",
+          "no_audio": "Sans audio",
+          "no_transcript": "Sans transcription",
+          "no_llm": "Sans modèle d’IA",
+          "refused": "Démarrage impossible"
+        },
+        "select": "Sélectionner",
+        "selectDone": "Terminé",
+        "selectAll": "Tout sélectionner",
+        "clearSelection": "Effacer",
+        "selectedCount": "Sélectionnées : {{count}}",
+        "selectHint": "Cliquez sur une réunion pour la sélectionner. Maj-clic sélectionne une plage.",
+        "bulkLabel": "Actions pour les réunions sélectionnées",
+        "runSelected": "Exécuter"
+      }
     },
     "search": {
       "label": "Rechercher dans les réunions",
@@ -1125,6 +1183,21 @@
         "chunks": "Extraits",
         "model": "Modèle de recherche"
       }
+    },
+    "retranscribeConfirm": {
+      "title": "Transcrire à nouveau cette réunion ?",
+      "body": "La nouvelle transcription remplace la transcription actuelle. Le résumé actuel reste jusqu’à ce qu’un nouveau résumé le remplace.",
+      "auto": "Après la transcription, Améliorer et Résumer s’exécutent à nouveau.",
+      "names": "Noms d’intervenants confirmés : {{names}}. Un nom reste quand son intervenant correspond clairement. Les autres intervenants restent sans nom, et cette page affiche les noms que l’app n’a pas pu garder.",
+      "noNames": "Cette réunion n’a aucun nom d’intervenant confirmé."
+    },
+    "speakerNamesLost": "La nouvelle transcription n’a pas pu garder ces noms d’intervenants : {{names}}. Nommez à nouveau les intervenants.",
+    "summaryVersions": {
+      "title": "Versions précédentes",
+      "replaced": "Remplacé {{date}}",
+      "readOnly": "Version précédente (lecture seule)",
+      "close": "Fermer",
+      "partial": "Partiel"
     }
   },
   "help": {

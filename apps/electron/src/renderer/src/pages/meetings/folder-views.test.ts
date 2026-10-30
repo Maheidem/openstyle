@@ -3,6 +3,7 @@ import { createElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it, vi } from "vitest";
 import en from "../../locales/en.json";
+import { toggleSelection } from "./batch";
 import { FolderNameInput } from "./folder-controls";
 import { FolderPanel } from "./folder-panel";
 import type { MeetingFolder } from "./folders-model";
@@ -25,6 +26,11 @@ const folder: MeetingFolder = {
   first_meeting_at: 1000,
   last_meeting_at: 5000,
   total_duration_ms: 204000,
+  stage_counts: {
+    transcribe: { ready: 3, blocked: 1 },
+    summarize: { ready: 0, blocked: 2 },
+    enhance: { ready: 0, blocked: 0 },
+  },
 };
 function panel(value: MeetingFolder, action?: "description" | "delete") {
   return renderToStaticMarkup(
@@ -40,6 +46,7 @@ function panel(value: MeetingFolder, action?: "description" | "delete") {
       onOpen: vi.fn(),
       onMove: vi.fn(),
       onBack: vi.fn(),
+      onStartBatch: vi.fn(async () => true),
     }),
   );
 }
@@ -65,6 +72,41 @@ describe("folder views", () => {
     expect(html).toContain("Shows the 0 newest meetings of 205.");
     expect(html).toContain("First meeting");
     expect(html).toContain("Last meeting");
+  });
+  it("shows what each stage needs, what cannot run, and a Run button per stage", () => {
+    const html = panel(folder);
+    expect(html).toContain("Stages to run");
+    expect(html).toContain("Need it: 3");
+    expect(html).toContain("No audio: 1");
+    expect(html).toContain("No AI model: 2");
+    expect(html).toContain("Run on 3");
+    // A stage with no ready meeting has a disabled button.
+    expect(html).toMatch(/disabled=""[^>]*>Run on 0/);
+  });
+  it("says that the folder is done when no stage is needed", () => {
+    const none = { ready: 0, blocked: 0 };
+    const html = panel({
+      ...folder,
+      stage_counts: { transcribe: none, summarize: none, enhance: none },
+    });
+    expect(html).toContain("All meetings in this folder are done.");
+    expect(html).not.toContain("Run on");
+  });
+  it("selects one row, a shift range in both directions, and clears a range", () => {
+    const order = ["a", "b", "c", "d", "e"];
+    let checked = toggleSelection(order, new Set(), null, "b", false);
+    expect([...checked]).toEqual(["b"]);
+    checked = toggleSelection(order, checked, "b", "d", true);
+    expect([...checked].sort()).toEqual(["b", "c", "d"]);
+    checked = toggleSelection(order, checked, "d", "a", true);
+    expect([...checked].sort()).toEqual(["a", "b", "c", "d"]);
+    // A range click on a checked row clears the range.
+    checked = toggleSelection(order, checked, "a", "c", true);
+    expect([...checked]).toEqual(["d"]);
+    // No anchor: a range click acts on one row.
+    expect([...toggleSelection(order, new Set(), null, "e", true)]).toEqual([
+      "e",
+    ]);
   });
   it("opens the description field from the folder menu action", () => {
     const html = panel(folder, "description");

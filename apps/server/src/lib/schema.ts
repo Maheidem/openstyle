@@ -11,7 +11,7 @@ const DEFAULT_CLOUD_URL = "https://service.freestylevoice.com";
 // reports 26). Migrations only run while currentVersion < SCHEMA_VERSION, so a
 // fork migration numbered below that is silently skipped for anyone arriving
 // from upstream. Keep this above the highest upstream version we have seen.
-const SCHEMA_VERSION = 47;
+const SCHEMA_VERSION = 48;
 
 // Legacy default format-rule patterns (used only by pre-v12 migrations below):
 // domain/phrase entries match as substrings of url+title+app; bare words match
@@ -1252,6 +1252,35 @@ function applyMigrations(db: DatabaseSync, currentVersion: number): void {
     db.exec(
       `ALTER TABLE meetings ADD COLUMN retention_exempt INTEGER NOT NULL DEFAULT 0`,
     );
+  }
+
+  if (currentVersion < 48 && tableExists(db, "meetings")) {
+    // Folder batch runs (specs/meeting-folder-batch.md). A new summary
+    // replaces the row in meeting_summaries. The save copies the old row
+    // here first, so the meeting keeps its previous summaries as versions.
+    db.exec(`
+      CREATE TABLE IF NOT EXISTS meeting_summary_versions (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        meeting_id TEXT NOT NULL REFERENCES meetings(id) ON DELETE CASCADE,
+        markdown TEXT,
+        summary_json TEXT,
+        llm_provider TEXT,
+        llm_model TEXT,
+        input_tokens INTEGER,
+        output_tokens INTEGER,
+        cost_usd REAL,
+        created_at INTEGER,
+        partial INTEGER,
+        replaced_at INTEGER NOT NULL
+      );
+      CREATE INDEX IF NOT EXISTS idx_meeting_summary_versions_meeting
+        ON meeting_summary_versions(meeting_id, id);
+    `);
+    // The confirmed speaker names that a re-transcribe could not keep, as a
+    // JSON array of names. NULL means none. The meeting page shows them.
+    if (!hasColumn(db, "meetings", "speaker_names_lost")) {
+      db.exec(`ALTER TABLE meetings ADD COLUMN speaker_names_lost TEXT`);
+    }
   }
 
   // Upsert schema version
