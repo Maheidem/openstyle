@@ -704,7 +704,11 @@
       "presetDeleteFailed": "Não foi possível excluir esta predefinição. Tente novamente.",
       "deletePresetTitle": "Excluir predefinição?",
       "deletePresetMsg": "<b>{{name}}</b> é usada por {{tasks}}. Excluí-la faz essas tarefas voltarem para Auto.",
-      "deletePresetNoTasksMsg": "<b>{{name}}</b> não é usada por nenhuma tarefa agora. Excluí-la a remove definitivamente."
+      "deletePresetNoTasksMsg": "<b>{{name}}</b> não é usada por nenhuma tarefa agora. Excluí-la a remove definitivamente.",
+      "liveChat": {
+        "name": "Chat ao vivo (experimental)",
+        "desc": "Responde suas perguntas durante uma gravação."
+      }
     },
     "loading": "Carregando modelos",
     "mlxKeepAlive": "Tempo de permanência do MLX ASR",

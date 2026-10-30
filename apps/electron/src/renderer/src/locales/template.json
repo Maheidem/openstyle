@@ -806,7 +806,11 @@
       "presetDeleteFailed": "Couldn't delete this preset. Try again.",
       "deletePresetTitle": "Delete preset?",
       "deletePresetMsg": "<b>{{name}}</b> is used by {{tasks}}. Deleting it switches those tasks back to Auto.",
-      "deletePresetNoTasksMsg": "<b>{{name}}</b> isn't used by any task right now. Deleting it removes it for good."
+      "deletePresetNoTasksMsg": "<b>{{name}}</b> isn't used by any task right now. Deleting it removes it for good.",
+      "liveChat": {
+        "name": "Live chat (experimental)",
+        "desc": "Answers your questions during a recording."
+      }
     },
     "meetingModel": {
       "label": "Meeting transcription",

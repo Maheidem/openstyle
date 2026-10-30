@@ -705,7 +705,11 @@
       "presetDeleteFailed": "No se pudo eliminar este preset. Inténtalo de nuevo.",
       "deletePresetTitle": "¿Eliminar preset?",
       "deletePresetMsg": "<b>{{name}}</b> lo usan {{tasks}}. Al eliminarlo, esas tareas vuelven a Auto.",
-      "deletePresetNoTasksMsg": "<b>{{name}}</b> no lo usa ninguna tarea ahora mismo. Al eliminarlo se borrará definitivamente."
+      "deletePresetNoTasksMsg": "<b>{{name}}</b> no lo usa ninguna tarea ahora mismo. Al eliminarlo se borrará definitivamente.",
+      "liveChat": {
+        "name": "Chat en vivo (experimental)",
+        "desc": "Responde tus preguntas durante una grabación."
+      }
     },
     "loading": "Cargando modelos",
     "mlxKeepAlive": "Tiempo de permanencia de MLX ASR",

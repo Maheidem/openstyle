@@ -28,6 +28,7 @@ import {
   planKeys,
 } from "../../../../shared/meeting-devices";
 import { SETTINGS_KEYS } from "../../../../shared/settings-keys";
+import { LiveChatPanel } from "./live-chat-panel";
 import { LiveTranscriptPanel } from "./live-transcript-panel";
 import type { RecorderStatus } from "./types";
 
@@ -565,7 +566,10 @@ export function RecordingCard({
         )}
       </div>
       {recording && liveChatOn && (
-        <LiveTranscriptPanel meetingId={recorder.meetingId} />
+        <>
+          <LiveTranscriptPanel meetingId={recorder.meetingId} />
+          <LiveChatPanel meetingId={recorder.meetingId} />
+        </>
       )}
       {!recording && !finalizing && targetName && (
         <p className="text-muted-foreground mt-2 text-xs">

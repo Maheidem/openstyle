@@ -705,7 +705,11 @@
       "presetDeleteFailed": "Impossible de supprimer ce préréglage. Réessayez.",
       "deletePresetTitle": "Supprimer ce préréglage ?",
       "deletePresetMsg": "<b>{{name}}</b> est utilisé par {{tasks}}. Le supprimer ramène ces tâches à Auto.",
-      "deletePresetNoTasksMsg": "<b>{{name}}</b> n'est utilisé par aucune tâche pour le moment. Le supprimer l'enlève définitivement."
+      "deletePresetNoTasksMsg": "<b>{{name}}</b> n'est utilisé par aucune tâche pour le moment. Le supprimer l'enlève définitivement.",
+      "liveChat": {
+        "name": "Chat en direct (expérimental)",
+        "desc": "Répond à vos questions pendant un enregistrement."
+      }
     },
     "loading": "Chargement des modèles",
     "mlxKeepAlive": "Durée de maintien de MLX ASR",

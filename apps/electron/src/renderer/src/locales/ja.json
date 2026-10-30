@@ -705,7 +705,11 @@
       "presetDeleteFailed": "このプリセットを削除できませんでした。もう一度お試しください。",
       "deletePresetTitle": "プリセットを削除しますか？",
       "deletePresetMsg": "<b>{{name}}</b> は {{tasks}} で使用されています。削除するとこれらのタスクは Auto に戻ります。",
-      "deletePresetNoTasksMsg": "<b>{{name}}</b> は現在どのタスクでも使用されていません。削除すると完全に削除されます。"
+      "deletePresetNoTasksMsg": "<b>{{name}}</b> は現在どのタスクでも使用されていません。削除すると完全に削除されます。",
+      "liveChat": {
+        "name": "ライブチャット(試験的)",
+        "desc": "録音中の質問に答えます。"
+      }
     },
     "loading": "モデルを読み込み中",
     "mlxKeepAlive": "MLX ASRの保持時間",
