@@ -19,15 +19,15 @@ const SCHEMA = `
   CREATE TABLE meeting_folders (id TEXT PRIMARY KEY, name TEXT, created_at INTEGER);
   CREATE TABLE meetings (id TEXT PRIMARY KEY, title TEXT, started_at INTEGER,
     status TEXT, audio_dir TEXT, created_at INTEGER, language TEXT,
-    stt_provider TEXT, stt_model TEXT, folder_id TEXT);
-  CREATE TABLE meeting_segments (id TEXT PRIMARY KEY, meeting_id TEXT, text TEXT, enhanced_text TEXT);
+    stt_provider TEXT, stt_model TEXT, folder_id TEXT REFERENCES meeting_folders(id));
+  CREATE TABLE meeting_segments (id TEXT PRIMARY KEY, meeting_id TEXT REFERENCES meetings(id), text TEXT, enhanced_text TEXT);
   CREATE TABLE meeting_speakers (meeting_id TEXT, speaker_label TEXT, display_name TEXT,
     suggested_name TEXT, suggested_evidence TEXT, suggested_kind TEXT,
     merged_into TEXT, confirmed_at INTEGER);
   CREATE TABLE meeting_summaries (meeting_id TEXT PRIMARY KEY, markdown TEXT, created_at INTEGER);
   CREATE TABLE meeting_diarizer_turns (meeting_id TEXT, idx INTEGER, speaker_id TEXT);
   CREATE TABLE tags (id TEXT PRIMARY KEY, name TEXT);
-  CREATE TABLE meeting_tags (meeting_id TEXT, tag_id TEXT);
+  CREATE TABLE meeting_tags (meeting_id TEXT REFERENCES meetings(id), tag_id TEXT REFERENCES tags(id));
 `;
 
 /** A scratch DB with `src` attached. The src side has one folder of four meetings. */
@@ -151,6 +151,31 @@ test("seedFolderMemory copies the folder and the earlier meetings, with real dat
       ).n,
       1,
     );
+  } finally {
+    db.close();
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test("seedFolderMemory: two targets in one folder do not clash", () => {
+  const { db, dir } = fixture();
+  try {
+    db.exec(
+      "INSERT INTO main.meetings (id, title, started_at, status, audio_dir, created_at) VALUES ('m-mid', 'Review', 2000, 'recorded', '/scratch', 9999)",
+    );
+    const report = seedFolderMemory(db, ["m-now", "m-mid"]);
+    assert.deepEqual(
+      report.map((r) => [r.id, r.earlier, r.later]),
+      [
+        ["m-now", 2, 1],
+        ["m-mid", 1, 2],
+      ],
+    );
+    // The target row m-mid keeps its own audio_dir and status.
+    const mid = db
+      .prepare("SELECT status, audio_dir FROM main.meetings WHERE id = 'm-mid'")
+      .get() as Record<string, unknown>;
+    assert.deepEqual({ ...mid }, { status: "recorded", audio_dir: "/scratch" });
   } finally {
     db.close();
     rmSync(dir, { recursive: true, force: true });

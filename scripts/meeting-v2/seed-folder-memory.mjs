@@ -40,7 +40,7 @@ function copyRows(db, table, where, params, replace = {}) {
   return Number(
     db
       .prepare(
-        `INSERT OR REPLACE INTO main.${table} (${names}) SELECT ${select} FROM src.${table} WHERE ${where}`,
+        `INSERT OR IGNORE INTO main.${table} (${names}) SELECT ${select} FROM src.${table} WHERE ${where}`,
       )
       .run(...params).changes,
   );
@@ -96,6 +96,13 @@ export function seedFolderMemory(db, targets) {
 function copyEarlier(db, ids) {
   const slots = inList(ids);
   copyRows(db, "meetings", `id IN (${slots})`, ids, { audio_dir: "NULL" });
+  // The tag rows go first: meeting_tags points to them (the title and tags make the meta chunk).
+  copyRows(
+    db,
+    "tags",
+    `id IN (SELECT tag_id FROM src.meeting_tags WHERE meeting_id IN (${slots}))`,
+    ids,
+  );
   for (const table of [
     "meeting_segments",
     "meeting_speakers",
@@ -105,13 +112,6 @@ function copyEarlier(db, ids) {
   ]) {
     copyRows(db, table, `meeting_id IN (${slots})`, ids);
   }
-  // meeting_tags needs its tag rows (the title and tags make the meta chunk).
-  copyRows(
-    db,
-    "tags",
-    `id IN (SELECT tag_id FROM src.meeting_tags WHERE meeting_id IN (${slots}))`,
-    ids,
-  );
 }
 
 /**
