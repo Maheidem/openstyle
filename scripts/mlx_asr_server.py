@@ -893,8 +893,11 @@ class _JsonGrammar:
             return logits if self.state == "thinking" else self._mask(logits)
         else:
             self._consume(token)
-        if self.m.is_stopped():
-            return logits
+        # A finished grammar is "stopped" before the stop token is sampled. Its
+        # mask then allows the stop token only. Do not return the raw logits
+        # here: the step after the closing brace would be free, and at
+        # temperature 1.0 a token that is not a stop token starts text after
+        # a complete answer that runs to max_tokens (finish_reason length).
         return self._mask(logits)
 
 
