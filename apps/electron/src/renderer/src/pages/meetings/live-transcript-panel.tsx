@@ -30,35 +30,49 @@ export function useLiveTranscript(meetingId: string | null) {
   });
 }
 
+/** The text for the reason that the live transcript is not available. */
+function unavailableKey(reason: string | undefined): string {
+  switch (reason) {
+    case "provider_not_local":
+      return "meetings.liveChat.unavailableProvider";
+    case "model_missing":
+      return "meetings.liveChat.unavailableModel";
+    case "worker_missing":
+      return "meetings.liveChat.unavailableWorker";
+    default:
+      return "meetings.liveChat.unavailable";
+  }
+}
+
 /**
- * Live transcript inside the recording card. Experimental: the parent shows
- * it only while the setting is on. It shows the final lines and one grey
- * partial line for each channel.
+ * Live transcript in the left column of the live view. Experimental: the
+ * parent shows it only while the setting is on. It shows the final lines and
+ * one grey partial line for each channel, and scrolls to the end.
  */
 export function LiveTranscriptPanel({
   meetingId,
 }: {
   meetingId: string | null;
-}): React.JSX.Element | null {
+}): React.JSX.Element {
   const { t } = useTranslation();
   const { data } = useLiveTranscript(meetingId);
   const endRef = useRef<HTMLDivElement>(null);
-  const lineCount = data?.lines.length ?? 0;
+  const lines = data?.lines ?? [];
+  const last = lines[lines.length - 1];
+  const scrollKey = `${lines.length}:${last?.text.length ?? 0}`;
 
-  // biome-ignore lint/correctness/useExhaustiveDependencies: scroll on new lines
+  // biome-ignore lint/correctness/useExhaustiveDependencies: scroll on new text
   useEffect(() => {
     endRef.current?.scrollIntoView?.({ block: "nearest" });
-  }, [lineCount]);
-
-  // "off": the setting was off when the recording started.
-  if (!data || data.status === "off") return null;
+  }, [scrollKey]);
 
   return (
-    <div
-      className="border-border mt-4 border-t pt-3"
+    <section
+      className="flex min-h-0 flex-1 flex-col"
       data-testid="live-transcript"
+      aria-label={t("meetings.liveChat.transcriptTitle")}
     >
-      <div className="mb-2 flex items-center gap-2">
+      <div className="mb-2 flex shrink-0 items-center gap-2">
         <span className="text-foreground text-[12px] font-medium">
           {t("meetings.liveChat.transcriptTitle")}
         </span>
@@ -66,21 +80,25 @@ export function LiveTranscriptPanel({
           {t("meetings.liveChat.experimental")}
         </span>
       </div>
-      {data.status === "unavailable" ? (
+      {data?.status === "unavailable" ? (
         <p
-          className="text-muted-foreground text-[12px]"
+          className="text-muted-foreground text-[12px] leading-snug"
           data-testid="live-unavailable"
+          data-reason={data.reason ?? ""}
         >
-          {t("meetings.liveChat.unavailable")}
+          {t(unavailableKey(data.reason))}
         </p>
       ) : (
-        <div className="max-h-48 overflow-y-auto pr-1 text-[12.5px] leading-snug">
-          {data.status === "warming" && data.lines.length === 0 && (
+        <div
+          className="min-h-0 flex-1 overflow-y-auto pr-1 text-[12.5px] leading-snug"
+          data-testid="live-transcript-scroll"
+        >
+          {data?.status === "warming" && lines.length === 0 && (
             <p className="text-muted-foreground" data-testid="live-warming">
               {t("meetings.liveChat.warming")}
             </p>
           )}
-          {data.lines.map((line) => (
+          {lines.map((line) => (
             <p
               key={`${line.source}-${line.startMs}-${line.final}`}
               className={cn(
@@ -103,6 +121,6 @@ export function LiveTranscriptPanel({
           <div ref={endRef} />
         </div>
       )}
-    </div>
+    </section>
   );
 }

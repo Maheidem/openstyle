@@ -9,6 +9,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
   isLiveRunning,
   type LiveDeps,
+  pickLiveAsrModel,
   startLive,
   stopLive,
 } from "../src/lib/meetings/live/loop.js";
@@ -167,6 +168,41 @@ describe("live store", () => {
 
   it("returns null for an unknown meeting", () => {
     expect(getLive("nope")).toBeNull();
+  });
+});
+
+describe("pickLiveAsrModel", () => {
+  const mlxMeeting = { provider: "local-mlx", modelId: "local-mlx/meeting-m" };
+  const mlxDictation = { provider: "local-mlx", model_id: "local-mlx/dict-m" };
+
+  it("uses the meeting model when it is local MLX", () => {
+    expect(pickLiveAsrModel(mlxMeeting, mlxDictation)).toEqual({
+      modelId: "local-mlx/meeting-m",
+    });
+  });
+
+  it("uses the dictation model when the meeting model is not local MLX", () => {
+    for (const provider of ["whisper", "server", "openai"]) {
+      expect(
+        pickLiveAsrModel({ provider, modelId: `${provider}/x` }, mlxDictation),
+      ).toEqual({ modelId: "local-mlx/dict-m" });
+    }
+  });
+
+  it("uses the dictation model when the meeting model cannot be resolved", () => {
+    expect(pickLiveAsrModel(null, mlxDictation)).toEqual({
+      modelId: "local-mlx/dict-m",
+    });
+  });
+
+  it("is provider_not_local when no model is local MLX", () => {
+    const whisper = { provider: "whisper", model_id: "whisper/base" };
+    expect(
+      pickLiveAsrModel({ provider: "server", modelId: "s/m" }, whisper),
+    ).toEqual({ unavailable: "provider_not_local" });
+    expect(pickLiveAsrModel(null, null)).toEqual({
+      unavailable: "provider_not_local",
+    });
   });
 });
 

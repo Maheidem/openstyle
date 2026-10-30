@@ -30,9 +30,11 @@ import {
   MeetingsEmptyState,
   useMeetingImport,
 } from "./import";
+import { LiveView } from "./live-view";
 import {
   RecordingCard,
   SystemAudioHint,
+  useLiveChatEnabled,
   useRecorder,
   useSystemAudioProbe,
 } from "./recording";
@@ -47,6 +49,10 @@ import {
   EnhanceSettingsPopover,
 } from "./settings-popovers";
 import type { SearchFocus } from "./types";
+
+/** The recordings that already opened their live view. It outlives the page,
+ * so a mount in the middle of a recording does not open the view again. */
+const autoOpenedLive = new Set<string>();
 
 export default function MeetingsPage(): React.JSX.Element {
   const { t } = useTranslation();
@@ -123,6 +129,17 @@ export default function MeetingsPage(): React.JSX.Element {
     (!activeId || openMeeting !== undefined) &&
     (targetId === null || folders.some((folder) => folder.id === targetId));
   const recorder = useRecorder(targetId);
+  // The live view (#375): the right pane shows the live transcript and the
+  // chat of the recording, while the setting is on.
+  const liveEnabled = useLiveChatEnabled();
+  const recordingId =
+    recorder.status === "recording"
+      ? (recorder.meetingId ??
+        meetings.find((m) => m.status === "recording")?.id ??
+        null)
+      : null;
+  const showLive =
+    liveEnabled && recordingId !== null && activeId === recordingId;
   const groupIds = useMemo(
     () => [...folders.map((folder) => folder.id), null],
     [folders],
@@ -216,6 +233,13 @@ export default function MeetingsPage(): React.JSX.Element {
     },
     [open],
   );
+  // A new recording opens its live view once. The user can click away. A
+  // click on the recording row, or the link in the card, opens it again.
+  useEffect(() => {
+    if (!liveEnabled || !recordingId || autoOpenedLive.has(recordingId)) return;
+    autoOpenedLive.add(recordingId);
+    open(recordingId);
+  }, [liveEnabled, recordingId, open]);
   const meetingImport = useMeetingImport(open);
   const importError =
     meetingImport.state.status === "error" ? meetingImport.state : null;
@@ -284,6 +308,9 @@ export default function MeetingsPage(): React.JSX.Element {
       compact
       targetName={targetName}
       targetReady={targetReady}
+      onOpenLive={
+        liveEnabled && recordingId ? () => open(recordingId) : undefined
+      }
     />
   );
   return (
@@ -482,6 +509,12 @@ export default function MeetingsPage(): React.JSX.Element {
                   enhanceSettings?.[SETTINGS_KEYS.meetingEnhanceAutoRun] ===
                   "true"
                 }
+              />
+            ) : showLive && recordingId ? (
+              <LiveView
+                meetingId={recordingId}
+                title={openMeeting?.title ?? null}
+                startedAt={recorder.startedAt}
               />
             ) : activeId ? (
               <MeetingDetailView
