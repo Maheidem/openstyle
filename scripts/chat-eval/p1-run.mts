@@ -550,14 +550,17 @@ async function partSlots(
       corpus.todayMs,
     );
     const zod = mods.plan.slotZod(q.intent, choices);
-    if (!zod) continue;
+    // No slot call for an intent with no model field (query = the question,
+    // dates by code): its default slots are scored, with no model call.
+    if (!zod && q.intent === "status") continue;
     const signal = AbortSignal.timeout(120_000);
-    const llm = await newLlm(env, `slots-${q.id}`, signal);
+    const llm = zod ? await newLlm(env, `slots-${q.id}`, signal) : null;
     const historyText = mods.context.renderHistory(turns.slice(-2));
     const t = performance.now();
     let slots: Record<string, unknown> = { ...mods.plan.defaultSlots(q.text) };
     let err: string | null = null;
     try {
+      if (!zod || !llm) throw new Error("no slot call");
       const r = await llm.structured({
         step: "chatSlots",
         unitKey: "route/slots",
@@ -578,8 +581,10 @@ async function partSlots(
       slots = { ...slots, ...(r.object as object) };
       llm.finish("succeeded");
     } catch (e) {
-      err = String(e).slice(0, 160);
-      llm.finish("failed", { errorDetail: err });
+      if (zod && llm) {
+        err = String(e).slice(0, 160);
+        llm.finish("failed", { errorDetail: err });
+      }
     }
     const ms = performance.now() - t;
     const dates = mods.choices.datesFromQuestion(q.text, corpus.todayMs);

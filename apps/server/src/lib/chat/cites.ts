@@ -426,7 +426,8 @@ export function refineCiteTimes(
     for (const label of sentence.cites) {
       const segs = sources.segments.get(label);
       const src = sources.get(label);
-      if (!segs || !src || src.kind !== "transcript") continue;
+      if (!segs || !src || (src.kind !== "transcript" && src.kind !== "window"))
+        continue;
       let best = segs[0];
       let bestScore = -1;
       for (const seg of segs) {
@@ -460,7 +461,10 @@ export function tidyCites(
     );
     const candidates = new Set(sentence.cites);
     for (const src of sources.all()) {
-      if (src.kind === "transcript" && meetings.has(src.meetingId))
+      if (
+        (src.kind === "transcript" || src.kind === "window") &&
+        meetings.has(src.meetingId)
+      )
         candidates.add(src.label);
     }
     let best = sentence.cites[0] as string;
@@ -471,7 +475,8 @@ export function tidyCites(
       const have = new Set(foldWords(src.text));
       let hit = 0;
       for (const w of words) if (have.has(w)) hit++;
-      const score = hit / words.size + (src.kind === "transcript" ? 0.15 : 0);
+      const spoken = src.kind === "transcript" || src.kind === "window";
+      const score = hit / words.size + (spoken ? 0.15 : 0);
       if (score > bestScore) {
         best = label;
         bestScore = score;

@@ -948,7 +948,7 @@ const getTranscriptWindow: ToolDef<z.infer<typeof getTranscriptWindowArgs>> = {
     }
     const info = meetingInfo(ctx.db, a.meeting_id);
     const labels: string[] = [];
-    addSource(
+    const wlabel = addSource(
       ctx,
       {
         kind: "window",
@@ -961,6 +961,14 @@ const getTranscriptWindow: ToolDef<z.infer<typeof getTranscriptWindowArgs>> = {
         text: out.join("\n"),
       },
       labels,
+    );
+    // The cite time is the line that the answer is about (pipeline, after the answer).
+    ctx.sources.segments.set(
+      wlabel,
+      lines.slice(0, out.length).map((l) => ({
+        startMs: l.startMs,
+        text: `${l.speaker} ${l.text}`,
+      })),
     );
     return { rows: lines.length, labels, blocks: [] };
   },

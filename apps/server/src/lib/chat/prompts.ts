@@ -125,3 +125,16 @@ const WHO_RE = /\b(who|whom|quem|qui|wer|wen|qui[eé]n|chi)\b|誰|だれ/iu;
 export function asksWho(question: string): boolean {
   return WHO_RE.test(question);
 }
+
+/**
+ * Words that ask for a whole list or a number, in the 7 UI languages. A list
+ * tool is allowed only for such a question: in the P1 eval the model chose a
+ * list tool for "What did we decide on X?" and a question about one topic
+ * needs search (code decides, as the router rule of spec 2.1 point 5).
+ */
+const LIST_RE =
+  /\b(list|lists|show|display|all|every|each|which|how many|number of|liste|listar|lista|mostre|mostrar|todas?|todos|quais|quantas?|quantos|cu[aá]ntas?|cu[aá]ntos|muestra|muestre|alle|zeige|welche|wie viele|tous|toutes|montre|quels|quelles|combien|tutti|tutte|mostra|quali|quanti|elenca)\b|一覧|すべて|全部|何件|何回/iu;
+
+export function asksForList(question: string): boolean {
+  return LIST_RE.test(question);
+}

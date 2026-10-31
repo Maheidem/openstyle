@@ -270,20 +270,13 @@ describe("plannedCalls", () => {
 describe("slots", () => {
   it("has no date fields and closed choices", () => {
     const z = slotZod("aggregate", CH);
-    expect(z?.safeParse({ person: "ana lima", query: "plan" }).success).toBe(
-      true,
-    );
-    expect(z?.safeParse({ person: "nobody", query: "plan" }).success).toBe(
-      false,
-    );
+    expect(z?.safeParse({ person: "ana lima" }).success).toBe(true);
+    expect(z?.safeParse({ person: "nobody" }).success).toBe(false);
     expect(
-      z?.safeParse({ person: "none", query: "plan", date_from: "2026-01-01" })
-        .success,
+      z?.safeParse({ person: "none", date_from: "2026-01-01" }).success,
     ).toBe(false);
     expect(slotZod("status", CH)).toBeNull();
-    expect(
-      slotZod("lookup", CH)?.safeParse({ query: "x".repeat(201) }).success,
-    ).toBe(false);
+
     const w = slotZod("write", CH);
     expect(
       w?.safeParse({
@@ -312,7 +305,9 @@ describe("slots", () => {
     expect(p).not.toMatch(/date_from|date_to/);
     expect(p).toContain('A1="Write the rollback plan"');
     expect(p).toContain("M2=Pier Review (2026-09-22)");
-    expect(slotSystem("lookup", CH, "2026-10-26")).toContain("query:");
+    // lookup, who_said and temporal have no model field: the query is made by code.
+    expect(slotZod("lookup", CH)).toBeNull();
+    expect(slotZod("temporal", CH)).toBeNull();
   });
 
   it("defaultSlots uses the question as the query", () => {

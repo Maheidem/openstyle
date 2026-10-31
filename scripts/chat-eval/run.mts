@@ -25,9 +25,14 @@ import { runRouter } from "./router-run.mts";
 import { OUT, sha } from "./stack.mts";
 
 const flag = (n: string) => process.argv.includes(`--${n}`);
+const flagNum = (n: string): number | undefined => {
+  const i = process.argv.indexOf(`--${n}`);
+  const v = i >= 0 ? Number(process.argv[i + 1]) : Number.NaN;
+  return Number.isFinite(v) ? v : undefined;
+};
 
-export function corpusInfo() {
-  const corpus = buildCorpus();
+export function corpusInfo(seed?: number) {
+  const corpus = buildCorpus(seed);
   const gold = buildGold(corpus);
   const byType: Record<string, number> = {};
   for (const q of gold.questions) byType[q.type] = (byType[q.type] ?? 0) + 1;
@@ -101,7 +106,7 @@ async function main() {
     return;
   }
   if (cmd === "p1") {
-    const info = corpusInfo();
+    const info = corpusInfo(flagNum("seed"));
     const mlflow = !flag("no-mlflow");
     const arg = (n: string) => {
       const i = process.argv.indexOf(`--${n}`);

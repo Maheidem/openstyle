@@ -44,6 +44,7 @@ import {
   ANSWER_SCHEMA,
   ANSWER_SYSTEM,
   answerUser,
+  asksForList,
   asksWho,
   isoDay,
   looksLikeWrite,
@@ -392,6 +393,26 @@ export async function runChatTurn(input: ChatTurnInput): Promise<TurnResult> {
     }
   }
   intent ??= TOOL_INTENT[first.tool] ?? "lookup";
+
+  // A list tool needs a question that asks for a list or a count. A question
+  // about one topic reads text (P1 eval, lookup and long-thread questions).
+  const LIST_TOOLS = ["list_action_items", "list_decisions_questions"];
+  if (
+    LIST_TOOLS.includes(first.tool) &&
+    !asksForList(question) &&
+    !asksForCount(question)
+  ) {
+    first = { tool: "search_chunks", args: { query: question.slice(0, 200) } };
+    fallbackCalls = [];
+    intent = "lookup";
+    steps.push({
+      stage: "plan",
+      name: "list tool replaced by search_chunks",
+      rows: null,
+      ms: 0,
+      note: null,
+    });
+  }
 
   // A follow-up has no topic of its own ("and when is that due?"). The search
   // query holds the first and the last earlier question too (spec 2.8 point 4;

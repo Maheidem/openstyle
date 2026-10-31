@@ -4,7 +4,6 @@ import {
   datesFromQuestion,
   hasDateArgs,
   parseToolArgs,
-  QUERY_MAX_CHARS,
   queryFor,
   type ToolCall,
   type ToolName,
@@ -154,18 +153,16 @@ export function slotZod(
   intent: Intent,
   ch: Choices,
 ): z.ZodType<SlotValues> | null {
-  const query = z.string().max(QUERY_MAX_CHARS);
   const person = oneOf(ch.people.map((p) => p.id));
   let shape: Record<string, z.ZodType>;
   switch (intent) {
     case "status":
       return null;
     case "aggregate":
-      shape = { person, query };
+      shape = { person };
       break;
     case "temporal":
-      shape = { query };
-      break;
+      return null;
     case "review":
       shape = { kind: z.enum(["decision", "open_question"]) };
       break;
@@ -180,7 +177,11 @@ export function slotZod(
       };
       break;
     default:
-      shape = { query };
+      // lookup, who_said: no model field. The search query is the question
+      // (plus the earlier questions of a follow-up), made by code. In the P1
+      // eval a model-written query was right in 66% of the slot calls and a
+      // copy of the question in all of them.
+      return null;
   }
   return z.object(shape).strict() as unknown as z.ZodType<SlotValues>;
 }
