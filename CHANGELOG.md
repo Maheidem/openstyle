@@ -1,5 +1,12 @@
 # Changelog
 
+## 2.25.0-alpha.10
+
+### New Features ✨
+
+- (eval) --task-params for the meeting eval by @Maheidem in [#390](https://github.com/Maheidem/openstyle/pull/390)
+- (llm) Built-in local models now run at temperature 0 by default for every stage (Auto). Gold eval on Gemma 4 E2B, 3 runs each: temperature 0 gave 0 hard fails in 6 meeting runs and matched 8 of 13 summary items in every run. The vendor value 1.0 gave hard fails in 4 of 6 runs and matched 6 of 13. A profile that you link keeps its own values. by @Maheidem in [#391](https://github.com/Maheidem/openstyle/pull/391)
+
 ## 2.25.0
 
 ### New Features ✨
