@@ -104,7 +104,7 @@ export function nativeSystem(args: {
     `Scope: ${args.scopeLine}`,
     args.write
       ? "The user asks for a change. Call the matching propose tool."
-      : "Use search_chunks when you are not sure. A `query` is a short standalone search text in the language of the question. Use the lists for ids.",
+      : "Use search_chunks for a question about one fact, one topic, one person or one date, and when you are not sure. Use a list tool ONLY when the user asks for a whole list or a count. A `query` is the topic of the question with its names and numbers, in the language of the meeting. For a follow-up, the query holds the topic of the earlier question. Use the lists for ids.",
     ...args.lists,
   ];
   if (args.history) lines.push(`Earlier questions:\n${args.history}`);

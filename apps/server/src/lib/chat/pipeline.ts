@@ -81,7 +81,7 @@ export const SCORE_FLOOR = 0.5;
 /** Nearest sources shown in a not_found block. */
 const NEAREST = 3;
 /** Cites kept for a block answer (list, count, status). */
-const BLOCK_CITES = 12;
+const BLOCK_CITES = 50;
 
 export interface ChatTurnInput {
   db: DatabaseSync;
@@ -634,6 +634,7 @@ export async function runChatTurn(input: ChatTurnInput): Promise<TurnResult> {
       return notFound("no_sources");
     }
     const started5 = Date.now();
+    assignMissingCites(parsed.sentences, sources);
     const check = checkAnswer({
       sentences: parsed.sentences,
       sources,
@@ -769,5 +770,36 @@ function tidyCites(
       }
     }
     sentence.cites = [best];
+  }
+}
+
+/**
+ * A sentence with no valid cite gets the source that shares most of its words,
+ * when the share is at least a half. Code verifies the match; the fact check
+ * runs after this. A sentence with no such source stays uncited and the cite
+ * check removes it (spec 6.2 rule 4).
+ */
+function assignMissingCites(
+  sentences: { text: string; cites: string[] }[],
+  sources: SourceMap,
+): void {
+  for (const sentence of sentences) {
+    if (sentence.cites.some((l) => sources.get(l))) continue;
+    const words = new Set(fold(sentence.text));
+    if (words.size === 0) continue;
+    let best: string | null = null;
+    let bestShare = 0;
+    for (const src of sources.all()) {
+      if (src.kind === "folder") continue;
+      const have = new Set(fold(src.text));
+      let hit = 0;
+      for (const w of words) if (have.has(w)) hit++;
+      const share = hit / words.size;
+      if (share > bestShare) {
+        best = src.label;
+        bestShare = share;
+      }
+    }
+    if (best && bestShare >= 0.5) sentence.cites = [best];
   }
 }

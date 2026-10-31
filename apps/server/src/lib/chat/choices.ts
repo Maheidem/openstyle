@@ -401,13 +401,17 @@ function allDefs(ch: Choices): Partial<Record<ToolName, NativeTool>> {
       },
       ["query"],
     ),
-    list_action_items: def("list_action_items", "List action items", {
-      ...(person ? { person } : {}),
-      status: { type: "string", enum: ["open", "done", "all"] },
-    }),
+    list_action_items: def(
+      "list_action_items",
+      "List ALL action items (only when the user asks for a list or a count of tasks)",
+      {
+        ...(person ? { person } : {}),
+        status: { type: "string", enum: ["open", "done", "all"] },
+      },
+    ),
     list_decisions_questions: def(
       "list_decisions_questions",
-      "List decisions or open questions",
+      "List ALL decisions or ALL open questions (never for one topic: use search_chunks for that)",
       {
         kind: { type: "string", enum: ["decision", "open_question"] },
       },
