@@ -41,13 +41,18 @@ export function runRerank(
   const outP = join(dir, "r1-out.json");
   writeFileSync(inP, JSON.stringify({ queries }));
   const t0 = performance.now();
-  const r = spawnSync(python, ["-I", join(HERE, "rerank.py"), modelDir, inP, outP], {
-    encoding: "utf8",
-    env: { ...process.env, HF_HUB_OFFLINE: "1" },
-    maxBuffer: 1 << 26,
-  });
+  const r = spawnSync(
+    python,
+    ["-I", join(HERE, "rerank.py"), modelDir, inP, outP],
+    {
+      encoding: "utf8",
+      env: { ...process.env, HF_HUB_OFFLINE: "1" },
+      maxBuffer: 1 << 26,
+    },
+  );
   const wallMs = performance.now() - t0;
-  if (r.status !== 0 || !existsSync(outP)) throw new Error(`rerank.py failed: ${`${r.stderr}`.slice(-600)}`);
+  if (r.status !== 0 || !existsSync(outP))
+    throw new Error(`rerank.py failed: ${`${r.stderr}`.slice(-600)}`);
   const out = JSON.parse(readFileSync(outP, "utf8")) as {
     load_ms: number;
     rss_mb: number;
@@ -64,9 +69,21 @@ export function runRerank(
     for (const arm of ARMS.filter((a) => a.fusion === "rerank")) {
       const n = Math.min(candidates, arm.rerankN ?? candidates);
       const head = h1.ids.slice(0, n);
-      const sorted = [...head].sort((a, b) => (q.scores[String(b)] ?? 0) - (q.scores[String(a)] ?? 0) || a - b);
-      p.rerank[arm.id] = { ids: [...sorted, ...h1.ids.slice(n)], ms: (q.ms * n) / candidates + h1.ms };
+      const sorted = [...head].sort(
+        (a, b) =>
+          (q.scores[String(b)] ?? 0) - (q.scores[String(a)] ?? 0) || a - b,
+      );
+      p.rerank[arm.id] = {
+        ids: [...sorted, ...h1.ids.slice(n)],
+        ms: (q.ms * n) / candidates + h1.ms,
+      };
     }
   }
-  return { model: modelDir.split("/").slice(-3)[0] ?? "", candidates, loadMs: out.load_ms, rssMb: out.rss_mb, wallMs };
+  return {
+    model: modelDir.split("/").slice(-3)[0] ?? "",
+    candidates,
+    loadMs: out.load_ms,
+    rssMb: out.rss_mb,
+    wallMs,
+  };
 }

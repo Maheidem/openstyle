@@ -32,7 +32,10 @@ export function gitTags(): Record<string, string> {
   return {
     "chat.git_sha": git("rev-parse", "HEAD"),
     "chat.git_branch": git("rev-parse", "--abbrev-ref", "HEAD"),
-    "chat.git_dirty": git("status", "--porcelain", "--", "scripts", "apps").length > 0 ? "true" : "false",
+    "chat.git_dirty":
+      git("status", "--porcelain", "--", "scripts", "apps").length > 0
+        ? "true"
+        : "false",
   };
 }
 
@@ -47,7 +50,9 @@ export async function logRun(
 ): Promise<{ runId: string; experiment: string; n: number }> {
   const ml = new Mlflow(chatMlflowUri());
   const exp = (await ml.experimentId(EXPERIMENT)) as string;
-  const p = Object.fromEntries(Object.entries(params).map(([k, v]) => [k, String(v)]));
+  const p = Object.fromEntries(
+    Object.entries(params).map(([k, v]) => [k, String(v)]),
+  );
   const t = { ...gitTags(), ...tags };
   const m: Record<string, number> = {};
   for (const [k, v] of Object.entries(metrics)) {
@@ -57,10 +62,17 @@ export async function logRun(
   await ml.logBatch(runId, p, {}, m);
   await ml.endRun(runId, "FINISHED");
   const got = await ml.getRun(runId);
-  const bad = diffRun(got, { params: p, tags: t, metrics: m, status: "FINISHED" });
+  const bad = diffRun(got, {
+    params: p,
+    tags: t,
+    metrics: m,
+    status: "FINISHED",
+  });
   if (bad.length > 0) {
     await ml.endRun(runId, "FAILED");
-    throw new Error(`MLflow read-back of run ${runId} differs: ${bad.slice(0, 5).join(", ")}`);
+    throw new Error(
+      `MLflow read-back of run ${runId} differs: ${bad.slice(0, 5).join(", ")}`,
+    );
   }
   return { runId, experiment: EXPERIMENT, n: Object.keys(m).length };
 }

@@ -21,22 +21,39 @@ import {
   rankArm,
 } from "./retrieval.mts";
 import { extraRouterItems, planFor, rulesRoute } from "./router-data.mts";
-import { buildChoices, defaultSlots, scoreSlots, slotSchema } from "./slots.mts";
+import {
+  buildChoices,
+  defaultSlots,
+  scoreSlots,
+  slotSchema,
+} from "./slots.mts";
 import type { Question } from "./types.mts";
 
 const c = buildCorpus();
 const g = buildGold(c);
 
-function chunk(id: number, meetingId: string, text: string, kind: ChunkRow["kind"] = "transcript", segmentIds: string[] = []): ChunkRow {
+function chunk(
+  id: number,
+  meetingId: string,
+  text: string,
+  kind: ChunkRow["kind"] = "transcript",
+  segmentIds: string[] = [],
+): ChunkRow {
   return { id, meetingId, ordinal: id, kind, segmentIds, text, title: "" };
 }
 
 test("ftsQuery drops stop words, quotes terms and keeps names", () => {
-  assert.equal(ftsQuery("What did Kestrel Hosting quote for the storage cluster?", "word"), '"kestrel" OR "hosting" OR "quote" OR "storage" OR "cluster"');
+  assert.equal(
+    ftsQuery("What did Kestrel Hosting quote for the storage cluster?", "word"),
+    '"kestrel" OR "hosting" OR "quote" OR "storage" OR "cluster"',
+  );
   assert.equal(ftsQuery('say "hi" or "ok"', "word"), '"say" OR "hi" OR "ok"');
   // The trigram tokenizer needs 3 characters (FTS5 docs: shorter strings match nothing).
   assert.equal(ftsQuery("a to go", "trigram"), "");
-  assert.equal(ftsQuery("Quanto ficou a cotação para o gateway", "word"), '"quanto" OR "ficou" OR "cotação" OR "gateway"');
+  assert.equal(
+    ftsQuery("Quanto ficou a cotação para o gateway", "word"),
+    '"quanto" OR "ficou" OR "cotação" OR "gateway"',
+  );
   assert.equal(ftsQuery("", "word"), "");
 });
 
@@ -44,7 +61,11 @@ test("FTS5 BM25: word channel folds accents, trigram matches a spelling variant"
   const dir = mkdtempSync(join(tmpdir(), "chat-eval-fts-"));
   try {
     const chunks = [
-      chunk(1, "m1", "Kestrel Hosting quoted 52,200 dollars for the storage cluster."),
+      chunk(
+        1,
+        "m1",
+        "Kestrel Hosting quoted 52,200 dollars for the storage cluster.",
+      ),
       chunk(2, "m1", "Cotação do gateway de rede foi aprovada ontem."),
       chunk(3, "m2", "The quote for the backup appliance is still open."),
       chunk(4, "m2", "Tomash Vyechorek signed off on the capacity plan."),
@@ -52,7 +73,10 @@ test("FTS5 BM25: word channel folds accents, trigram matches a spelling variant"
     const word = buildFts(dir, "word", chunks);
     const tri = buildFts(dir, "trigram", chunks);
     assert.deepEqual(ftsSearch(word, "kestrel quoted", 5), [1]);
-    assert.deepEqual(new Set(ftsSearch(word, "kestrel quote", 5)), new Set([1, 3])); // no stemming: "quoted" is not "quote"
+    assert.deepEqual(
+      new Set(ftsSearch(word, "kestrel quote", 5)),
+      new Set([1, 3]),
+    ); // no stemming: "quoted" is not "quote"
     // Accent folding: the query has no accent, the text has one.
     assert.deepEqual(ftsSearch(word, "cotacao gateway", 5), [2]);
     // A meeting filter.
@@ -70,7 +94,9 @@ test("FTS5 BM25: word channel folds accents, trigram matches a spelling variant"
 });
 
 test("gradesFor: 2 for the transcript chunk with the gold segment, 1 for a summary with the value", () => {
-  const f = c.facts.find((x) => x.family === "quote" && x.version === 0) as (typeof c.facts)[number];
+  const f = c.facts.find(
+    (x) => x.family === "quote" && x.version === 0,
+  ) as (typeof c.facts)[number];
   const segId = `${f.meetingId}-s${f.segmentIdx}`;
   const amount = Number(f.value).toLocaleString("en-US");
   const chunks: ChunkRow[] = [
@@ -78,9 +104,15 @@ test("gradesFor: 2 for the transcript chunk with the gold segment, 1 for a summa
     chunk(11, f.meetingId, `The summary says ${amount} dollars.`, "summary"),
     chunk(12, f.meetingId, "nothing", "summary"),
     chunk(13, "other-meeting", `${amount} dollars`, "summary"),
-    chunk(14, f.meetingId, "later chunk", "transcript", [`${f.meetingId}-s9999`]),
+    chunk(14, f.meetingId, "later chunk", "transcript", [
+      `${f.meetingId}-s9999`,
+    ]),
   ];
-  const grades = gradesFor({ gold: [{ meetingId: f.meetingId, segmentIdx: f.segmentIdx }] }, chunks, c);
+  const grades = gradesFor(
+    { gold: [{ meetingId: f.meetingId, segmentIdx: f.segmentIdx }] },
+    chunks,
+    c,
+  );
   assert.equal(grades.get(10), 2);
   assert.equal(grades.get(11), 1);
   assert.equal(grades.has(12), false);
@@ -92,13 +124,22 @@ test("arms fuse the channel lists", () => {
   const q = g.retrieval[0] as (typeof g.retrieval)[number];
   const p: QueryPass = {
     q,
-    dense: { ids: [1, 2, 3], ms: 10, scores: new Map([[1, 0.9], [2, 0.8], [3, 0.1]]) },
+    dense: {
+      ids: [1, 2, 3],
+      ms: 10,
+      scores: new Map([
+        [1, 0.9],
+        [2, 0.8],
+        [3, 0.1],
+      ]),
+    },
     word: { ids: [3, 2, 9], ms: 1 },
     tri: { ids: [9], ms: 1 },
     grades: new Map(),
     ideal: [],
   };
-  const arm = (id: string) => ARMS.find((a) => a.id === id) as (typeof ARMS)[number];
+  const arm = (id: string) =>
+    ARMS.find((a) => a.id === id) as (typeof ARMS)[number];
   assert.deepEqual(rankArm(p, arm("V0")).ids, [1, 2, 3]);
   assert.deepEqual(rankArm(p, arm("B1")).ids, [3, 2, 9]);
   assert.deepEqual(rankArm(p, arm("H1")).ids.slice(0, 2), [3, 2]);
@@ -112,34 +153,69 @@ test("arms fuse the channel lists", () => {
 });
 
 test("closed choices: people, items and meetings come from the scope", () => {
-  const folderQ = g.questions.find((q) => q.intent === "aggregate" && q.scope.kind === "folder" && q.args.person_id) as Question;
+  const folderQ = g.questions.find(
+    (q) =>
+      q.intent === "aggregate" && q.scope.kind === "folder" && q.args.person_id,
+  ) as Question;
   const ch = buildChoices(c, folderQ);
-  const team = c.folders.find((f) => f.id === folderQ.scope.id)?.teamPersonIds ?? [];
-  assert.ok(ch.people.length > 0 && ch.people.every((p) => team.includes(p.id)));
+  const team =
+    c.folders.find((f) => f.id === folderQ.scope.id)?.teamPersonIds ?? [];
+  assert.ok(
+    ch.people.length > 0 && ch.people.every((p) => team.includes(p.id)),
+  );
   // The person named in the question ranks first.
   assert.equal(ch.people[0]?.id, folderQ.args.person_id);
   assert.ok(ch.items.length <= 8 && ch.meetings.length <= 12);
-  const w = g.questions.find((q) => q.intent === "write" && q.key.kind === "write" && q.key.change === "action_item") as Question;
+  const w = g.questions.find(
+    (q) =>
+      q.intent === "write" &&
+      q.key.kind === "write" &&
+      q.key.change === "action_item",
+  ) as Question;
   const cw = buildChoices(c, w);
-  assert.ok(cw.items.some((i) => i.id === w.args.item), "the gold item is a candidate");
+  assert.ok(
+    cw.items.some((i) => i.id === w.args.item),
+    "the gold item is a candidate",
+  );
   assert.equal(cw.items[0]?.label, "A1");
 });
 
 test("scoreSlots: query tokens, ids, dates, labels", () => {
-  const w = g.questions.find((q) => q.intent === "write" && q.key.kind === "write" && q.key.change === "action_item") as Question;
+  const w = g.questions.find(
+    (q) =>
+      q.intent === "write" &&
+      q.key.kind === "write" &&
+      q.key.change === "action_item",
+  ) as Question;
   const ch = buildChoices(c, w);
   const label = ch.items.find((i) => i.id === w.args.item)?.label;
   assert.ok(scoreSlots(w, { change: "action_item", item: label }, ch).pass);
   assert.ok(!scoreSlots(w, { change: "retag", item: label }, ch).pass);
   assert.ok(!scoreSlots(w, { change: "action_item", item: "none" }, ch).pass);
-  const tmp = g.questions.find((q) => q.type === "temporal" && typeof q.args.date_from === "string") as Question;
-  const ok = scoreSlots(tmp, { date_from: tmp.args.date_from as string, date_to: tmp.args.date_to as string }, buildChoices(c, tmp));
+  const tmp = g.questions.find(
+    (q) => q.type === "temporal" && typeof q.args.date_from === "string",
+  ) as Question;
+  const ok = scoreSlots(
+    tmp,
+    {
+      date_from: tmp.args.date_from as string,
+      date_to: tmp.args.date_to as string,
+    },
+    buildChoices(c, tmp),
+  );
   assert.ok(ok.pass);
-  assert.ok(!scoreSlots(tmp, { date_from: null, date_to: null }, buildChoices(c, tmp)).pass);
+  assert.ok(
+    !scoreSlots(tmp, { date_from: null, date_to: null }, buildChoices(c, tmp))
+      .pass,
+  );
   const look = g.questions.find((q) => q.type === "lookup") as Question;
   const tok = (look.args.query_any as string[])[0] as string;
-  assert.ok(scoreSlots(look, { query: `about ${tok}` }, buildChoices(c, look)).pass);
-  assert.ok(!scoreSlots(look, { query: "something else" }, buildChoices(c, look)).pass);
+  assert.ok(
+    scoreSlots(look, { query: `about ${tok}` }, buildChoices(c, look)).pass,
+  );
+  assert.ok(
+    !scoreSlots(look, { query: "something else" }, buildChoices(c, look)).pass,
+  );
   // Default slots (arm A5) pass a lookup (query = question) but not a dated question.
   assert.ok(scoreSlots(look, defaultSlots(look), buildChoices(c, look)).pass);
   assert.ok(!scoreSlots(tmp, defaultSlots(tmp), buildChoices(c, tmp)).pass);
@@ -147,7 +223,11 @@ test("scoreSlots: query tokens, ids, dates, labels", () => {
 
 test("slot schemas are strict objects with closed enums", () => {
   const w = g.questions.find((q) => q.intent === "write") as Question;
-  const s = slotSchema("write", buildChoices(c, w)) as { additionalProperties: boolean; required: string[]; properties: Record<string, { enum?: string[] }> };
+  const s = slotSchema("write", buildChoices(c, w)) as {
+    additionalProperties: boolean;
+    required: string[];
+    properties: Record<string, { enum?: string[] }>;
+  };
   assert.equal(s.additionalProperties, false);
   assert.deepEqual(new Set(s.required), new Set(Object.keys(s.properties)));
   assert.ok(s.properties.item?.enum?.includes("none"));
@@ -161,7 +241,10 @@ test("rules router and plan table", () => {
   assert.equal(rulesRoute("Where do we stand on Atlas?"), "status");
   assert.equal(rulesRoute("Show all decisions in Harbor Pricing."), "review");
   assert.equal(rulesRoute("Which meetings did we have last week?"), "temporal");
-  assert.equal(rulesRoute("How much is the quote for the storage cluster?"), "lookup");
+  assert.equal(
+    rulesRoute("How much is the quote for the storage cluster?"),
+    "lookup",
+  );
   assert.equal(rulesRoute("Hello, what can you do?"), "other");
   assert.deepEqual(planFor("other"), planFor("lookup"));
   assert.equal(planFor("status")[0], "folder_status");

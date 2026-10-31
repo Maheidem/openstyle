@@ -67,12 +67,28 @@ const X: Record<string, string[]> = {
     "こんにちは、何ができますか？",
   ],
 };
-const ORDER: Intent[] = ["lookup", "who_said", "aggregate", "temporal", "review", "status", "write", "other"];
+const ORDER: Intent[] = [
+  "lookup",
+  "who_said",
+  "aggregate",
+  "temporal",
+  "review",
+  "status",
+  "write",
+  "other",
+];
 
 export function extraRouterItems(): RouterItem[] {
   const out: RouterItem[] = [];
   for (const [lang, qs] of Object.entries(X)) {
-    qs.forEach((text, i) => out.push({ id: `x-${lang}-${i}`, lang, text, intent: ORDER[i] as Intent }));
+    qs.forEach((text, i) =>
+      out.push({
+        id: `x-${lang}-${i}`,
+        lang,
+        text,
+        intent: ORDER[i] as Intent,
+      }),
+    );
   }
   const other: [string, string][] = [
     ["en", "Hello, what can you do?"],
@@ -80,7 +96,9 @@ export function extraRouterItems(): RouterItem[] {
     ["pt", "Olá, o que você sabe fazer?"],
     ["pt", "Obrigado, é só isso."],
   ];
-  other.forEach(([lang, text], i) => out.push({ id: `x-${lang}-o${i}`, lang, text, intent: "other" }));
+  other.forEach(([lang, text], i) =>
+    out.push({ id: `x-${lang}-o${i}`, lang, text, intent: "other" }),
+  );
   return out;
 }
 
@@ -114,7 +132,18 @@ export const ROUTER_SCHEMA = {
   required: ["intent"],
   additionalProperties: false,
   properties: {
-    intent: { enum: ["lookup", "who_said", "aggregate", "temporal", "review", "status", "write", "other"] },
+    intent: {
+      enum: [
+        "lookup",
+        "who_said",
+        "aggregate",
+        "temporal",
+        "review",
+        "status",
+        "write",
+        "other",
+      ],
+    },
   },
 } as const;
 
@@ -144,17 +173,55 @@ export function planFor(intent: Intent): string[] {
 
 const R = (s: string) => new RegExp(s, "iu");
 const RULES: [Intent, RegExp][] = [
-  ["write", R("\\b(mark|tag|move|merge|reopen|close|rename|marque|mova|una|reabra|feche|marca|marcar|mueve|fusiona|reabre|markiere|verschiebe|markiere|marque|déplace|fusionne|segna|sposta|unisci)\\b|完了にして|移動|統合")],
-  ["status", R("(where do we stand|status of|how is .* going|em que p[eé] estamos|como est[aá] o|c[oó]mo vamos|wie ist der stand|o[uù] en est|a che punto|進捗)")],
-  ["who_said", R("\\b(who (said|proposed|suggested|signed off|approved|mentioned)|what did \\w+ say|quem (disse|prop[oô]s|aprovou|falou)|qui a |wer hat|qui[eé]n (dijo|propuso)|chi ha )|誰")],
-  ["review", R("(all (the )?decisions|open questions|decis[oõ]es|perguntas (ainda )?em aberto|decisiones|offene fragen|entscheidungen|questions ouvertes|décisions|decisioni|決定事項)")],
-  ["temporal", R("(which meetings|what meetings|last week|last month|this month|meeting (on|of)|quais reuni[oõ]es|semana passada|m[eê]s passado|neste m[eê]s|qu[eé] reuniones|semana pasada|welche meetings|letzte woche|quelles r[eé]unions|semaine derni[eè]re|quali riunioni|settimana scorsa|先週|reuni[aã]o de |na reuni[aã]o)")],
-  ["aggregate", R("(\\blist\\b|how many|open action items|itens de a[cç][aã]o|quantas|quantos|liste|cu[aá]ntas|lista |wie viele|liste |combien|quante|elenca|未完了|一覧)")],
-  ["other", R("^(hello|hi|hey|thanks|thank you|ol[aá]|obrigad|hola|gracias|hallo|bonjour|merci|ciao|grazie|こんにちは)\\b")],
+  [
+    "write",
+    R(
+      "\\b(mark|tag|move|merge|reopen|close|rename|marque|mova|una|reabra|feche|marca|marcar|mueve|fusiona|reabre|markiere|verschiebe|markiere|marque|déplace|fusionne|segna|sposta|unisci)\\b|完了にして|移動|統合",
+    ),
+  ],
+  [
+    "status",
+    R(
+      "(where do we stand|status of|how is .* going|em que p[eé] estamos|como est[aá] o|c[oó]mo vamos|wie ist der stand|o[uù] en est|a che punto|進捗)",
+    ),
+  ],
+  [
+    "who_said",
+    R(
+      "\\b(who (said|proposed|suggested|signed off|approved|mentioned)|what did \\w+ say|quem (disse|prop[oô]s|aprovou|falou)|qui a |wer hat|qui[eé]n (dijo|propuso)|chi ha )|誰",
+    ),
+  ],
+  [
+    "review",
+    R(
+      "(all (the )?decisions|open questions|decis[oõ]es|perguntas (ainda )?em aberto|decisiones|offene fragen|entscheidungen|questions ouvertes|décisions|decisioni|決定事項)",
+    ),
+  ],
+  [
+    "temporal",
+    R(
+      "(which meetings|what meetings|last week|last month|this month|meeting (on|of)|quais reuni[oõ]es|semana passada|m[eê]s passado|neste m[eê]s|qu[eé] reuniones|semana pasada|welche meetings|letzte woche|quelles r[eé]unions|semaine derni[eè]re|quali riunioni|settimana scorsa|先週|reuni[aã]o de |na reuni[aã]o)",
+    ),
+  ],
+  [
+    "aggregate",
+    R(
+      "(\\blist\\b|how many|open action items|itens de a[cç][aã]o|quantas|quantos|liste|cu[aá]ntas|lista |wie viele|liste |combien|quante|elenca|未完了|一覧)",
+    ),
+  ],
+  [
+    "other",
+    R(
+      "^(hello|hi|hey|thanks|thank you|ol[aá]|obrigad|hola|gracias|hallo|bonjour|merci|ciao|grazie|こんにちは)\\b",
+    ),
+  ],
 ];
 export function rulesRoute(text: string): Intent {
   for (const [intent, re] of RULES) if (re.test(text)) return intent;
   return "lookup";
 }
 
-export const LANG_LABEL: Record<Lang, string> = { en: "English", pt: "Portuguese" };
+export const LANG_LABEL: Record<Lang, string> = {
+  en: "English",
+  pt: "Portuguese",
+};

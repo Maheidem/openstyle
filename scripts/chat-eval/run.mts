@@ -12,6 +12,7 @@ import { mkdirSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import process from "node:process";
 import { releaseLock, takeLock, unqueue } from "../meeting-v2/eval/runtime.mts";
+import { runA0 } from "./a0-run.mts";
 import { buildCorpus } from "./corpus.mts";
 import { buildGold } from "./gold.mts";
 import { logRun } from "./mlflow.mts";
@@ -27,7 +28,8 @@ export function corpusInfo() {
   const byType: Record<string, number> = {};
   for (const q of gold.questions) byType[q.type] = (byType[q.type] ?? 0) + 1;
   const bySlice: Record<string, number> = {};
-  for (const q of gold.retrieval) bySlice[q.slice] = (bySlice[q.slice] ?? 0) + 1;
+  for (const q of gold.retrieval)
+    bySlice[q.slice] = (bySlice[q.slice] ?? 0) + 1;
   return {
     corpus,
     gold,
@@ -49,7 +51,9 @@ async function main() {
   mkdirSync(OUT, { recursive: true, mode: 0o700 });
   if (cmd === "corpus") {
     const info = corpusInfo();
-    console.log(JSON.stringify({ hashes: info.hashes, counts: info.counts }, null, 1));
+    console.log(
+      JSON.stringify({ hashes: info.hashes, counts: info.counts }, null, 1),
+    );
     if (flag("write")) {
       writeFileSync(join(OUT, "corpus.json"), JSON.stringify(info.corpus));
       writeFileSync(join(OUT, "gold.json"), JSON.stringify(info.gold));
@@ -57,21 +61,33 @@ async function main() {
     }
     return;
   }
-  if (cmd === "retrieval" || cmd === "router") {
+  if (cmd === "retrieval" || cmd === "router" || cmd === "a0") {
     const info = corpusInfo();
     const mlflow = !flag("no-mlflow");
     await takeLock(`chat-eval-${cmd}`, 45);
     try {
       const res =
-        cmd === "retrieval"
-          ? await runRetrieval(info.corpus, info.gold, info.hashes)
-          : await runRouter(info.corpus, info.gold, info.hashes);
-      writeFileSync(join(OUT, `${cmd}-${Date.now()}.json`), JSON.stringify(res.result, null, 1));
+        cmd === "a0"
+          ? await runA0(info.corpus, info.gold, info.hashes)
+          : cmd === "retrieval"
+            ? await runRetrieval(
+                info.corpus,
+                info.gold,
+                info.hashes,
+                Number(process.argv[process.argv.indexOf("--scale") + 1]) || 1,
+              )
+            : await runRouter(info.corpus, info.gold, info.hashes);
+      writeFileSync(
+        join(OUT, `${cmd}-${Date.now()}.json`),
+        JSON.stringify(res.result, null, 1),
+      );
       console.log(res.text);
       if (mlflow) {
         for (const r of res.runs) {
           const out = await logRun(r.name, r.params, r.tags, r.metrics);
-          console.log(`MLflow ${out.experiment} run ${out.runId} ${r.name}: ${out.n} metrics, READ BACK OK`);
+          console.log(
+            `MLflow ${out.experiment} run ${out.runId} ${r.name}: ${out.n} metrics, READ BACK OK`,
+          );
         }
       }
     } finally {
@@ -80,7 +96,9 @@ async function main() {
     }
     return;
   }
-  console.error("usage: pnpm chat-eval corpus [--write] | retrieval [--no-mlflow] | router [--no-mlflow]");
+  console.error(
+    "usage: pnpm chat-eval corpus [--write] | retrieval [--no-mlflow] | router [--no-mlflow]",
+  );
   process.exitCode = 2;
 }
 

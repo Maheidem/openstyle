@@ -22,7 +22,8 @@ import { summaryJson, summaryMarkdown } from "./corpus.mts";
 import type { Corpus } from "./types.mts";
 
 export const OUT = join(homedir(), ".openstyle-eval", "chat-p0");
-export const sha = (x: unknown) => createHash("sha256").update(JSON.stringify(x)).digest("hex");
+export const sha = (x: unknown) =>
+  createHash("sha256").update(JSON.stringify(x)).digest("hex");
 export const HERE = dirname(fileURLToPath(import.meta.url));
 export const EMBED_MODEL_ID = "embeddinggemma-2-bf16-text";
 
@@ -103,7 +104,8 @@ export function loadCorpus(stack: Stack, c: Corpus): void {
     const folder = db.prepare(
       "INSERT INTO meeting_folders (id, name, description, created_at, updated_at) VALUES (?, ?, ?, ?, ?)",
     );
-    for (const f of c.folders) folder.run(f.id, f.name, f.description, now, now);
+    for (const f of c.folders)
+      folder.run(f.id, f.name, f.description, now, now);
     const meeting = db.prepare(
       `INSERT INTO meetings (id, title, started_at, ended_at, duration_ms, status, language, folder_id, created_at)
        VALUES (?, ?, ?, ?, ?, 'summarized', ?, ?, ?)`,
@@ -129,9 +131,27 @@ export function loadCorpus(stack: Stack, c: Corpus): void {
     );
     for (const m of c.meetings) {
       const lang = m.lang === "pt" ? "pt" : "en";
-      meeting.run(m.id, m.title, m.startedAt, m.startedAt + m.durationMs, m.durationMs, lang, m.folderId, m.startedAt);
+      meeting.run(
+        m.id,
+        m.title,
+        m.startedAt,
+        m.startedAt + m.durationMs,
+        m.durationMs,
+        lang,
+        m.folderId,
+        m.startedAt,
+      );
       for (const s of m.segments) {
-        seg.run(s.id, m.id, s.source, s.idx, s.startMs, s.endMs, s.text, s.speakerLabel);
+        seg.run(
+          s.id,
+          m.id,
+          s.source,
+          s.idx,
+          s.startMs,
+          s.endMs,
+          s.text,
+          s.speakerLabel,
+        );
       }
       for (const sp of m.speakers) spk.run(m.id, sp.label, sp.displayName, now);
       sum.run(m.id, summaryMarkdown(m), JSON.stringify(summaryJson(m)), now);
@@ -141,7 +161,8 @@ export function loadCorpus(stack: Stack, c: Corpus): void {
       }
       if (m.folderId) {
         for (const a of m.actionItems) {
-          if (a.done) done.run(m.folderId, stack.mod.actionItemKey(m.id, a.task), now);
+          if (a.done)
+            done.run(m.folderId, stack.mod.actionItemKey(m.id, a.task), now);
         }
       }
     }
@@ -154,12 +175,19 @@ export function loadCorpus(stack: Stack, c: Corpus): void {
 
 /** Descendant processes of this node process with their RSS in MB. */
 export function workerRss(match: RegExp): { pid: number; rssMb: number }[] {
-  const ps = spawnSync("ps", ["-axo", "pid=,ppid=,rss=,command="], { encoding: "utf8" });
+  const ps = spawnSync("ps", ["-axo", "pid=,ppid=,rss=,command="], {
+    encoding: "utf8",
+  });
   const rows = `${ps.stdout}`
     .split("\n")
     .map((l) => /^\s*(\d+)\s+(\d+)\s+(\d+)\s+(.*)$/.exec(l))
     .filter((m): m is RegExpExecArray => m !== null)
-    .map((m) => ({ pid: Number(m[1]), ppid: Number(m[2]), rss: Number(m[3]), cmd: m[4] as string }));
+    .map((m) => ({
+      pid: Number(m[1]),
+      ppid: Number(m[2]),
+      rss: Number(m[3]),
+      cmd: m[4] as string,
+    }));
   const mine = new Set<number>([process.pid]);
   for (let changed = true; changed; ) {
     changed = false;
@@ -171,7 +199,9 @@ export function workerRss(match: RegExp): { pid: number; rssMb: number }[] {
     }
   }
   return rows
-    .filter((r) => mine.has(r.pid) && r.pid !== process.pid && match.test(r.cmd))
+    .filter(
+      (r) => mine.has(r.pid) && r.pid !== process.pid && match.test(r.cmd),
+    )
     .map((r) => ({ pid: r.pid, rssMb: Math.round(r.rss / 1024) }));
 }
 

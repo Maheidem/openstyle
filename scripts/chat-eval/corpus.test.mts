@@ -21,7 +21,8 @@ import { INTENTS } from "./types.mts";
 
 const c = buildCorpus();
 const g = buildGold(c);
-const sha = (x: unknown) => createHash("sha256").update(JSON.stringify(x)).digest("hex");
+const sha = (x: unknown) =>
+  createHash("sha256").update(JSON.stringify(x)).digest("hex");
 
 test("the corpus is the same for the same seed and differs for another", () => {
   assert.equal(sha(buildCorpus()), sha(c));
@@ -44,7 +45,10 @@ test("the corpus has the shape of spec 8.2", () => {
   // Four people share a first name (two pairs).
   const firsts = new Map<string, number>();
   for (const p of c.people) firsts.set(p.first, (firsts.get(p.first) ?? 0) + 1);
-  assert.equal([...firsts.values()].filter((n) => n > 1).reduce((a, b) => a + b, 0), 4);
+  assert.equal(
+    [...firsts.values()].filter((n) => n > 1).reduce((a, b) => a + b, 0),
+    4,
+  );
   // Dates cover 12 weeks and the clock is after the last meeting.
   const ts = c.meetings.map((m) => m.startedAt);
   assert.ok(Math.max(...ts) < TODAY_MS);
@@ -78,9 +82,17 @@ test("the gold set has the taxonomy of spec 8.3", () => {
   const by = new Map<string, number>();
   for (const q of g.questions) by.set(q.type, (by.get(q.type) ?? 0) + 1);
   assert.deepEqual(Object.fromEntries(by), {
-    lookup: 25, who_said: 20, aggregation: 20, count: 10, temporal: 20,
-    knowledge_update: 10, not_answerable: 30, scope_trap: 10, follow_up: 10,
-    long_thread: 10, write: 25,
+    lookup: 25,
+    who_said: 20,
+    aggregation: 20,
+    count: 10,
+    temporal: 20,
+    knowledge_update: 10,
+    not_answerable: 30,
+    scope_trap: 10,
+    follow_up: 10,
+    long_thread: 10,
+    write: 25,
   });
   assert.equal(g.questions.length, 190);
   const nf = g.questions.filter((q) => q.key.kind === "not_found").length;
@@ -88,8 +100,10 @@ test("the gold set has the taxonomy of spec 8.3", () => {
   assert.equal(new Set(g.questions.map((q) => q.id)).size, 190);
   for (const q of g.questions) assert.ok(INTENTS.includes(q.intent));
   // Both languages, and every scope kind appears.
-  for (const lang of ["en", "pt"]) assert.ok(g.questions.some((q) => q.lang === lang));
-  for (const k of ["meeting", "folder", "all"]) assert.ok(g.questions.some((q) => q.scope.kind === k));
+  for (const lang of ["en", "pt"])
+    assert.ok(g.questions.some((q) => q.lang === lang));
+  for (const k of ["meeting", "folder", "all"])
+    assert.ok(g.questions.some((q) => q.scope.kind === k));
 });
 
 test("long threads have 5 to 10 turns and an early planted fact", () => {
@@ -98,7 +112,9 @@ test("long threads have 5 to 10 turns and an early planted fact", () => {
     assert.ok(turns >= 5 && turns <= 10, `${q.id}: ${turns}`);
     assert.ok(q.history[0]?.q.length);
   }
-  const lens = g.questions.filter((x) => x.type === "long_thread").map((q) => q.history.length + 1);
+  const lens = g.questions
+    .filter((x) => x.type === "long_thread")
+    .map((q) => q.history.length + 1);
   assert.ok(lens.some((n) => n === 5) && lens.some((n) => n === 10));
 });
 
@@ -119,12 +135,19 @@ test("every text key is supported by the evidence in the corpus", () => {
 });
 
 test("set keys are not empty and point at real ids", () => {
-  const items = new Set(c.meetings.flatMap((m) => [...m.actionItems.map((a) => a.id), ...m.decisions.map((d) => d.id), ...m.openQuestions.map((x) => x.id)]));
+  const items = new Set(
+    c.meetings.flatMap((m) => [
+      ...m.actionItems.map((a) => a.id),
+      ...m.decisions.map((d) => d.id),
+      ...m.openQuestions.map((x) => x.id),
+    ]),
+  );
   const meetings = new Set(c.meetings.map((m) => m.id));
   for (const q of g.questions) {
     if (q.key.kind === "set") {
       assert.ok(q.key.ids.length > 0, `${q.id} ${q.text}`);
-      for (const id of q.key.ids) assert.ok(items.has(id) || meetings.has(id), `${q.id} ${id}`);
+      for (const id of q.key.ids)
+        assert.ok(items.has(id) || meetings.has(id), `${q.id} ${id}`);
     }
     if (q.key.kind === "write") {
       assert.ok(q.key.ids.length > 0);
@@ -134,7 +157,10 @@ test("set keys are not empty and point at real ids", () => {
 
 test("not-answerable questions use words that are not in the corpus (checked at build)", () => {
   // buildGold throws when a token is present; reaching here proves it.
-  assert.equal(g.questions.filter((q) => q.type === "not_answerable").length, 30);
+  assert.equal(
+    g.questions.filter((q) => q.type === "not_answerable").length,
+    30,
+  );
 });
 
 test("retrieval queries cover the five slices in both languages", () => {
@@ -148,12 +174,18 @@ test("retrieval queries cover the five slices in both languages", () => {
   for (const q of g.retrieval) {
     assert.ok(q.gold.length > 0);
     for (const r of q.gold) {
-      assert.ok(c.meetings.find((m) => m.id === r.meetingId)?.segments[r.segmentIdx]);
+      assert.ok(
+        c.meetings.find((m) => m.id === r.meetingId)?.segments[r.segmentIdx],
+      );
     }
   }
   for (const slice of ["names", "numbers", "concept", "asr_names", "date"]) {
-    const en = g.retrieval.filter((q) => q.slice === slice && q.lang === "en").length;
-    const pt = g.retrieval.filter((q) => q.slice === slice && q.lang === "pt").length;
+    const en = g.retrieval.filter(
+      (q) => q.slice === slice && q.lang === "en",
+    ).length;
+    const pt = g.retrieval.filter(
+      (q) => q.slice === slice && q.lang === "pt",
+    ).length;
     assert.ok(Math.abs(en - pt) <= 2, `${slice} ${en}/${pt}`);
   }
   // A date-bounded query lists a week that holds the gold meeting.
@@ -179,7 +211,11 @@ test("normalize folds numbers, dates, accents and number words", () => {
 });
 
 test("scoreText: must groups and must-not tokens", () => {
-  const key = { kind: "text", must: [["52200"], ["kestrel", "kessel"]], mustNot: ["52700"] } as const;
+  const key = {
+    kind: "text",
+    must: [["52200"], ["kestrel", "kessel"]],
+    mustNot: ["52700"],
+  } as const;
   assert.ok(scoreText("Kestrel quoted 52,200 dollars.", key).pass);
   assert.ok(scoreText("Kessel Hosting: 52.200", key).pass);
   assert.ok(!scoreText("Kestrel quoted 52,700 dollars.", key).pass);
@@ -188,16 +224,56 @@ test("scoreText: must groups and must-not tokens", () => {
 });
 
 test("scoreAnswer: not_found, sets, write proposals", () => {
-  assert.ok(scoreAnswer({ notFound: true, text: "", ids: [], proposal: null }, { kind: "not_found" }).pass);
-  assert.ok(!scoreAnswer({ notFound: false, text: "42", ids: [], proposal: null }, { kind: "not_found" }).pass);
+  assert.ok(
+    scoreAnswer(
+      { notFound: true, text: "", ids: [], proposal: null },
+      { kind: "not_found" },
+    ).pass,
+  );
+  assert.ok(
+    !scoreAnswer(
+      { notFound: false, text: "42", ids: [], proposal: null },
+      { kind: "not_found" },
+    ).pass,
+  );
   const set = scoreSet(["a", "b"], ["a", "c"]);
   assert.equal(set.precision, 0.5);
   assert.equal(set.recall, 0.5);
   assert.equal(set.f1, 0.5);
   const w = { kind: "write", change: "move", ids: ["m1"], arg: "f1" } as const;
-  assert.ok(scoreAnswer({ notFound: false, text: "", ids: [], proposal: { kind: "move", ids: ["m1"], arg: "f1" } }, w).pass);
-  assert.ok(!scoreAnswer({ notFound: false, text: "", ids: [], proposal: { kind: "move", ids: ["m1"], arg: "f2" } }, w).pass);
-  assert.ok(!scoreAnswer({ notFound: false, text: "", ids: [], proposal: { kind: "retag", ids: ["m1"], arg: "f1" } }, w).pass);
+  assert.ok(
+    scoreAnswer(
+      {
+        notFound: false,
+        text: "",
+        ids: [],
+        proposal: { kind: "move", ids: ["m1"], arg: "f1" },
+      },
+      w,
+    ).pass,
+  );
+  assert.ok(
+    !scoreAnswer(
+      {
+        notFound: false,
+        text: "",
+        ids: [],
+        proposal: { kind: "move", ids: ["m1"], arg: "f2" },
+      },
+      w,
+    ).pass,
+  );
+  assert.ok(
+    !scoreAnswer(
+      {
+        notFound: false,
+        text: "",
+        ids: [],
+        proposal: { kind: "retag", ids: ["m1"], arg: "f1" },
+      },
+      w,
+    ).pass,
+  );
 });
 
 test("retrieval metrics and fusion", () => {
@@ -210,7 +286,25 @@ test("retrieval metrics and fusion", () => {
   assert.equal(percentile([1, 2, 3, 4, 100], 95), 100);
   // RRF k=60: an id in both lists beats an id in one. 3 is first in one list
   // and third in the other (1/61 + 1/63) and beats 2 (2/62) by a small margin.
-  assert.deepEqual(rrf([[1, 2, 3], [3, 2, 9]]).slice(0, 2), [3, 2]);
-  assert.equal(rrf([[7, 8], [7, 9]])[0], 7);
-  assert.deepEqual(rrf([[1, 2], [2, 1]]), [1, 2]); // tie: smaller id first
+  assert.deepEqual(
+    rrf([
+      [1, 2, 3],
+      [3, 2, 9],
+    ]).slice(0, 2),
+    [3, 2],
+  );
+  assert.equal(
+    rrf([
+      [7, 8],
+      [7, 9],
+    ])[0],
+    7,
+  );
+  assert.deepEqual(
+    rrf([
+      [1, 2],
+      [2, 1],
+    ]),
+    [1, 2],
+  ); // tie: smaller id first
 });

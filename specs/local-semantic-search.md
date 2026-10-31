@@ -46,7 +46,7 @@ The same index is "project memory". Summary and Enhance of a meeting in a folder
 
 ### 1.3 Non-goals (v1)
 
-- Hybrid search (FTS5 + vectors), a reranker, the "ask" answer (#91) and the MCP server (#95).
+- Hybrid search (FTS5 + vectors), a reranker, the "ask" answer (#91) and the MCP server (#95). **Status 2026-10-31: the hybrid and the reranker are reversed** for the meeting chat agent by `specs/meeting-chat-agent.md` section 7.4, with the numbers of `specs/meeting-chat-agent-p0-report.md` section 3. Nothing is built in the search UI yet. The "ask" answer is the chat agent. The MCP server stays a non-goal.
 - The own-server embedding path (oMLX `Qwen3-Embedding`). #233 says "built-in MLX first". Its vectors need their own index (#233 research comment).
 - A BLOB-scan fallback (#82 owner decision 2).
 - Embedding the summary markdown or the meeting title. The title lowers recall@10 by 0.013 to 0.067 (#233 spike, check 7).

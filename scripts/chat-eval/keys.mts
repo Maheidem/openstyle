@@ -119,7 +119,10 @@ export function normalize(text: string): string {
     .replace(/\p{M}+/gu, "")
     .toLowerCase();
   // Dates first, before the punctuation goes.
-  t = t.replace(/\b(\d{4})-(\d{2})-(\d{2})\b/g, (_m, _y, mo, d) => ` d:${mo}-${d} `);
+  t = t.replace(
+    /\b(\d{4})-(\d{2})-(\d{2})\b/g,
+    (_m, _y, mo, d) => ` d:${mo}-${d} `,
+  );
   t = t.replace(
     new RegExp(`\\b(${MONTH_RE})\\.?\\s+(\\d{1,2})(?:st|nd|rd|th)?\\b`, "g"),
     (_m, mo: string, d: string) =>
@@ -138,7 +141,7 @@ export function normalize(text: string): string {
   t = t.replace(/\b(\d{1,3}) (\d{3})\b/g, "$1$2");
   t = t.replace(/[^a-z0-9:.\-\s]/g, " ");
   // A full stop or a dash that is not inside a number or a date is a space.
-  t = t.replace(/(?<!\d)[.\-]|[.\-](?!\d)/g, " ");
+  t = t.replace(/(?<!\d)[.-]|[.-](?!\d)/g, " ");
   const words = t.split(/\s+/).filter(Boolean);
   return words
     .map((w) => (w in NUMBER_WORDS ? String(NUMBER_WORDS[w]) : w))
@@ -173,14 +176,19 @@ export interface SetScore {
   pass: boolean;
 }
 
-export function scoreSet(got: readonly string[], truth: readonly string[]): SetScore {
+export function scoreSet(
+  got: readonly string[],
+  truth: readonly string[],
+): SetScore {
   const g = new Set(got);
   const t = new Set(truth);
   const hit = [...g].filter((x) => t.has(x)).length;
   const precision = g.size === 0 ? (t.size === 0 ? 1 : 0) : hit / g.size;
   const recall = t.size === 0 ? 1 : hit / t.size;
   const f1 =
-    precision + recall === 0 ? 0 : (2 * precision * recall) / (precision + recall);
+    precision + recall === 0
+      ? 0
+      : (2 * precision * recall) / (precision + recall);
   return {
     precision,
     recall,
@@ -232,14 +240,16 @@ export function scoreAnswer(answer: Answer, key: AnswerKey): KeyResult {
       return { pass: !answer.notFound && s.pass, f1: s.f1 };
     }
     case "count":
-      return { pass: !answer.notFound && scoreCount(answer.text, key), f1: null };
+      return {
+        pass: !answer.notFound && scoreCount(answer.text, key),
+        f1: null,
+      };
     case "write": {
       const p = answer.proposal;
       if (!p || p.kind !== key.change) return { pass: false, f1: 0 };
       const s = scoreSet(p.ids, key.ids);
       const argOk =
-        key.arg === null ||
-        JSON.stringify(p.arg) === JSON.stringify(key.arg);
+        key.arg === null || JSON.stringify(p.arg) === JSON.stringify(key.arg);
       return { pass: s.pass && argOk, f1: s.f1 };
     }
   }
@@ -276,7 +286,10 @@ export function ndcgAt(
 export function percentile(xs: readonly number[], p: number): number {
   if (xs.length === 0) return 0;
   const s = [...xs].sort((a, b) => a - b);
-  const i = Math.min(s.length - 1, Math.max(0, Math.ceil((p / 100) * s.length) - 1));
+  const i = Math.min(
+    s.length - 1,
+    Math.max(0, Math.ceil((p / 100) * s.length) - 1),
+  );
   return s[i] as number;
 }
 
