@@ -203,7 +203,10 @@ export function MeetingDetailView({
     refetchInterval: (query) =>
       query.state.data?.status === "transcribing" ||
       query.state.data?.job?.kind === "summarize" ||
-      query.state.data?.job?.kind === "enhance"
+      query.state.data?.job?.kind === "enhance" ||
+      // The speaker pass that follows a live transcript at Stop runs in the
+      // background and holds the slot (issue #375).
+      query.state.data?.job?.kind === "diarize"
         ? 1000
         : // A run waits for the on-device engine: the server starts it
           // again by itself, so watch for its job.

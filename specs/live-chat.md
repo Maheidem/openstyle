@@ -168,4 +168,39 @@ Owner decision 2026-10-30: the live text is not lost at Stop.
 
 ### Measured, live text against the full pass (2026-10-30)
 
-See the pull request for the table. The rule of the owner: when the live text is clearly worse than the full pass after the language lock and the speech gate, Stop keeps it only as an option (default off). The numbers decide.
+Fictional scripts (macOS voices Luciana and Samantha), 8 audio files of 82 to 183 s, with 15 to 45 s silences that hold room noise, clicks, breaths and typing. Real ASR model (`qwen3-1.7b-8bit`), language setting auto. Word error against the script, after Stop (`live`: the saved segments, `full`: after "Re-transcribe"):
+
+| Audio | live | full |
+|---|---|---|
+| Portuguese, natural gaps (183 s) | 0.9 % | 1.8 % |
+| Portuguese, 1 s gaps (155 s) | 0.5 % | 1.4 % |
+| Portuguese, typing noise (179 s) | 1.4 % | 1.4 % |
+| Portuguese, loud noise (119 s) | 1.4 % | 1.4 % |
+| Portuguese, short phrases (82 s) | 5.3 % | 2.6 % |
+| Portuguese, English terms (99 s) | 17.4 % | 14.5 % |
+| Portuguese, far field with reverb (97 s) | 68.8 % | 64.5 % |
+| Portuguese, far field, milder (102 s) | 42.0 % | 43.5 % |
+| Mixed Portuguese and English (148 s) | 15.1 % (5.4 % in the app run) | 6.3 % |
+
+Decision: live is as good as the full pass, or better, on single-language audio, and worse by 3 points or less on the other single-language files. It is clearly worse only on the mixed file in one of the two runs: with the language locked to Portuguese, an English sentence that sits in the same segment as Portuguese is translated or dropped. So Stop keeps the live transcript by default, with the mark "From live" and "Re-transcribe" one click away. No setting was added. An idea for a later change if a mixed-language user needs it: for an auto-language meeting, read a segment again with auto language when the locked read has far fewer words than the speech time allows.
+
+The language lock, before and after, on the same audio (lines in the wrong language; `x/y` is lines that the check could judge):
+
+| Audio | final lines before | after | partial lines before | after |
+|---|---|---|---|---|
+| far field with reverb | 1/8 (Chinese) | 0/10 | 5/25 (Chinese) | 0/23 |
+| far field, milder | 0/12 | 0/10 | 2/25 (Chinese) | 0/26 |
+| the 6 other Portuguese files | 0 | 0 | 0 | 0 |
+| mixed Portuguese and English | 1/15 | 0/14 | 2/39 | 4/37 (English translated) |
+
+The silence gate. The old gate (voiced time of the mic only) sent noise segments to the model. A stub model that answers "x" to every segment that passes the gate shows it, with the real segmenter and the real Silero model on 5 of the files (`noise lines` are lines that touch no spoken sentence):
+
+| Audio | noise lines before | after | model reads before | after |
+|---|---|---|---|---|
+| typing noise | 2 | 0 | 93 | 51 |
+| loud noise | 3 | 0 | 64 | 18 |
+| far field | 1 | 0 | 48 | 26 |
+| far field, milder | 0 | 0 | 52 | 31 |
+| natural gaps | 2 | 0 | 74 | 52 |
+
+All spoken sentences were still covered after the change. With the real model, silences gave no final line before or after on these files. The invented words of the field test did not appear on synthetic noise. Two transient one-word partial lines ("sim") from a breath that Silero marks as speech showed in the after runs.

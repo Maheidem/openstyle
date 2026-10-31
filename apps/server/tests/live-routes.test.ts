@@ -8,6 +8,7 @@ import { MIC_WAV, SYSTEM_WAV } from "@openstyle/validations";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import createApp from "../src/index.js";
 import { deleteSetting, getDb, writeSetting } from "../src/lib/db.js";
+import type { DiarizeDeps } from "../src/lib/meetings/diarize.js";
 import { hasJob } from "../src/lib/meetings/job-registry.js";
 import { appendChatPair } from "../src/lib/meetings/live/chat-store.js";
 import {
@@ -17,6 +18,7 @@ import {
 } from "../src/lib/meetings/live/loop.js";
 import { getLive } from "../src/lib/meetings/live/store.js";
 import { LIVE_SAMPLE_RATE } from "../src/lib/meetings/live/tail.js";
+import { __setMeetingsTestOverrides } from "../src/routes/meetings.js";
 import { jsonRequest } from "./helpers/http.js";
 import { resetMeetingTables } from "./helpers/meetings-db.js";
 
@@ -150,6 +152,51 @@ describe("live routes", () => {
       await app.request("/api/meetings/m-live/transcript")
     ).json()) as { segments: { text: string }[] };
     expect(transcript.segments.length).toBeGreaterThan(0);
+  });
+
+  it("the speaker pass labels the live system lines after Stop", async () => {
+    writeSetting("meeting_diarization_enabled", "true");
+    // The system channel holds one 2.4 s phrase. The fake diarizer says one
+    // speaker talks over the whole phrase.
+    const deps: DiarizeDeps = {
+      resolveBinaryPath: () => "/fake/fluidaudio-diarize",
+      resolveModelsDirPath: () => "/fake/models",
+      execFile: async (_file, args) => ({
+        stdout:
+          args[0] === "--probe"
+            ? "READY"
+            : JSON.stringify([
+                { speakerId: "A", startTimeSeconds: 0, endTimeSeconds: 2.8 },
+              ]),
+        stderr: "",
+      }),
+    };
+    __setMeetingsTestOverrides({ diarizeDeps: deps });
+    try {
+      growingWav(join(dir, MIC_WAV), silence(3300));
+      growingWav(
+        join(dir, SYSTEM_WAV),
+        concat(silence(300), speech(2400, 5), silence(600)),
+      );
+      await startMeeting();
+      await startLive("m-live", dir, stubDeps());
+      await waitFor(() => (getLive("m-live")?.lines.length ?? 0) > 0);
+      const stop = await jsonRequest(app, "POST", "/api/meetings/m-live/stop", {
+        ended_at: Date.now(),
+        duration_ms: 3300,
+        status: "recorded",
+      });
+      expect(stop.status).toBe(200);
+      await waitFor(() => !hasJob("m-live"));
+      const rows = getDb()
+        .prepare(
+          "SELECT source, speaker_label FROM meeting_segments WHERE meeting_id = 'm-live'",
+        )
+        .all() as { source: string; speaker_label: string | null }[];
+      expect(rows).toEqual([{ source: "system", speaker_label: "1" }]);
+    } finally {
+      __setMeetingsTestOverrides({});
+    }
   });
 
   it("a failed stop keeps no live transcript", async () => {
