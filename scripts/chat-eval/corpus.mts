@@ -583,3 +583,15 @@ export function summaryJson(m: Meeting) {
     openQuestions: m.openQuestions.map((q) => q.text),
   };
 }
+
+/**
+ * The text to SPEAK for a segment: the ASR spellings of people and vendors are
+ * put back to the right spelling. The spoken-audio check (arm M1) speaks this
+ * text, and a real ASR run then makes its own spelling errors.
+ */
+export function cleanText(text: string): string {
+  let t = text;
+  for (const p of PEOPLE) t = t.split(p.asr).join(p.full);
+  for (const b of Object.values(FOLDER_BANKS)) for (const v of b.vendors) t = t.split(v.asr).join(v.name);
+  return t;
+}
