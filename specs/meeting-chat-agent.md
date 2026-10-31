@@ -5,7 +5,7 @@ Revision 2 (2026-10-31, 09:49): owner answers applied. Section 12.1 lists them a
 Revision 4 (2026-10-31, 11:10): owner review applied, decisions D6 to D18 (section 12.1). Name note: `SD8` is decision D8 of `specs/local-semantic-search.md`. `D1` to `D18` are decisions of this spec.
 Scope of this document: design only. No product code is part of this change.
 Language: ASD-STE100 Simplified Technical English.
-Diagrams follow the rule "Diagram conventions" in `AGENTS.md`. The pipeline diagram (2.2) and the failure diagram (2.5) are written to it. The other diagrams are small single-concern sketches.
+Diagrams follow the rule "Diagram conventions" in `AGENTS.md`. The pipeline diagram (2.2), the live-variant diagram (2.4) and the failure diagrams (2.5a, 2.5b) are written to it. The other diagrams are small single-concern sketches.
 
 ## 0. How to read this spec
 
@@ -257,43 +257,77 @@ DECISION:
 7. The chat model and the ASR model are different workers. The live chat already runs this way (`specs/live-chat.md`, section 6, memory numbers).
 
 ```mermaid
-flowchart LR
-  LQ["Question in live view"] --> GL["Gate + scope: meeting, live=true"]
-  GL --> PF["Prefetch: F block, 4 messages"]
-  PF --> LT["get_live_tail<br/>L# lines from live store"]
-  PF --> SC["search_chunks<br/>folder scope, current meeting excluded<br/>8 s wait max"]
-  LT --> AN["Answer call<br/>live lines win"]
-  SC --> AN
-  AN --> CV["Cite validation"]
-  CV --> OUT["Answer with live and past chips"]
-  STORE[("live store, memory")] --> LT
-  IDX[("vec index")] --> SC
+flowchart TD
+  IN(["Input: question in the live view, scope = this meeting, live=true"]) --> L0
+  L0["0 GATE [CODE]<br/>in: settings, model<br/>out: ok or typed error"]
+  L0 -->|"no model or no key"| LX1(["EXIT error block"])
+  L0 -->|ok| L0B["0b PREFETCH [CODE]<br/>in: folder, compact history<br/>out: folder block F"]
+  L0B --> L1["1 ROUTER skipped [CODE]<br/>intent = lookup"]
+  L1 --> L3A["3a get_live_tail [CODE]<br/>in: live store (memory)<br/>out: lines L1..Lm"]
+  L1 --> L3B["3b search_chunks [CODE]<br/>in: query, folder scope, this meeting excluded<br/>out: past sources, wait 8 s at most"]
+  L3B -->|"search off, error or 8 s wait over"| L3C["no past sources [CODE]"]
+  L3A --> L4
+  L3B -->|"hits"| L4
+  L3C --> L4["4 ANSWER [LLM call]<br/>in: live lines first, past sources, history<br/>out: answer + cite labels; cap 400 tokens"]
+  L4 --> L5["5 CITE CHECK [CODE]<br/>in: answer, labels L and S<br/>out: valid cites or failure"]
+  L5 -->|pass| LX2(["EXIT answer with live and past chips"])
+  L5 -->|"fail, first time"| L4R["4r ANSWER RETRY [LLM call, once]"]
+  L4R --> L5
+  L5 -->|"fail, second time"| LX3(["EXIT not_found block"])
 ```
+
+Counting from the diagram: the live turn has 1 LLM call (stage 4), plus 1 retry call (4r) and one gateway transport retry for each call. The router and the slot fill do not run. The exits are LX1 to LX3. LLM failures follow diagram 2.5b.
 
 The 8 s retrieval wait is the live chat value (`S/lib/meetings/live/chat-context.ts:31`).
 
 ### 2.5 Failure paths
 
+Two diagrams. 2.5a covers the gate and the tools (stages 0 and 3 of diagram 2.2). 2.5b covers the LLM calls (stages 1, 2b, 4 and 4r).
+
+#### 2.5a Gate, tools and turn limits
+
 ```mermaid
 flowchart TD
-  T["Turn starts"] --> A{"model resolved?"}
-  A -->|no| E1["409 no_model<br/>block: choose a model"]
-  A -->|yes| B{"provider ready?<br/>key set, model present"}
-  B -->|no| E2["409 provider_not_ready<br/>block: set key or model"]
-  B -->|yes| C{"search state"}
-  C -->|"off"| D1["retrieval tools return status off<br/>structured tools still run<br/>answer notes: search is off"]
-  C -->|on| D2["all tools available"]
-  D1 --> R["run plan"]
-  D2 --> R
-  R --> X{"result"}
-  X -->|"timeout of a stage"| F1["abort stage<br/>typed error, 1 retry if cold"]
-  X -->|"finish = length"| F2["retry once with half the source budget<br/>then code fallback: top sources as links"]
-  X -->|"context_length_exceeded"| F3["trim sources to the numbers in the error<br/>retry once"]
-  X -->|"all tools empty after the last round"| F4["EXIT not_found block + nearest sources<br/>asks permission for one step wider"]
-  X -->|"invalid router or slot JSON"| F5["default intent lookup<br/>or default slots: query = question"]
-  X -->|"cite validation fails twice"| F6["not_found block<br/>+ top sources, no model text"]
-  X -->|"user cancels"| F7["abort signal to retrieve and calls<br/>no message saved as answer"]
+  S0["0 GATE [CODE]<br/>in: settings, model, key<br/>out: ok or typed error"]
+  S0 -->|"no model"| X1(["EXIT 409 no_model block: choose a model"])
+  S0 -->|"no key or provider not ready"| X2(["EXIT 409 provider_not_ready block: set key or model"])
+  S0 -->|ok| S3["3 TOOLS [CODE], round r<br/>in: validated args<br/>out: rows + sources, or status"]
+  S3 -->|"search off or embed worker error"| S3B["retrieval tools skipped for this round [CODE]<br/>structured tools still run<br/>answer notes: search is off"]
+  S3B --> S3
+  S3 -->|"rows found"| NEXT(["CONTINUE to stage 4 or blocks, diagram 2.2"])
+  S3 -->|"no rows, r < max rounds"| S2["2 PLAN [CODE]<br/>round r+1: k raised 8 to 20, date filter dropped"]
+  S2 --> S3
+  S3 -->|"no rows, r = max rounds"| X3(["EXIT not_found block + nearest sources<br/>asks permission for one step wider"])
+  S3 -->|"turn deadline over"| X4(["EXIT timeout block + sources found so far"])
+  S3 -->|"call count at hard cap 16"| X3
+  S3 -->|"user cancels"| X5(["EXIT cancelled: abort signal to retrieve and calls, no answer saved"])
 ```
+
+Counting from the diagram: no LLM call is made here. The only loop is 3 to 2 to 3, bounded by the round setting (default 3, range 1 to 5). The exits are X1 to X5 and the CONTINUE node.
+
+#### 2.5b LLM call failures
+
+```mermaid
+flowchart TD
+  C["LLM CALL [LLM call]<br/>stage 1, 2b, 4 or 4r<br/>in: prompt within the window<br/>out: typed result"]
+  C -->|"valid JSON"| OK(["CONTINUE to the next stage, diagram 2.2"])
+  C -->|"invalid JSON, stage 1 or 2b"| D1["defaults [CODE]<br/>intent = lookup, or slots: query = question"]
+  D1 --> OK
+  C -->|"call timeout, cold model load"| T1["GATEWAY RETRY [LLM call, once]"]
+  T1 -->|ok| OK
+  T1 -->|"timeout again"| X1(["EXIT error block: model timeout"])
+  C -->|"finish = length, stage 4"| L1["ANSWER RETRY [LLM call, once]<br/>source budget halved [CODE]"]
+  L1 -->|ok| OK
+  L1 -->|"length again"| X2(["EXIT code fallback: top sources as links, no model text"])
+  C -->|"context_length_exceeded"| W1["ANSWER RETRY [LLM call, once]<br/>sources trimmed to the numbers in the error [CODE]"]
+  W1 -->|ok| OK
+  W1 -->|"fails again"| X2
+  C -->|"cite check fails, stage 4"| R1["4r ANSWER RETRY [LLM call, once]<br/>failed tokens named"]
+  R1 -->|"cite check passes"| OK
+  R1 -->|"cite check fails"| X3(["EXIT not_found block + top sources"])
+```
+
+Counting from the diagram: each path adds at most one extra LLM call to the call it follows. A gateway transport retry can still happen once for each call (`S/lib/llm/call-unit.ts:16-23`). The total stays under the hard cap of 16 calls (section 2.2). The exits are X1 to X3 and the CONTINUE node.
 
 Facts behind the paths:
 
