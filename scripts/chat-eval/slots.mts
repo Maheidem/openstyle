@@ -123,15 +123,87 @@ export interface SlotValues {
   kind?: string | null;
   change?: string | null;
   tag?: string | null;
+  period?: string | null;
+  month?: number | null;
+  day?: number | null;
 }
 
 const dateField = { type: ["string", "null"], maxLength: 10 };
+
+/**
+ * How the model gives a date range. "iso": date_from and date_to as YYYY-MM-DD
+ * (spec 2.3, slot table). "closed": a closed period, a month and a day; code
+ * turns them into the range (rule-like work stays in code, spec 2.1 point 5).
+ */
+export type DatesMode = "iso" | "closed";
+const PERIODS = [
+  "none",
+  "last_week",
+  "this_week",
+  "last_month",
+  "this_month",
+  "month",
+];
+
+function addDates(props: Record<string, unknown>, mode: DatesMode): void {
+  if (mode === "iso") {
+    props.date_from = dateField;
+    props.date_to = dateField;
+    return;
+  }
+  props.period = { enum: PERIODS };
+  props.month = { type: ["integer", "null"], minimum: 1, maximum: 12 };
+  props.day = { type: ["integer", "null"], minimum: 1, maximum: 31 };
+}
+
+const iso = (ms: number) => new Date(ms).toISOString().slice(0, 10);
+const DAY_MS = 86_400_000;
+
+/** The date range of a closed period (relative to TODAY_ISO), or nulls. */
+export function resolvePeriod(v: SlotValues): {
+  date_from: string | null;
+  date_to: string | null;
+} {
+  const today = Date.parse(`${TODAY_ISO}T00:00:00Z`);
+  const dow = (new Date(today).getUTCDay() + 6) % 7; // Monday = 0
+  const monday = today - dow * DAY_MS;
+  const [y, m] = TODAY_ISO.split("-").map(Number) as [number, number];
+  const monthRange = (yy: number, mm: number) => ({
+    date_from: iso(Date.UTC(yy, mm - 1, 1)),
+    date_to: iso(Date.UTC(yy, mm, 0)),
+  });
+  switch (v.period) {
+    case "last_week":
+      return {
+        date_from: iso(monday - 7 * DAY_MS),
+        date_to: iso(monday - DAY_MS),
+      };
+    case "this_week":
+      return { date_from: iso(monday), date_to: iso(monday + 6 * DAY_MS) };
+    case "last_month":
+      return m === 1 ? monthRange(y - 1, 12) : monthRange(y, m - 1);
+    case "this_month":
+      return { date_from: iso(Date.UTC(y, m - 1, 1)), date_to: TODAY_ISO };
+    case "month":
+      if (v.month && v.month >= 1 && v.month <= 12) {
+        if (v.day && v.day >= 1 && v.day <= 31) {
+          const d = iso(Date.UTC(y, v.month - 1, v.day));
+          return { date_from: d, date_to: d };
+        }
+        return monthRange(y, v.month);
+      }
+      return { date_from: null, date_to: null };
+    default:
+      return { date_from: null, date_to: null };
+  }
+}
 const textField = { type: "string", maxLength: 200 };
 
 /** The strict JSON schema of the slot fill for one intent. */
 export function slotSchema(
   intent: Intent,
   ch: Choices,
+  dates: DatesMode = "iso",
 ): Record<string, unknown> | null {
   const none = <T extends string>(xs: T[]) => [...xs, "none"];
   const props: Record<string, unknown> = {};
@@ -141,18 +213,15 @@ export function slotSchema(
     case "aggregate":
       props.person = { enum: none(ch.people.map((p) => p.id)) };
       props.query = textField;
-      props.date_from = dateField;
-      props.date_to = dateField;
+      addDates(props, dates);
       break;
     case "temporal":
       props.query = textField;
-      props.date_from = dateField;
-      props.date_to = dateField;
+      addDates(props, dates);
       break;
     case "review":
       props.kind = { enum: ["decision", "open_question"] };
-      props.date_from = dateField;
-      props.date_to = dateField;
+      addDates(props, dates);
       break;
     case "write":
       props.change = { enum: ["action_item", "retag", "move", "merge_people"] };
@@ -161,13 +230,11 @@ export function slotSchema(
       props.folder = { enum: none(ch.folders.map((f) => f.id)) };
       props.person = { enum: none(ch.people.map((p) => p.id)) };
       props.tag = { type: ["string", "null"], maxLength: 40 };
-      props.date_from = dateField;
-      props.date_to = dateField;
+      addDates(props, dates);
       break;
     default:
       props.query = textField;
-      props.date_from = dateField;
-      props.date_to = dateField;
+      addDates(props, dates);
   }
   return {
     type: "object",
@@ -212,8 +279,12 @@ const FIELD_HELP: Record<string, string> = {
   tag: "tag: the tag name to add, or null",
 };
 
-export function slotSystem(intent: Intent, ch: Choices): string {
-  const schema = slotSchema(intent, ch) as {
+export function slotSystem(
+  intent: Intent,
+  ch: Choices,
+  dates: DatesMode = "iso",
+): string {
+  const schema = slotSchema(intent, ch, dates) as {
     properties: Record<string, unknown>;
   } | null;
   const fields = Object.keys(schema?.properties ?? {}).map(

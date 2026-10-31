@@ -12,6 +12,7 @@ import { mean, percentile } from "./keys.mts";
 import type { RunOut, RunResult } from "./retrieval-run.mts";
 import {
   extraRouterItems,
+  heldoutRouterItems,
   planFor,
   ROUTER_SCHEMA,
   type RouterItem,
@@ -22,7 +23,9 @@ import {
 import {
   buildChoices,
   type Choices,
+  type DatesMode,
   defaultSlots,
+  resolvePeriod,
   type SlotValues,
   scoreSlots,
   slotSchema,
@@ -141,6 +144,9 @@ async function routeLlm(
   return { intent, valid, r };
 }
 
+/** How the slot fill gives dates (set by the runner after the comparison). */
+let DATES: DatesMode = "iso";
+
 async function fillSlots(
   base: string,
   hf: string,
@@ -148,7 +154,7 @@ async function fillSlots(
   intent: Intent,
   ch: Choices,
 ) {
-  const schema = slotSchema(intent, ch);
+  const schema = slotSchema(intent, ch, DATES);
   if (!schema) return { slots: {} as SlotValues, r: null, valid: true };
   const hist = q.history.length
     ? `Earlier: ${q.history
@@ -158,14 +164,16 @@ async function fillSlots(
     : "";
   const r = await ask(base, hf, {
     messages: [
-      { role: "system", content: slotSystem(intent, ch) },
+      { role: "system", content: slotSystem(intent, ch, DATES) },
       { role: "user", content: `${hist}Question: ${q.text}` },
     ],
     max_tokens: 150,
     response_format: strict("slots", schema),
   });
   try {
-    return { slots: JSON.parse(r.content) as SlotValues, r, valid: true };
+    const slots = JSON.parse(r.content) as SlotValues;
+    if (DATES === "closed") Object.assign(slots, resolvePeriod(slots));
+    return { slots, r, valid: true };
   } catch {
     return { slots: defaultSlots(q), r, valid: false };
   }
@@ -341,7 +349,9 @@ export async function runRouter(
   const mod = await import("../../apps/server/src/lib/mlx-llm/server.ts");
   const rss = new RssSampler(/--llm/);
   const qs = gold.questions;
+  const qOfEarly = new Map(qs.map((q) => [q.id, q]));
   const extra = extraRouterItems();
+  const heldout = heldoutRouterItems();
   const out: Record<string, unknown> = {};
   let text = `Corpus ${hashes.corpus}, gold ${hashes.gold}; model ${MODEL_ID} (worker: ${process.env.OPENSTYLE_MLX_LLM_WORKER ? "operator binary" : "managed"}), temperature 0, thinking off.\n\n`;
 
@@ -369,7 +379,7 @@ export async function runRouter(
       id: string;
     }[]
   > = {};
-  for (const prompt of ["en", "ml"] as RouterPrompt[]) {
+  for (const prompt of ["en", "ml", "v2"] as RouterPrompt[]) {
     const rows: (typeof routes)[string] = [];
     for (const q of qs) {
       const x = await routeLlm(baseURL, hfId, q.text, prevQ(q), prompt);
@@ -383,6 +393,17 @@ export async function runRouter(
       });
     }
     for (const it of extra) {
+      const x = await routeLlm(baseURL, hfId, it.text, null, prompt);
+      rows.push({
+        id: it.id,
+        lang: it.lang,
+        gold: it.intent,
+        pred: x.intent,
+        ms: x.r.ms,
+        valid: x.valid,
+      });
+    }
+    for (const it of heldout) {
       const x = await routeLlm(baseURL, hfId, it.text, null, prompt);
       rows.push({
         id: it.id,
@@ -415,6 +436,14 @@ export async function runRouter(
       ms: 0,
       valid: true,
     })),
+    ...heldout.map((it: RouterItem) => ({
+      id: it.id,
+      lang: it.lang,
+      gold: it.intent,
+      pred: rulesRoute(it.text),
+      ms: 0,
+      valid: true,
+    })),
   ];
   routes.rules = rules;
 
@@ -427,12 +456,21 @@ export async function runRouter(
         accOf(rows.filter((r) => r.lang === l)),
       ]),
     );
-  text += `Stage 1, intent accuracy (190 gold questions in EN and PT + 44 extra items in 7 languages):\n\n| router | all | gold 190 | extra 44 | en | pt | de | es | fr | it | ja | p50 ms | p95 ms | invalid JSON |\n|---|---|---|---|---|---|---|---|---|---|---|---|---|---|\n`;
+  const idNum = (id: string) => Number(id.replace(/\D/g, ""));
+  const split = {
+    gold: (r: { id: string }) => r.id.startsWith("q"),
+    goldEven: (r: { id: string }) =>
+      r.id.startsWith("q") && idNum(r.id) % 2 === 0,
+    goldOdd: (r: { id: string }) =>
+      r.id.startsWith("q") && idNum(r.id) % 2 === 1,
+    extra: (r: { id: string }) => r.id.startsWith("x"),
+    heldout: (r: { id: string }) => r.id.startsWith("h"),
+  };
+  const LANGS = ["en", "pt", "de", "es", "fr", "it", "ja"];
+  text += `Stage 1, intent accuracy. Sets: gold = the 190 gold questions (EN, PT); gold even = the half used to word prompt v2; gold odd = the other half; extra = 44 items in 7 languages written by the author; heldout = ${heldout.length} items in 7 languages written blind by an agent that saw neither the rules nor the prompts.\n\n| router | gold | gold even | gold odd | extra | heldout | ${LANGS.map((l) => `heldout ${l}`).join(" | ")} | p50 ms | p95 ms | invalid JSON |\n|---|---|---|---|---|---|${LANGS.map(() => "---").join("|")}|---|---|---|\n`;
   for (const [name, rows] of Object.entries(routes)) {
-    const g = rows.filter((r) => r.id.startsWith("q"));
-    const x = rows.filter((r) => r.id.startsWith("x"));
-    const bl = byLang(rows);
-    text += `| ${name} | ${pct(accOf(rows))} | ${pct(accOf(g))} | ${pct(accOf(x))} | ${["en", "pt", "de", "es", "fr", "it", "ja"].map((l) => pct(bl[l] as number)).join(" | ")} | ${percentile(
+    const h = rows.filter(split.heldout);
+    text += `| ${name} | ${pct(accOf(rows.filter(split.gold)))} | ${pct(accOf(rows.filter(split.goldEven)))} | ${pct(accOf(rows.filter(split.goldOdd)))} | ${pct(accOf(rows.filter(split.extra)))} | ${pct(accOf(h))} | ${LANGS.map((l) => pct(accOf(h.filter((r) => r.lang === l)))).join(" | ")} | ${percentile(
       rows.map((r) => r.ms),
       50,
     ).toFixed(0)} | ${percentile(
@@ -441,19 +479,23 @@ export async function runRouter(
     ).toFixed(0)} | ${rows.filter((r) => !r.valid).length} |\n`;
   }
   // Confusion of the best LLM router on gold questions.
-  const bestKey =
-    accOf(routes["LLM-ml"] as (typeof rules)[number][]) >
-    accOf(routes["LLM-en"] as (typeof rules)[number][])
-      ? "LLM-ml"
-      : "LLM-en";
+  const llmKeys = Object.keys(routes).filter((k) => k.startsWith("LLM-"));
+  const score = (k: string) => {
+    const rows = routes[k] as (typeof rules)[number][];
+    const h = rows.filter(split.heldout);
+    return h.length ? accOf(h) : accOf(rows.filter(split.gold));
+  };
+  const bestKey = llmKeys.sort((a, b) => score(b) - score(a))[0] as string;
   const conf = new Map<string, number>();
-  for (const r of routes[bestKey] as (typeof rules)[number][])
+  for (const r of (routes[bestKey] as (typeof rules)[number][]).filter(
+    split.gold,
+  ))
     if (r.gold !== r.pred)
       conf.set(
         `${r.gold}->${r.pred}`,
         (conf.get(`${r.gold}->${r.pred}`) ?? 0) + 1,
       );
-  text += `\nMisroutes of ${bestKey} (gold->predicted: count): ${
+  text += `\nMisroutes of ${bestKey} on the gold questions (gold->predicted: count): ${
     [...conf]
       .sort((a, b) => b[1] - a[1])
       .map(([k, n]) => `${k}: ${n}`)
@@ -468,7 +510,7 @@ export async function runRouter(
 
   // ---- stage 2b: slot fill, oracle intent (slot accuracy independent of the router) ----
   const choices = new Map(qs.map((q) => [q.id, buildChoices(corpus, q)]));
-  const slotRows: {
+  let slotRows: {
     id: string;
     type: string;
     intent: Intent;
@@ -477,7 +519,8 @@ export async function runRouter(
     ms: number;
     valid: boolean;
   }[] = [];
-  const slotByQ = new Map<string, SlotValues>();
+  let slotByQ = new Map<string, SlotValues>();
+  DATES = "iso";
   for (const q of qs) {
     if (q.intent === "status") continue;
     const ch = choices.get(q.id) as Choices;
@@ -494,6 +537,41 @@ export async function runRouter(
       valid: s.valid,
     });
   }
+  // The same questions with closed dates (period, month, day -> code makes the range).
+  DATES = "closed";
+  const slotRowsClosed: typeof slotRows = [];
+  const slotByQClosed = new Map<string, SlotValues>();
+  for (const q of qs) {
+    if (q.intent === "status") continue;
+    const ch = choices.get(q.id) as Choices;
+    const s = await fillSlots(baseURL, hfId, q, q.intent, ch);
+    const sc = scoreSlots(q, s.slots, ch);
+    slotByQClosed.set(q.id, s.slots);
+    slotRowsClosed.push({
+      id: q.id,
+      type: q.type,
+      intent: q.intent,
+      pass: sc.pass,
+      keys: sc.keys,
+      ms: s.r?.ms ?? 0,
+      valid: s.valid,
+    });
+  }
+  const dateQs = (rows: typeof slotRows) =>
+    rows.filter((r) => "date_from" in (qOfEarly.get(r.id)?.args ?? {}));
+  const okIso = ratio(slotRows.map((r) => (r.pass ? 1 : 0)));
+  const okClosed = ratio(slotRowsClosed.map((r) => (r.pass ? 1 : 0)));
+  text += `\nDates in the slot fill, same ${slotRows.length} questions, gold intent: ISO dates ${pct(okIso)}% all, ${pct(ratio(dateQs(slotRows).map((r) => (r.pass ? 1 : 0))))}% of the ${dateQs(slotRows).length} questions with a date arg; closed period/month/day with code ${pct(okClosed)}% all, ${pct(ratio(dateQs(slotRowsClosed).map((r) => (r.pass ? 1 : 0))))}% of the same ${dateQs(slotRowsClosed).length}.\n`;
+  out.datesIso = okIso;
+  out.datesClosed = okClosed;
+  if (okClosed > okIso) {
+    slotRows = slotRowsClosed;
+    slotByQ = slotByQClosed;
+    DATES = "closed";
+  } else {
+    DATES = "iso";
+  }
+  text += `Dates mode used below: ${DATES}.\n`;
   const noSlot = qs
     .filter((q) => q.intent !== "status")
     .map(

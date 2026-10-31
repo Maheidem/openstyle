@@ -5,6 +5,7 @@
 // questions in EN and PT, so the rules arm is an upper bound for new phrasings.
 // The five other languages are scored on 44 items written after the rules.
 
+import { existsSync, readFileSync } from "node:fs";
 import type { Intent, Lang } from "./types.mts";
 
 export interface RouterItem {
@@ -78,6 +79,24 @@ const ORDER: Intent[] = [
   "other",
 ];
 
+/** The blind held-out set (written by an agent that did not see the rules or the prompts). */
+export function heldoutRouterItems(): RouterItem[] {
+  const file = new URL("./router-heldout.json", import.meta.url);
+  if (!existsSync(file)) return [];
+  const rows = JSON.parse(readFileSync(file, "utf8")) as {
+    id: string;
+    lang: string;
+    intent: Intent;
+    text: string;
+  }[];
+  return rows.map((r) => ({
+    id: `h-${r.id}`,
+    lang: r.lang,
+    text: r.text,
+    intent: r.intent,
+  }));
+}
+
 export function extraRouterItems(): RouterItem[] {
   const out: RouterItem[] = [];
   for (const [lang, qs] of Object.entries(X)) {
@@ -122,8 +141,23 @@ status: where a project stands. "Em que pé estamos com o Atlas?" "¿Cómo vamos
 write: change data (done, tag, move, merge). "Marque como concluída." "Marque la tarea como hecha."
 other: greeting or not about meetings. "Olá!" "Hello!"`;
 
-export type RouterPrompt = "en" | "ml";
+export type RouterPrompt = "en" | "ml" | "v2";
+/**
+ * v2 (written after the first run, using only the even gold questions for the
+ * wording): it says what separates lookup from review, temporal and who_said.
+ */
+const INTENT_LINES_V2 = `lookup: asks for ONE specific fact: an amount, a date, a number, a name, or what was decided about one topic. "When is the launch?" "What did we decide on the database?"
+who_said: asks WHO said, proposed, approved or owns something. "Who proposed the pilot?"
+aggregate: asks for a list of items or a count. "List the open tasks of Ana." "How many meetings did we have?"
+temporal: asks WHICH meetings happened in a time range. "Which meetings did we have last week?"
+review: asks to show ALL decisions or ALL open questions of a project. "Show all decisions."
+status: asks where a project stands. "Where do we stand on Atlas?"
+write: asks you to change data: mark done, reopen, tag, move, merge. "Mark the task as done."
+other: a greeting, thanks, or not about the meetings. "Hello!"`;
+
 export function routerSystem(kind: RouterPrompt): string {
+  if (kind === "v2")
+    return `You route a user question about meeting notes. Answer with exactly one intent. The question can be in any language.\n${INTENT_LINES_V2}`;
   return `You route a user question about meeting notes. Answer with exactly one intent. The question can be in any language.\n${kind === "en" ? INTENT_LINES_EN : INTENT_LINES_ML}`;
 }
 

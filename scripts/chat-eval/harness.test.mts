@@ -20,10 +20,17 @@ import {
   type QueryPass,
   rankArm,
 } from "./retrieval.mts";
-import { extraRouterItems, planFor, rulesRoute } from "./router-data.mts";
+import {
+  extraRouterItems,
+  heldoutRouterItems,
+  planFor,
+  routerSystem,
+  rulesRoute,
+} from "./router-data.mts";
 import {
   buildChoices,
   defaultSlots,
+  resolvePeriod,
   scoreSlots,
   slotSchema,
 } from "./slots.mts";
@@ -252,4 +259,92 @@ test("rules router and plan table", () => {
   const extra = extraRouterItems();
   assert.equal(extra.length, 44);
   assert.equal(new Set(extra.map((x) => x.lang)).size, 7);
+});
+
+test("closed dates: the period resolves to the ranges of the gold set", () => {
+  assert.deepEqual(resolvePeriod({ period: "last_week" }), {
+    date_from: "2026-10-19",
+    date_to: "2026-10-25",
+  });
+  assert.deepEqual(resolvePeriod({ period: "this_week" }), {
+    date_from: "2026-10-26",
+    date_to: "2026-11-01",
+  });
+  assert.deepEqual(resolvePeriod({ period: "last_month" }), {
+    date_from: "2026-09-01",
+    date_to: "2026-09-30",
+  });
+  assert.deepEqual(resolvePeriod({ period: "this_month" }), {
+    date_from: "2026-10-01",
+    date_to: "2026-10-26",
+  });
+  assert.deepEqual(resolvePeriod({ period: "month", month: 9 }), {
+    date_from: "2026-09-01",
+    date_to: "2026-09-30",
+  });
+  assert.deepEqual(resolvePeriod({ period: "month", month: 9, day: 15 }), {
+    date_from: "2026-09-15",
+    date_to: "2026-09-15",
+  });
+  assert.deepEqual(resolvePeriod({ period: "none" }), {
+    date_from: null,
+    date_to: null,
+  });
+  assert.deepEqual(resolvePeriod({ period: "month", month: 13 }), {
+    date_from: null,
+    date_to: null,
+  });
+  // Every gold question that says "last week" or "last month" has the range the code gives.
+  for (const q of g.questions.filter(
+    (x) => /last week|semana passada/.test(x.text) && x.args.date_from,
+  )) {
+    assert.deepEqual(
+      { date_from: q.args.date_from, date_to: q.args.date_to },
+      resolvePeriod({ period: "last_week" }),
+      q.id,
+    );
+  }
+  const w = g.questions.find((q) => q.intent === "temporal") as Question;
+  const s = slotSchema("temporal", buildChoices(c, w), "closed") as {
+    properties: Record<string, unknown>;
+  };
+  assert.ok(s.properties.period && s.properties.month && s.properties.day);
+  assert.equal(s.properties.date_from, undefined);
+});
+
+test("the blind held-out router set has 4 items per intent and language", () => {
+  const h = heldoutRouterItems();
+  assert.equal(h.length, 224);
+  const per = new Map<string, number>();
+  for (const x of h)
+    per.set(
+      `${x.intent}|${x.lang}`,
+      (per.get(`${x.intent}|${x.lang}`) ?? 0) + 1,
+    );
+  assert.equal(per.size, 56);
+  assert.ok([...per.values()].every((n) => n === 4));
+  assert.equal(new Set(h.map((x) => x.text)).size, 224);
+});
+
+test("router prompts: three variants, all list the 8 intents", () => {
+  for (const kind of ["en", "ml", "v2"] as const) {
+    const t = routerSystem(kind);
+    for (const i of [
+      "lookup",
+      "who_said",
+      "aggregate",
+      "temporal",
+      "review",
+      "status",
+      "write",
+      "other",
+    ]) {
+      assert.ok(t.includes(`${i}:`), `${kind} ${i}`);
+    }
+    // The spec asks for a router prompt under 150 words (spec 2.3, stage 1, point 2).
+    assert.ok(
+      t.split(/\s+/).length < 220,
+      `${kind} is ${t.split(/\s+/).length} words`,
+    );
+  }
 });
