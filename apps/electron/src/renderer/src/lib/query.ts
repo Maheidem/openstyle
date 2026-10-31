@@ -87,6 +87,8 @@ export const queryKeys = {
     search: (query: string, folderId: string | null) =>
       ["meetings", "search", query, folderId] as const,
     transcript: (id: string) => ["meetings", "transcript", id] as const,
+    /** `GET /meetings/:id/chat`, the saved live chat (issue #375). */
+    chat: (id: string) => ["meetings", "chat", id] as const,
     /** specs/meeting-speaker-naming.md §7.3: the Speakers dialog's
      * GET /:id/speakers query — lives at MeetingDetailView level, not
      * inside the dialog, since §7.4's re-diarize confirmation needs its

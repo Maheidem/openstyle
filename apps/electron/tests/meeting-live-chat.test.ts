@@ -1,6 +1,7 @@
 import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { DatabaseSync } from "node:sqlite";
 import {
   type ElectronApplication,
   expect,
@@ -25,6 +26,10 @@ import {
 //      column says "unavailable" and the recording goes on. The card has the
 //      "Open live view" link. A click on the recording row opens the view
 //      again. After the stop the pane shows the normal meeting detail.
+//   3. The chat is saved with the meeting (live mode fixes). With no model
+//      the chat cannot answer, so the test writes one saved question and
+//      answer into the profile DB. The chat stays when the user clicks
+//      away and back, and after the stop it has a tab in the meeting detail.
 // The real-model proof (latency, chat answers) is in the pull request of #375.
 // ---------------------------------------------------------------------------
 
@@ -155,16 +160,123 @@ test("setting on, no local model: the live view opens in the right pane and says
   await expect(list.getByTestId("open-live-view")).toBeVisible();
   const live = await (await fetch(`${base}/api/meetings/${id}/live`)).json();
   expect(live.status).toBe("unavailable");
-  // Click away to the folder page, then back with the link of the card.
+  // One saved question and answer (the chat model is not available here).
+  const db = new DatabaseSync(join(userDataDir, "freestyle.db"));
+  db.exec("PRAGMA busy_timeout = 5000");
+  const now = Date.now();
+  const add = db.prepare(
+    `INSERT INTO meeting_chat_messages
+       (meeting_id, role, content, cites_json, ms, created_at)
+     VALUES (?, ?, ?, ?, ?, ?)`,
+  );
+  add.run(id, "user", "Who owns the beta?", null, null, now);
+  add.run(
+    id,
+    "assistant",
+    "Dana owns the beta.",
+    JSON.stringify([{ label: "L1", kind: "live", timeMs: 5000 }]),
+    120,
+    now + 1,
+  );
+  db.close();
+  const saved = await (await fetch(`${base}/api/meetings/${id}/chat`)).json();
+  expect(saved.messages.map((m: { role: string }) => m.role)).toEqual([
+    "user",
+    "assistant",
+  ]);
+  // The panel shows the saved chat after a reload of the page (a new mount).
+  await dashboard.goto("app://renderer/meetings");
+  await expect(detail.getByTestId("live-chat-user")).toContainText(
+    "Who owns the beta?",
+    { timeout: 15_000 },
+  );
+  await expect(detail.getByTestId("live-chat-assistant")).toContainText(
+    "Dana owns the beta.",
+  );
+  // Click away to the folder page, then back with the link of the card. The
+  // chat is still there.
   await list.getByRole("button", { name: "Proof folder", exact: true }).click();
   await expect(dashboard.getByTestId("live-view")).toHaveCount(0);
   await list.getByTestId("open-live-view").click();
   await expect(detail.getByTestId("live-view")).toBeVisible();
+  await expect(detail.getByTestId("live-chat-user")).toContainText(
+    "Who owns the beta?",
+  );
+  await expect(detail.getByTestId("live-chat-assistant")).toContainText(
+    "Dana owns the beta.",
+  );
   await stopMeeting();
   // After the stop the pane shows the normal meeting detail.
   await expect(dashboard.getByTestId("live-view")).toHaveCount(0);
   await expect(dashboard.getByTestId("open-live-view")).toHaveCount(0);
+  // The saved chat has a tab in the meeting detail and can be read there.
+  await expect(dashboard.getByTestId("meeting-chat-tab")).toBeVisible({
+    timeout: 15_000,
+  });
+  await dashboard.getByTestId("meeting-chat-tab").click();
+  const history = dashboard.getByTestId("meeting-chat-history");
+  await expect(history).toContainText("Who owns the beta?");
+  await expect(history).toContainText("Dana owns the beta.");
+  // No live text was read (no model), so no transcript is saved from live.
+  await expect(dashboard.getByTestId("meeting-from-live")).toHaveCount(0);
   // The live entry is gone after the stop.
   const after = await (await fetch(`${base}/api/meetings/${id}/live`)).json();
   expect(after.status).toBe("off");
+});
+
+test("keep the live transcript at Stop: a setting, off by default, and Stop saves nothing without live text", async () => {
+  test.setTimeout(120_000);
+  const read = async (): Promise<string | undefined> => {
+    const all = (await (await fetch(`${base}/api/settings`)).json()) as Record<
+      string,
+      string
+    >;
+    return all.live_keep_transcript_at_stop;
+  };
+  // Off by default. The switch is in Settings > Meetings next to the live chat.
+  expect(await read()).not.toBe("true");
+  await dashboard.goto("app://renderer/settings#meetings");
+  const keep = dashboard.locator("#settings-live-keep");
+  await expect(dashboard.locator("#settings-live-chat")).toBeVisible();
+  await expect(keep).toBeVisible();
+  await expect(keep).toHaveAttribute("aria-checked", "false");
+  await keep.click();
+  await expect.poll(read).toBe("true");
+  await dashboard.reload();
+  await expect(dashboard.locator("#settings-live-keep")).toHaveAttribute(
+    "aria-checked",
+    "true",
+  );
+  // On, but there is no local model, so the loop has no line to keep: the
+  // meeting stays recorded with no segment. With the option off it is the same.
+  for (const value of ["true", "false"]) {
+    const put = await fetch(
+      `${base}/api/settings/live_keep_transcript_at_stop`,
+      {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ value }),
+      },
+    );
+    expect(put.ok).toBe(true);
+    const id = await startMeeting();
+    await stopMeeting();
+    const detail = (await (
+      await fetch(`${base}/api/meetings/${id}`)
+    ).json()) as {
+      status: string;
+      transcript_source: string | null;
+      segment_counts: { total: number };
+    };
+    expect(detail.status).toBe("recorded");
+    expect(detail.transcript_source).toBeNull();
+    expect(detail.segment_counts.total).toBe(0);
+  }
+  // A value that is not a boolean flag is refused.
+  const bad = await fetch(`${base}/api/settings/live_keep_transcript_at_stop`, {
+    method: "PUT",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ value: "maybe" }),
+  });
+  expect(bad.ok).toBe(false);
 });

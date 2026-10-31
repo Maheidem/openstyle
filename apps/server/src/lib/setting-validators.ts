@@ -232,6 +232,8 @@ const SETTING_VALIDATORS: ReadonlyMap<string, SettingCheck> = new Map([
   ["meeting_project_memory", checkBooleanFlag],
   // Live transcript and chat (issue #375): experimental, off by default.
   ["live_chat_enabled", checkBooleanFlag],
+  // Keep the live transcript at Stop (issue #375): off by default.
+  ["live_keep_transcript_at_stop", checkBooleanFlag],
 ]);
 
 /**

@@ -2,9 +2,10 @@
  * Live transcript store (issue #375, specs/live-chat.md section 1).
  *
  * It lives in memory only. One entry exists for each recording that has live
- * chat on. The entry goes away when the recording stops. The final transcript
- * of the meeting then replaces it. Nothing here is merged with the final
- * transcript.
+ * chat on. The entry goes away when the recording stops. At Stop, the route
+ * reads the final lines and saves them as the transcript of the meeting
+ * (`finish.ts`). A full transcription replaces them later. Nothing here is
+ * merged with a full transcript.
  */
 
 export type LiveSource = "mic" | "system";
@@ -106,6 +107,33 @@ export function getLive(meetingId: string): LiveSnapshot | null {
     lines: [...[...entry.finals].sort(byTime), ...partials.sort(byTime)],
     skippedTicks: entry.skippedTicks,
   };
+}
+
+/** The final lines in time order, or [] for an unknown meeting. */
+export function getFinalLines(meetingId: string): LiveLine[] {
+  const entry = entries.get(meetingId);
+  if (!entry) return [];
+  return [...entry.finals].sort((a, b) => a.startMs - b.startMs);
+}
+
+/**
+ * Replace the text of one final line, or remove the line when `text` is empty.
+ * The loop uses it when the language lock reads the first lines again.
+ */
+export function setFinalText(
+  meetingId: string,
+  source: LiveSource,
+  startMs: number,
+  text: string,
+): void {
+  const entry = entries.get(meetingId);
+  if (!entry) return;
+  const i = entry.finals.findIndex(
+    (l) => l.source === source && l.startMs === startMs,
+  );
+  if (i < 0) return;
+  if (text) entry.finals[i] = { ...entry.finals[i], text };
+  else entry.finals.splice(i, 1);
 }
 
 export function dropLive(meetingId: string): void {

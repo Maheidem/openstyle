@@ -19,6 +19,7 @@ import {
   meetingListResponseSchema,
   meetingStartResponseSchema,
   meetingSummaryVersionsResponseSchema,
+  SETTINGS_KEYS,
   type StartRunResponse,
   SYNC_JSON,
   SYSTEM_WAV,
@@ -33,7 +34,7 @@ import {
   type WavInfo,
   wavDurationMs,
 } from "../lib/audio/wav.js";
-import { getDb, withTransaction } from "../lib/db.js";
+import { getDb, readSetting, withTransaction } from "../lib/db.js";
 import {
   isDictationActive,
   type WaitForDictationIdleOptions,
@@ -73,7 +74,11 @@ import {
   setProgress,
   waitForRelease,
 } from "../lib/meetings/job-registry.js";
-import { resolveMeetingLanguage } from "../lib/meetings/language.js";
+import {
+  readMeetingLanguage,
+  resolveMeetingLanguage,
+} from "../lib/meetings/language.js";
+import { saveLiveTranscript } from "../lib/meetings/live/finish.js";
 import { startLive, stopLive } from "../lib/meetings/live/loop.js";
 import { getLive } from "../lib/meetings/live/store.js";
 import {
@@ -715,6 +720,41 @@ async function speechSpansFor(wavPath: string) {
   return detectSpeechSpans(wavPath, durationMs, testOverrides.vadDeps);
 }
 
+/**
+ * Start the auto-run (Enhance, chained into Summarize) after a finished
+ * transcript, when the setting is on. Returns true when the workflow run took
+ * the job slot. Then the caller must not release it: the run does.
+ *
+ * A cancel that landed during the diarization pass already passed the check
+ * at the top of the job: without this re-read it would be LOST, because the
+ * release below clears the cancel flag. Skip the auto-run when the flag is
+ * set: the transcription is finished (every chunk persisted), so the
+ * transcript stands.
+ */
+function startAutoRun(id: string): boolean {
+  const cancelled = isCancelRequested(id);
+  if (cancelled) {
+    log.info(
+      `meeting ${id}: cancel requested after transcription finished, skipping auto Enhance`,
+    );
+  }
+  // No default LLM: skip the auto-run, as dictation skips cleanup (#229).
+  const autoRun = getMeetingEnhanceAutoRunSetting() && !cancelled;
+  if (autoRun && !getDefaultModels().llm) {
+    log.info(`meeting ${id}: no default LLM, skipping auto Enhance`);
+    return false;
+  }
+  if (!autoRun) return false;
+  releaseJob(id);
+  const started = startRun(
+    { meetingId: id, stages: ["enhance", "summarize"], trigger: "auto" },
+    testOverrides.workflowDeps,
+  );
+  if (started.ok) return true;
+  log.warn(`meeting ${id}: auto Enhance did not start (${started.reason})`);
+  return false;
+}
+
 async function runTranscribeJob(
   id: string,
   audioDir: string,
@@ -1017,28 +1057,7 @@ async function runTranscribeJob(
     // LOST, because the release below clears the cancel flag. Skip the
     // auto-run when the flag is set: the transcription is finished (every
     // chunk persisted), so the transcript stands.
-    const cancelled = isCancelRequested(id);
-    if (cancelled) {
-      log.info(
-        `meeting ${id}: cancel requested after transcription finished, skipping auto Enhance`,
-      );
-    }
-    // No default LLM: skip the auto-run, as dictation skips cleanup (#229).
-    const autoRun = getMeetingEnhanceAutoRunSetting() && !cancelled;
-    if (autoRun && !getDefaultModels().llm) {
-      log.info(`meeting ${id}: no default LLM, skipping auto Enhance`);
-    } else if (autoRun) {
-      releaseJob(id);
-      const started = startRun(
-        { meetingId: id, stages: ["enhance", "summarize"], trigger: "auto" },
-        testOverrides.workflowDeps,
-      );
-      if (started.ok) handedOff = true;
-      else
-        log.warn(
-          `meeting ${id}: auto Enhance did not start (${started.reason})`,
-        );
-    }
+    handedOff = startAutoRun(id);
   } catch (err) {
     const message = errorMessage(err);
     log.error(`meeting ${id}: transcription failed: ${message}`);
@@ -1054,6 +1073,96 @@ async function runTranscribeJob(
   } finally {
     // Skipped when the slot was handed to the auto-run workflow run, which
     // releases it when it ends (3.4.6).
+    if (!handedOff) releaseJob(id);
+  }
+}
+
+/**
+ * The steps that the live loop does not do, after Stop saved the live
+ * transcript (issue #375): speaker labels for the system channel and the
+ * word-timing split of mixed chunks (the aligner), on the audio. It uses the
+ * same helpers as the full pass. Never throws. It holds the job slot as a
+ * "diarize" job, so no other job runs on the half-finished labels. A failure
+ * keeps the live transcript as it is.
+ */
+async function runLiveFinishJob(id: string, audioDir: string): Promise<void> {
+  const db = getDb();
+  let handedOff = false;
+  try {
+    if (
+      getMeetingDiarizationEnabledSetting() &&
+      existsSync(join(audioDir, SYSTEM_WAV))
+    ) {
+      const durationRow = db
+        .prepare("SELECT duration_ms FROM meetings WHERE id = ?")
+        .get(id) as { duration_ms: number | null } | undefined;
+      log.info(
+        `meeting ${id}: live transcript, speaker pass started (${durationRow?.duration_ms ?? 0} ms audio)`,
+      );
+      const turns = await runDiarizer(
+        audioDir,
+        durationRow?.duration_ms ?? 0,
+        testOverrides.diarizeDeps ?? createDefaultDiarizeDeps(),
+        false,
+      ).catch((err) => {
+        log.warn(
+          `meeting ${id}: speaker pass failed, the live transcript has no labels: ${String(err)}`,
+        );
+        return null;
+      });
+      if (turns !== null && !isCancelRequested(id)) {
+        const cutTurns = longTurns(turns);
+        const plan = decideAlignPlan({
+          hasTurns: cutTurns.length > 0,
+          language: readMeetingLanguage(id),
+          appleSilicon: testOverrides.appleSilicon ?? isAppleSiliconMac(),
+          canRun: testOverrides.canRunMlx ?? canRunMlxAsr(),
+          alignerReady: testOverrides.alignerReady ?? isAlignerModelReady(),
+        });
+        if (plan.mode === "align") {
+          const systemRows = db
+            .prepare(
+              `SELECT idx, start_ms, end_ms, text FROM meeting_segments
+                WHERE meeting_id = ? AND source = 'system' ORDER BY idx`,
+            )
+            .all(id) as unknown as {
+            idx: number;
+            start_ms: number;
+            end_ms: number;
+            text: string | null;
+          }[];
+          await runAlignPass(
+            id,
+            audioDir,
+            systemRows.map((r) => ({
+              source: "system" as const,
+              idx: r.idx,
+              startMs: r.start_ms,
+              endMs: r.end_ms,
+              text: r.text ?? "",
+              status: "ok" as const,
+            })),
+            turns,
+            plan,
+          );
+          storeDiarizerTurns(id, cutTurns);
+        } else {
+          if (plan.mode === "cut") {
+            log.info(
+              `meeting ${id}: speaker alignment skipped: ${plan.reason}`,
+            );
+          }
+          applyDiarization(id, turns);
+        }
+      }
+    }
+    writeTranscriptMarkdown(id, audioDir);
+    handedOff = startAutoRun(id);
+  } catch (err) {
+    log.error(
+      `meeting ${id}: live transcript finish failed: ${errorMessage(err)}`,
+    );
+  } finally {
     if (!handedOff) releaseJob(id);
   }
 }
@@ -1278,7 +1387,8 @@ function startTranscribe(id: string): { ok: true } | StageRefusal {
   ].sort();
   db.prepare(
     `UPDATE meetings SET status = 'transcribing', error = NULL,
-       enhanced_at = NULL, speaker_names_lost = ? WHERE id = ?`,
+       enhanced_at = NULL, transcript_source = NULL,
+       speaker_names_lost = ? WHERE id = ?`,
   ).run(namesJson(confirmed), id);
   // A re-run replaces the previous transcript wholesale.
   db.prepare("DELETE FROM meeting_segments WHERE meeting_id = ?").run(id);
@@ -1706,8 +1816,12 @@ const meetings = new Hono()
   .post("/:id/stop", zValidator("json", stopSchema), async (c) => {
     const id = c.req.param("id");
     const { ended_at, duration_ms, status, error } = c.req.valid("json");
-    // Wait for the live loop: the final pass needs the one ASR worker.
-    await stopLive(id);
+    // Wait for the live loop: the next pass needs the one ASR worker. On a
+    // clean stop the loop first reads the rest of the audio.
+    const keepLive =
+      status === "recorded" &&
+      readSetting(SETTINGS_KEYS.liveKeepTranscriptAtStop) === "true";
+    const live = await stopLive(id, { flush: keepLive });
     const db = getDb();
     const result = db
       .prepare(
@@ -1717,6 +1831,22 @@ const meetings = new Hono()
       )
       .run(ended_at, duration_ms, status, error ?? null, id);
     if (result.changes === 0) return c.json({ error: "Not found" }, 404);
+    // Keep the live transcript (issue #375): the meeting is usable at once.
+    // The speaker and word-timing steps run next, as a job.
+    if (keepLive && live.modelId !== null) {
+      const row = getMeetingRow(id);
+      const saved = saveLiveTranscript(db, id, live.lines, {
+        provider: MLX_ASR_PROVIDER_ID,
+        modelId: live.modelId,
+      });
+      if (saved > 0 && row?.audio_dir) {
+        log.info(`meeting ${id}: saved ${saved} live lines as the transcript`);
+        writeTranscriptMarkdown(id, row.audio_dir);
+        if (claimJob(id, "diarize", { done: 0, total: 0, failed: 0 })) {
+          void runLiveFinishJob(id, row.audio_dir);
+        }
+      }
+    }
     return c.json({ ok: true });
   })
   // Orphan repair: mark a stuck 'recording' row 'interrupted' after the

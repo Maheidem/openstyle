@@ -38,6 +38,9 @@ export interface MeetingListItem {
    * failed or is partial. The server always sets it; read `status` when it
    * is absent. */
   display_status?: string;
+  /** "live" while the transcript comes from the live loop (issue #375). A full
+   * transcription clears it. NULL or absent: a full transcript or none. */
+  transcript_source?: string | null;
   /** Resolved (or user-set) transcription language, Phase A2. NULL means
    * "not yet resolved". The language chip shows "Auto". */
   language: string | null;

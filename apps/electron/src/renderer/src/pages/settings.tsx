@@ -211,6 +211,7 @@ export default function SettingsPage(): React.JSX.Element {
   // Project memory (#234) is on unless the row says "false".
   const [projectMemory, setProjectMemory] = useState(true);
   const [liveChat, setLiveChat] = useState(false);
+  const [liveKeep, setLiveKeep] = useState(false);
   // The owner name: the first term of the meeting ASR bias. Saved on blur
   // and on Enter; the ref holds the last saved value.
   const [ownerName, setOwnerName] = useState("");
@@ -508,6 +509,7 @@ export default function SettingsPage(): React.JSX.Element {
       setProjectMemory(false);
     }
     if (s[SETTINGS_KEYS.liveChatEnabled] === "true") setLiveChat(true);
+    if (s[SETTINGS_KEYS.liveKeepTranscriptAtStop] === "true") setLiveKeep(true);
     savedOwnerName.current = s[SETTINGS_KEYS.ownerName] ?? "";
     setOwnerName(savedOwnerName.current);
     if (s[SETTINGS_KEYS.calendarEnabled] === "true") {
@@ -800,6 +802,11 @@ export default function SettingsPage(): React.JSX.Element {
     },
     [queryClient],
   );
+
+  const handleLiveKeepToggle = useCallback((enabled: boolean) => {
+    setLiveKeep(enabled);
+    void putSetting(SETTINGS_KEYS.liveKeepTranscriptAtStop, String(enabled));
+  }, []);
 
   const commitOwnerName = useCallback(async (raw: string) => {
     const name = raw.trim();
@@ -1430,6 +1437,17 @@ export default function SettingsPage(): React.JSX.Element {
                   checked={liveChat}
                   onCheckedChange={handleLiveChatToggle}
                   aria-label={t("settings.meetings.liveChat")}
+                />
+              </Row>
+              <Row
+                label={t("settings.meetings.liveKeep")}
+                desc={t("settings.meetings.liveKeepDesc")}
+              >
+                <Switch
+                  id="settings-live-keep"
+                  checked={liveKeep}
+                  onCheckedChange={handleLiveKeepToggle}
+                  aria-label={t("settings.meetings.liveKeep")}
                 />
               </Row>
               <Row

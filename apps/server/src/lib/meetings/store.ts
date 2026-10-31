@@ -26,6 +26,8 @@ export interface MeetingRow {
   /** JSON array of the confirmed speaker names that the last re-transcribe
    * could not keep (schema 48). NULL means none. */
   speaker_names_lost: string | null;
+  /** "live" while the transcript comes from the live loop (schema 52). */
+  transcript_source: string | null;
   error: string | null;
   created_at: number | null;
   /** Linked calendar event (specs/calendar-eventkit.md). All NULL when the
