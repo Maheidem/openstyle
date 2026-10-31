@@ -216,7 +216,8 @@ export function goldSpans(q: Question, corpus: Corpus): GoldSpan[] {
   for (const g of q.gold) {
     const m = corpus.meetings.find((x) => x.id === g.meetingId);
     const s = m?.segments.find((x) => x.idx === g.segmentIdx);
-    if (m && s) out.push({ meetingId: m.id, startMs: s.startMs, endMs: s.endMs });
+    if (m && s)
+      out.push({ meetingId: m.id, startMs: s.startMs, endMs: s.endMs });
   }
   return out;
 }
@@ -243,7 +244,8 @@ export function citeHits(
     if (c.meeting_id !== s.meetingId) return false;
     if (mode === "meeting") return true;
     if (c.start_ms === null) return false;
-    if (mode === "start") return c.start_ms >= s.startMs && c.start_ms <= s.endMs;
+    if (mode === "start")
+      return c.start_ms >= s.startMs && c.start_ms <= s.endMs;
     const end = c.end_ms ?? c.start_ms;
     return c.start_ms <= s.endMs && end >= s.startMs;
   });
@@ -304,7 +306,8 @@ export function checkCites(
   }
   for (const c of turn.cites) {
     if (!/^S\d+$/.test(c.label)) invalid.push(`${c.label}:bad_label`);
-    else if (!known.meeting(c.meeting_id)) invalid.push(`${c.label}:no_meeting`);
+    else if (!known.meeting(c.meeting_id))
+      invalid.push(`${c.label}:no_meeting`);
     else if (c.start_ms !== null && !known.start(c.meeting_id, c.start_ms))
       invalid.push(`${c.label}:no_start`);
     else if (c.kind === "item" && (!c.item_id || !known.item(c.item_id)))
@@ -380,7 +383,9 @@ export function scoreToolArgs(
       case "date_from":
       case "date_to":
         if (q.intent === "write") break;
-        keys[k] = ((str(a[k]) ?? null) as string | null) === (gold === "" ? null : gold);
+        keys[k] =
+          ((str(a[k]) ?? null) as string | null) ===
+          (gold === "" ? null : gold);
         break;
       case "item":
         keys[k] =
@@ -430,7 +435,11 @@ export function confusion(
     row[p] = (row[p] ?? 0) + 1;
     if (r.pred === r.gold) ok++;
   }
-  return { matrix, accuracy: rows.length ? ok / rows.length : 0, n: rows.length };
+  return {
+    matrix,
+    accuracy: rows.length ? ok / rows.length : 0,
+    n: rows.length,
+  };
 }
 
 /**
@@ -480,7 +489,8 @@ export function scoreProdSlots(
         keys[k] = dates[k] === (gold === "" ? null : gold);
         break;
       case "item":
-        keys[k] = lab(choices.items, v.item) === maps.itemToProd.get(gold as string);
+        keys[k] =
+          lab(choices.items, v.item) === maps.itemToProd.get(gold as string);
         break;
       case "meeting":
         keys[k] = lab(choices.meetings, v.meeting) === gold;
@@ -589,7 +599,9 @@ export function barRow(
     id: def.id,
     bar: def.bar,
     threshold:
-      def.threshold === null ? "report" : sign + formatValue(def.threshold, def.unit),
+      def.threshold === null
+        ? "report"
+        : sign + formatValue(def.threshold, def.unit),
     measured:
       measured === null || measured === undefined || !Number.isFinite(measured)
         ? "-"
@@ -620,38 +632,264 @@ export function barsTable(rows: readonly BarRow[]): string {
  */
 export const BARS: readonly BarDef[] = [
   // --- P0 report section 7 ---
-  { id: "ret.ndcg", bar: "Retrieval nDCG@10, hybrid + rerank 15", threshold: 0.65, dir: "min", unit: "ratio", source: "p1-retrieval", origin: "report 7" },
-  { id: "ret.r10any", bar: "Retrieval recall@10 any evidence, hybrid + rerank 15, 147 queries", threshold: 0.85, dir: "min", unit: "pct", source: "p1-retrieval", origin: "report 7" },
-  { id: "ret.numbers15", bar: "Recall@10 numbers slice, hybrid + rerank 15", threshold: 0.85, dir: "min", unit: "pct", source: "p1-retrieval", origin: "report 7" },
-  { id: "ret.names15", bar: "Recall@10 names slice, hybrid + rerank 15", threshold: 0.85, dir: "min", unit: "pct", source: "p1-retrieval", origin: "report 7" },
-  { id: "ret.numbers30", bar: "Recall@10 numbers slice, hybrid + rerank 30", threshold: 0.85, dir: "min", unit: "pct", source: "p1-retrieval", origin: "report 7" },
-  { id: "ret.names30", bar: "Recall@10 names slice, hybrid + rerank 30", threshold: 0.85, dir: "min", unit: "pct", source: "p1-retrieval", origin: "report 7" },
-  { id: "ret.lat.scale", bar: "Hybrid latency p95 warm without reranker, 46,000 rows", threshold: 150, dir: "max", unit: "ms", source: "p1-scale", origin: "report 7" },
-  { id: "ret.rerank15", bar: "Rerank 15: added time p95", threshold: 400, dir: "max", unit: "ms", source: "p1-retrieval", origin: "report 7" },
-  { id: "ret.rerank30", bar: "Rerank 30: added time p95 (switch to 30 only if met)", threshold: 400, dir: "max", unit: "ms", source: "p1-retrieval", origin: "report 7, decision 3" },
-  { id: "ret.ram", bar: "Reranker worker RAM (peak RSS)", threshold: 1536, dir: "max", unit: "mb", source: "p1-retrieval", origin: "report 7" },
-  { id: "route.blind", bar: "Route accuracy, blind set (224)", threshold: 0.9, dir: "min", unit: "pct", source: "p1-router", origin: "report 7" },
-  { id: "route.gold", bar: "Route accuracy, gold set (190, new labels)", threshold: 0.85, dir: "min", unit: "pct", source: "p1-router", origin: "report 7" },
-  { id: "slots", bar: "Slot accuracy with the gold intent, dates by code", threshold: 0.9, dir: "min", unit: "pct", source: "p1-slots", origin: "report 7" },
-  { id: "toolargs", bar: "Tool and args together, end to end (190)", threshold: 0.85, dir: "min", unit: "pct", source: "p1-e2e", origin: "report 7" },
-  { id: "write", bar: "Write proposal match (kind and id set, 25)", threshold: 0.9, dir: "min", unit: "pct", source: "p1-e2e", origin: "report 7" },
-  { id: "route.lat", bar: "Route latency p95, router and slots together", threshold: 700, dir: "max", unit: "ms", source: "p1-e2e", origin: "report 7" },
-  { id: "a0.22", bar: "Answer accuracy lookup + follow-up on the 22 A0 questions", threshold: 0.74, dir: "min", unit: "pct", source: "p1-e2e", origin: "report 7" },
-  { id: "a0.35", bar: "Answer accuracy lookup + follow-up (25 + 10)", threshold: 0.85, dir: "min", unit: "pct", source: "p1-e2e", origin: "report 7" },
+  {
+    id: "ret.ndcg",
+    bar: "Retrieval nDCG@10, hybrid + rerank 15",
+    threshold: 0.65,
+    dir: "min",
+    unit: "ratio",
+    source: "p1-retrieval",
+    origin: "report 7",
+  },
+  {
+    id: "ret.r10any",
+    bar: "Retrieval recall@10 any evidence, hybrid + rerank 15, 147 queries",
+    threshold: 0.85,
+    dir: "min",
+    unit: "pct",
+    source: "p1-retrieval",
+    origin: "report 7",
+  },
+  {
+    id: "ret.numbers15",
+    bar: "Recall@10 numbers slice, hybrid + rerank 15",
+    threshold: 0.85,
+    dir: "min",
+    unit: "pct",
+    source: "p1-retrieval",
+    origin: "report 7",
+  },
+  {
+    id: "ret.names15",
+    bar: "Recall@10 names slice, hybrid + rerank 15",
+    threshold: 0.85,
+    dir: "min",
+    unit: "pct",
+    source: "p1-retrieval",
+    origin: "report 7",
+  },
+  {
+    id: "ret.numbers30",
+    bar: "Recall@10 numbers slice, hybrid + rerank 30",
+    threshold: 0.85,
+    dir: "min",
+    unit: "pct",
+    source: "p1-retrieval",
+    origin: "report 7",
+  },
+  {
+    id: "ret.names30",
+    bar: "Recall@10 names slice, hybrid + rerank 30",
+    threshold: 0.85,
+    dir: "min",
+    unit: "pct",
+    source: "p1-retrieval",
+    origin: "report 7",
+  },
+  {
+    id: "ret.lat.scale",
+    bar: "Hybrid latency p95 warm without reranker, 46,000 rows",
+    threshold: 150,
+    dir: "max",
+    unit: "ms",
+    source: "p1-scale",
+    origin: "report 7",
+  },
+  {
+    id: "ret.rerank15",
+    bar: "Rerank 15: added time p95",
+    threshold: 400,
+    dir: "max",
+    unit: "ms",
+    source: "p1-retrieval",
+    origin: "report 7",
+  },
+  {
+    id: "ret.rerank30",
+    bar: "Rerank 30: added time p95 (switch to 30 only if met)",
+    threshold: 400,
+    dir: "max",
+    unit: "ms",
+    source: "p1-retrieval",
+    origin: "report 7, decision 3",
+  },
+  {
+    id: "ret.ram",
+    bar: "Reranker worker RAM (peak RSS)",
+    threshold: 1536,
+    dir: "max",
+    unit: "mb",
+    source: "p1-retrieval",
+    origin: "report 7",
+  },
+  {
+    id: "route.blind",
+    bar: "Route accuracy, blind set (224)",
+    threshold: 0.9,
+    dir: "min",
+    unit: "pct",
+    source: "p1-router",
+    origin: "report 7",
+  },
+  {
+    id: "route.gold",
+    bar: "Route accuracy, gold set (190, new labels)",
+    threshold: 0.85,
+    dir: "min",
+    unit: "pct",
+    source: "p1-router",
+    origin: "report 7",
+  },
+  {
+    id: "slots",
+    bar: "Slot accuracy with the gold intent, dates by code",
+    threshold: 0.9,
+    dir: "min",
+    unit: "pct",
+    source: "p1-slots",
+    origin: "report 7",
+  },
+  {
+    id: "toolargs",
+    bar: "Tool and args together, end to end (190)",
+    threshold: 0.85,
+    dir: "min",
+    unit: "pct",
+    source: "p1-e2e",
+    origin: "report 7",
+  },
+  {
+    id: "write",
+    bar: "Write proposal match (kind and id set, 25)",
+    threshold: 0.9,
+    dir: "min",
+    unit: "pct",
+    source: "p1-e2e",
+    origin: "report 7",
+  },
+  {
+    id: "route.lat",
+    bar: "Route latency p95, router and slots together",
+    threshold: 700,
+    dir: "max",
+    unit: "ms",
+    source: "p1-e2e",
+    origin: "report 7",
+  },
+  {
+    id: "a0.22",
+    bar: "Answer accuracy lookup + follow-up on the 22 A0 questions",
+    threshold: 0.74,
+    dir: "min",
+    unit: "pct",
+    source: "p1-e2e",
+    origin: "report 7",
+  },
+  {
+    id: "a0.35",
+    bar: "Answer accuracy lookup + follow-up (25 + 10)",
+    threshold: 0.85,
+    dir: "min",
+    unit: "pct",
+    source: "p1-e2e",
+    origin: "report 7",
+  },
   // --- spec 8.7 answer stage ---
-  { id: "cite.valid", bar: "Cite validity", threshold: 1, dir: "eq", unit: "pct", source: "p1-e2e", origin: "spec 8.7" },
-  { id: "cite.invalid", bar: "Invalid cite shown", threshold: 0, dir: "eq", unit: "count", source: "p1-e2e", origin: "spec 8.7" },
-  { id: "nf.acc", bar: "Not-found accuracy (not answerable + scope trap)", threshold: 0.9, dir: "min", unit: "pct", source: "p1-e2e", origin: "spec 8.7" },
-  { id: "nf.false", bar: "False not-found rate", threshold: 0.15, dir: "max", unit: "pct", source: "p1-e2e", origin: "spec 8.7" },
-  { id: "listf1", bar: "List F1 (aggregation)", threshold: 0.85, dir: "min", unit: "ratio", source: "p1-e2e", origin: "spec 8.7" },
-  { id: "cite.prec", bar: "Cite precision (start_ms inside the gold segment)", threshold: 0.8, dir: "min", unit: "ratio", source: "p1-e2e", origin: "spec 8.7" },
-  { id: "route.spec", bar: "Route accuracy, gold set (spec 8.7 wording; report 7 sets 85%)", threshold: 0.9, dir: "min", unit: "pct", source: "p1-router", origin: "spec 8.7" },
-  { id: "lat.p95", bar: "Turn latency p95, warm", threshold: 6000, dir: "max", unit: "ms", source: "p1-e2e", origin: "spec 8.7" },
-  { id: "writes", bar: "Direct writes by the model", threshold: 0, dir: "eq", unit: "count", source: "p1-e2e", origin: "spec 8.7" },
-  { id: "whosaid", bar: "Who-said accuracy (reported; P2 bar is 70%)", threshold: null, dir: "min", unit: "pct", source: "p1-e2e", origin: "spec 8.7" },
+  {
+    id: "cite.valid",
+    bar: "Cite validity",
+    threshold: 1,
+    dir: "eq",
+    unit: "pct",
+    source: "p1-e2e",
+    origin: "spec 8.7",
+  },
+  {
+    id: "cite.invalid",
+    bar: "Invalid cite shown",
+    threshold: 0,
+    dir: "eq",
+    unit: "count",
+    source: "p1-e2e",
+    origin: "spec 8.7",
+  },
+  {
+    id: "nf.acc",
+    bar: "Not-found accuracy (not answerable + scope trap)",
+    threshold: 0.9,
+    dir: "min",
+    unit: "pct",
+    source: "p1-e2e",
+    origin: "spec 8.7",
+  },
+  {
+    id: "nf.false",
+    bar: "False not-found rate",
+    threshold: 0.15,
+    dir: "max",
+    unit: "pct",
+    source: "p1-e2e",
+    origin: "spec 8.7",
+  },
+  {
+    id: "listf1",
+    bar: "List F1 (aggregation)",
+    threshold: 0.85,
+    dir: "min",
+    unit: "ratio",
+    source: "p1-e2e",
+    origin: "spec 8.7",
+  },
+  {
+    id: "cite.prec",
+    bar: "Cite precision (start_ms inside the gold segment)",
+    threshold: 0.8,
+    dir: "min",
+    unit: "ratio",
+    source: "p1-e2e",
+    origin: "spec 8.7",
+  },
+  {
+    id: "route.spec",
+    bar: "Route accuracy, gold set (spec 8.7 wording; report 7 sets 85%)",
+    threshold: 0.9,
+    dir: "min",
+    unit: "pct",
+    source: "p1-router",
+    origin: "spec 8.7",
+  },
+  {
+    id: "lat.p95",
+    bar: "Turn latency p95, warm",
+    threshold: 6000,
+    dir: "max",
+    unit: "ms",
+    source: "p1-e2e",
+    origin: "spec 8.7",
+  },
+  {
+    id: "writes",
+    bar: "Direct writes by the model",
+    threshold: 0,
+    dir: "eq",
+    unit: "count",
+    source: "p1-e2e",
+    origin: "spec 8.7",
+  },
+  {
+    id: "whosaid",
+    bar: "Who-said accuracy (reported; P2 bar is 70%)",
+    threshold: null,
+    dir: "min",
+    unit: "pct",
+    source: "p1-e2e",
+    origin: "spec 8.7",
+  },
 ];
 
 /** Rows for all bars from a map of measured numbers (missing = NOT RUN). */
-export function evaluateBars(measured: Record<string, number | null | undefined>): BarRow[] {
+export function evaluateBars(
+  measured: Record<string, number | null | undefined>,
+): BarRow[] {
   return BARS.map((b) => barRow(b, measured[b.id]));
 }

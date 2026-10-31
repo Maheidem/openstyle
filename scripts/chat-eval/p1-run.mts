@@ -39,8 +39,8 @@ import {
   scoreProdSlots,
   scoreToolArgs,
 } from "./p1-score.mts";
-import type { RunOut } from "./retrieval-run.mts";
 import { gradesFor, loadChunks } from "./retrieval.mts";
+import type { RunOut } from "./retrieval-run.mts";
 import { heldoutRouterItems } from "./router-data.mts";
 import {
   bootStack,
@@ -96,7 +96,8 @@ const safe = (s: string) => s.replace(/[^A-Za-z0-9_]+/g, "_");
 function spread<T>(xs: T[], n: number | null): T[] {
   if (n === null || n >= xs.length) return xs;
   const out: T[] = [];
-  for (let i = 0; i < n; i++) out.push(xs[Math.floor((i * xs.length) / n)] as T);
+  for (let i = 0; i < n; i++)
+    out.push(xs[Math.floor((i * xs.length) / n)] as T);
   return out;
 }
 
@@ -192,7 +193,10 @@ interface ArmDef {
   extra: Record<string, unknown>;
 }
 
-async function partRetrieval(env: Env, M: Record<string, number>): Promise<PartOut> {
+async function partRetrieval(
+  env: Env,
+  M: Record<string, number>,
+): Promise<PartOut> {
   const { stack, corpus, gold, log } = env;
   const st = stack.mod.searchState();
   if (st.state !== "on") throw new Error(`search is off: ${st.reason}`);
@@ -209,7 +213,10 @@ async function partRetrieval(env: Env, M: Record<string, number>): Promise<PartO
           toMs: Date.parse(`${q.dateTo}T00:00:00Z`) + DAY,
         }
       : undefined;
-  const call = (q: (typeof queries)[number], extra: Record<string, unknown>) => {
+  const call = (
+    q: (typeof queries)[number],
+    extra: Record<string, unknown>,
+  ) => {
     const range = rangeOf(q);
     return stack.mod.retrieve({
       query: { kind: "text", text: q.text },
@@ -260,7 +267,8 @@ async function partRetrieval(env: Env, M: Record<string, number>): Promise<PartO
       const ts = performance.now();
       const res = await call(q, arm.extra);
       times.push(performance.now() - ts);
-      if (res.status !== "ok") throw new Error(`${arm.id} ${q.id}: ${res.status}`);
+      if (res.status !== "ok")
+        throw new Error(`${arm.id} ${q.id}: ${res.status}`);
       if (res.rerank === "applied") applied++;
       if (res.ms) rerankMs.push(res.ms.rerank);
       const g = res.hits.map((h) => grades.get(h.chunkId) ?? 0);
@@ -300,7 +308,9 @@ async function partRetrieval(env: Env, M: Record<string, number>): Promise<PartO
       `| ${arm.id} | ${slices.map((s) => `${f3(metrics[`${arm.id}.ndcg.${s}`] as number)} / ${pct(metrics[`${arm.id}.r10.${s}`] as number)}`).join(" | ")} | ${pct(metrics[`${arm.id}.r10any.en`] as number)} / ${pct(metrics[`${arm.id}.r10any.pt`] as number)} |\n`,
     );
     per[arm.id] = rows;
-    log(`retrieval ${arm.id}: nDCG@10 ${f3(metrics[`${arm.id}.ndcg.all`] as number)}`);
+    log(
+      `retrieval ${arm.id}: nDCG@10 ${f3(metrics[`${arm.id}.ndcg.all`] as number)}`,
+    );
   }
   rssAll.stop();
   rssRerank.stop();
@@ -342,7 +352,10 @@ async function partRetrieval(env: Env, M: Record<string, number>): Promise<PartO
 // B. router
 // ===================================================================================
 
-async function partRouter(env: Env, M: Record<string, number>): Promise<PartOut> {
+async function partRouter(
+  env: Env,
+  M: Record<string, number>,
+): Promise<PartOut> {
   const { mods, gold, log } = env;
   const intents = new Set<string>([
     "lookup",
@@ -355,14 +368,16 @@ async function partRouter(env: Env, M: Record<string, number>): Promise<PartOut>
     "other",
   ]);
   const prevOf = (q: Question) =>
-    mods.context.compactHistory(
-      historyMessages(q).map((m) => ({
-        role: m.role,
-        content: m.content,
-        blocks: m.blocks,
-        cites: m.cites,
-      })),
-    ).at(-1)?.question ?? null;
+    mods.context
+      .compactHistory(
+        historyMessages(q).map((m) => ({
+          role: m.role,
+          content: m.content,
+          blocks: m.blocks,
+          cites: m.cites,
+        })),
+      )
+      .at(-1)?.question ?? null;
   interface Item {
     id: string;
     set: "gold" | "heldout";
@@ -411,7 +426,10 @@ async function partRouter(env: Env, M: Record<string, number>): Promise<PartOut>
       });
       llm.finish("succeeded");
       const pred = r.object.intent as Intent;
-      return { pred: intents.has(pred) ? pred : null, ms: performance.now() - t };
+      return {
+        pred: intents.has(pred) ? pred : null,
+        ms: performance.now() - t,
+      };
     } catch (e) {
       llm.finish("failed", { errorDetail: String(e).slice(0, 200) });
       return { pred: null, ms: performance.now() - t };
@@ -433,8 +451,14 @@ async function partRouter(env: Env, M: Record<string, number>): Promise<PartOut>
     confs[set] = c;
     metrics[`acc.${set}`] = c.accuracy;
     metrics[`n.${set}`] = c.n;
-    metrics[`latency_ms.${set}.p50`] = percentile(rs.map((r) => r.ms), 50);
-    metrics[`latency_ms.${set}.p95`] = percentile(rs.map((r) => r.ms), 95);
+    metrics[`latency_ms.${set}.p50`] = percentile(
+      rs.map((r) => r.ms),
+      50,
+    );
+    metrics[`latency_ms.${set}.p95`] = percentile(
+      rs.map((r) => r.ms),
+      95,
+    );
     metrics[`invalid.${set}`] = rs.filter((r) => r.pred === null).length;
     const langs = [...new Set(rs.map((r) => r.lang))].sort();
     text += `${set}: accuracy ${pct(c.accuracy)}% of ${c.n}; latency p50 ${ms0(metrics[`latency_ms.${set}.p50`] as number)} ms, p95 ${ms0(metrics[`latency_ms.${set}.p95`] as number)} ms; invalid ${metrics[`invalid.${set}`]}.\n`;
@@ -476,7 +500,11 @@ async function partRouter(env: Env, M: Record<string, number>): Promise<PartOut>
     },
     run: {
       name: "p1-router",
-      params: { gold: metrics["n.gold"] as number, heldout: metrics["n.heldout"] as number, step: "chatRoute" },
+      params: {
+        gold: metrics["n.gold"] as number,
+        heldout: metrics["n.heldout"] as number,
+        step: "chatRoute",
+      },
       tags: baseTags(env, "structured-router"),
       metrics,
     },
@@ -487,7 +515,10 @@ async function partRouter(env: Env, M: Record<string, number>): Promise<PartOut>
 // C. slots
 // ===================================================================================
 
-async function partSlots(env: Env, M: Record<string, number>): Promise<PartOut> {
+async function partSlots(
+  env: Env,
+  M: Record<string, number>,
+): Promise<PartOut> {
   const { mods, gold, corpus, maps, stack, log } = env;
   const qs = spread(
     gold.questions.filter((q) => q.intent !== "status"),
@@ -592,13 +623,25 @@ async function partSlots(env: Env, M: Record<string, number>): Promise<PartOut> 
   const fails = rows.filter((r) => !r.pass);
   text += `\nFailed questions (${fails.length}): ${fails
     .slice(0, 60)
-    .map((r) => `${r.q.id}[${Object.entries(r.keys).filter(([, v]) => !v).map(([k]) => k).join(",")}]`)
+    .map(
+      (r) =>
+        `${r.q.id}[${Object.entries(r.keys)
+          .filter(([, v]) => !v)
+          .map(([k]) => k)
+          .join(",")}]`,
+    )
     .join(" ")}\n`;
   M.slots = metrics.acc as number;
   return {
     text,
     data: {
-      rows: rows.map((r) => ({ id: r.q.id, intent: r.q.intent, pass: r.pass, keys: r.keys, err: r.err })),
+      rows: rows.map((r) => ({
+        id: r.q.id,
+        intent: r.q.intent,
+        pass: r.pass,
+        keys: r.keys,
+        err: r.err,
+      })),
     },
     run: {
       name: "p1-slots",
@@ -688,17 +731,22 @@ async function partE2e(env: Env, M: Record<string, number>): Promise<PartOut> {
   const before = dataHash(stack);
   const known = {
     meeting: (id: string) =>
-      stack.db.prepare("SELECT 1 FROM meetings WHERE id = ?").get(id) !== undefined,
+      stack.db.prepare("SELECT 1 FROM meetings WHERE id = ?").get(id) !==
+      undefined,
     start: (mid: string, s: number) =>
       stack.db
-        .prepare("SELECT 1 FROM meeting_segments WHERE meeting_id = ? AND start_ms = ? UNION SELECT 1 FROM meeting_chunks WHERE meeting_id = ? AND start_ms = ?")
+        .prepare(
+          "SELECT 1 FROM meeting_segments WHERE meeting_id = ? AND start_ms = ? UNION SELECT 1 FROM meeting_chunks WHERE meeting_id = ? AND start_ms = ?",
+        )
         .get(mid, s, mid, s) !== undefined,
     item: (id: string) => maps.prodToItem.has(id),
   };
   const chunkEnd = (mid: string, s: number | null): number | null => {
     if (s === null) return null;
     const r = stack.db
-      .prepare("SELECT MAX(end_ms) AS e FROM meeting_chunks WHERE meeting_id = ? AND start_ms = ?")
+      .prepare(
+        "SELECT MAX(end_ms) AS e FROM meeting_chunks WHERE meeting_id = ? AND start_ms = ?",
+      )
       .get(mid, s) as { e: number | null } | undefined;
     return r?.e ?? null;
   };
@@ -727,8 +775,14 @@ async function partE2e(env: Env, M: Record<string, number>): Promise<PartOut> {
       const wall = performance.now() - t0;
       const answer = answerFromTurn(res, maps, q.key);
       const score = scoreAnswer(answer, q.key);
-      const stepNames = res.trace.steps.filter((s) => s.stage === "route").map((s) => s.name);
-      const tool = firstTool(res.toolCalls, stepNames, res.proposal?.kind ?? null);
+      const stepNames = res.trace.steps
+        .filter((s) => s.stage === "route")
+        .map((s) => s.name);
+      const tool = firstTool(
+        res.toolCalls,
+        stepNames,
+        res.proposal?.kind ?? null,
+      );
       const toolOk = tool !== null && q.tools.includes(tool);
       const sa = scoreToolArgs(
         q,
@@ -787,7 +841,9 @@ async function partE2e(env: Env, M: Record<string, number>): Promise<PartOut> {
         coveredRange: cr.covered,
         invalidCites: chk.invalid,
         toolCalls: res.toolCalls.map((c) => ({ tool: c.tool, rows: c.rows })),
-        blocks: res.blocks.map((b) => (b.kind === "not_found" ? `not_found:${b.reason}` : b.kind)),
+        blocks: res.blocks.map((b) =>
+          b.kind === "not_found" ? `not_found:${b.reason}` : b.kind,
+        ),
         answer: res.content.slice(0, 300),
       };
     } catch (e) {
@@ -829,7 +885,9 @@ async function partE2e(env: Env, M: Record<string, number>): Promise<PartOut> {
     rows.push(row);
     if (rows.length % 10 === 0) {
       rss.sample();
-      log(`e2e ${rows.length}/${qs.length}: pass ${rows.filter((r) => r.pass).length}`);
+      log(
+        `e2e ${rows.length}/${qs.length}: pass ${rows.filter((r) => r.pass).length}`,
+      );
     }
   }
   rss.stop();
@@ -839,7 +897,9 @@ async function partE2e(env: Env, M: Record<string, number>): Promise<PartOut> {
   function qkey(id: string) {
     return (gold.questions.find((q) => q.id === id) as Question).key;
   }
-  const nfRows = rows.filter((r) => r.type === "not_answerable" || r.type === "scope_trap");
+  const nfRows = rows.filter(
+    (r) => r.type === "not_answerable" || r.type === "scope_trap",
+  );
   const metrics: Record<string, number> = {};
   metrics.n = rows.length;
   metrics.errors = rows.filter((r) => r.err).length;
@@ -850,7 +910,9 @@ async function partE2e(env: Env, M: Record<string, number>): Promise<PartOut> {
     if (rs.length === 0) continue;
     const a = mean(rs.map((r) => (r.pass ? 1 : 0)));
     metrics[`acc.type.${t}`] = a;
-    typeLines.push(`| ${t} | ${rs.length} | ${rs.filter((r) => r.pass).length} | ${pct(a)} |`);
+    typeLines.push(
+      `| ${t} | ${rs.length} | ${rs.filter((r) => r.pass).length} | ${pct(a)} |`,
+    );
   }
   // Lookup + follow-up.
   const lf = rows.filter((r) => r.type === "lookup" || r.type === "follow_up");
@@ -878,7 +940,9 @@ async function partE2e(env: Env, M: Record<string, number>): Promise<PartOut> {
   // List F1: aggregation questions with a set key.
   const agg = rows.filter((r) => r.type === "aggregation");
   metrics["f1.aggregation"] = mean(agg.map((r) => r.f1 ?? 0));
-  const aggNoStatus = agg.filter((r) => r.intent !== "status" && !r.blocks.includes("status"));
+  const aggNoStatus = agg.filter(
+    (r) => r.intent !== "status" && !r.blocks.includes("status"),
+  );
   metrics["f1.aggregation_no_status"] = mean(aggNoStatus.map((r) => r.f1 ?? 0));
   const setRows = rows.filter((r) => qkey(r.id).kind === "set");
   metrics["f1.all_set"] = mean(setRows.map((r) => r.f1 ?? 0));
@@ -888,47 +952,84 @@ async function partE2e(env: Env, M: Record<string, number>): Promise<PartOut> {
   const shownAll = shown + 0;
   metrics["cite.shown"] = shownAll;
   metrics["cite.invalid"] = invalid;
-  metrics["cite.validity"] = shownAll === 0 ? 1 : Math.max(0, 1 - invalid / shownAll);
+  metrics["cite.validity"] =
+    shownAll === 0 ? 1 : Math.max(0, 1 - invalid / shownAll);
   const withGold = rows.filter((r) => r.goldSpans > 0);
-  const sum = (f: (r: E2eRow) => number, rs = withGold) => rs.reduce((a, r) => a + f(r), 0);
+  const sum = (f: (r: E2eRow) => number, rs = withGold) =>
+    rs.reduce((a, r) => a + f(r), 0);
   const shownG = sum((r) => r.cites);
-  metrics["cite.precision_start"] = shownG === 0 ? 0 : sum((r) => r.citeHitsStart) / shownG;
-  metrics["cite.precision_range"] = shownG === 0 ? 0 : sum((r) => r.citeHitsRange) / shownG;
-  metrics["cite.precision_meeting"] = shownG === 0 ? 0 : sum((r) => r.citeHitsMeeting) / shownG;
+  metrics["cite.precision_start"] =
+    shownG === 0 ? 0 : sum((r) => r.citeHitsStart) / shownG;
+  metrics["cite.precision_range"] =
+    shownG === 0 ? 0 : sum((r) => r.citeHitsRange) / shownG;
+  metrics["cite.precision_meeting"] =
+    shownG === 0 ? 0 : sum((r) => r.citeHitsMeeting) / shownG;
   const goldN = sum((r) => r.goldSpans);
-  metrics["cite.recall_start"] = goldN === 0 ? 0 : sum((r) => r.coveredStart) / goldN;
-  metrics["cite.recall_range"] = goldN === 0 ? 0 : sum((r) => r.coveredRange) / goldN;
+  metrics["cite.recall_start"] =
+    goldN === 0 ? 0 : sum((r) => r.coveredStart) / goldN;
+  metrics["cite.recall_range"] =
+    goldN === 0 ? 0 : sum((r) => r.coveredRange) / goldN;
   metrics["cite.n_questions_with_gold"] = withGold.length;
   // Tool choice and args.
-  const toolRows = rows.filter((r) => (gold.questions.find((q) => q.id === r.id) as Question).tools.length > 0);
+  const toolRows = rows.filter(
+    (r) =>
+      (gold.questions.find((q) => q.id === r.id) as Question).tools.length > 0,
+  );
   metrics["tool.acc"] = mean(toolRows.map((r) => (r.toolOk ? 1 : 0)));
   metrics["args.acc"] = mean(toolRows.map((r) => (r.argsOk ? 1 : 0)));
-  metrics["toolargs.acc"] = mean(toolRows.map((r) => (r.toolOk && r.argsOk ? 1 : 0)));
+  metrics["toolargs.acc"] = mean(
+    toolRows.map((r) => (r.toolOk && r.argsOk ? 1 : 0)),
+  );
   const wr = rows.filter((r) => r.type === "write");
   metrics["write.kind_ids"] = mean(wr.map((r) => (r.proposalKindIds ? 1 : 0)));
   metrics["write.full"] = mean(wr.map((r) => (r.pass ? 1 : 0)));
   metrics["write.tool"] = mean(wr.map((r) => (r.toolOk ? 1 : 0)));
-  metrics["write.toolargs"] = mean(wr.map((r) => (r.toolOk && r.argsOk ? 1 : 0)));
+  metrics["write.toolargs"] = mean(
+    wr.map((r) => (r.toolOk && r.argsOk ? 1 : 0)),
+  );
   // Router used.
   for (const k of ["native", "structured", "default", "skipped", "error"])
-    metrics[`router.${k}`] = rows.filter((r) => r.router === k).length / rows.length;
+    metrics[`router.${k}`] =
+      rows.filter((r) => r.router === k).length / rows.length;
   const natives = rows.filter((r) => r.native !== "off");
   for (const k of ["ok", "invalid", "none", "error"])
-    metrics[`native.${k}`] = natives.length === 0 ? 0 : natives.filter((r) => r.native === k).length / natives.length;
+    metrics[`native.${k}`] =
+      natives.length === 0
+        ? 0
+        : natives.filter((r) => r.native === k).length / natives.length;
   metrics["native.attempts"] = natives.length;
   // Calls, latency, RAM, dropped.
   metrics["calls.mean"] = mean(rows.map((r) => r.calls));
   metrics["calls.max"] = Math.max(...rows.map((r) => r.calls));
-  metrics["latency_ms.p50"] = percentile(warm.map((r) => r.ms), 50);
-  metrics["latency_ms.p95"] = percentile(warm.map((r) => r.ms), 95);
+  metrics["latency_ms.p50"] = percentile(
+    warm.map((r) => r.ms),
+    50,
+  );
+  metrics["latency_ms.p95"] = percentile(
+    warm.map((r) => r.ms),
+    95,
+  );
   metrics["latency_ms.first"] = rows[0]?.ms ?? 0;
-  metrics["route_ms.p50"] = percentile(warm.map((r) => r.routeMs), 50);
-  metrics["route_ms.p95"] = percentile(warm.map((r) => r.routeMs), 95);
+  metrics["route_ms.p50"] = percentile(
+    warm.map((r) => r.routeMs),
+    50,
+  );
+  metrics["route_ms.p95"] = percentile(
+    warm.map((r) => r.routeMs),
+    95,
+  );
   metrics["llm_rss_peak_mb"] = rss.peakMb;
-  metrics["sources_dropped.turns"] = rows.filter((r) => r.sourcesDropped > 0).length;
-  metrics["sources_dropped.total"] = rows.reduce((a, r) => a + r.sourcesDropped, 0);
+  metrics["sources_dropped.turns"] = rows.filter(
+    (r) => r.sourcesDropped > 0,
+  ).length;
+  metrics["sources_dropped.total"] = rows.reduce(
+    (a, r) => a + r.sourcesDropped,
+    0,
+  );
   const lt = rows.filter((r) => r.type === "long_thread");
-  metrics["sources_dropped.long_thread_turns"] = lt.filter((r) => r.sourcesDropped > 0).length;
+  metrics["sources_dropped.long_thread_turns"] = lt.filter(
+    (r) => r.sourcesDropped > 0,
+  ).length;
   metrics["writes.direct"] = before === after ? 0 : 1;
   const who = rows.filter((r) => r.type === "who_said");
   metrics["acc.who_said"] = mean(who.map((r) => (r.pass ? 1 : 0)));
@@ -1015,10 +1116,22 @@ function partA0(env: Env, M: Record<string, number>): PartOut {
   };
   let text = `A0 result file ${file}: ${savedIds.length} question ids; the gold set now has ${ids.length} for the A0 filter. The id sets are ${same ? "the SAME" : "DIFFERENT"}.\n`;
   if (!same) {
-    text += "The A0 numbers do not apply. Run: pnpm chat-eval a0 (separate process), then run p1 again.\n";
-    return { text, data: { same, file }, run: { name: "p1-a0", params: { file }, tags: baseTags(env, "A0"), metrics } };
+    text +=
+      "The A0 numbers do not apply. Run: pnpm chat-eval a0 (separate process), then run p1 again.\n";
+    return {
+      text,
+      data: { same, file },
+      run: {
+        name: "p1-a0",
+        params: { file },
+        tags: baseTags(env, "A0"),
+        metrics,
+      },
+    };
   }
-  const lf = saved.rows.filter((r) => r.type === "lookup" || r.type === "follow_up");
+  const lf = saved.rows.filter(
+    (r) => r.type === "lookup" || r.type === "follow_up",
+  );
   metrics.a0_lookup_followup_n = lf.length;
   metrics.a0_lookup_followup_acc = mean(lf.map((r) => (r.pass ? 1 : 0)));
   text += `A0 on lookup + follow-up (${lf.length} questions): ${pct(metrics.a0_lookup_followup_acc as number)}% (${lf.filter((r) => r.pass).length} passes). The P1 bar is A0 + 10 points = ${pct((metrics.a0_lookup_followup_acc as number) + 0.1)}%.\n`;
@@ -1026,7 +1139,12 @@ function partA0(env: Env, M: Record<string, number>): PartOut {
   return {
     text,
     data: { same, file, lookupFollowup: lf.length },
-    run: { name: "p1-a0", params: { file, same_ids: true }, tags: baseTags(env, "A0"), metrics },
+    run: {
+      name: "p1-a0",
+      params: { file, same_ids: true },
+      tags: baseTags(env, "A0"),
+      metrics,
+    },
   };
 }
 
@@ -1034,7 +1152,10 @@ function partA0(env: Env, M: Record<string, number>): PartOut {
 // Scale: latency at N x the corpus
 // ===================================================================================
 
-async function partScale(env: Env, M: Record<string, number>): Promise<PartOut> {
+async function partScale(
+  env: Env,
+  M: Record<string, number>,
+): Promise<PartOut> {
   const { stack, corpus, gold, log } = env;
   const n = env.opts.scale > 1 ? env.opts.scale : 256;
   const extra: Corpus[] = [];
@@ -1051,13 +1172,20 @@ async function partScale(env: Env, M: Record<string, number>): Promise<PartOut> 
       if (++done % 500 === 0) log(`scale: indexed ${done} meetings`);
     }
   const rows = (
-    stack.db.prepare("SELECT COUNT(*) AS n FROM meeting_chunks").get() as { n: number }
+    stack.db.prepare("SELECT COUNT(*) AS n FROM meeting_chunks").get() as {
+      n: number;
+    }
   ).n;
-  log(`scale: ${rows} chunk rows, indexed in ${((performance.now() - t0) / 60000).toFixed(1)} min`);
+  log(
+    `scale: ${rows} chunk rows, indexed in ${((performance.now() - t0) / 60000).toFixed(1)} min`,
+  );
   const queries = spread(gold.retrieval, env.opts.limit);
   const rangeOf = (q: (typeof queries)[number]) =>
     q.dateFrom && q.dateTo
-      ? { fromMs: Date.parse(`${q.dateFrom}T00:00:00Z`), toMs: Date.parse(`${q.dateTo}T00:00:00Z`) + DAY }
+      ? {
+          fromMs: Date.parse(`${q.dateFrom}T00:00:00Z`),
+          toMs: Date.parse(`${q.dateTo}T00:00:00Z`) + DAY,
+        }
       : undefined;
   const metrics: Record<string, number> = { scale: n, chunk_rows: rows };
   let text = `Scale x${n}: ${rows} chunk rows, ${queries.length} queries, production retrieve() k=10, warm.\n\n| arm | p50 ms | p95 ms | rerank p95 ms |\n|---|---|---|---|\n`;
@@ -1078,14 +1206,16 @@ async function partScale(env: Env, M: Record<string, number>): Promise<PartOut> 
         ...extraOpts,
       } as Parameters<typeof stack.mod.retrieve>[0]);
     };
-    for (let i = 0; i < 3; i++) await call(queries[0] as (typeof queries)[number]);
+    for (let i = 0; i < 3; i++)
+      await call(queries[0] as (typeof queries)[number]);
     const times: number[] = [];
     const rr: number[] = [];
     for (const q of queries) {
       const ts = performance.now();
       const res = await call(q);
       times.push(performance.now() - ts);
-      if (res.status !== "ok") throw new Error(`scale ${id} ${q.id}: ${res.status}`);
+      if (res.status !== "ok")
+        throw new Error(`scale ${id} ${q.id}: ${res.status}`);
       if (res.ms) rr.push(res.ms.rerank);
     }
     metrics[`${id}.latency_ms.p50`] = percentile(times, 50);
@@ -1133,28 +1263,41 @@ export async function runP1(
     opts.only ? opts.only.has(p) : p !== "scale" || opts.scale > 1;
   const stack = await bootStack("p1", true);
   // The reranker worker is the same dev launcher as the LLM and embed worker.
-  process.env.OPENSTYLE_MLX_RERANK_WORKER ??= process.env.OPENSTYLE_MLX_LLM_WORKER;
+  process.env.OPENSTYLE_MLX_RERANK_WORKER ??=
+    process.env.OPENSTYLE_MLX_LLM_WORKER;
   loadCorpus(stack, corpus);
   const s = (p: string) => import(`../../apps/server/src/lib/${p}`);
-  const [pipeline, llm, settings, prompts, plan, choices, context, rerankConst, llmServer, rerankServer] =
-    await Promise.all([
-      s("chat/pipeline.ts"),
-      s("chat/llm.ts"),
-      s("chat/settings.ts"),
-      s("chat/prompts.ts"),
-      s("chat/plan.ts"),
-      s("chat/choices.ts"),
-      s("chat/context.ts"),
-      s("mlx-rerank/constants.ts"),
-      s("mlx-llm/server.ts"),
-      s("mlx-rerank/server.ts"),
-    ]);
+  const [
+    pipeline,
+    llm,
+    settings,
+    prompts,
+    plan,
+    choices,
+    context,
+    rerankConst,
+    llmServer,
+    rerankServer,
+  ] = await Promise.all([
+    s("chat/pipeline.ts"),
+    s("chat/llm.ts"),
+    s("chat/settings.ts"),
+    s("chat/prompts.ts"),
+    s("chat/plan.ts"),
+    s("chat/choices.ts"),
+    s("chat/context.ts"),
+    s("mlx-rerank/constants.ts"),
+    s("mlx-llm/server.ts"),
+    s("mlx-rerank/server.ts"),
+  ]);
   // The scratch profile: the default LLM, the search model, the chat switches.
   const w = stack.mod.writeSetting;
   w("search_embedding_model", EMBED_MODEL_ID);
   w("meeting_chat_enabled", "true");
   w("chat_native_tools", "true");
-  stack.db.prepare("UPDATE model_configs SET is_default = 0 WHERE type = 'llm'").run();
+  stack.db
+    .prepare("UPDATE model_configs SET is_default = 0 WHERE type = 'llm'")
+    .run();
   stack.db
     .prepare(
       `INSERT INTO model_configs (provider, model_id, model_name, type, is_default)
@@ -1169,7 +1312,18 @@ export async function runP1(
     gold,
     hashes,
     maps,
-    mods: { pipeline, llm, settings, prompts, plan, choices, context, rerankConst, llmServer, rerankServer },
+    mods: {
+      pipeline,
+      llm,
+      settings,
+      prompts,
+      plan,
+      choices,
+      context,
+      rerankConst,
+      llmServer,
+      rerankServer,
+    },
     log,
     opts,
     index: null,
@@ -1205,7 +1359,12 @@ export async function runP1(
       outputs[name] = { error: String(e) };
       console.error(`part ${name} FAILED: ${msg}`);
     }
-    save({ hashes, options: { ...opts, only: opts.only ? [...opts.only] : null }, measured: M, parts: outputs });
+    save({
+      hashes,
+      options: { ...opts, only: opts.only ? [...opts.only] : null },
+      measured: M,
+      parts: outputs,
+    });
   };
   const llmRss = new RssSampler(/--llm/, 5000);
   try {
@@ -1229,9 +1388,11 @@ export async function runP1(
         if (r.status === "PASS") pass++;
         else if (r.status === "FAIL") fail++;
         else if (r.status === "NOT RUN") notRun++;
-        bm[`bar.${safe(r.id)}`] = r.status === "PASS" ? 1 : r.status === "FAIL" ? 0 : -1;
+        bm[`bar.${safe(r.id)}`] =
+          r.status === "PASS" ? 1 : r.status === "FAIL" ? 0 : -1;
         const v = M[r.id];
-        if (v !== undefined && Number.isFinite(v)) bm[`measured.${safe(r.id)}`] = v;
+        if (v !== undefined && Number.isFinite(v))
+          bm[`measured.${safe(r.id)}`] = v;
       }
       bm.pass = pass;
       bm.fail = fail;
@@ -1251,7 +1412,13 @@ export async function runP1(
     } else {
       barRows = [];
     }
-    save({ hashes, options: { ...opts, only: opts.only ? [...opts.only] : null }, measured: M, parts: outputs, bars: barRows });
+    save({
+      hashes,
+      options: { ...opts, only: opts.only ? [...opts.only] : null },
+      measured: M,
+      parts: outputs,
+      bars: barRows,
+    });
     if (errors.length > 0) {
       texts.push(`## errors\n\n${errors.join("\n")}`);
       process.exitCode = 1;
@@ -1268,4 +1435,3 @@ export async function runP1(
     await rerankServer.stopMlxRerankWorker().catch(() => {});
   }
 }
-

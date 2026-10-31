@@ -132,7 +132,13 @@ async function main() {
         async (r) => {
           if (!mlflow) return;
           try {
-            const out = await logRun(r.name, r.params, r.tags, r.metrics, EXPERIMENT_P1);
+            const out = await logRun(
+              r.name,
+              r.params,
+              r.tags,
+              r.metrics,
+              EXPERIMENT_P1,
+            );
             console.log(
               `MLflow ${out.experiment} run ${out.runId} ${r.name}: ${out.n} metrics, READ BACK OK`,
             );

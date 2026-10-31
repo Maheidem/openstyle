@@ -65,7 +65,10 @@ test("id maps: action items, decisions and questions round trip", () => {
   assert.equal(prod, keyFn(corpus.meetings[0]!.id, a.task));
   assert.equal(maps.prodToItem.get(prod), a.id);
   const d = corpus.meetings[0]!.decisions[0]!;
-  assert.equal(maps.prodToItem.get(keyFn(corpus.meetings[0]!.id, d.text)), d.id);
+  assert.equal(
+    maps.prodToItem.get(keyFn(corpus.meetings[0]!.id, d.text)),
+    d.id,
+  );
 });
 
 test("id maps: person key is the normalized full name; aliases map back", () => {
@@ -177,7 +180,9 @@ test("Answer: a list block maps the item ids back to corpus ids", () => {
   }));
   const a = answerFromTurn(
     turn({
-      blocks: [{ kind: "list", list: "action_items", total: items.length, items }],
+      blocks: [
+        { kind: "list", list: "action_items", total: items.length, items },
+      ],
     }),
     maps,
     q.key,
@@ -193,7 +198,9 @@ test("Answer: a status block passes when open_actions equals the gold set size",
   const n = (q.key as { ids: string[] }).ids.length;
   const ok = answerFromTurn(
     turn({
-      blocks: [{ kind: "status", bullets: [], open_actions: n, open_questions: 0 }],
+      blocks: [
+        { kind: "status", bullets: [], open_actions: n, open_questions: 0 },
+      ],
     }),
     maps,
     q.key,
@@ -266,11 +273,19 @@ test("cite precision and recall use the gold segment span", () => {
   const s = spans[0]!;
   assert.equal(s.meetingId, "mtg-atlas-3");
   assert.equal(
-    citeHits({ meeting_id: s.meetingId, start_ms: s.startMs + 1 }, spans, "start"),
+    citeHits(
+      { meeting_id: s.meetingId, start_ms: s.startMs + 1 },
+      spans,
+      "start",
+    ),
     true,
   );
   assert.equal(
-    citeHits({ meeting_id: s.meetingId, start_ms: s.endMs + 1 }, spans, "start"),
+    citeHits(
+      { meeting_id: s.meetingId, start_ms: s.endMs + 1 },
+      spans,
+      "start",
+    ),
     false,
   );
   assert.equal(
@@ -285,7 +300,10 @@ test("cite precision and recall use the gold segment span", () => {
   };
   assert.equal(citeHits(chunk, spans, "start"), false);
   assert.equal(citeHits(chunk, spans, "range"), true);
-  assert.equal(citeHits({ meeting_id: s.meetingId, start_ms: null }, spans, "meeting"), true);
+  assert.equal(
+    citeHits({ meeting_id: s.meetingId, start_ms: null }, spans, "meeting"),
+    true,
+  );
   const pr = citeCounts(
     [
       { meeting_id: s.meetingId, start_ms: s.startMs },
@@ -321,7 +339,11 @@ test("checkCites finds labels without a cite and cites without data", () => {
   const bad = checkCites(
     {
       blocks: [{ kind: "text", text: "x", cites: ["S1", "S9"] }],
-      cites: [cite("S1", "m2", 1000), cite("S2", "m1", 5), cite("X3", "m1", null)],
+      cites: [
+        cite("S1", "m2", 1000),
+        cite("S2", "m1", 5),
+        cite("X3", "m1", null),
+      ],
     },
     known,
   );
@@ -332,7 +354,10 @@ test("checkCites finds labels without a cite and cites without data", () => {
     "X3:bad_label",
   ]);
   const item = checkCites(
-    { blocks: [], cites: [{ ...cite("S1", "m1", null), kind: "item", item_id: "zz" }] },
+    {
+      blocks: [],
+      cites: [{ ...cite("S1", "m1", null), kind: "item", item_id: "zz" }],
+    },
     known,
   );
   assert.deepEqual(item.invalid, ["S1:no_item"]);
@@ -367,7 +392,10 @@ test("checkCites finds labels without a cite and cites without data", () => {
 // --- Tool and args -----------------------------------------------------------------------
 
 test("firstTool: run tool, native propose step, proposal kind", () => {
-  assert.equal(firstTool([{ tool: "search_chunks" }], [], null), "search_chunks");
+  assert.equal(
+    firstTool([{ tool: "search_chunks" }], [], null),
+    "search_chunks",
+  );
   assert.equal(firstTool([], ["native:propose_retag"], null), "propose_retag");
   assert.equal(firstTool([], ["intent:write"], "move"), "propose_move");
   assert.equal(firstTool([], [], null), null);
@@ -376,30 +404,66 @@ test("firstTool: run tool, native propose step, proposal kind", () => {
 test("scoreToolArgs: read questions check the id-level args", () => {
   const q = byId("q001");
   assert.equal(
-    scoreToolArgs(q, { tool: "search_chunks", args: { query: "network gateway quote" } }, null, maps).pass,
+    scoreToolArgs(
+      q,
+      { tool: "search_chunks", args: { query: "network gateway quote" } },
+      null,
+      maps,
+    ).pass,
     true,
   );
   assert.equal(
-    scoreToolArgs(q, { tool: "search_chunks", args: { query: "weather" } }, null, maps).pass,
+    scoreToolArgs(
+      q,
+      { tool: "search_chunks", args: { query: "weather" } },
+      null,
+      maps,
+    ).pass,
     false,
   );
   const agg = byId("q046");
   const person = maps.personToProd.get("p01")!;
   assert.equal(
-    scoreToolArgs(agg, { tool: "list_action_items", args: { person_id: person, status: "open" } }, null, maps).pass,
+    scoreToolArgs(
+      agg,
+      {
+        tool: "list_action_items",
+        args: { person_id: person, status: "open" },
+      },
+      null,
+      maps,
+    ).pass,
     true,
   );
   assert.equal(
-    scoreToolArgs(agg, { tool: "list_action_items", args: { person_id: person } }, null, maps).pass,
+    scoreToolArgs(
+      agg,
+      { tool: "list_action_items", args: { person_id: person } },
+      null,
+      maps,
+    ).pass,
     false,
   );
   const temporal = byId("q076");
   assert.equal(
-    scoreToolArgs(temporal, { tool: "list_meetings", args: { date_from: "2026-10-19", date_to: "2026-10-25" } }, null, maps).pass,
+    scoreToolArgs(
+      temporal,
+      {
+        tool: "list_meetings",
+        args: { date_from: "2026-10-19", date_to: "2026-10-25" },
+      },
+      null,
+      maps,
+    ).pass,
     true,
   );
   assert.equal(
-    scoreToolArgs(temporal, { tool: "list_meetings", args: { limit: 50 } }, null, maps).pass,
+    scoreToolArgs(
+      temporal,
+      { tool: "list_meetings", args: { limit: 50 } },
+      null,
+      maps,
+    ).pass,
     false,
   );
 });
@@ -415,17 +479,32 @@ test("scoreToolArgs: write questions check the proposal", () => {
   assert.equal(ok.pass, true);
   assert.equal(ok.keys.date_from, undefined);
   assert.equal(
-    scoreToolArgs(q, null, { kind: "retag", ids: ["mtg-atlas-4"], arg: ["other"] }, maps).pass,
+    scoreToolArgs(
+      q,
+      null,
+      { kind: "retag", ids: ["mtg-atlas-4"], arg: ["other"] },
+      maps,
+    ).pass,
     false,
   );
   const mv = byId("q182");
   assert.equal(
-    scoreToolArgs(mv, null, { kind: "move", ids: ["mtg-ops-1"], arg: "fld-atlas" }, maps).pass,
+    scoreToolArgs(
+      mv,
+      null,
+      { kind: "move", ids: ["mtg-ops-1"], arg: "fld-atlas" },
+      maps,
+    ).pass,
     true,
   );
   const mg = byId("q187");
   assert.equal(
-    scoreToolArgs(mg, null, { kind: "merge_people", ids: ["p01"], arg: null }, maps).pass,
+    scoreToolArgs(
+      mg,
+      null,
+      { kind: "merge_people", ids: ["p01"], arg: null },
+      maps,
+    ).pass,
     true,
   );
 });
@@ -439,24 +518,49 @@ test("scoreProdSlots: labels resolve through the production choices", () => {
   };
   const dates = { date_from: null, date_to: null };
   assert.equal(
-    scoreProdSlots(q, { item: "A1", change: "action_item" }, dates, choices, maps).pass,
+    scoreProdSlots(
+      q,
+      { item: "A1", change: "action_item" },
+      dates,
+      choices,
+      maps,
+    ).pass,
     true,
   );
   assert.equal(
-    scoreProdSlots(q, { item: "none", change: "action_item" }, dates, choices, maps).pass,
+    scoreProdSlots(
+      q,
+      { item: "none", change: "action_item" },
+      dates,
+      choices,
+      maps,
+    ).pass,
     false,
   );
   assert.equal(
-    scoreProdSlots(q, { item: "A1", change: "retag" }, dates, choices, maps).keys.change,
+    scoreProdSlots(q, { item: "A1", change: "retag" }, dates, choices, maps)
+      .keys.change,
     false,
   );
   const t = byId("q076");
   assert.equal(
-    scoreProdSlots(t, {}, { date_from: "2026-10-19", date_to: "2026-10-25" }, choices, maps).pass,
+    scoreProdSlots(
+      t,
+      {},
+      { date_from: "2026-10-19", date_to: "2026-10-25" },
+      choices,
+      maps,
+    ).pass,
     true,
   );
   assert.equal(
-    scoreProdSlots(t, {}, { date_from: "2026-10-19", date_to: null }, choices, maps).pass,
+    scoreProdSlots(
+      t,
+      {},
+      { date_from: "2026-10-19", date_to: null },
+      choices,
+      maps,
+    ).pass,
     false,
   );
 });
@@ -495,7 +599,10 @@ test("barStatus: threshold direction, not run and reported", () => {
   assert.equal(barStatus({ threshold: 1, dir: "eq" }, 0.99), "FAIL");
   assert.equal(barStatus({ threshold: 0.9, dir: "min" }, null), "NOT RUN");
   assert.equal(barStatus({ threshold: 0.9, dir: "min" }, undefined), "NOT RUN");
-  assert.equal(barStatus({ threshold: 0.9, dir: "min" }, Number.NaN), "NOT RUN");
+  assert.equal(
+    barStatus({ threshold: 0.9, dir: "min" }, Number.NaN),
+    "NOT RUN",
+  );
   assert.equal(barStatus({ threshold: null, dir: "min" }, 0.4), "REPORTED");
   assert.equal(barStatus({ threshold: null, dir: "min" }, null), "NOT RUN");
 });
@@ -526,14 +633,17 @@ test("bars table: every bar has a row, thresholds are fixed, unmeasured = NOT RU
   assert.equal(th("listf1"), 0.85);
   assert.equal(th("cite.prec"), 0.8);
   assert.equal(th("lat.p95"), 6000);
-  const some = evaluateBars({ "nf.false": 0.1, "nf.acc": 0.8, "writes": 0 });
+  const some = evaluateBars({ "nf.false": 0.1, "nf.acc": 0.8, writes: 0 });
   assert.equal(some.find((r) => r.id === "nf.false")!.status, "PASS");
   assert.equal(some.find((r) => r.id === "nf.acc")!.status, "FAIL");
   assert.equal(some.find((r) => r.id === "writes")!.status, "PASS");
   assert.equal(some.find((r) => r.id === "slots")!.status, "NOT RUN");
   const txt = barsTable(some);
   assert.match(txt, /\| bar \| threshold \| measured \| result \| source \|/);
-  assert.match(txt, /False not-found rate \| <= 15\.0% \| 10\.0% \| PASS \| p1-e2e/);
+  assert.match(
+    txt,
+    /False not-found rate \| <= 15\.0% \| 10\.0% \| PASS \| p1-e2e/,
+  );
 });
 
 test("barRow formats units", () => {
@@ -541,5 +651,8 @@ test("barRow formats units", () => {
   assert.equal(r.measured, "1481 MB");
   assert.equal(r.threshold, "<= 1536 MB");
   assert.equal(r.status, "PASS");
-  assert.equal(barRow(BARS.find((b) => b.id === "whosaid")!, 0.5).threshold, "report");
+  assert.equal(
+    barRow(BARS.find((b) => b.id === "whosaid")!, 0.5).threshold,
+    "report",
+  );
 });
