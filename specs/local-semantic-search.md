@@ -83,6 +83,8 @@ The same index is "project memory". Summary and Enhance of a meeting in a folder
 | D20 | 8 GB Macs: ship the bf16 text-only model (`embeddinggemma-2-bf16-text`) on every Mac for now. Switch 8 GB Macs to a 4-bit model only when a provider publishes a text-only 4-bit MLX repo. This replaces the 4-bit part of D7 until then. | Owner, 2026-10-20 (answer to the former Q1) |
 | D21 | Search box place: the Meetings page header. The search is scoped by the folder that is selected in the folder tree (PR #235); with no folder selected, it searches all meetings. | Owner, 2026-10-20 (answer to the former Q1) |
 
+**Note on D8 (2026-10-31, chat agent P0).** D8 says "vectors only, no plain-RRF hybrid". Its reason, in #233 comment 6299816580, is that plain RRF "lowered EN recall@10 from 0.716 to 0.608" on a hard paraphrase set where BM25 alone scored about 0.32. The P0 run of the chat agent (`specs/meeting-chat-agent-p0-report.md`, section 3) agrees for paraphrase questions: on 30 paraphrase queries V0 has nDCG@10 0.235 and the hybrid H1 has 0.177. It disagrees for exact names and exact numbers: on 77 such queries H1 gains 9.5 and 19.7 points nDCG@10 over V0, and the overall nDCG@10 goes from 0.452 to 0.498 (EN 0.546 to 0.558, PT 0.357 to 0.438). So the hybrid and a reranker are measured, and the chat agent tool `search_chunks` may use them (spec `specs/meeting-chat-agent.md` section 7.4). The search UI on the Meetings page keeps vectors only until the owner decides otherwise.
+
 ### 2.2 Spec decisions (made here, with the reason)
 
 | # | Decision | Reason |
