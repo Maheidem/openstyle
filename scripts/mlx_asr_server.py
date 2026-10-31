@@ -699,6 +699,73 @@ class _ContextExceeded(Exception):
         }
 
 
+# T1: native tool calling (specs/meeting-chat-agent.md 2.1 point 6, decision D11).
+#
+# Behind the env var OPENSTYLE_MLX_LLM_NATIVE_TOOLS=1. With the flag off (the
+# default) the worker ignores `tools`, `tool_choice`, `tool_calls` and `tool`
+# roles, as before. With the flag on:
+#   - /v1/chat/completions accepts `tools` (OpenAI function format) and
+#     `tool_choice` (auto, required, none), assistant messages with
+#     `tool_calls` and messages with the role `tool`;
+#   - the engine gives `tools` to the chat template and parses the model output
+#     with the mlx-lm tool parser of the tokenizer (tok.tool_parser,
+#     tool_call_start, tool_call_end), the way mlx_lm/server.py does;
+#   - the reply has message.tool_calls and finish_reason "tool_calls";
+#   - `tools` together with response_format (the JSON grammar) is a 400;
+#   - thinking stays off (enable_thinking false) unless the caller asks.
+# tool_choice "required" is advisory: no grammar forces a call.
+_NATIVE_TOOLS_ENV = "OPENSTYLE_MLX_LLM_NATIVE_TOOLS"
+
+
+def _native_tools_enabled() -> bool:
+    return os.environ.get(_NATIVE_TOOLS_ENV, "").strip() == "1"
+
+
+def _parse_tool_calls_field(raw: Any) -> list[dict[str, Any]]:
+    """Normalise assistant tool_calls. Arguments become a dict (the template wants one)."""
+    if not isinstance(raw, list):
+        raise _BadRequest("tool_calls must be a list")
+    calls = []
+    for call in raw:
+        fn = call.get("function") if isinstance(call, dict) else None
+        if not isinstance(fn, dict) or not isinstance(fn.get("name"), str):
+            raise _BadRequest("each tool call needs function.name")
+        args = fn.get("arguments")
+        if isinstance(args, str):
+            try:
+                args = json.loads(args) if args.strip() else {}
+            except json.JSONDecodeError as exc:
+                raise _BadRequest(f"tool call arguments are not valid JSON: {exc}") from exc
+        if args is None:
+            args = {}
+        if not isinstance(args, dict):
+            raise _BadRequest("tool call arguments must be a JSON object")
+        calls.append(
+            {
+                "id": call.get("id") if isinstance(call.get("id"), str) else "",
+                "type": "function",
+                "function": {"name": fn["name"], "arguments": args},
+            }
+        )
+    return calls
+
+
+def _parse_tools(body: dict[str, Any]) -> tuple[list[dict[str, Any]] | None, str | None]:
+    tools = body.get("tools")
+    choice = body.get("tool_choice")
+    if choice is not None and choice not in ("auto", "required", "none"):
+        raise _BadRequest("tool_choice must be auto, required or none")
+    if tools is None or tools == []:
+        return None, choice
+    if not isinstance(tools, list):
+        raise _BadRequest("tools must be a list")
+    for tool in tools:
+        fn = tool.get("function") if isinstance(tool, dict) else None
+        if not isinstance(fn, dict) or not isinstance(fn.get("name"), str) or tool.get("type") != "function":
+            raise _BadRequest("each tool must be {type: function, function: {name, ...}}")
+    return tools, choice
+
+
 def _message_text(content: Any) -> str:
     """Flatten OpenAI content (a string or a list of text parts) to a string."""
     if content is None:
@@ -734,6 +801,7 @@ def _parse_chat_request(body: Any) -> dict[str, Any]:
     if body.get("stream"):
         raise _BadRequest("stream is not supported; send stream: false")
 
+    native_tools = _native_tools_enabled()
     messages = body.get("messages")
     if not isinstance(messages, list) or not messages:
         raise _BadRequest("messages must be a non-empty list")
@@ -741,7 +809,15 @@ def _parse_chat_request(body: Any) -> dict[str, Any]:
     for msg in messages:
         if not isinstance(msg, dict) or not isinstance(msg.get("role"), str):
             raise _BadRequest("each message needs a role")
-        parsed_messages.append({"role": msg["role"], "content": _message_text(msg.get("content"))})
+        parsed = {"role": msg["role"], "content": _message_text(msg.get("content"))}
+        if native_tools:
+            if msg["role"] == "assistant" and msg.get("tool_calls"):
+                parsed["tool_calls"] = _parse_tool_calls_field(msg["tool_calls"])
+            if msg["role"] == "tool":
+                for key in ("tool_call_id", "name"):
+                    if isinstance(msg.get(key), str):
+                        parsed[key] = msg[key]
+        parsed_messages.append(parsed)
 
     max_tokens = body.get("max_tokens", body.get("max_completion_tokens"))
     if max_tokens is None:
@@ -778,7 +854,11 @@ def _parse_chat_request(body: Any) -> dict[str, Any]:
         raise _BadRequest("chat_template_kwargs must be an object")
     enable_thinking = bool((kwargs or {}).get("enable_thinking", False))
 
-    return {
+    tools, tool_choice = _parse_tools(body) if native_tools else (None, None)
+    if tools and schema is not None:
+        raise _BadRequest("tools and response_format cannot be used in the same request")
+
+    req = {
         "messages": parsed_messages,
         "max_tokens": max_tokens,
         "temperature": _opt_number(body, "temperature", float),
@@ -794,6 +874,11 @@ def _parse_chat_request(body: Any) -> dict[str, Any]:
         "schema": schema,
         "enable_thinking": enable_thinking,
     }
+    if tools:
+        # tool_choice "none": the model gets no tools and no call is parsed.
+        req["tools"] = None if tool_choice == "none" else tools
+        req["tool_choice"] = tool_choice
+    return req
 
 
 def _single_token_id(hf_tok: Any, text: str) -> int | None:
@@ -1050,12 +1135,57 @@ class _LlmEngine:
                 break
         self._seq = 0
 
+    def _tools_kwargs(self, req: dict[str, Any]) -> dict[str, Any]:
+        """T1: the `tools` template argument. Empty unless the request has tools."""
+        tools = req.get("tools")
+        if not tools:
+            return {}
+        if getattr(self.tok, "tool_call_start", None) is None:
+            raise _BadRequest("this model does not support tool calling")
+        return {"tools": tools}
+
+    def _split_tool_calls(self, text: str, tools: list[dict[str, Any]]) -> tuple[str, list[dict[str, Any]]]:
+        """T1: cut the tool call blocks out of the answer and parse them with the mlx-lm parser."""
+        start, end = self.tok.tool_call_start, self.tok.tool_call_end
+        calls: list[dict[str, Any]] = []
+        content = ""
+        rest = text
+        while True:
+            i = rest.find(start)
+            if i < 0:
+                content += rest
+                break
+            content += rest[:i]
+            body = rest[i + len(start) :]
+            j = body.find(end) if end else -1
+            raw, rest = (body[:j], body[j + len(end) :]) if j >= 0 else (body, "")
+            try:
+                parsed = self.tok.tool_parser(raw, tools)
+            except (ValueError, json.JSONDecodeError) as exc:
+                # The same as mlx_lm/server.py: a cut or odd call is dropped.
+                _log(f"tool call not parsed ({type(exc).__name__}: {exc}): {raw[:200]!r}")
+                continue
+            for item in parsed if isinstance(parsed, list) else [parsed]:
+                self._seq += 1
+                calls.append(
+                    {
+                        "id": f"call_{os.getpid()}_{self._seq}",
+                        "type": "function",
+                        "function": {
+                            "name": item["name"],
+                            "arguments": json.dumps(item.get("arguments", {}), ensure_ascii=False),
+                        },
+                    }
+                )
+        return content, calls
+
     def _prompt_ids(self, req: dict[str, Any]) -> list[int]:
         prompt = self.tok.apply_chat_template(
             req["messages"],
             add_generation_prompt=True,
             enable_thinking=req["enable_thinking"],
             tokenize=False,
+            **self._tools_kwargs(req),
         )
         return list(self.tok.encode(prompt, add_special_tokens=False))
 
@@ -1079,6 +1209,7 @@ class _LlmEngine:
             add_generation_prompt=True,
             enable_thinking=req["enable_thinking"],
             tokenize=False,
+            **self._tools_kwargs(req),
         )
         head_ids = list(self.tok.encode(head, add_special_tokens=False))
         # Keep at least one token for stream_generate.
@@ -1157,6 +1288,14 @@ class _LlmEngine:
             finish = "length" if last is not None and last.finish_reason == "length" else "stop"
 
         completion_tokens = int(getattr(last, "generation_tokens", 0) or 0)
+        message: dict[str, Any] = {"role": "assistant", "content": _strip_thinking(text)}
+        if req.get("tools"):
+            content, tool_calls = self._split_tool_calls(text, req["tools"])
+            message["content"] = _strip_thinking(content)
+            if tool_calls:
+                message["tool_calls"] = tool_calls
+                if finish == "stop":
+                    finish = "tool_calls"
         self._seq += 1
         return {
             "id": f"chatcmpl-{os.getpid()}-{self._seq}",
@@ -1166,7 +1305,7 @@ class _LlmEngine:
             "choices": [
                 {
                     "index": 0,
-                    "message": {"role": "assistant", "content": _strip_thinking(text)},
+                    "message": message,
                     "finish_reason": finish,
                 }
             ],
