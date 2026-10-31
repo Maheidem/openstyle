@@ -7,6 +7,8 @@ import { getDefaultHotkey } from "../../shared/hotkey-defaults";
 import { SETTINGS_KEYS } from "../../shared/settings-keys";
 import {
   diffLanguageHotkeys,
+  hotkeyFromSettings,
+  hotkeyModeFromSettings,
   isLanguageHotkeyTaken,
   isValidAccelerator,
   normalizeAccelerator,
@@ -77,21 +79,6 @@ export function registerHotkeyIpc(): void {
 /** "hold" or "toggle": how the dictation hotkey works now. */
 export function getHotkeyActivationMode(): "hold" | "toggle" {
   return hotkeyActivationMode;
-}
-
-/** The configured hotkey accelerator from a settings map, if valid. */
-function hotkeyFromSettings(
-  settings: Record<string, string>,
-): string | undefined {
-  const value = settings[SETTINGS_KEYS.hotkey];
-  return value && isValidAccelerator(value) ? value : undefined;
-}
-
-/** The hotkey activation mode from a settings map (defaults to "hold"). */
-function hotkeyModeFromSettings(
-  settings: Record<string, string>,
-): "hold" | "toggle" {
-  return settings[SETTINGS_KEYS.hotkeyMode] === "toggle" ? "toggle" : "hold";
 }
 
 function sendHotkeyDown(language?: string | null): void {

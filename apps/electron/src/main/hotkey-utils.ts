@@ -1,3 +1,5 @@
+import { SETTINGS_KEYS } from "../shared/settings-keys";
+
 const HOTKEY_MODIFIER_PARTS = new Set([
   "alt",
   "option",
@@ -153,4 +155,23 @@ export function isLanguageHotkeyTaken(
     if (normalized === claimed) return true;
   }
   return false;
+}
+
+/**
+ * The saved hotkey accelerator from a settings map, if valid. Undefined means
+ * "nothing saved": the caller then uses the platform default
+ * (`getDefaultHotkey`). A saved value is never replaced by the default.
+ */
+export function hotkeyFromSettings(
+  settings: Record<string, string>,
+): string | undefined {
+  const value = settings[SETTINGS_KEYS.hotkey];
+  return value && isValidAccelerator(value) ? value : undefined;
+}
+
+/** The hotkey activation mode from a settings map (defaults to "hold"). */
+export function hotkeyModeFromSettings(
+  settings: Record<string, string>,
+): "hold" | "toggle" {
+  return settings[SETTINGS_KEYS.hotkeyMode] === "toggle" ? "toggle" : "hold";
 }

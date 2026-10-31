@@ -49,7 +49,7 @@ interface RecentDictation {
   created_at: string;
 }
 
-/** A short hotkey label for a sentence: "Fn", "⌥Space" or "Ctrl+Alt+Space". */
+/** A short hotkey label for a sentence: "⌃⌥", "⌥Space" or "Ctrl+Alt+Space". */
 function hotkeyLabel(accel: string): string {
   const combo = acceleratorToCombo(accel);
   const keys = [...combo.modifiers, ...(combo.key ? [combo.key] : [])];
