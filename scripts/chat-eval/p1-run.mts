@@ -723,6 +723,8 @@ interface E2eRow {
   coveredStart: number;
   coveredRange: number;
   invalidCites: string[];
+  /** Count of the shown cites by source kind. */
+  citeKinds?: Record<string, number>;
   toolCalls: { tool: string; rows: number; args?: unknown }[];
   notes?: string[];
   blocks: string[];
@@ -852,6 +854,10 @@ async function partE2e(env: Env, M: Record<string, number>): Promise<PartOut> {
         coveredStart: cs.covered,
         coveredRange: cr.covered,
         invalidCites: chk.invalid,
+        citeKinds: res.cites.reduce<Record<string, number>>((m, c) => {
+          m[c.kind] = (m[c.kind] ?? 0) + 1;
+          return m;
+        }, {}),
         toolCalls: res.toolCalls.map((c) => ({
           tool: c.tool,
           rows: c.rows,
@@ -1058,6 +1064,13 @@ async function partE2e(env: Env, M: Record<string, number>): Promise<PartOut> {
   text += `Answer accuracy lookup + follow-up: ${pct(metrics["acc.lookup_followup"] as number)}% of ${lf.length}; on the A0 subset ${pct(metrics["acc.a0_subset"] as number)}% of ${a22.length}.\n`;
   text += `Not-found accuracy ${pct(metrics["nf.acc"] as number)}% of ${nfRows.length}; false not-found ${pct(metrics["nf.false"] as number)}% (${metrics["nf.false_n"]} of ${answerable.length}).\n`;
   text += `List F1 aggregation ${f3(metrics["f1.aggregation"] as number)} (without status ${f3(metrics["f1.aggregation_no_status"] as number)}); all set keys ${f3(metrics["f1.all_set"] as number)}.\n`;
+  const kinds: Record<string, number> = {};
+  for (const r of rows)
+    for (const [k, n] of Object.entries(r.citeKinds ?? {}))
+      kinds[k] = (kinds[k] ?? 0) + n;
+  text += `Cite kinds: ${Object.entries(kinds)
+    .map(([k, n]) => `${k} ${n}`)
+    .join(", ")}.\n`;
   text += `Cites: ${shownAll} shown, ${invalid} invalid (validity ${pct(metrics["cite.validity"] as number)}%). Precision (start_ms in gold segment) ${f3(metrics["cite.precision_start"] as number)}, range overlap ${f3(metrics["cite.precision_range"] as number)}, meeting level ${f3(metrics["cite.precision_meeting"] as number)}. Recall (start) ${f3(metrics["cite.recall_start"] as number)}, (range) ${f3(metrics["cite.recall_range"] as number)}; ${withGold.length} questions with gold evidence.\n`;
   text += `Tool choice ${pct(metrics["tool.acc"] as number)}%, args ${pct(metrics["args.acc"] as number)}%, together ${pct(metrics["toolargs.acc"] as number)}% of ${toolRows.length}. Write: kind + ids ${pct(metrics["write.kind_ids"] as number)}%, with arg ${pct(metrics["write.full"] as number)}%, tool ${pct(metrics["write.tool"] as number)}%, tool + args ${pct(metrics["write.toolargs"] as number)}% of ${wr.length}.\n`;
   text += `Router used: native ${pct(metrics["router.native"] as number)}%, structured ${pct(metrics["router.structured"] as number)}%, default ${pct(metrics["router.default"] as number)}%. Native call outcome (${natives.length} attempts): ok ${pct(metrics["native.ok"] as number)}%, invalid ${pct(metrics["native.invalid"] as number)}%, none ${pct(metrics["native.none"] as number)}%, error ${pct(metrics["native.error"] as number)}%.\n`;

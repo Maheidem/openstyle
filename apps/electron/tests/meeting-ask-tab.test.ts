@@ -550,24 +550,71 @@ function defineScenario(): void {
   });
 
   test("evidence: the Ask tab in light and dark", async () => {
-    test.setTimeout(90_000);
+    test.setTimeout(120_000);
     test.skip(!EVIDENCE_DIR, "OPENSTYLE_EVIDENCE_DIR is not set.");
     const dir = EVIDENCE_DIR as string;
     mkdirSync(dir, { recursive: true });
+    const suffix = REAL ? "-real" : "";
     for (const theme of ["Light", "Dark"] as const) {
+      const name = theme.toLowerCase();
       await setTheme(page, theme);
       await openSubject(page);
-      await page.getByRole("tab", { name: /Ask/ }).click();
+      const askTab = page.getByRole("tab", { name: /Ask/ });
+      await askTab.click();
       // Real mode may add up to three transcript questions.
       await expect(
         page.getByTestId("meeting-ask-assistant").nth(3),
       ).toBeVisible();
-      // The first answer (text with a cite chip) is the picture.
-      await page.getByTestId("meeting-ask-messages").evaluate((el) => {
+      // The Ask tab is the selected tab (the pill moves with it).
+      await expect(askTab).toHaveAttribute("aria-selected", "true");
+      await expect(askTab).toHaveAttribute("data-state", "active");
+      // A hidden quiet-mode window does not run CSS transitions: the pill of
+      // the old tab would stay in the picture. Switch them off for the shot.
+      await page.addStyleTag({
+        content:
+          "*,*::before,*::after{transition:none!important;animation:none!important}",
+      });
+      const messages = page.getByTestId("meeting-ask-messages");
+
+      // 1. The first answer: text with a cite chip.
+      await messages.evaluate((el) => {
         el.scrollTop = 0;
       });
+      await page.screenshot({ path: join(dir, `ask-${name}${suffix}.png`) });
+
+      // 2. The write question: the read-only reply is visible.
+      const readOnly = page.getByTestId("meeting-ask-block-read-only").first();
+      // Scroll the message list only, not the whole page.
+      await readOnly.evaluate((el) => {
+        const box = el.closest('[data-testid="meeting-ask-messages"]');
+        if (box)
+          box.scrollTop +=
+            el.getBoundingClientRect().top -
+            box.getBoundingClientRect().top -
+            160;
+      });
+      await expect(readOnly).toBeVisible();
       await page.screenshot({
-        path: join(dir, `ask-${theme.toLowerCase()}${REAL ? "-real" : ""}.png`),
+        path: join(dir, `ask-readonly-${name}${suffix}.png`),
+      });
+
+      // 3. A click on the first cite chip: the jump target is on the screen.
+      await messages.evaluate((el) => {
+        el.scrollTop = 0;
+      });
+      await page.getByTestId("meeting-ask-cite").first().click();
+      if (REAL) {
+        await expect(page.locator('[data-search-hit="true"]')).toHaveCount(1);
+        await expect(
+          page.getByRole("tab", { name: /Transcript/ }),
+        ).toHaveAttribute("aria-selected", "true");
+      } else {
+        await expect(
+          page.getByRole("tab", { name: /Summary/ }),
+        ).toHaveAttribute("aria-selected", "true");
+      }
+      await page.screenshot({
+        path: join(dir, `ask-cite-${name}${suffix}.png`),
       });
     }
     await setTheme(page, "Light");
