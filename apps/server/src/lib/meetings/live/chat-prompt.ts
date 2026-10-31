@@ -10,7 +10,7 @@ Rules:
 - Answer in the language of the question. Keep the answer short.
 - Put the label of each source that you used in "cites", without brackets.
 - Live lines [L] are the newest information. They win over older sources [P].
-- If the sources do not hold the answer, set "answer" to "Not found in the sources." and "cites" to [].
+- If the sources do not hold the answer, set "answer" to "Not found in the sources." written in the language of the question (Portuguese: "Não encontrei nas fontes."), and "cites" to [].
 - Never invent a fact. Never invent a label.
 Reply with JSON only, in this form:
 {"answer": "text", "cites": ["L3"]}`;

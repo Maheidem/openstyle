@@ -97,7 +97,7 @@ Code builds the context. The model does not choose it. The budget is about 6000 
 - Retrieval scope is the folder of the meeting, or `unfiled` for an unfiled meeting. The live meeting is excluded. The wait is at most 8 s. A search that is off or fails is skipped.
 - When the whole context is too big, code drops past blocks first (retrieved chunks, then summaries). The live tail and the question stay.
 - The reply must cite labels. Code drops every cite that is not in the source list. So an invented label never reaches the panel.
-- If the sources do not hold the answer, the model must say "Not found in the sources." and cite nothing.
+- If the sources do not hold the answer, the model must say "Not found in the sources." in the language of the question (for example "Não encontrei nas fontes.") and cite nothing. The call keeps the thinking mode of the model off, as before (`resolveTaskCall("liveChat")`: no reasoning).
 
 ## 5. API and UI
 
