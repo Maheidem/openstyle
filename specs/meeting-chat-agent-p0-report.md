@@ -8,11 +8,11 @@ Scope: measurement only. The product code changes are the minimum that the harne
 
 1. The harness runs the real stack: the server's own `getDb`, schema, `indexMeeting` and `retrieve`, the shipped MLX embed worker and the shipped MLX LLM worker with Gemma 4 E2B at temperature 0. Nothing is mocked. The corpus is fictional. The answer keys are fixed code. No LLM judge decides a result.
 2. Corpus and gold set: 30 meetings, 12 people, 190 questions with fixed keys, 147 retrieval queries (section 2).
-3. Retrieval (section 3). Dense vectors alone (V0) find the gold line in the top 10 for 57.8% of the 147 queries. They fail on exact numbers (recall@10 32.4%) and on exact names (62.5%). FTS5 BM25 with RRF (H1) lifts nDCG@10 from 0.452 to 0.498 (+4.6 points). It helps most on names (+9.5) and numbers (+19.7). It does not help on paraphrase questions. The Qwen3-Reranker-0.6B (R1) on top of H1 lifts nDCG@10 to 0.746. It costs 396 ms per query (p50) for 30 candidates, and 207 ms for 15 candidates (nDCG@10 0.668).
+3. Retrieval (section 3). Dense vectors alone (V0) find the gold line in the top 10 for 57.8% of the 147 queries. They fail on exact numbers (recall@10 32.4%) and on exact names (62.5%). FTS5 BM25 with RRF (H1) lifts nDCG@10 from 0.452 to 0.498 (+4.6 points). It helps most on names (+9.5) and numbers (+19.7). It does not help on paraphrase questions. The Qwen3-Reranker-0.6B (R1) on top of H1 lifts nDCG@10 to 0.746. It costs 396 ms per query (p50) for 30 candidates, and 207 ms for 15 candidates (nDCG@10 0.668). At 46,000 rows H1 itself takes 68 ms (p50) and 109 ms (p95).
 4. The audio tower of EmbeddingGemma 2 (M1) runs under MLX and gives the same vectors as the official PyTorch route. On spoken fictional meetings with a real ASR it did not help: it is 10 points below the text and BM25 fusion on the ASR-error queries. M1 is dropped.
 5. Router (section 4). The LLM router on E2B has an intent accuracy of 72.6% on the 190 gold questions and 90.6% on a blind set of 224 questions in 7 languages. A rules router has 93.7% on the gold questions and 56.3% on the blind set. The rules router is overfitted to the questions that its author saw. Slot fill with a strict schema gives 81.0% with the gold intent. Dates are the weak slot (48% for the first day).
 6. Native tools (T1) work in the local worker behind a flag. T1 and the structured pipeline (A1) are close: tool choice 66.8% against 75.3%, tool and args together 61.1% against 56.3%. T1 needs one call and is faster (p50 200 ms against 375 ms). No arm wins on both measures. Section 4.5 asks the owner to decide.
-7. Baseline A0 (the live chat as it is): section 5.
+7. Baseline A0 (the live chat as it is): 68.1% by key on the 91 gold questions with a meeting or folder scope. It fails on follow-ups (20%), long threads (0%), scope traps (20%) and counts (0%). Section 5.
 8. Decisions for the owner: section 9.
 
 ## 1. Method
@@ -49,7 +49,7 @@ Differences from the spec:
 
 1. The numbers slice has 37 queries, not 40. The corpus has 20 amounts and 16 metrics, plus the numeric decisions. The slice uses all of them.
 2. The question text is EN or PT. The router set has 7 languages (section 4). The router blind set is separate from the gold questions.
-3. The corpus is small: 180 chunks. The real index has about 46,000 rows (spec 3.1 point 5). Section 3.8 repeats the retrieval run at that size with distractor corpora of other seeds.
+3. The corpus is small: 180 chunks. The real index has about 46,000 rows (spec 3.1 point 5). Section 3.8 repeats the run at that size for latency and size. Its recall is not usable (it is a duplicate stress).
 4. Not built in P0: the R3 helper `best_ms` and the grouping (spec 7.3), the arm C1 (chunk context by code, spec 7.5), and the A0 baseline on E4B, Nemotron and Qwen. The brief of this run did not ask for them.
 5. The #233 hard set (spec 7.4.6) is a private set of real meetings. It was not used. The spec bar on it cannot be checked here.
 
@@ -191,7 +191,29 @@ Verdict against the bar (at least +5 points R@8 over H): HA is 10 points below H
 
 ### 3.8 Scale
 
-SCALE-PLACEHOLDER
+The real index has about 46,000 rows (spec 3.1 point 5). `pnpm chat-eval retrieval --scale 256` loads the gold corpus and 255 more corpora of other seeds as distractors: 7,680 meetings, 46,080 chunks (30,720 transcript, 7,680 meta, 7,680 summary), 990 hours. The extra corpora use the same word banks. The same vendors and subjects come back with other numbers and dates.
+
+Do not read the recall of this run as a size effect. A query like "Kestrel Hosting quote" now matches 256 near-identical lines, and only one is the gold line. Recall@10 falls to 5.4% (V0), 0.7% (BM25 word) and 4.8% (H1) for that reason. The run measures latency, RAM and index size.
+
+| Item | 180 chunks | 46,080 chunks |
+|---|---|---|
+| Dense query (embed plus KNN over all partitions), p50 / p95 | 9.1 / 12.0 ms | 62.7 / 105.2 ms |
+| BM25 word p50 / p95 | 0.10 / 0.17 ms | 3.9 / 28.6 ms |
+| BM25 trigram p50 / p95 | 0.09 / 0.19 ms | 5.9 / 36.9 ms |
+| H1 total p50 / p95 | 9.2 / 12.1 ms | 68.1 / 109.4 ms |
+| H3 total p50 / p95 | 9.3 / 12.3 ms | 75.4 / 137.6 ms |
+| Embed worker RSS peak | 1,231 MB | 1,256 MB |
+| Embedding time | about 1 s per audio hour | 664 s for 990 hours = 0.67 s per audio hour |
+| Vectors (int8) | 138 KB | 35.4 MB |
+| FTS5 word, with content, / transcript text | 3.15 x | 2.31 x (64.0 MB) |
+| FTS5 word, contentless | 1.56 x | 0.73 x (20.2 MB) |
+| FTS5 trigram, with content / contentless | 9.38 x / 7.79 x | 5.39 x / 3.81 x |
+| FTS build, word / trigram | 3 / 8 ms | 687 / 3,104 ms |
+| SQLite file | | 209 MB |
+
+1. The query time of an unscoped dense search grows from 9 ms to 63 ms at 46,000 rows. The spec counted 1.2 ms for a folder-scoped KNN (`specs/local-semantic-search.md` S1). The all-folders case scans all rows. H1 at 46,000 rows is 68 ms (p50) and 109 ms (p95), below the 150 ms bar.
+2. The FTS5 size bar (at most 1.0 x the transcript text) holds only for the contentless word table at this size (0.73 x). A table with its own text copy is 2.31 x. The trigram table is 3.8 to 5.4 x. This supports the word tokenizer and a contentless table.
+3. No R1 run at this size: the reranker time depends on the number of candidates, not on the index size.
 
 ### 3.9 Answer to SD8 of the search spec
 
@@ -205,8 +227,8 @@ SD8 says "no plain-RRF hybrid". Its reason is a hard paraphrase set where BM25 a
 | Hybrid recall@10 on the #233 hard set | 0.75 PT, 0.80 EN | the set is private; not measured. On the gold set H1 recall@10 is 63.0 PT, 74.3 EN (any evidence: 80.8, 83.8) | not measurable |
 | R1 adopted | at least +3 points nDCG@10; no language below V0; added p95 at most 400 ms for 30 candidates; added RAM at most 1.5 GB | +24.8 points; EN and PT above V0; p95 added 484 ms (30), 251 ms (15 candidates); RSS 1,481 MB | fails the time bar with 30 candidates; passes with 15 |
 | M1 adopted | at least +5 points R@8 on the ASR-error slice over H1 | -10 points | fail |
-| FTS table size | at most 1.0 x the transcript text | 3.15 x (word, with content) at 30 meetings | see 3.8 |
-| Query latency p95, hybrid without reranker, warm | at most 150 ms | 12.1 ms | pass |
+| FTS table size | at most 1.0 x the transcript text | word table: 3.15 x with content and 1.56 x contentless at 30 meetings; 2.31 x and 0.73 x at 46,080 chunks | pass only for the contentless word table at the real size |
+| Query latency p95, hybrid without reranker, warm | at most 150 ms | 12.1 ms (180 chunks); 109.4 ms (46,080 chunks) | pass |
 | No regression | the existing search tests | 13 + 22 tests pass | pass |
 
 ## 4. Router and tool arms (spec 2.1, 2.3, 8.5)
@@ -330,7 +352,7 @@ The bars below come from the measured numbers. They are the numbers that P1 must
 |---|---|---|
 | Retrieval (tool `search_chunks`) | H1 nDCG@10 0.498; R1c15 0.668 | H1 with R1c15: nDCG@10 at least 0.65; recall@10 any evidence at least 85% on all 147 queries |
 | Retrieval, exact numbers and names | V0 32.4% / 62.5%; H1 62.2% / 75.0% | recall@10 at least 85% on both slices (R1 with 30 candidates gives 100% / 92.5%; R1c15 gives 73.0% / 80.0%) |
-| Retrieval latency, warm, p95 | H1 12.1 ms; R1c15 251 ms | at most 300 ms with the reranker, at most 50 ms without |
+| Retrieval latency, warm, p95 | H1 12.1 ms at 180 chunks and 109 ms at 46,080 chunks; R1c15 251 ms added | at most 150 ms without the reranker at 46,000 rows; at most 400 ms added by the reranker |
 | Reranker RAM | 1,481 MB | at most 1.5 GB added; idle unload like the embed worker |
 | Route accuracy (stage 1) | v2: gold 72.6%, blind 90.6% | at least 90% on the blind set and at least 85% on the gold set after the label rules are fixed |
 | Slot accuracy with the gold intent | 81.0% (dates 48 to 65%) | at least 90% with dates by code |
@@ -355,7 +377,7 @@ The bars below come from the measured numbers. They are the numbers that P1 must
 1. Approve or change the bars of section 7.
 2. Router: keep the structured router (A1) with a better prompt and code dates, or move to native tools (T1), or build the mixed design. The data in 4.5 does not settle it. The cost of T1 is a flag in the worker and a gateway entry (the gateway throws on a `tool-calls` finish, spec 2.1 point 6).
 3. Reranker: 15 candidates (207 ms p50, nDCG@10 0.668) or 30 candidates (396 ms p50, 0.746), or a batched reranker that may bring 30 candidates under 400 ms (not tried). Spec D10 allows a reranker only if the eval shows the need. The eval shows it: R1 adds 17 to 25 points of nDCG@10.
-4. FTS table: the word tokenizer wins. Keep the contentless table (no text copy) if the size matters, because the row text can come from `hitText`. The spec text says the FTS table stores its own copy of the chunk text. Decide.
+4. FTS table: the word tokenizer wins. Only the contentless table (no text copy) is under the size bar at 46,000 rows (0.73 x against 2.31 x with content). A contentless table cannot filter by meeting id inside FTS5 (the harness used a stored column for the filter), so the filter needs a join with `meeting_chunks`. The spec text says the FTS table stores its own copy of the chunk text. Decide.
 5. M1: drop it (section 3.7).
 6. Intent labels: should "When is X?" and "Who will do X?" be `lookup` (my gold) or `temporal` and `who_said` (what E2B says)? The first tool is `search_chunks` for lookup and who_said. Only `temporal` changes the plan.
 
