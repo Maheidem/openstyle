@@ -377,3 +377,92 @@ export function defaultSlots(q: Question): SlotValues {
     tag: null,
   };
 }
+
+// --- Dates by code ----------------------------------------------------------------------------
+
+const MONTH_NUM: Record<string, number> = {
+  january: 1,
+  february: 2,
+  march: 3,
+  april: 4,
+  may: 5,
+  june: 6,
+  july: 7,
+  august: 8,
+  september: 9,
+  october: 10,
+  november: 11,
+  december: 12,
+  janeiro: 1,
+  fevereiro: 2,
+  marco: 3,
+  abril: 4,
+  maio: 5,
+  junho: 6,
+  julho: 7,
+  agosto: 8,
+  setembro: 9,
+  outubro: 10,
+  novembro: 11,
+  dezembro: 12,
+};
+const MONTH_ALT = Object.keys(MONTH_NUM).join("|");
+
+/**
+ * The date range that a question names, by rules (EN and PT): a relative period,
+ * a month, or a day ("on September 15", "de 15 de setembro"). null when the
+ * question names no date. This is the code alternative to the model slots.
+ */
+export function parseDates(text: string): {
+  date_from: string | null;
+  date_to: string | null;
+} {
+  const t = normalize(text.replace(/\bd:/g, ""));
+  const raw = text
+    .normalize("NFD")
+    .replace(/\p{M}+/gu, "")
+    .toLowerCase();
+  if (/\b(last week|semana passada)\b/.test(raw))
+    return resolvePeriod({ period: "last_week" });
+  if (/\b(last month|mes passado)\b/.test(raw))
+    return resolvePeriod({ period: "last_month" });
+  if (/\b(this month|neste mes|este mes)\b/.test(raw))
+    return resolvePeriod({ period: "this_month" });
+  if (/\b(this week|esta semana)\b/.test(raw))
+    return resolvePeriod({ period: "this_week" });
+  void t;
+  const en = new RegExp(
+    `\\b(${MONTH_ALT})\\s+(\\d{1,2})(?:st|nd|rd|th)?\\b`,
+  ).exec(raw);
+  const pt = new RegExp(`\\b(\\d{1,2})\\s+de\\s+(${MONTH_ALT})\\b`).exec(raw);
+  const en2 = new RegExp(
+    `\\b(\\d{1,2})(?:st|nd|rd|th)?\\s+(?:of\\s+)?(${MONTH_ALT})\\b`,
+  ).exec(raw);
+  if (pt)
+    return resolvePeriod({
+      period: "month",
+      month: MONTH_NUM[pt[2] as string],
+      day: Number(pt[1]),
+    });
+  if (en2)
+    return resolvePeriod({
+      period: "month",
+      month: MONTH_NUM[en2[2] as string],
+      day: Number(en2[1]),
+    });
+  if (en)
+    return resolvePeriod({
+      period: "month",
+      month: MONTH_NUM[en[1] as string],
+      day: Number(en[2]),
+    });
+  const bare = new RegExp(`\\b(${MONTH_ALT})\\b`).exec(raw);
+  if (bare && !/\bmay\b/.test(bare[1] as string))
+    return resolvePeriod({
+      period: "month",
+      month: MONTH_NUM[bare[1] as string],
+    });
+  if (bare && bare[1] === "may" && /\b(in|from|de|em)\s+may\b/.test(raw))
+    return resolvePeriod({ period: "month", month: 5 });
+  return { date_from: null, date_to: null };
+}

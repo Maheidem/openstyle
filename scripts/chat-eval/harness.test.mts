@@ -30,6 +30,7 @@ import {
 import {
   buildChoices,
   defaultSlots,
+  parseDates,
   resolvePeriod,
   scoreSlots,
   slotSchema,
@@ -347,4 +348,33 @@ test("router prompts: three variants, all list the 8 intents", () => {
       `${kind} is ${t.split(/\s+/).length} words`,
     );
   }
+});
+
+test("the code date parser matches every date arg of the gold set and finds no date elsewhere", () => {
+  let withDate = 0;
+  for (const q of g.questions) {
+    const got = parseDates(q.text);
+    const want = {
+      date_from: typeof q.args.date_from === "string" ? q.args.date_from : null,
+      date_to: typeof q.args.date_to === "string" ? q.args.date_to : null,
+    };
+    if (want.date_from) withDate++;
+    // The retag "first meeting" and the move questions name a date that is a meeting
+    // pointer, not a range arg: they are checked below.
+    if (q.args.meeting !== undefined || q.type === "not_answerable") continue;
+    assert.deepEqual(got, want, `${q.id} ${q.text}`);
+  }
+  assert.ok(withDate >= 25);
+  assert.deepEqual(parseDates("Quanto foi a cotação em 15 de setembro?"), {
+    date_from: "2026-09-15",
+    date_to: "2026-09-15",
+  });
+  assert.deepEqual(parseDates("meetings on October 3rd"), {
+    date_from: "2026-10-03",
+    date_to: "2026-10-03",
+  });
+  assert.deepEqual(parseDates("I may be late"), {
+    date_from: null,
+    date_to: null,
+  });
 });
