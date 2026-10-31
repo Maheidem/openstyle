@@ -375,32 +375,6 @@
     "dismissHero": "Dispensar",
     "selectDate": "Selecionar"
   },
-  "dictionary": {
-    "title": "Atalhos",
-    "subtitle": "Atalhos que expandem enquanto você fala. Fale o atalho, receba a expansão.",
-    "loading": "Carregando atalhos…",
-    "searchPlaceholder": "Pesquisar atalhos…",
-    "exportLabel": "Exportar",
-    "importLabel": "Importar",
-    "exportTitle": "Exportar como JSON",
-    "importTitle": "Importar de JSON",
-    "addEntry": "Adicionar entrada",
-    "addFirstEntry": "Adicione sua primeira entrada",
-    "editEntry": "Editar entrada",
-    "newEntry": "Nova entrada",
-    "keyLabel": "Atalho · frase a ser detectada",
-    "valueLabel": "Valor · texto de substituição",
-    "cancel": "Cancelar",
-    "update": "Atualizar",
-    "entrySingular": "entrada",
-    "entryPlural": "entradas",
-    "emptyTitle": "Ainda não há atalhos.",
-    "emptyDesc": "Adicione uma frase que você usa com frequência e o Openstyle a expandirá em linha.",
-    "noResults": "nada corresponde a \"{{search}}\".",
-    "noEntries": "sem entradas — adicione uma para começar.",
-    "failedToSave": "Falha ao salvar a entrada.",
-    "usedCount": "usado {{count}}×"
-  },
   "vocabulary": {
     "title": "Vocabulário",
     "loading": "Carregando vocabulário...",
@@ -430,13 +404,13 @@
     "biasNote": "Frases com várias palavras funcionam no Nova 3, na OpenAI e no Groq. O Nova 2 reforça palavras isoladas. O Scribe v1 não usa viés de vocabulário."
   },
   "tone": {
-    "title": "Tom",
-    "subtitle": "O quanto o Openstyle limpa — e como soa em cada app.",
-    "loading": "Carregando tom…",
-    "disabledBanner": {
-      "title": "A limpeza está desativada.",
-      "desc": "Estas configurações de intensidade e tom se aplicam quando você ativa a limpeza por IA em Modelos. Suas escolhas ficam salvas até lá.",
-      "goToModels": "Ir para Modelos"
+    "title": "Limpeza",
+    "subtitle": "O quanto o Openstyle limpa o que você diz.",
+    "loading": "Carregando limpeza…",
+    "switch": {
+      "label": "Limpeza por IA",
+      "descOn": "O Openstyle limpa seu ditado com o modelo que você escolheu.",
+      "descOff": "A limpeza está desativada. Seu ditado fica como a transcrição bruta. Sua escolha de intensidade fica salva."
     },
     "routesFrom": "Roteado de",
     "previewLabel": "Prévia",
@@ -451,9 +425,6 @@
       "eyebrow": "Limpeza",
       "title": "Organiza enquanto eu falo.",
       "desc": "O quanto corrigir antes de suas palavras chegarem.",
-      "currentMode": "Modo atual",
-      "toggleLabel": "Limpeza",
-      "strengthLabel": "Intensidade",
       "noModelTitle": "Nenhum modelo de limpeza selecionado.",
       "noModelDesc": "Escolha um em Modelos. Estas configurações se aplicam assim que um modelo estiver configurado.",
       "noModelCta": "Abrir Modelos",
@@ -799,9 +770,8 @@
   "shell": {
     "nav": {
       "today": "Transcrições",
-      "dictionary": "Atalhos",
       "vocabulary": "Vocabulário",
-      "tone": "Tom",
+      "tone": "Limpeza",
       "models": "Modelos",
       "settings": "Configurações",
       "help": "Ajuda",

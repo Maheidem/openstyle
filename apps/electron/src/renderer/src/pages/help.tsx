@@ -106,7 +106,6 @@ const NAV_SHORTCUT_ITEMS: {
   { labelKey: "shell.nav.today" },
   { labelKey: "shell.nav.meetings", hidden: (ctx) => !ctx.meetingsEnabled },
   { labelKey: "shell.nav.vocabulary" },
-  { labelKey: "shell.nav.dictionary" },
   { labelKey: "shell.nav.tone" },
   { labelKey: "shell.nav.models", hidden: (ctx) => !ctx.advancedMode },
   { labelKey: "shell.nav.settings" },

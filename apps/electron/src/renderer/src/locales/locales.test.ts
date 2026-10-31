@@ -338,7 +338,6 @@ describe("locale files", () => {
       "help.contributing.eyebrow",
       "help.contributing.cardTitle",
       "help.contributing.cardDesc",
-      "dictionary.usedCount",
       "vocabulary.termPlaceholder",
       "vocabulary.notesPlaceholder",
       "vocabulary.biasNote",

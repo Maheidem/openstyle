@@ -120,11 +120,6 @@ export const queryKeys = {
       ["history", "stats", startDate, endDate] as const,
   },
 
-  dictionary: {
-    all: ["dictionary"] as const,
-    list: (page: number, search: string) =>
-      ["dictionary", page, search] as const,
-  },
   vocabulary: {
     all: ["vocabulary"] as const,
     list: (page: number, search: string) =>

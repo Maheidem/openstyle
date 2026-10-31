@@ -34,7 +34,6 @@ import {
   type DictationCall,
   recordDictationCalls,
 } from "./dictation/record.js";
-import { applyDictionaryReplacements } from "./dictionary-replacements.js";
 import { buildRewritePrompt, resolveToneStage } from "./editor/prompts.js";
 import { getRewritePromptContext } from "./editor/rewrite-context.js";
 import { isInputOverflow } from "./llm/gateway-errors.js";
@@ -444,7 +443,7 @@ async function startCleanupSession(
 }
 
 /**
- * Clean one dictation and apply the dictionary.
+ * Clean one dictation.
  *
  * Low, medium and high run the staged pipeline (specs/dictation-pipeline.md):
  * code stages, one short cleanup call per part (medium, high), polish (high)
@@ -565,13 +564,6 @@ export async function postProcess(
   if (calls.length > 0) recordDictationCalls(getDb(), calls);
 
   const llmMs = Date.now() - llmStart;
-  // Dictionary replacement. Runs on the full raw -> final transformation for
-  // this dictation, whether or not cleanup ran. Empty text has nothing to
-  // replace.
-  if (cleanedText.trim()) {
-    cleanedText = applyDictionaryReplacements(cleanedText, getDb());
-  }
-
   if (inputTokens > 0 || outputTokens > 0) {
     if (llmProvider && llmModel) {
       // Cache-only lookup — never blocks the response on a models.dev fetch.

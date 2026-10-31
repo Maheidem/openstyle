@@ -37,13 +37,6 @@ const vocabulary = new Hono()
 
     return c.json({ items, total, limit, offset });
   })
-  .get("/all", (c) => {
-    const db = getDb();
-    const rows = db
-      .prepare("SELECT term FROM vocabulary ORDER BY length(term) DESC")
-      .all() as { term: string }[];
-    return c.json(rows.map((r) => r.term));
-  })
   .post("/export", zValidator("json", exportSchema), (c) => {
     const { type } = c.req.valid("json");
     // Only "json" is supported today; the enum guards other values but keep the
@@ -52,16 +45,6 @@ const vocabulary = new Hono()
       return c.json({ error: `Unsupported export type: ${type}` }, 400);
     }
     return c.json(exportVocabularyEntries());
-  })
-  .get("/:id", (c) => {
-    const db = getDb();
-    const id = Number(c.req.param("id"));
-    const row = db.prepare("SELECT * FROM vocabulary WHERE id = ?").get(id) as
-      | VocabularyRow
-      | undefined;
-
-    if (!row) return c.json({ error: "Not found" }, 404);
-    return c.json(row);
   })
   .post("/", zValidator("json", createVocabularySchema), async (c) => {
     const db = getDb();

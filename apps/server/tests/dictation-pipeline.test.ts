@@ -340,7 +340,6 @@ describe("postProcess runs the pipeline", () => {
     writeSetting("cleanup_overall_tone", "off");
     const db = getDb();
     db.exec("DELETE FROM own_servers");
-    db.exec("DELETE FROM dictionary");
     db.exec("DELETE FROM llm_runs WHERE scope = 'dictation'");
     const serverId = insertOwnServer({
       baseUrl: "http://127.0.0.1:1",
@@ -359,15 +358,11 @@ describe("postProcess runs the pipeline", () => {
     vi.restoreAllMocks();
     deleteSetting("cleanup_intensity");
     deleteSetting("cleanup_overall_tone");
-    getDb().exec("DELETE FROM dictionary");
   });
 
-  it("low makes no LLM call and still applies the dictionary last", async () => {
+  it("low makes no LLM call", async () => {
     writeSetting("cleanup_intensity", "low");
     writeSetting("cleanup_overall_tone", "professional");
-    getDb()
-      .prepare("INSERT INTO dictionary (key, value) VALUES (?, ?)")
-      .run("tacoma depot", "Tacoma Depot");
     const calls = spyFetch(() => "never");
     const r = await postProcess(
       "ship two adapters to the tacoma depot new line thanks",
@@ -376,7 +371,7 @@ describe("postProcess runs the pipeline", () => {
     );
     expect(calls).toHaveLength(0);
     expect(r).toMatchObject({
-      cleaned: "Ship 2 adapters to the Tacoma Depot.\nThanks.",
+      cleaned: "Ship 2 adapters to the tacoma depot.\nThanks.",
       llmProvider: null,
       llmModel: null,
     });

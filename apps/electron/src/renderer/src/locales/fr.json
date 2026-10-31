@@ -375,32 +375,6 @@
     "dismissHero": "Ignorer",
     "selectDate": "Choisir"
   },
-  "dictionary": {
-    "title": "Raccourcis",
-    "subtitle": "Raccourcis qui s'étendent pendant que vous parlez. Dites la clé, obtenez la valeur.",
-    "loading": "Chargement des raccourcis…",
-    "searchPlaceholder": "Rechercher des raccourcis…",
-    "exportLabel": "Exporter",
-    "importLabel": "Importer",
-    "exportTitle": "Exporter en JSON",
-    "importTitle": "Importer depuis JSON",
-    "addEntry": "Ajouter une entrée",
-    "addFirstEntry": "Ajoutez votre première entrée",
-    "editEntry": "Modifier l'entrée",
-    "newEntry": "Nouvelle entrée",
-    "keyLabel": "Clé · phrase à détecter",
-    "valueLabel": "Valeur · texte de remplacement",
-    "cancel": "Annuler",
-    "update": "Mettre à jour",
-    "entrySingular": "Entrée",
-    "entryPlural": "Entrées",
-    "emptyTitle": "Aucun raccourci pour l'instant.",
-    "emptyDesc": "Ajoutez une phrase que vous dites souvent, comme <example>mon adresse</example> — et Openstyle la développe en ligne.",
-    "noResults": "Rien ne correspond à « {{search}} ».",
-    "noEntries": "Aucune entrée — ajoutez-en une pour commencer.",
-    "failedToSave": "Échec de l'enregistrement de l'entrée.",
-    "usedCount": "utilisé {{count}}×"
-  },
   "vocabulary": {
     "title": "Vocabulaire",
     "loading": "Chargement du vocabulaire…",
@@ -431,13 +405,13 @@
     "biasNote": "Les expressions de plusieurs mots fonctionnent avec Nova 3, OpenAI et Groq. Nova 2 favorise les mots isolés. Scribe v1 n'utilise pas de biais de vocabulaire."
   },
   "tone": {
-    "title": "Ton",
-    "subtitle": "À quel point Openstyle nettoie, et comment ça sonne dans chaque app.",
-    "loading": "Chargement du ton…",
-    "disabledBanner": {
-      "title": "Le nettoyage est désactivé.",
-      "desc": "Ces réglages d'intensité et de ton s'appliquent dès que vous activez le nettoyage par IA dans Modèles. Vos choix sont enregistrés en attendant.",
-      "goToModels": "Aller à Modèles"
+    "title": "Nettoyage",
+    "subtitle": "À quel point Openstyle nettoie ce que vous dites.",
+    "loading": "Chargement du nettoyage…",
+    "switch": {
+      "label": "Nettoyage par IA",
+      "descOn": "Openstyle nettoie votre dictée avec le modèle choisi.",
+      "descOff": "Le nettoyage est désactivé. Votre dictée reste la transcription brute. Votre choix d'intensité est enregistré."
     },
     "routesFrom": "Routé depuis",
     "previewLabel": "Aperçu",
@@ -452,9 +426,6 @@
       "eyebrow": "Nettoyage",
       "title": "Mets de l'ordre pendant que je parle.",
       "desc": "Combien corriger avant que vos mots n'arrivent.",
-      "currentMode": "Mode actuel",
-      "toggleLabel": "Nettoyage",
-      "strengthLabel": "Intensité",
       "noModelTitle": "Aucun modèle de nettoyage sélectionné.",
       "noModelDesc": "Choisissez-en un dans Modèles. Ces réglages s'appliquent dès qu'un modèle est configuré.",
       "noModelCta": "Ouvrir Modèles",
@@ -800,9 +771,8 @@
   "shell": {
     "nav": {
       "today": "Transcriptions",
-      "dictionary": "Raccourcis",
       "vocabulary": "Vocabulaire",
-      "tone": "Ton",
+      "tone": "Nettoyage",
       "models": "Modèles",
       "settings": "Réglages",
       "help": "Aide",

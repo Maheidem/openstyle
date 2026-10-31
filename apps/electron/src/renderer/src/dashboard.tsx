@@ -24,7 +24,6 @@ import { BrowserRouter, Navigate, Outlet, Route, Routes } from "react-router";
 // tiny not-found page load eagerly; every other page is lazy so the initial
 // bundle stays small and each page's chunk loads on navigation.
 const OnboardingPage = lazy(() => import("@renderer/onboarding"));
-const DictionaryPage = lazy(() => import("@renderer/pages/dictionary"));
 const HelpPage = lazy(() => import("@renderer/pages/help"));
 const ImportPage = lazy(() => import("@renderer/pages/import"));
 const ModelsPage = lazy(() => import("@renderer/pages/models"));
@@ -110,10 +109,6 @@ function mount(): void {
                           <Route
                             path="/settings/models"
                             element={<ModelsPage />}
-                          />
-                          <Route
-                            path="/settings/dictionary"
-                            element={<DictionaryPage />}
                           />
                           <Route
                             path="/settings/vocabulary"

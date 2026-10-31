@@ -2,7 +2,6 @@ export * from "./api-keys.js";
 export * from "./cleanup-presets.js";
 export * from "./cleanup-tones.js";
 export * from "./diagnostics.js";
-export * from "./dictionary.js";
 export * from "./export.js";
 export * from "./folder-description.js";
 export * from "./folder-overview.js";

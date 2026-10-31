@@ -1,7 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import createApp from "../src/index.js";
 import { getDb } from "../src/lib/db.js";
-import { flushPendingDictionaryUsage } from "../src/lib/dictionary-replacements.js";
 import {
   getHistoryRetentionDays,
   HISTORY_PAUSED_SETTING_KEY,
@@ -262,18 +261,12 @@ describe("Dismissed notifications", () => {
 });
 
 // ---------------------------------------------------------------------------
-// Dictionary and Vocabulary CRUD
+// Vocabulary CRUD
 // ---------------------------------------------------------------------------
 
 // Cases that are the same for both resources. `field` is the unique name
 // field. `create(name)` builds a valid create payload for that name.
 describe.each([
-  {
-    label: "Dictionary",
-    path: "/api/dictionary",
-    field: "key",
-    create: (name: string) => ({ key: name, value: "V" }),
-  },
   {
     label: "Vocabulary",
     path: "/api/vocabulary",
@@ -297,8 +290,9 @@ describe.each([
     const del = await req(`${path}/${id}`, { method: "DELETE" });
     expect(del.status).toBe(200);
 
-    const get = await req(`${path}/${id}`);
-    expect(get.status).toBe(404);
+    const list = await req(`${path}?search=to-delete`);
+    const data = await list.json();
+    expect(data.items).toHaveLength(0);
   });
 
   it("POST rejects duplicate names", async () => {
@@ -321,69 +315,10 @@ describe.each([
     ).toBe(true);
   });
 
-  it("GET /all returns all entries", async () => {
-    const res = await req(`${path}/all`);
-    expect(res.status).toBe(200);
-    expect(Array.isArray(await res.json())).toBe(true);
-  });
-
   it("POST /export returns JSON export", async () => {
     const res = await json(`${path}/export`, { type: "json" });
     expect(res.status).toBe(200);
     expect(Array.isArray(await res.json())).toBe(true);
-  });
-});
-
-describe("Dictionary", () => {
-  it("POST creates a new entry", async () => {
-    const res = await json("/api/dictionary", {
-      key: "type script",
-      value: "TypeScript",
-    });
-    expect(res.status).toBe(201);
-    const data = await res.json();
-    expect(data.key).toBe("type script");
-    expect(data.value).toBe("TypeScript");
-    expect(data.id).toBeDefined();
-  });
-
-  it("GET /:id returns the created entry", async () => {
-    const create = await json("/api/dictionary", {
-      key: "react js",
-      value: "React.js",
-    });
-    const { id } = await create.json();
-
-    const get = await req(`/api/dictionary/${id}`);
-    expect(get.status).toBe(200);
-    const data = await get.json();
-    expect(data.key).toBe("react js");
-    expect(data.value).toBe("React.js");
-  });
-
-  it("PUT updates an entry", async () => {
-    const create = await json("/api/dictionary", {
-      key: "node js",
-      value: "Node.js",
-    });
-    const { id } = await create.json();
-
-    const put = await json(`/api/dictionary/${id}`, { value: "NodeJS" }, "PUT");
-    expect(put.status).toBe(200);
-    const data = await put.json();
-    expect(data.value).toBe("NodeJS");
-  });
-
-  it("POST /api/dictionary/import bulk imports", async () => {
-    const entries = [
-      { key: "import one", value: "Import1" },
-      { key: "import two", value: "Import2" },
-    ];
-    const res = await json("/api/dictionary/import", entries);
-    expect(res.status).toBe(200);
-    const data = await res.json();
-    expect(data.imported).toBe(2);
-    expect(data.skipped).toBe(0);
   });
 });
 
@@ -398,15 +333,6 @@ describe("Vocabulary", () => {
     expect(data.term).toBe("TypeScript");
     expect(data.notes).toBe("Programming language");
     expect(data.id).toBeDefined();
-  });
-
-  it("GET /:id returns the created term", async () => {
-    const create = await json("/api/vocabulary", { term: "Kubernetes" });
-    const { id } = await create.json();
-
-    const get = await req(`/api/vocabulary/${id}`);
-    expect(get.status).toBe(200);
-    expect((await get.json()).term).toBe("Kubernetes");
   });
 
   it("PUT updates a term", async () => {
@@ -794,67 +720,5 @@ describe("History retention", () => {
       );
       expect(res.status, `value: ${value}`).toBe(400);
     }
-  });
-});
-
-// ---------------------------------------------------------------------------
-// T1-7 (specs/lean-audit-2026-09.md §3): the dictionary rewrite snapshot is
-// compiled once per dictionary version, invalidated by every write route.
-// These tests drive the *real* delivery path (POST /api/post-process →
-// postProcess) against the *real* write routes, so a forgotten
-// markDictionaryChanged() in any of them reads as a stale replacement.
-// ---------------------------------------------------------------------------
-
-describe("Dictionary rewrite cache invalidation on the delivery path (T1-7)", () => {
-  const deliver = (text: string) =>
-    json("/api/post-process", { text, appContext: null }).then(
-      (r) => r.json() as Promise<{ cleaned: string }>,
-    );
-
-  it("create, edit, delete and import all invalidate the compiled snapshot", async () => {
-    // Create → the replacement applies on the next delivery.
-    await json("/api/dictionary", { key: "zqx probe", value: "PROBE" });
-    expect((await deliver("hello zqx probe there")).cleaned).toBe(
-      "hello PROBE there",
-    );
-
-    // Edit (PUT) → the next delivery sees the new value, not the snapshot
-    // compiled before the edit.
-    const list = await req("/api/dictionary?search=zqx%20probe");
-    const { items } = (await list.json()) as { items: { id: number }[] };
-    await json(`/api/dictionary/${items[0].id}`, { value: "PROBED" }, "PUT");
-    expect((await deliver("hello zqx probe there")).cleaned).toBe(
-      "hello PROBED there",
-    );
-
-    // Delete → the next delivery replaces nothing.
-    await req(`/api/dictionary/${items[0].id}`, { method: "DELETE" });
-    expect((await deliver("hello zqx probe there")).cleaned).toBe(
-      "hello zqx probe there",
-    );
-
-    // Import → imported entries apply on the next delivery.
-    await json("/api/dictionary/import", [
-      { key: "zqx imported", value: "IMPORTED" },
-    ]);
-    expect((await deliver("a zqx imported word")).cleaned).toBe(
-      "a IMPORTED word",
-    );
-  });
-
-  it("delivery output is unchanged by the deferred usage-count accounting (C1-safe)", async () => {
-    await json("/api/dictionary", { key: "zqx count", value: "COUNT" });
-    // Two deliveries — the deferred flush (setImmediate in production,
-    // explicit under fake timers) must never change delivered text or the
-    // per-delivery counting semantics.
-    expect((await deliver("say zqx count")).cleaned).toBe("say COUNT");
-    flushPendingDictionaryUsage();
-    expect((await deliver("say zqx count")).cleaned).toBe("say COUNT");
-    flushPendingDictionaryUsage();
-
-    const row = getDb()
-      .prepare("SELECT usage_count FROM dictionary WHERE key = 'zqx count'")
-      .get() as { usage_count: number };
-    expect(row.usage_count).toBe(2); // +1 per delivery, as in the inline era
   });
 });

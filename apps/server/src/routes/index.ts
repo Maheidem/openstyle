@@ -4,7 +4,6 @@ import { clientErrorSchema } from "@openstyle/validations";
 import { Hono } from "hono";
 import apiKeys from "./api-keys.js";
 import configRoute from "./config.js";
-import dictionary from "./dictionary.js";
 import dismissedNotifications from "./dismissed-notifications.js";
 import history from "./history.js";
 import jobs from "./jobs.js";
@@ -55,7 +54,6 @@ const apiRouter = new Hono()
   .route("/meetings", meetingsRuns)
   .route("/meetings", meetingsChat)
   .route("/search", search)
-  .route("/dictionary", dictionary)
   .route("/dismissed-notifications", dismissedNotifications)
   .route("/vocabulary", vocabulary)
   .route("/post-process", postProcessRoute)
