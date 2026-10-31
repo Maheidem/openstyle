@@ -155,7 +155,8 @@
       "permissions": "Permissions",
       "meetings": "Meetings",
       "data": "Data",
-      "network": "Network"
+      "network": "Network",
+      "ask": "Ask"
     },
     "application": {
       "autoUpdate": "Automatic updates",
@@ -290,7 +291,9 @@
       "liveKeep": "Keep the live transcript at Stop (experimental)",
       "liveKeepDesc": "When you stop a recording, the live text becomes the transcript of the meeting at once, marked \"From live\". Speaker labels are added next. You can run Re-transcribe later. Works only with the live transcript on.",
       "liveCaptions": "Show live captions in the recording pill",
-      "liveCaptionsDesc": "While a meeting records, the pill shows the last lines of the live text, like subtitles. Works only with the live transcript on."
+      "liveCaptionsDesc": "While a meeting records, the pill shows the last lines of the live text, like subtitles. Works only with the live transcript on.",
+      "meetingChat": "Meeting chat (Ask tab, experimental)",
+      "meetingChatDesc": "Adds an Ask tab to a meeting. You ask questions and get answers from the transcript and the summary, with sources. It needs a local model. A new Ask section appears in Settings."
     },
     "data": {
       "pauseHistory": "Pause history",
@@ -354,6 +357,29 @@
       "statusOk": "Connected",
       "statusUnreachable": "Couldn't reach that server",
       "statusUnauthorized": "Invalid or missing access token"
+    },
+    "ask": {
+      "rounds": "Tool rounds",
+      "roundsDesc": "How many times Ask can search before it answers. Default: {{value}}.",
+      "sourceBudget": "Answer source budget",
+      "sourceBudgetDesc": "How much source text Ask gives the model for one answer. Default: {{value}}.",
+      "k": "Retrieval k",
+      "kDesc": "How many text parts a search returns. Default: {{value}}.",
+      "deadline": "Turn deadline",
+      "deadlineDesc": "Ask stops after this time and says so. Default: {{value}} seconds.",
+      "searchWider": "Search wider",
+      "searchWiderDesc": "When Ask finds nothing, it can offer to search a wider scope. It never does this alone.",
+      "searchWiderAsk": "Ask me",
+      "searchWiderOff": "Do not offer",
+      "nativeTools": "Use native tool calls of the local model",
+      "nativeToolsDesc": "Applies at the next start of the model.",
+      "unmeasured": "unmeasured",
+      "tokens": "tokens",
+      "seconds": "seconds",
+      "numberRange": "Allowed: {{min}}–{{max}}",
+      "numberInvalid": "Enter {{min}}–{{max}}",
+      "numberSaveFailed": "Could not save. The server still has {{value}}.",
+      "numberStripped": "Digits only. {{dropped}} removed, the field shows {{value}}."
     }
   },
   "today": {
@@ -868,6 +894,10 @@
       "liveChat": {
         "name": "Live chat (experimental)",
         "desc": "Answers your questions during a recording."
+      },
+      "meetingChat": {
+        "name": "Meeting chat (experimental)",
+        "desc": "Answers your questions in the Ask tab of a meeting."
       }
     },
     "loading": "Loading models",
@@ -1592,6 +1622,93 @@
       "fromLive": "From live",
       "fromLiveHint": "This transcript comes from the live view. Use Re-transcribe to run the full pass.",
       "chatHistoryTitle": "Live chat"
+    },
+    "ask": {
+      "tab": "Ask",
+      "title": "Ask about this meeting",
+      "experimental": "Experimental",
+      "scopeMeeting": "This meeting",
+      "threads": "Chats of this meeting",
+      "threadNew": "New chat",
+      "threadUntitled": "Chat of {{date}}",
+      "newChat": "New chat",
+      "empty": "Ask a question about this meeting. Ask reads the transcript and the summary.",
+      "exampleDecisions": "What did we decide?",
+      "exampleActions": "Which action items are open?",
+      "exampleStatus": "Where do things stand?",
+      "you": "You",
+      "thinking": "Thinking...",
+      "warming": "Warming up the model...",
+      "placeholder": "Ask about this meeting",
+      "inputLabel": "Your question",
+      "send": "Send",
+      "hint": "Enter sends. Shift+Enter adds a line. Up to {{max}} characters.",
+      "errOff": "Ask is off. Turn it on in Settings, Meetings.",
+      "errNoModel": "No model is set for Ask. Choose and download a model on the Models page.",
+      "errProviderNotReady": "The model for Ask is not ready. Check it on the Models page.",
+      "errBusy": "The model is busy. Try again in a moment.",
+      "errScope": "This meeting is not available.",
+      "errFailed": "Ask could not answer. Try again.",
+      "retry": "Retry",
+      "openModels": "Open Models",
+      "openSettings": "Open Settings",
+      "untitled": "Untitled meeting",
+      "citeOpen": "Open meeting {{title}} at {{time}}",
+      "citeOpenNoTime": "Open meeting {{title}}",
+      "citeRemovedName": "Source {{label}}: the meeting is removed",
+      "citeRemoved": "removed",
+      "citeSummary": "summary",
+      "done": "Done",
+      "open": "Open",
+      "owner": "Owner: {{name}}",
+      "due": "Due: {{date}}",
+      "list": {
+        "action_items_one": "{{count}} action item",
+        "action_items_other": "{{count}} action items",
+        "decisions_one": "{{count}} decision",
+        "decisions_other": "{{count}} decisions",
+        "open_questions_one": "{{count}} open question",
+        "open_questions_other": "{{count}} open questions",
+        "meetings_one": "{{count}} meeting",
+        "meetings_other": "{{count}} meetings"
+      },
+      "count": {
+        "action_items_one": "action item",
+        "action_items_other": "action items",
+        "decisions_one": "decision",
+        "decisions_other": "decisions",
+        "open_questions_one": "open question",
+        "open_questions_other": "open questions",
+        "meetings_one": "meeting",
+        "meetings_other": "meetings"
+      },
+      "statusCounts": "Open action items: {{actions}}. Open questions: {{questions}}.",
+      "notFound": {
+        "noSourcesMeeting": "I found nothing about this in this meeting.",
+        "noSourcesFolder": "I found nothing about this in this folder.",
+        "cite_check": "I could not check my answer against the sources, so I do not show it.",
+        "deadline": "This took too long, so I stopped.",
+        "call_cap": "I reached the search limit for this question.",
+        "model_error": "The model failed to answer."
+      },
+      "nearest": "Nearest sources",
+      "readOnly": "Ask cannot change data yet. It can only read your meetings.",
+      "trailTitle": "How I found this",
+      "trailNone": "No sources were read.",
+      "trail": {
+        "searched_one": "searched {{count}} chunk",
+        "searched_other": "searched {{count}} chunks",
+        "readSummary_one": "read {{count}} summary",
+        "readSummary_other": "read {{count}} summaries",
+        "readTranscript_one": "read {{count}} transcript part",
+        "readTranscript_other": "read {{count}} transcript parts",
+        "listed_one": "listed {{count}} item",
+        "listed_other": "listed {{count}} items",
+        "meetings_one": "listed {{count}} meeting",
+        "meetings_other": "listed {{count}} meetings"
+      },
+      "trailDropped_one": "{{count}} source left out",
+      "trailDropped_other": "{{count}} sources left out"
     }
   },
   "help": {

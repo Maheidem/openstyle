@@ -134,6 +134,18 @@ export const LLM_TASK_PROFILES: Record<LlmTaskId, LlmTaskProfile> = {
     maxOutputTokens: 300,
     timeoutMs: 30_000,
   },
+  // The Ask tab (specs/meeting-chat-agent.md 2.3 stage 0, 2.7). Every stage
+  // sets its own output cap per call, so the task value is only a ceiling for
+  // a caller that sets none. 30 s is the warm timeout. The chat adds 120 s for
+  // the first call after a load (`lib/chat/llm.ts`). The default model is the
+  // app default LLM, as for liveChat, so chat shares the cleanup worker (D6).
+  meetingChat: {
+    id: "meetingChat",
+    reasoningEnabled: false,
+    temperature: 0,
+    maxOutputTokens: 400,
+    timeoutMs: 30_000,
+  },
 };
 
 /**

@@ -82,6 +82,11 @@ export interface MlxHttpWorkerOptions<D extends MlxHttpModelDef> {
   keepAliveMinutes: () => number;
   /** Gets the ready line of each worker that starts. */
   onReady?: (line: MlxReadyLine) => void;
+  /**
+   * Env vars that this worker gets besides the server env. Read at each worker
+   * start, so a change applies at the next start, not to a running worker.
+   */
+  extraEnv?: () => Record<string, string>;
 }
 
 export interface MlxHttpWorker<D extends MlxHttpModelDef> {
@@ -345,7 +350,12 @@ export function createMlxHttpWorker<D extends MlxHttpModelDef>(
     const proc = spawn(candidate.command, candidate.args, {
       stdio: ["pipe", "pipe", "pipe"],
       // The server downloads the weights. The worker loads from the cache only.
-      env: { ...process.env, PYTHONUNBUFFERED: "1", HF_HUB_OFFLINE: "1" },
+      env: {
+        ...process.env,
+        ...opts.extraEnv?.(),
+        PYTHONUNBUFFERED: "1",
+        HF_HUB_OFFLINE: "1",
+      },
     });
     workerProcess = proc;
     workerReady = false;

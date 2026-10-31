@@ -12,6 +12,8 @@ export const LLM_TASK_IDS = [
   "meetingEnhance",
   // Live chat during a recording (issue #375, specs/live-chat.md).
   "liveChat",
+  // The Ask tab, meeting chat agent (specs/meeting-chat-agent.md 2.3 stage 0).
+  "meetingChat",
 ] as const;
 
 export type LlmTaskId = (typeof LLM_TASK_IDS)[number];
@@ -533,6 +535,7 @@ export const MLX_LLM_KEEP_READY_DEFAULT: Readonly<MlxLlmKeepReady> = {
   meetingSummarize: false,
   meetingEnhance: false,
   liveChat: false,
+  meetingChat: false,
 };
 
 export const mlxLlmKeepReadySchema = z
@@ -541,6 +544,7 @@ export const mlxLlmKeepReadySchema = z
     meetingSummarize: z.boolean().optional(),
     meetingEnhance: z.boolean().optional(),
     liveChat: z.boolean().optional(),
+    meetingChat: z.boolean().optional(),
   })
   .strict();
 

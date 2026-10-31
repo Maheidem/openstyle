@@ -49,8 +49,13 @@ export interface NewRun {
   /** Scope "meeting": also written to meeting_id. Other scopes: meeting_id NULL. */
   scopeId: string;
   /** "dictation": the call record of one dictation (lib/dictation/record.ts). */
-  kind: LlmRunKind | "dictation" | "folderDescription" | "folderStanding";
-  startedBy: "auto" | "button";
+  kind:
+    | LlmRunKind
+    | "dictation"
+    | "folderDescription"
+    | "folderStanding"
+    | "meetingChat";
+  startedBy: "auto" | "button" | "chat";
   graphVersion: number;
   /** Epoch ms. */
   startedAt: number;
@@ -480,7 +485,7 @@ export interface RunRow {
   scope: LlmScope;
   scopeId: string;
   kind: LlmRunKind;
-  startedBy: "auto" | "button";
+  startedBy: "auto" | "button" | "chat";
   status: LlmRunStatus;
   graphVersion: number;
   inputHash: string | null;

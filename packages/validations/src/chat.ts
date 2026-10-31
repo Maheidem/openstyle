@@ -61,11 +61,16 @@ export type ChatListItem = z.infer<typeof chatListItemSchema>;
 
 /** An answer block. The renderer writes the fixed words with `t()`. */
 export const chatBlockSchema = z.discriminatedUnion("kind", [
-  z.object({ kind: z.literal("text"), text: z.string() }),
+  z.object({
+    kind: z.literal("text"),
+    text: z.string(),
+    /** Labels (S1..) of the cites of this paragraph. They match `message.cites`. */
+    cites: z.array(z.string()),
+  }),
   z.object({
     kind: z.literal("list"),
-    /** "action_items" | "decisions" | "open_questions" */
-    list: z.enum(["action_items", "decisions", "open_questions"]),
+    /** What the list holds. */
+    list: z.enum(["action_items", "decisions", "open_questions", "meetings"]),
     total: z.number().int(),
     items: z.array(chatListItemSchema),
   }),
@@ -171,6 +176,9 @@ export const CHAT_GATE_REASONS = [
   "no_model",
   "provider_not_ready",
   "scope_missing",
+  "busy",
+  "failed",
+  "cancelled",
 ] as const;
 export const chatGateErrorSchema = z.object({
   error: z.string(),

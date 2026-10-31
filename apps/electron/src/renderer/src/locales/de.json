@@ -131,7 +131,8 @@
       "permissions": "Berechtigungen",
       "meetings": "Besprechungen",
       "data": "Daten",
-      "network": "Netzwerk"
+      "network": "Netzwerk",
+      "ask": "Ask"
     },
     "application": {
       "autoUpdate": "Automatische Updates",
@@ -249,7 +250,9 @@
       "liveKeep": "Live-Transkript beim Stopp behalten (experimentell)",
       "liveKeepDesc": "Beim Stopp der Aufnahme wird der Live-Text sofort zum Transkript der Besprechung, markiert als \"Aus Live\". Sprecherlabels folgen danach. Sie können später Neu transkribieren nutzen. Wirkt nur bei eingeschaltetem Live-Transkript.",
       "liveCaptions": "Live-Untertitel in der Aufnahme-Pille anzeigen",
-      "liveCaptionsDesc": "Während eine Besprechung aufgenommen wird, zeigt die Pille die letzten Zeilen des Live-Texts wie Untertitel. Wirkt nur bei eingeschaltetem Live-Transkript."
+      "liveCaptionsDesc": "Während eine Besprechung aufgenommen wird, zeigt die Pille die letzten Zeilen des Live-Texts wie Untertitel. Wirkt nur bei eingeschaltetem Live-Transkript.",
+      "meetingChat": "Meeting-Chat (Tab Fragen, experimentell)",
+      "meetingChatDesc": "Fügt einem Meeting den Tab Fragen hinzu. Du stellst Fragen und erhältst Antworten aus Transkript und Zusammenfassung, mit Quellen. Es braucht ein lokales Modell. In den Einstellungen erscheint ein Abschnitt Ask."
     },
     "data": {
       "pauseHistory": "Verlauf pausieren",
@@ -303,6 +306,29 @@
       "statusOk": "Verbunden",
       "statusUnreachable": "Der Server konnte nicht erreicht werden",
       "statusUnauthorized": "Ungültiges oder fehlendes Zugangstoken"
+    },
+    "ask": {
+      "rounds": "Werkzeugrunden",
+      "roundsDesc": "Wie oft Ask suchen darf, bevor es antwortet. Standard: {{value}}.",
+      "sourceBudget": "Quellenbudget der Antwort",
+      "sourceBudgetDesc": "Wie viel Quellentext Ask dem Modell für eine Antwort gibt. Standard: {{value}}.",
+      "k": "Abruf-k",
+      "kDesc": "Wie viele Textteile eine Suche liefert. Standard: {{value}}.",
+      "deadline": "Zeitlimit pro Frage",
+      "deadlineDesc": "Ask bricht nach dieser Zeit ab und sagt es. Standard: {{value}} Sekunden.",
+      "searchWider": "Breiter suchen",
+      "searchWiderDesc": "Wenn Ask nichts findet, kann es eine breitere Suche anbieten. Es tut das nie allein.",
+      "searchWiderAsk": "Mich fragen",
+      "searchWiderOff": "Nicht anbieten",
+      "nativeTools": "Native Werkzeugaufrufe des lokalen Modells nutzen",
+      "nativeToolsDesc": "Gilt ab dem nächsten Start des Modells.",
+      "unmeasured": "nicht gemessen",
+      "tokens": "Tokens",
+      "seconds": "Sekunden",
+      "numberRange": "Zulässig: {{min}}–{{max}}",
+      "numberInvalid": "Bitte {{min}}–{{max}} eingeben",
+      "numberSaveFailed": "Speichern fehlgeschlagen. Der Server hat weiterhin {{value}}.",
+      "numberStripped": "Nur Ziffern. {{dropped}} entfernt, das Feld zeigt {{value}}."
     }
   },
   "today": {
@@ -686,6 +712,10 @@
       "liveChat": {
         "name": "Live-Chat (experimentell)",
         "desc": "Beantwortet deine Fragen während einer Aufnahme."
+      },
+      "meetingChat": {
+        "name": "Meeting-Chat (experimentell)",
+        "desc": "Beantwortet deine Fragen im Tab Fragen eines Meetings."
       }
     },
     "loading": "Modelle werden geladen",
@@ -1259,6 +1289,93 @@
       "fromLive": "Aus Live",
       "fromLiveHint": "Dieses Transkript stammt aus der Live-Ansicht. Mit Neu transkribieren startet der vollständige Durchlauf.",
       "chatHistoryTitle": "Live-Chat"
+    },
+    "ask": {
+      "tab": "Fragen",
+      "title": "Fragen zu diesem Meeting",
+      "experimental": "Experimentell",
+      "scopeMeeting": "Dieses Meeting",
+      "threads": "Chats zu diesem Meeting",
+      "threadNew": "Neuer Chat",
+      "threadUntitled": "Chat vom {{date}}",
+      "newChat": "Neuer Chat",
+      "empty": "Stelle eine Frage zu diesem Meeting. Ask liest das Transkript und die Zusammenfassung.",
+      "exampleDecisions": "Was haben wir entschieden?",
+      "exampleActions": "Welche Aufgaben sind offen?",
+      "exampleStatus": "Wie ist der Stand?",
+      "you": "Du",
+      "thinking": "Denke nach...",
+      "warming": "Das Modell startet...",
+      "placeholder": "Frage zu diesem Meeting",
+      "inputLabel": "Deine Frage",
+      "send": "Senden",
+      "hint": "Enter sendet. Umschalt+Enter fügt eine Zeile ein. Höchstens {{max}} Zeichen.",
+      "errOff": "Ask ist aus. Schalte es in Einstellungen, Meetings ein.",
+      "errNoModel": "Für Ask ist kein Modell gesetzt. Wähle und lade ein Modell auf der Seite Modelle.",
+      "errProviderNotReady": "Das Modell für Ask ist nicht bereit. Prüfe es auf der Seite Modelle.",
+      "errBusy": "Das Modell ist beschäftigt. Versuche es gleich noch einmal.",
+      "errScope": "Dieses Meeting ist nicht verfügbar.",
+      "errFailed": "Ask konnte nicht antworten. Versuche es noch einmal.",
+      "retry": "Erneut versuchen",
+      "openModels": "Modelle öffnen",
+      "openSettings": "Einstellungen öffnen",
+      "untitled": "Meeting ohne Titel",
+      "citeOpen": "Meeting {{title}} bei {{time}} öffnen",
+      "citeOpenNoTime": "Meeting {{title}} öffnen",
+      "citeRemovedName": "Quelle {{label}}: das Meeting wurde entfernt",
+      "citeRemoved": "entfernt",
+      "citeSummary": "Zusammenfassung",
+      "done": "Erledigt",
+      "open": "Offen",
+      "owner": "Zuständig: {{name}}",
+      "due": "Fällig: {{date}}",
+      "list": {
+        "action_items_one": "{{count}} Aufgabe",
+        "action_items_other": "{{count}} Aufgaben",
+        "decisions_one": "{{count}} Entscheidung",
+        "decisions_other": "{{count}} Entscheidungen",
+        "open_questions_one": "{{count}} offene Frage",
+        "open_questions_other": "{{count}} offene Fragen",
+        "meetings_one": "{{count}} Meeting",
+        "meetings_other": "{{count}} Meetings"
+      },
+      "count": {
+        "action_items_one": "Aufgabe",
+        "action_items_other": "Aufgaben",
+        "decisions_one": "Entscheidung",
+        "decisions_other": "Entscheidungen",
+        "open_questions_one": "offene Frage",
+        "open_questions_other": "offene Fragen",
+        "meetings_one": "Meeting",
+        "meetings_other": "Meetings"
+      },
+      "statusCounts": "Offene Aufgaben: {{actions}}. Offene Fragen: {{questions}}.",
+      "notFound": {
+        "noSourcesMeeting": "Dazu habe ich in diesem Meeting nichts gefunden.",
+        "noSourcesFolder": "Dazu habe ich in diesem Ordner nichts gefunden.",
+        "cite_check": "Ich konnte meine Antwort nicht mit den Quellen prüfen, darum zeige ich sie nicht.",
+        "deadline": "Das dauerte zu lange, darum habe ich abgebrochen.",
+        "call_cap": "Ich habe die Suchgrenze für diese Frage erreicht.",
+        "model_error": "Das Modell konnte nicht antworten."
+      },
+      "nearest": "Nächste Quellen",
+      "readOnly": "Ask kann noch keine Daten ändern. Es liest nur deine Meetings.",
+      "trailTitle": "So habe ich das gefunden",
+      "trailNone": "Es wurden keine Quellen gelesen.",
+      "trail": {
+        "searched_one": "{{count}} Abschnitt durchsucht",
+        "searched_other": "{{count}} Abschnitte durchsucht",
+        "readSummary_one": "{{count}} Zusammenfassung gelesen",
+        "readSummary_other": "{{count}} Zusammenfassungen gelesen",
+        "readTranscript_one": "{{count}} Transkriptteil gelesen",
+        "readTranscript_other": "{{count}} Transkriptteile gelesen",
+        "listed_one": "{{count}} Eintrag aufgelistet",
+        "listed_other": "{{count}} Einträge aufgelistet",
+        "meetings_one": "{{count}} Meeting aufgelistet",
+        "meetings_other": "{{count}} Meetings aufgelistet"
+      },
+      "trailDropped_one": "{{count}} Quelle ausgelassen",
+      "trailDropped_other": "{{count}} Quellen ausgelassen"
     }
   },
   "help": {

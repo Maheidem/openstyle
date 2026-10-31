@@ -131,7 +131,8 @@
       "permissions": "権限",
       "meetings": "ミーティング",
       "data": "データ",
-      "network": "ネットワーク"
+      "network": "ネットワーク",
+      "ask": "Ask"
     },
     "application": {
       "autoUpdate": "自動アップデート",
@@ -249,7 +250,9 @@
       "liveKeep": "停止時にライブ文字起こしを残す（実験的）",
       "liveKeepDesc": "録音を止めると、ライブのテキストがすぐに会議の文字起こしになり、「ライブ由来」と表示されます。話者ラベルはその後に追加されます。あとで「再度文字起こし」を使えます。ライブ文字起こしがオンのときだけ動作します。",
       "liveCaptions": "録音ピルにライブ字幕を表示する",
-      "liveCaptionsDesc": "会議の録音中、ピルにライブテキストの最後の数行を字幕のように表示します。ライブ文字起こしがオンのときだけ動作します。"
+      "liveCaptionsDesc": "会議の録音中、ピルにライブテキストの最後の数行を字幕のように表示します。ライブ文字起こしがオンのときだけ動作します。",
+      "meetingChat": "会議チャット(「質問」タブ、試験機能)",
+      "meetingChatDesc": "会議に「質問」タブを追加します。文字起こしと要約から、ソース付きで回答します。ローカルモデルが必要です。設定に Ask セクションが表示されます。"
     },
     "data": {
       "pauseHistory": "履歴を一時停止",
@@ -303,6 +306,29 @@
       "statusOk": "接続済み",
       "statusUnreachable": "そのサーバーに接続できません",
       "statusUnauthorized": "アクセストークンが無効または未入力"
+    },
+    "ask": {
+      "rounds": "ツールの回数",
+      "roundsDesc": "回答前に Ask が検索できる回数。既定値: {{value}}。",
+      "sourceBudget": "回答のソース上限",
+      "sourceBudgetDesc": "1回の回答でモデルに渡すソースの量。既定値: {{value}}。",
+      "k": "検索件数 k",
+      "kDesc": "1回の検索で返すテキストの数。既定値: {{value}}。",
+      "deadline": "1回の制限時間",
+      "deadlineDesc": "この時間を過ぎると Ask は中止して知らせます。既定値: {{value}}秒。",
+      "searchWider": "検索範囲を広げる",
+      "searchWiderDesc": "Ask が何も見つけられないとき、広い範囲での検索を提案できます。自動では行いません。",
+      "searchWiderAsk": "確認する",
+      "searchWiderOff": "提案しない",
+      "nativeTools": "ローカルモデルのネイティブなツール呼び出しを使う",
+      "nativeToolsDesc": "次回のモデル起動時に反映されます。",
+      "unmeasured": "未計測",
+      "tokens": "トークン",
+      "seconds": "秒",
+      "numberRange": "設定可能: {{min}}〜{{max}}",
+      "numberInvalid": "{{min}}〜{{max}}で入力してください",
+      "numberSaveFailed": "保存できませんでした。サーバーは現在 {{value}} です。",
+      "numberStripped": "数字のみ。{{dropped}} を除外し、{{value}} と表示しています。"
     }
   },
   "today": {
@@ -686,6 +712,10 @@
       "liveChat": {
         "name": "ライブチャット(試験的)",
         "desc": "録音中の質問に答えます。"
+      },
+      "meetingChat": {
+        "name": "会議チャット(試験機能)",
+        "desc": "会議の「質問」タブでの質問に答えます。"
       }
     },
     "loading": "モデルを読み込み中",
@@ -1259,6 +1289,79 @@
       "fromLive": "ライブ由来",
       "fromLiveHint": "この文字起こしはライブ表示から作られました。「再度文字起こし」で完全な処理を実行できます。",
       "chatHistoryTitle": "ライブチャット"
+    },
+    "ask": {
+      "tab": "質問",
+      "title": "この会議について質問",
+      "experimental": "試験機能",
+      "scopeMeeting": "この会議",
+      "threads": "この会議のチャット",
+      "threadNew": "新しいチャット",
+      "threadUntitled": "{{date}} のチャット",
+      "newChat": "新しいチャット",
+      "empty": "この会議について質問してください。Ask は文字起こしと要約を読みます。",
+      "exampleDecisions": "何を決めましたか?",
+      "exampleActions": "未完了のアクションは?",
+      "exampleStatus": "現在の状況は?",
+      "you": "あなた",
+      "thinking": "考え中...",
+      "warming": "モデルを準備中...",
+      "placeholder": "この会議について質問",
+      "inputLabel": "質問",
+      "send": "送信",
+      "hint": "Enter で送信。Shift+Enter で改行。最大{{max}}文字。",
+      "errOff": "Ask はオフです。設定の「会議」でオンにしてください。",
+      "errNoModel": "Ask のモデルが未設定です。モデルのページでモデルを選んでダウンロードしてください。",
+      "errProviderNotReady": "Ask のモデルの準備ができていません。モデルのページで確認してください。",
+      "errBusy": "モデルが使用中です。しばらくしてからもう一度お試しください。",
+      "errScope": "この会議は利用できません。",
+      "errFailed": "Ask は回答できませんでした。もう一度お試しください。",
+      "retry": "再試行",
+      "openModels": "モデルを開く",
+      "openSettings": "設定を開く",
+      "untitled": "無題の会議",
+      "citeOpen": "会議「{{title}}」の {{time}} を開く",
+      "citeOpenNoTime": "会議「{{title}}」を開く",
+      "citeRemovedName": "ソース {{label}}: 会議は削除されました",
+      "citeRemoved": "削除済み",
+      "citeSummary": "要約",
+      "done": "完了",
+      "open": "未完了",
+      "owner": "担当: {{name}}",
+      "due": "期限: {{date}}",
+      "list": {
+        "action_items_other": "アクション {{count}} 件",
+        "decisions_other": "決定事項 {{count}} 件",
+        "open_questions_other": "未解決の質問 {{count}} 件",
+        "meetings_other": "会議 {{count}} 件"
+      },
+      "count": {
+        "action_items_other": "件のアクション",
+        "decisions_other": "件の決定事項",
+        "open_questions_other": "件の未解決の質問",
+        "meetings_other": "件の会議"
+      },
+      "statusCounts": "未完了のアクション: {{actions}}。未解決の質問: {{questions}}。",
+      "notFound": {
+        "noSourcesMeeting": "この会議には該当する内容が見つかりませんでした。",
+        "noSourcesFolder": "このフォルダには該当する内容が見つかりませんでした。",
+        "cite_check": "回答をソースで確認できなかったため、表示しません。",
+        "deadline": "時間がかかりすぎたため、中止しました。",
+        "call_cap": "この質問の検索上限に達しました。",
+        "model_error": "モデルが回答に失敗しました。"
+      },
+      "nearest": "最も近いソース",
+      "readOnly": "Ask はまだデータを変更できません。会議を読むだけです。",
+      "trailTitle": "調べた手順",
+      "trailNone": "読み込んだソースはありません。",
+      "trail": {
+        "searched_other": "{{count}} 件の断片を検索",
+        "readSummary_other": "要約を {{count}} 件読み込み",
+        "readTranscript_other": "文字起こしを {{count}} か所読み込み",
+        "listed_other": "{{count}} 件の項目を一覧化",
+        "meetings_other": "{{count}} 件の会議を一覧化"
+      },
+      "trailDropped_other": "{{count}} 件のソースを除外"
     }
   },
   "help": {

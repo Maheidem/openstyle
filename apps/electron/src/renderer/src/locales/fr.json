@@ -131,7 +131,8 @@
       "permissions": "Permissions",
       "meetings": "Réunions",
       "data": "Données",
-      "network": "Réseau"
+      "network": "Réseau",
+      "ask": "Ask"
     },
     "application": {
       "autoUpdate": "Mises à jour automatiques",
@@ -249,7 +250,9 @@
       "liveKeep": "Garder la transcription en direct à l'arrêt (expérimental)",
       "liveKeepDesc": "À l'arrêt de l'enregistrement, le texte en direct devient aussitôt la transcription de la réunion, marquée \"Issu du direct\". Les étiquettes de locuteurs sont ajoutées ensuite. Vous pouvez utiliser Retranscrire. Fonctionne seulement avec la transcription en direct activée.",
       "liveCaptions": "Afficher les sous-titres en direct dans la pilule d'enregistrement",
-      "liveCaptionsDesc": "Pendant l'enregistrement d'une réunion, la pilule affiche les dernières lignes du texte en direct, comme des sous-titres. Fonctionne seulement avec la transcription en direct activée."
+      "liveCaptionsDesc": "Pendant l'enregistrement d'une réunion, la pilule affiche les dernières lignes du texte en direct, comme des sous-titres. Fonctionne seulement avec la transcription en direct activée.",
+      "meetingChat": "Chat de réunion (onglet Demander, expérimental)",
+      "meetingChatDesc": "Ajoute un onglet Demander à une réunion. Vous posez des questions et recevez des réponses tirées de la transcription et du résumé, avec les sources. Un modèle local est nécessaire. Une section Ask apparaît dans les Réglages."
     },
     "data": {
       "pauseHistory": "Suspendre l'historique",
@@ -303,6 +306,29 @@
       "statusOk": "Connecté",
       "statusUnreachable": "Impossible de joindre ce serveur",
       "statusUnauthorized": "Jeton d'accès invalide ou manquant"
+    },
+    "ask": {
+      "rounds": "Tours d'outils",
+      "roundsDesc": "Combien de fois Ask peut chercher avant de répondre. Par défaut : {{value}}.",
+      "sourceBudget": "Budget de sources de la réponse",
+      "sourceBudgetDesc": "Quantité de texte source qu'Ask donne au modèle pour une réponse. Par défaut : {{value}}.",
+      "k": "k de récupération",
+      "kDesc": "Nombre d'extraits qu'une recherche renvoie. Par défaut : {{value}}.",
+      "deadline": "Délai par question",
+      "deadlineDesc": "Ask s'arrête après ce délai et le dit. Par défaut : {{value}} secondes.",
+      "searchWider": "Élargir la recherche",
+      "searchWiderDesc": "Quand Ask ne trouve rien, il peut proposer une recherche plus large. Il ne le fait jamais seul.",
+      "searchWiderAsk": "Me demander",
+      "searchWiderOff": "Ne pas proposer",
+      "nativeTools": "Utiliser les appels d'outils natifs du modèle local",
+      "nativeToolsDesc": "S'applique au prochain démarrage du modèle.",
+      "unmeasured": "non mesuré",
+      "tokens": "jetons",
+      "seconds": "secondes",
+      "numberRange": "Autorisé : {{min}}–{{max}}",
+      "numberInvalid": "Saisissez {{min}}–{{max}}",
+      "numberSaveFailed": "Enregistrement impossible. Le serveur a toujours {{value}}.",
+      "numberStripped": "Chiffres seulement. {{dropped}} retiré, le champ affiche {{value}}."
     }
   },
   "today": {
@@ -686,6 +712,10 @@
       "liveChat": {
         "name": "Chat en direct (expérimental)",
         "desc": "Répond à vos questions pendant un enregistrement."
+      },
+      "meetingChat": {
+        "name": "Chat de réunion (expérimental)",
+        "desc": "Répond à vos questions dans l'onglet Demander d'une réunion."
       }
     },
     "loading": "Chargement des modèles",
@@ -1259,6 +1289,93 @@
       "fromLive": "Issu du direct",
       "fromLiveHint": "Cette transcription vient de la vue en direct. Utilisez Retranscrire pour lancer le passage complet.",
       "chatHistoryTitle": "Chat en direct"
+    },
+    "ask": {
+      "tab": "Demander",
+      "title": "Poser une question sur cette réunion",
+      "experimental": "Expérimental",
+      "scopeMeeting": "Cette réunion",
+      "threads": "Discussions de cette réunion",
+      "threadNew": "Nouvelle discussion",
+      "threadUntitled": "Discussion du {{date}}",
+      "newChat": "Nouvelle discussion",
+      "empty": "Posez une question sur cette réunion. Ask lit la transcription et le résumé.",
+      "exampleDecisions": "Qu'avons-nous décidé ?",
+      "exampleActions": "Quelles actions sont ouvertes ?",
+      "exampleStatus": "Où en sommes-nous ?",
+      "you": "Vous",
+      "thinking": "Réflexion...",
+      "warming": "Le modèle démarre...",
+      "placeholder": "Question sur cette réunion",
+      "inputLabel": "Votre question",
+      "send": "Envoyer",
+      "hint": "Entrée envoie. Maj+Entrée ajoute une ligne. {{max}} caractères au maximum.",
+      "errOff": "Ask est désactivé. Activez-le dans Réglages, Réunions.",
+      "errNoModel": "Aucun modèle n'est défini pour Ask. Choisissez et téléchargez un modèle sur la page Modèles.",
+      "errProviderNotReady": "Le modèle d'Ask n'est pas prêt. Vérifiez-le sur la page Modèles.",
+      "errBusy": "Le modèle est occupé. Réessayez dans un instant.",
+      "errScope": "Cette réunion n'est pas disponible.",
+      "errFailed": "Ask n'a pas pu répondre. Réessayez.",
+      "retry": "Réessayer",
+      "openModels": "Ouvrir Modèles",
+      "openSettings": "Ouvrir Réglages",
+      "untitled": "Réunion sans titre",
+      "citeOpen": "Ouvrir la réunion {{title}} à {{time}}",
+      "citeOpenNoTime": "Ouvrir la réunion {{title}}",
+      "citeRemovedName": "Source {{label}} : la réunion est supprimée",
+      "citeRemoved": "supprimée",
+      "citeSummary": "résumé",
+      "done": "Fait",
+      "open": "Ouvert",
+      "owner": "Responsable : {{name}}",
+      "due": "Échéance : {{date}}",
+      "list": {
+        "action_items_one": "{{count}} action",
+        "action_items_other": "{{count}} actions",
+        "decisions_one": "{{count}} décision",
+        "decisions_other": "{{count}} décisions",
+        "open_questions_one": "{{count}} question ouverte",
+        "open_questions_other": "{{count}} questions ouvertes",
+        "meetings_one": "{{count}} réunion",
+        "meetings_other": "{{count}} réunions"
+      },
+      "count": {
+        "action_items_one": "action",
+        "action_items_other": "actions",
+        "decisions_one": "décision",
+        "decisions_other": "décisions",
+        "open_questions_one": "question ouverte",
+        "open_questions_other": "questions ouvertes",
+        "meetings_one": "réunion",
+        "meetings_other": "réunions"
+      },
+      "statusCounts": "Actions ouvertes : {{actions}}. Questions ouvertes : {{questions}}.",
+      "notFound": {
+        "noSourcesMeeting": "Je n'ai rien trouvé à ce sujet dans cette réunion.",
+        "noSourcesFolder": "Je n'ai rien trouvé à ce sujet dans ce dossier.",
+        "cite_check": "Je n'ai pas pu vérifier ma réponse avec les sources, donc je ne l'affiche pas.",
+        "deadline": "Cela a pris trop de temps, donc je me suis arrêté.",
+        "call_cap": "J'ai atteint la limite de recherche pour cette question.",
+        "model_error": "Le modèle n'a pas réussi à répondre."
+      },
+      "nearest": "Sources les plus proches",
+      "readOnly": "Ask ne peut pas encore modifier de données. Il lit seulement vos réunions.",
+      "trailTitle": "Comment j'ai trouvé cela",
+      "trailNone": "Aucune source n'a été lue.",
+      "trail": {
+        "searched_one": "a cherché {{count}} extrait",
+        "searched_other": "a cherché {{count}} extraits",
+        "readSummary_one": "a lu {{count}} résumé",
+        "readSummary_other": "a lu {{count}} résumés",
+        "readTranscript_one": "a lu {{count}} passage de la transcription",
+        "readTranscript_other": "a lu {{count}} passages de la transcription",
+        "listed_one": "a listé {{count}} élément",
+        "listed_other": "a listé {{count}} éléments",
+        "meetings_one": "a listé {{count}} réunion",
+        "meetings_other": "a listé {{count}} réunions"
+      },
+      "trailDropped_one": "{{count}} source écartée",
+      "trailDropped_other": "{{count}} sources écartées"
     }
   },
   "help": {

@@ -141,6 +141,8 @@ export interface TurnResult {
     ids: string[];
     arg: string | boolean | string[] | null;
   } | null;
+  /** The tool calls that ran, in order, at the id level. Eval and trace only; not stored. */
+  toolCalls: { tool: string; args: unknown; rows: number }[];
   modelId: string | null;
   provider: string | null;
   runId: string | null;

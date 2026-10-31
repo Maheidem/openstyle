@@ -3,7 +3,7 @@ import type { LlmTaskId } from "@openstyle/validations";
 import { getMlxLlmModel, MLX_LLM_PROVIDER_ID } from "../mlx-llm/constants.js";
 import { stripModelPrefix } from "../model-id.js";
 import { fetchModelsFromRegistry } from "../model-registry.js";
-import type { LlmStepId, StructuredMode } from "./call-record.js";
+import type { ChatStepId, LlmStepId, StructuredMode } from "./call-record.js";
 import { blankFacts, modelUnavailableFrom } from "./gateway-errors.js";
 import {
   type GatewayOverrides,
@@ -21,7 +21,7 @@ const log = createAppLogger("llm-model-profiles");
 
 export type MeetingLlmTaskId = Extract<
   LlmTaskId,
-  "meetingEnhance" | "meetingSummarize"
+  "meetingEnhance" | "meetingSummarize" | "meetingChat"
 >;
 
 /** The task each step runs under. A later consumer adds its steps here. */
@@ -78,7 +78,7 @@ export type ResolvedModels = Record<LlmStepId, CallProfile>;
 
 export interface ResolveCallProfileArgs {
   taskId: MeetingLlmTaskId;
-  step: LlmStepId;
+  step: LlmStepId | ChatStepId;
   maxReasoningTokens: number;
   pin?: { provider: string; modelId: string };
   /** Test hook. Replaces the table for this call. Production never passes it. */
@@ -550,7 +550,7 @@ export function reasoningWire(profile: CallProfile): ReasoningWire {
 
 async function resolveBase(
   taskId: MeetingLlmTaskId,
-  step: LlmStepId,
+  step: LlmStepId | ChatStepId,
   pin: { provider: string; modelId: string } | undefined,
 ): Promise<{ provider: string; modelId: string }> {
   try {
@@ -577,7 +577,7 @@ function buildProfile(
   const shortId = stripModelPrefix(base.provider, base.modelId);
   const warnings: string[] = [];
   if (read.kind === "failed") warnings.push("registry_unavailable");
-  const mode = table[a.step] === "bounded" ? "bounded" : "off";
+  const mode = table[a.step as LlmStepId] === "bounded" ? "bounded" : "off";
   // The local MLX LLM has no models.dev entry. Its catalog has the limits.
   const localDef =
     base.provider === MLX_LLM_PROVIDER_ID ? getMlxLlmModel(shortId) : undefined;

@@ -6,12 +6,14 @@ import {
   APICallError,
   asSchema,
   generateText,
+  jsonSchema,
   type LanguageModel,
   type LanguageModelMiddleware,
   NoObjectGeneratedError,
   NoOutputGeneratedError,
   Output,
   RetryError,
+  tool,
   wrapLanguageModel,
 } from "ai";
 import type { z } from "zod";
@@ -106,6 +108,8 @@ export interface CallStructuredInput<T> {
   };
   /** Test seam: a scripted model. Production leaves it unset. */
   createModel?: CreateModel;
+  /** Replaces the task timeout of this call (the chat adds a cold timeout). */
+  timeoutMs?: number;
 }
 
 export interface CallStructuredResult<T> {
@@ -272,6 +276,8 @@ interface Capture {
   warnings: { type: string; feature?: string; details?: string }[];
   text: string;
   reasoningChars: number;
+  /** The tool calls of the answer, as the model wrote them (callToolTurn). */
+  toolCalls: { name: string; input: string }[];
   usage: TokenUsage;
   /** Call options the SDK handed to the model, for the ledger when no body exists. */
   callOptions: {
@@ -613,6 +619,308 @@ function isTimeoutReason(reason: unknown): boolean {
   );
 }
 
+// ---------------------------------------------------------------------------
+// Shared steps of a call (callStructured and callToolTurn)
+// ---------------------------------------------------------------------------
+
+interface PreparedCall {
+  resolved: ResolvedTaskCall;
+  model: Exclude<LanguageModel, string>;
+  wireHolder: { seen: boolean; body: unknown };
+  warnings: string[];
+  wire: ReturnType<typeof reasoningWire>;
+  instructions: string;
+  promptTokens: number;
+}
+
+/**
+ * Steps 2 and 3 of a call: resolve the task call, build the instructions and
+ * the model. A fault here means no request was sent (ModelUnavailableError).
+ */
+async function prepareCall(a: {
+  profile: CallProfile;
+  facts: CallFacts;
+  step: GatewayStepId;
+  maxOutputTokens: number;
+  messages: readonly ChatTurn[];
+  llamaCppCompletion: boolean;
+  createModel?: CreateModel;
+  /** Runs inside the guarded block, so a fault in it is a setup fault. */
+  buildInstructions: () => Promise<string>;
+}): Promise<PreparedCall> {
+  const { profile } = a;
+  const wireHolder: { seen: boolean; body: unknown } = {
+    seen: false,
+    body: null,
+  };
+  const warnings = [...profile.warnings];
+  const wire = reasoningWire(profile);
+  warnings.push(...wire.warnings);
+  if (a.llamaCppCompletion) {
+    warnings.push(
+      "llama.cpp: /v1/completions, JSON grammar from the first token",
+    );
+  }
+  try {
+    const resolved = await resolveTaskCall(profile.taskId, {
+      autoMaxOutputTokens: a.maxOutputTokens,
+      pin: { provider: profile.provider, modelId: profile.modelId },
+    });
+    const instructions = await a.buildInstructions();
+    const promptTokens = estimateCallTokens({
+      instructions,
+      messages: a.messages,
+    });
+
+    const presetSet = {
+      topLevel: resolved.presetKeys.topLevel,
+      chatTemplateKwargs: resolved.presetKeys.chatTemplateKwargs,
+    };
+    const overrides: GatewayOverrides = {
+      ...wire.overrides,
+      presetSet,
+      ...(profile.contextWindow !== null
+        ? { maxTokensCeiling: profile.contextWindow - promptTokens }
+        : {}),
+      ...(a.llamaCppCompletion ? { llamaCppCompletion: true } : {}),
+    };
+    if (wire.overrides.bounded) {
+      if (presetSet.chatTemplateKwargs.includes("enable_thinking")) {
+        warnings.push("reasoning plan overridden by preset: enable_thinking");
+      }
+      if (presetSet.topLevel.includes("thinking_budget")) {
+        warnings.push("reasoning plan overridden by preset: thinking_budget");
+      }
+    } else if (
+      profile.reasoning.mode === "off" &&
+      !profile.reasoning.force &&
+      isLocalProvider(profile.provider) &&
+      presetSet.chatTemplateKwargs.includes("enable_thinking") &&
+      asObject(resolved.samplingParams.chat_template_kwargs)
+        ?.enable_thinking === true
+    ) {
+      warnings.push("reasoning on by preset");
+    }
+
+    // OpenRouter must route to an endpoint that supports every parameter we
+    // send, or the schema could be dropped silently (5.4).
+    const bodyExtra: Record<string, unknown> | null =
+      profile.provider === "openrouter"
+        ? { provider: { require_parameters: true }, ...wire.bodyExtra }
+        : Object.keys(wire.bodyExtra).length > 0
+          ? wire.bodyExtra
+          : null;
+
+    const taskContext: LlmTaskContext = {
+      task: profile.taskId,
+      sampling: resolved.samplingParams,
+      gatewayOverrides: overrides,
+      ...(bodyExtra ? { bodyExtra } : {}),
+      onRequestBody: (body) => {
+        wireHolder.seen = true;
+        wireHolder.body = body;
+      },
+    };
+    const created = await (a.createModel ?? createChatModel)(
+      resolved.provider,
+      resolved.modelId,
+      taskContext,
+    );
+    if (typeof created === "string") {
+      throw new Error(`Unsupported provider: ${resolved.provider}`);
+    }
+    return {
+      resolved,
+      model: created,
+      wireHolder,
+      warnings,
+      wire,
+      instructions,
+      promptTokens,
+    };
+  } catch (e) {
+    throw modelUnavailableFrom(e, a.facts);
+  }
+}
+
+/** The middleware that copies the raw answer of the model into `captured`. */
+function captureMiddleware(captured: {
+  value: Capture | null;
+}): LanguageModelMiddleware {
+  return {
+    wrapGenerate: async ({ doGenerate, params }) => {
+      const result = await doGenerate();
+      let text = "";
+      let reasoningChars = 0;
+      const toolCalls: Capture["toolCalls"] = [];
+      for (const part of result.content) {
+        if (part.type === "text") text += part.text;
+        else if (part.type === "reasoning") reasoningChars += part.text.length;
+        else if (part.type === "tool-call") {
+          toolCalls.push({ name: part.toolName, input: part.input });
+        }
+      }
+      const fromBody = bodyReasoning(result.response?.body);
+      if (fromBody) reasoningChars += fromBody.length;
+      captured.value = {
+        unified: result.finishReason.unified,
+        raw: result.finishReason.raw,
+        modelId: result.response?.modelId,
+        responseBody: result.response?.body,
+        requestBody: result.request?.body,
+        warnings: result.warnings as Capture["warnings"],
+        text,
+        reasoningChars,
+        toolCalls,
+        usage: usageOf(result.usage, result.response?.body),
+        callOptions: {
+          ...(params.temperature !== undefined
+            ? { temperature: params.temperature }
+            : {}),
+          ...(params.topP !== undefined ? { topP: params.topP } : {}),
+          ...(params.maxOutputTokens !== undefined
+            ? { maxOutputTokens: params.maxOutputTokens }
+            : {}),
+        },
+      };
+      return result;
+    },
+  };
+}
+
+/** Builds the record of a call and hands it to the sink (7.7). */
+function makeFinalizer(f: {
+  input: {
+    step: GatewayStepId;
+    runId: string;
+    unitKey: string;
+    sink: CallSink;
+    retry?: { kind: GatewayErrorKind };
+  };
+  profile: CallProfile;
+  mode: StructuredMode;
+  resolved: ResolvedTaskCall;
+  warnings: string[];
+  noReasoningControl: boolean;
+  maxOutputTokens: number;
+  captured: { value: Capture | null };
+  wireHolder: { seen: boolean; body: unknown };
+  facts: CallFacts;
+  modelRequested: string;
+  instructions: string;
+  messages: readonly ChatTurn[];
+  /** Read after the call, so a schema built late is included. */
+  schema: () => CallRecord["schema"];
+  laneStart: number;
+}) {
+  return async (
+    outcome: { error: GatewayError | null; parsed: unknown },
+    times: { startedAt: number; wireStart: number },
+  ): Promise<{ id: number | null; attempt: number | null }> => {
+    const { input, facts } = f;
+    const finishedAt = Date.now();
+    const c = f.captured.value;
+    const ledger = buildLedger({
+      sdkBody: c ? c.requestBody : null,
+      wireBody: f.wireHolder.seen ? f.wireHolder.body : null,
+      capture: c,
+      resolved: f.resolved,
+      profile: f.profile,
+      mode: f.mode,
+      warnings: f.warnings,
+      noReasoningControl: f.noReasoningControl,
+      maxOutputTokens: f.maxOutputTokens,
+    });
+    Object.assign(facts, { paramsLedger: ledger, structuredMode: f.mode });
+    const record: CallRecord = {
+      runId: input.runId,
+      unitKey: input.unitKey,
+      node: input.step,
+      retryReason: input.retry?.kind ?? null,
+      provider: f.profile.provider,
+      modelRequested: f.modelRequested,
+      modelServed: facts.modelServed,
+      instructions: f.instructions,
+      messages: f.messages,
+      schema: f.schema(),
+      params: ledger,
+      rawText: c ? c.text : null,
+      parsed: outcome.parsed ?? null,
+      reasoningChars: c ? c.reasoningChars : null,
+      finishUnified: c ? c.unified : null,
+      finishRaw: c ? (c.raw ?? null) : null,
+      usage: c
+        ? c.usage
+        : { input: null, output: null, reasoning: null, cached: null },
+      queuedMs: times.wireStart - f.laneStart,
+      latencyMs: finishedAt - times.wireStart,
+      errorKind: outcome.error ? outcome.error.kind : null,
+      errorDetail: outcome.error ? outcome.error.message.slice(0, 500) : null,
+      startedAt: times.startedAt,
+      finishedAt,
+    };
+    let recorded: { id: number; attempt: number } | null = null;
+    try {
+      recorded = input.sink.recordCall(record);
+    } catch {
+      log.warn(`call record write failed (${input.step} ${input.unitKey})`);
+    }
+    facts.callId = recorded?.id ?? null;
+    facts.attempt = recorded?.attempt ?? null;
+    facts.latencyMs = finishedAt - times.wireStart;
+    return { id: facts.callId, attempt: facts.attempt };
+  };
+}
+
+/** The typed error of a call that ended without a captured answer. */
+function noAnswerError(a: {
+  facts: CallFacts;
+  signal: AbortSignal;
+  timeoutSignal: AbortSignal;
+  timeoutMs: number;
+  sdkError: unknown;
+  ctx: ErrorContext;
+  isRetry: boolean;
+}): GatewayError {
+  const { facts, ctx, isRetry } = a;
+  if (a.signal.aborted) {
+    return isTimeoutReason(reasonOf(a.signal))
+      ? new DeadlineExceededError({
+          facts,
+          message: "The run deadline passed during the call.",
+        })
+      : new CancelledError({
+          facts,
+          message: "The call was cancelled.",
+          phase: "in_flight",
+        });
+  }
+  if (a.timeoutSignal.aborted) {
+    return new ProviderError({
+      facts,
+      message: "Provider error: timeout",
+      reason: "timeout",
+      statusCode: null,
+      retryAfterMs: null,
+      detail: `TimeoutError: no answer in ${a.timeoutMs} ms`,
+      retry:
+        isRetry || isLocalProvider(ctx.profile.provider)
+          ? null
+          : { change: "none", waitMs: backoffWaitMs() },
+    });
+  }
+  if (APICallError.isInstance(a.sdkError)) return mapApiError(a.sdkError, ctx);
+  return new ProviderError({
+    facts,
+    message: "Provider error: unavailable",
+    reason: "unavailable",
+    statusCode: null,
+    retryAfterMs: null,
+    detail: failureDetail(a.sdkError),
+    retry: isRetry ? null : { change: "none", waitMs: backoffWaitMs() },
+  });
+}
+
 /**
  * Send one structured request and check the answer. Throws one typed
  * `GatewayError`. Every call that reached the wire writes one record, also
@@ -654,136 +962,33 @@ export async function callStructured<T>(
 
   // Steps 2 and 3: resolve the call and build the model. A fault here means no
   // request was sent (ModelUnavailableError).
-  let resolved: ResolvedTaskCall;
-  let model: LanguageModel;
-  const wireHolder: { seen: boolean; body: unknown } = {
-    seen: false,
-    body: null,
-  };
-  const warnings = [...profile.warnings];
-  const wire = reasoningWire(profile);
-  warnings.push(...wire.warnings);
   const llamaCppCompletion =
     isOwnServerProvider(profile.provider) &&
     (input.retry?.change === "llamacpp_completion" ||
       llamaCppCompletionModels.has(routeKey(profile.modelId, input.step)));
-  if (llamaCppCompletion) {
-    warnings.push(
-      "llama.cpp: /v1/completions, JSON grammar from the first token",
-    );
-  }
   let jsonSchema: unknown;
-  let instructions: string;
-  let promptTokens: number;
-  try {
-    resolved = await resolveTaskCall(profile.taskId, {
-      autoMaxOutputTokens: maxOutputTokens,
-      pin: { provider: profile.provider, modelId: profile.modelId },
-    });
-    jsonSchema = await asSchema(input.schema.zod).jsonSchema;
-    instructions = degraded
-      ? `${input.instructions}\n\n${DEGRADED_SUFFIX}\n${JSON.stringify(jsonSchema)}`
-      : input.instructions;
-    promptTokens = estimateCallTokens({ instructions, messages });
-
-    const presetSet = {
-      topLevel: resolved.presetKeys.topLevel,
-      chatTemplateKwargs: resolved.presetKeys.chatTemplateKwargs,
-    };
-    const overrides: GatewayOverrides = {
-      ...wire.overrides,
-      presetSet,
-      ...(profile.contextWindow !== null
-        ? { maxTokensCeiling: profile.contextWindow - promptTokens }
-        : {}),
-      ...(llamaCppCompletion ? { llamaCppCompletion: true } : {}),
-    };
-    if (wire.overrides.bounded) {
-      if (presetSet.chatTemplateKwargs.includes("enable_thinking")) {
-        warnings.push("reasoning plan overridden by preset: enable_thinking");
-      }
-      if (presetSet.topLevel.includes("thinking_budget")) {
-        warnings.push("reasoning plan overridden by preset: thinking_budget");
-      }
-    } else if (
-      profile.reasoning.mode === "off" &&
-      !profile.reasoning.force &&
-      isLocalProvider(profile.provider) &&
-      presetSet.chatTemplateKwargs.includes("enable_thinking") &&
-      asObject(resolved.samplingParams.chat_template_kwargs)
-        ?.enable_thinking === true
-    ) {
-      warnings.push("reasoning on by preset");
-    }
-
-    // OpenRouter must route to an endpoint that supports every parameter we
-    // send, or the schema could be dropped silently (5.4).
-    const bodyExtra: Record<string, unknown> | null =
-      profile.provider === "openrouter"
-        ? { provider: { require_parameters: true }, ...wire.bodyExtra }
-        : Object.keys(wire.bodyExtra).length > 0
-          ? wire.bodyExtra
-          : null;
-
-    const taskContext: LlmTaskContext = {
-      task: profile.taskId,
-      sampling: resolved.samplingParams,
-      gatewayOverrides: overrides,
-      ...(bodyExtra ? { bodyExtra } : {}),
-      onRequestBody: (body) => {
-        wireHolder.seen = true;
-        wireHolder.body = body;
-      },
-    };
-    const created = await (input.createModel ?? createChatModel)(
-      resolved.provider,
-      resolved.modelId,
-      taskContext,
-    );
-    if (typeof created === "string") {
-      throw new Error(`Unsupported provider: ${resolved.provider}`);
-    }
-    model = created;
-  } catch (e) {
-    throw modelUnavailableFrom(e, facts);
-  }
+  const prepared = await prepareCall({
+    profile,
+    facts,
+    step: input.step,
+    maxOutputTokens,
+    messages,
+    llamaCppCompletion,
+    ...(input.createModel ? { createModel: input.createModel } : {}),
+    buildInstructions: async () => {
+      jsonSchema = await asSchema(input.schema.zod).jsonSchema;
+      return degraded
+        ? `${input.instructions}\n\n${DEGRADED_SUFFIX}\n${JSON.stringify(jsonSchema)}`
+        : input.instructions;
+    },
+  });
+  const { resolved, model, wireHolder, warnings, wire, instructions } =
+    prepared;
+  const { promptTokens } = prepared;
 
   const laneStart = Date.now();
   const captured: { value: Capture | null } = { value: null };
-  const middleware: LanguageModelMiddleware = {
-    wrapGenerate: async ({ doGenerate, params }) => {
-      const result = await doGenerate();
-      let text = "";
-      let reasoningChars = 0;
-      for (const part of result.content) {
-        if (part.type === "text") text += part.text;
-        else if (part.type === "reasoning") reasoningChars += part.text.length;
-      }
-      const fromBody = bodyReasoning(result.response?.body);
-      if (fromBody) reasoningChars += fromBody.length;
-      captured.value = {
-        unified: result.finishReason.unified,
-        raw: result.finishReason.raw,
-        modelId: result.response?.modelId,
-        responseBody: result.response?.body,
-        requestBody: result.request?.body,
-        warnings: result.warnings as Capture["warnings"],
-        text,
-        reasoningChars,
-        usage: usageOf(result.usage, result.response?.body),
-        callOptions: {
-          ...(params.temperature !== undefined
-            ? { temperature: params.temperature }
-            : {}),
-          ...(params.topP !== undefined ? { topP: params.topP } : {}),
-          ...(params.maxOutputTokens !== undefined
-            ? { maxOutputTokens: params.maxOutputTokens }
-            : {}),
-        },
-      };
-      return result;
-    },
-  };
+  const middleware = captureMiddleware(captured);
   const wrapped = wrapLanguageModel({ model, middleware });
   const modelRequested = model.modelId;
   facts.modelRequested = modelRequested;
@@ -802,66 +1007,27 @@ export async function callStructured<T>(
     wire.providerOptions,
   );
 
-  const finalize = async (
-    outcome: { error: GatewayError | null; parsed: unknown },
-    times: { startedAt: number; wireStart: number },
-  ): Promise<{ id: number | null; attempt: number | null }> => {
-    const finishedAt = Date.now();
-    const c = captured.value;
-    const ledger = buildLedger({
-      sdkBody: c ? c.requestBody : null,
-      wireBody: wireHolder.seen ? wireHolder.body : null,
-      capture: c,
-      resolved,
-      profile,
-      mode,
-      warnings,
-      noReasoningControl: wire.noControl,
-      maxOutputTokens,
-    });
-    Object.assign(facts, { paramsLedger: ledger, structuredMode: mode });
-    const record: CallRecord = {
-      runId: input.runId,
-      unitKey: input.unitKey,
-      node: input.step,
-      retryReason: input.retry?.kind ?? null,
-      provider: profile.provider,
-      modelRequested,
-      modelServed: facts.modelServed,
-      instructions,
-      messages,
-      schema: {
-        name: input.schema.name,
-        version: input.schema.version,
-        json: jsonSchema,
-      },
-      params: ledger,
-      rawText: c ? c.text : null,
-      parsed: outcome.parsed ?? null,
-      reasoningChars: c ? c.reasoningChars : null,
-      finishUnified: c ? c.unified : null,
-      finishRaw: c ? (c.raw ?? null) : null,
-      usage: c
-        ? c.usage
-        : { input: null, output: null, reasoning: null, cached: null },
-      queuedMs: times.wireStart - laneStart,
-      latencyMs: finishedAt - times.wireStart,
-      errorKind: outcome.error ? outcome.error.kind : null,
-      errorDetail: outcome.error ? outcome.error.message.slice(0, 500) : null,
-      startedAt: times.startedAt,
-      finishedAt,
-    };
-    let recorded: { id: number; attempt: number } | null = null;
-    try {
-      recorded = input.sink.recordCall(record);
-    } catch {
-      log.warn(`call record write failed (${input.step} ${input.unitKey})`);
-    }
-    facts.callId = recorded?.id ?? null;
-    facts.attempt = recorded?.attempt ?? null;
-    facts.latencyMs = finishedAt - times.wireStart;
-    return { id: facts.callId, attempt: facts.attempt };
-  };
+  const finalize = makeFinalizer({
+    input,
+    profile,
+    mode,
+    resolved,
+    warnings,
+    noReasoningControl: wire.noControl,
+    maxOutputTokens,
+    captured,
+    wireHolder,
+    facts,
+    modelRequested,
+    instructions,
+    messages,
+    schema: () => ({
+      name: input.schema.name,
+      version: input.schema.version,
+      json: jsonSchema,
+    }),
+    laneStart,
+  });
 
   const queued = (): GatewayError => {
     if (input.signal.aborted && isTimeoutReason(reasonOf(input.signal))) {
@@ -922,7 +1088,9 @@ export async function callStructured<T>(
         }
         const startedAt = Date.now();
         const wireStart = startedAt;
-        const timeoutSignal = AbortSignal.timeout(resolved.timeoutMs);
+        const timeoutSignal = AbortSignal.timeout(
+          input.timeoutMs ?? resolved.timeoutMs,
+        );
         const abortSignal = AbortSignal.any([input.signal, timeoutSignal]);
 
         let sdkResult: Awaited<ReturnType<typeof generateText>> | null = null;
@@ -961,46 +1129,15 @@ export async function callStructured<T>(
 
         // Abort, deadline and timeout come first when no answer was captured.
         if (!c) {
-          let error: GatewayError;
-          if (input.signal.aborted) {
-            error = isTimeoutReason(reasonOf(input.signal))
-              ? new DeadlineExceededError({
-                  facts,
-                  message: "The run deadline passed during the call.",
-                })
-              : new CancelledError({
-                  facts,
-                  message: "The call was cancelled.",
-                  phase: "in_flight",
-                });
-          } else if (timeoutSignal.aborted) {
-            error = new ProviderError({
-              facts,
-              message: "Provider error: timeout",
-              reason: "timeout",
-              statusCode: null,
-              retryAfterMs: null,
-              detail: `TimeoutError: no answer in ${resolved.timeoutMs} ms`,
-              retry:
-                isRetry || isLocalProvider(profile.provider)
-                  ? null
-                  : { change: "none", waitMs: backoffWaitMs() },
-            });
-          } else if (APICallError.isInstance(sdkError)) {
-            error = mapApiError(sdkError, ctx);
-          } else {
-            error = new ProviderError({
-              facts,
-              message: "Provider error: unavailable",
-              reason: "unavailable",
-              statusCode: null,
-              retryAfterMs: null,
-              detail: failureDetail(sdkError),
-              retry: isRetry
-                ? null
-                : { change: "none", waitMs: backoffWaitMs() },
-            });
-          }
+          const error = noAnswerError({
+            facts,
+            signal: input.signal,
+            timeoutSignal,
+            timeoutMs: input.timeoutMs ?? resolved.timeoutMs,
+            sdkError,
+            ctx,
+            isRetry,
+          });
           await finalize({ error, parsed: null }, { startedAt, wireStart });
           throw error;
         }
@@ -1251,6 +1388,440 @@ export async function callStructured<T>(
           structuredMode: mode,
           callId: recorded.id,
         } satisfies CallStructuredResult<T>;
+      },
+    );
+  } catch (e) {
+    if (e instanceof LlmLaneCancelledError) throw queued();
+    throw e;
+  }
+}
+
+// ---------------------------------------------------------------------------
+// callToolTurn: one native tool-call turn
+// ---------------------------------------------------------------------------
+
+/**
+ * A tool in the OpenAI function format. The `NativeTool` of the chat agent has
+ * the same shape. The gateway does not import it: it knows no consumer.
+ */
+export interface GatewayTool {
+  type: "function";
+  function: {
+    name: string;
+    description: string;
+    parameters: Record<string, unknown>;
+  };
+}
+
+export interface CallToolTurnInput {
+  step: GatewayStepId;
+  runId: string;
+  unitKey: string;
+  instructions: string;
+  messages: readonly ChatTurn[];
+  tools: readonly GatewayTool[];
+  profile: CallProfile;
+  /** Capped at `profile.maxOutputTokens` here. */
+  maxOutputTokens: number;
+  signal: AbortSignal;
+  sink: CallSink;
+  onQueued?: (i: { waitedMs: number; ahead: number }) => void;
+  onHeld?: (held: boolean) => void;
+  stopped?: () => boolean;
+  /** The kind of the failure that this call repeats. Only for the record. */
+  retry?: { kind: GatewayErrorKind };
+  createModel?: CreateModel;
+  timeoutMs?: number;
+}
+
+type ToolTurnOutcome =
+  | { kind: "call"; name: string; args: Record<string, unknown> }
+  | { kind: "none"; text: string };
+
+export type CallToolTurnResult = ToolTurnOutcome & {
+  /** Names of every call that the model made, in order. The first one is returned. */
+  callNames: string[];
+  /** Why a turn with a tool call gave `none`. null otherwise. */
+  note: string | null;
+  rawFinishReason: string;
+  usage: TokenUsage;
+  modelRequested: string;
+  modelServed: string | null;
+  latencyMs: number;
+  queuedMs: number;
+  attempt: number | null;
+  paramsLedger: LlmParamsLedger;
+  callId: number | null;
+};
+
+/** The raw stop values of a tool-call turn that the gate accepts. */
+function acceptedRawToolStops(provider: string): string[] {
+  switch (provider) {
+    case "anthropic":
+      return ["tool_use"];
+    case "google":
+      return ["STOP"];
+    default:
+      return ["tool_calls"];
+  }
+}
+
+/** The arguments of a tool call as an object, or null when they are not one. */
+function parseToolArgs(input: string): Record<string, unknown> | null {
+  if (input.trim() === "") return {};
+  try {
+    return asObject(JSON.parse(input) as unknown);
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Send one request with tools and read the answer: a tool call or plain text.
+ * A finish with tool calls is a success here. The SDK gets tools without an
+ * `execute` function, so it never loops. Same lane, timeout, error mapping
+ * and record as `callStructured`. Several calls: the first one is returned and
+ * every name goes to the record. Arguments that are not a JSON object, or a
+ * name that is not in `tools`, give `none` with a note, not an error.
+ */
+export async function callToolTurn(
+  input: CallToolTurnInput,
+): Promise<CallToolTurnResult> {
+  const { profile } = input;
+  // The tool turn uses no structured mode. The lowest mode never downgrades.
+  const mode: StructuredMode = "prompt_only";
+  const maxOutputTokens = Math.max(
+    1,
+    Math.min(
+      input.maxOutputTokens,
+      profile.maxOutputTokens ?? Number.POSITIVE_INFINITY,
+    ),
+  );
+  const isRetry = input.retry !== undefined;
+  const facts = blankFacts({
+    step: input.step,
+    unitKey: input.unitKey,
+    modelRequested: profile.modelId,
+    structuredMode: mode,
+  });
+  const messages: ChatTurn[] = [...input.messages];
+  const prepared = await prepareCall({
+    profile,
+    facts,
+    step: input.step,
+    maxOutputTokens,
+    messages,
+    llamaCppCompletion: false,
+    ...(input.createModel ? { createModel: input.createModel } : {}),
+    buildInstructions: async () => input.instructions,
+  });
+  const { resolved, model, wireHolder, warnings, wire, instructions } =
+    prepared;
+  const { promptTokens } = prepared;
+
+  const laneStart = Date.now();
+  const captured: { value: Capture | null } = { value: null };
+  const wrapped = wrapLanguageModel({
+    model,
+    middleware: captureMiddleware(captured),
+  });
+  const modelRequested = model.modelId;
+  facts.modelRequested = modelRequested;
+  const providerOptions = wire.providerOptions;
+  const toolSet = Object.fromEntries(
+    input.tools.map((t) => [
+      t.function.name,
+      tool({
+        description: t.function.description,
+        inputSchema: jsonSchema(t.function.parameters),
+      }),
+    ]),
+  );
+  const toolNames = new Set(input.tools.map((t) => t.function.name));
+
+  const finalize = makeFinalizer({
+    input,
+    profile,
+    mode,
+    resolved,
+    warnings,
+    noReasoningControl: wire.noControl,
+    maxOutputTokens,
+    captured,
+    wireHolder,
+    facts,
+    modelRequested,
+    instructions,
+    messages,
+    schema: () => ({
+      name: "native_tool_turn",
+      version: 1,
+      json: input.tools,
+    }),
+    laneStart,
+  });
+
+  const queued = (): GatewayError => {
+    if (input.signal.aborted && isTimeoutReason(reasonOf(input.signal))) {
+      return new DeadlineExceededError({
+        facts,
+        message: "The run deadline passed before the call started.",
+      });
+    }
+    return new CancelledError({
+      facts,
+      message: "The call was cancelled before it started.",
+      phase: "queued",
+    });
+  };
+
+  if (!fitsWindow(promptTokens, maxOutputTokens, profile.contextWindow)) {
+    log.warn(
+      `context guard: ${input.step} ${input.unitKey} not sent (estimated prompt ${promptTokens} + max ${maxOutputTokens} > context ${profile.contextWindow}); the caller splits`,
+    );
+    throw new ContextExceededError({
+      facts,
+      message: "The request is too long for the model. It was not sent.",
+      maxOutputTokens,
+      source: "estimate",
+      promptTokens,
+      contextTokens: profile.contextWindow,
+      retry: null,
+    });
+  }
+
+  try {
+    return await withLlmLane(
+      profile.provider,
+      profile.modelId,
+      {
+        cls: "background",
+        taskId: profile.taskId,
+        signal: input.signal,
+        ...(input.onQueued ? { onQueued: input.onQueued } : {}),
+        ...(input.onHeld ? { onHeld: input.onHeld } : {}),
+      },
+      async () => {
+        const queuedMs = Date.now() - laneStart;
+        if (input.stopped?.()) throw queued();
+        try {
+          input.sink.startAttempt({
+            runId: input.runId,
+            stepKey: input.unitKey,
+          });
+        } catch {
+          log.warn(
+            `attempt start write failed (${input.step} ${input.unitKey})`,
+          );
+        }
+        const startedAt = Date.now();
+        const wireStart = startedAt;
+        const timeoutMs = input.timeoutMs ?? resolved.timeoutMs;
+        const timeoutSignal = AbortSignal.timeout(timeoutMs);
+        const abortSignal = AbortSignal.any([input.signal, timeoutSignal]);
+
+        let sdkError: unknown = null;
+        try {
+          await generateText({
+            model: wrapped,
+            maxRetries: 0,
+            telemetry: telemetryFor(getTracing(), input.step),
+            abortSignal,
+            instructions,
+            messages: messages.map((m) => ({
+              role: m.role,
+              content: m.content,
+            })),
+            tools: toolSet,
+            toolChoice: "auto",
+            temperature: resolved.temperature,
+            ...(resolved.topP !== undefined ? { topP: resolved.topP } : {}),
+            maxOutputTokens,
+            ...(Object.keys(providerOptions).length > 0
+              ? { providerOptions: providerOptions as never }
+              : {}),
+          });
+        } catch (e) {
+          sdkError = unwrap(e);
+        }
+
+        const ctx: ErrorContext = {
+          facts,
+          profile,
+          mode,
+          maxOutputTokens,
+          isRetry,
+        };
+        const c = captured.value;
+        if (!c) {
+          const error = noAnswerError({
+            facts,
+            signal: input.signal,
+            timeoutSignal,
+            timeoutMs,
+            sdkError,
+            ctx,
+            isRetry,
+          });
+          await finalize({ error, parsed: null }, { startedAt, wireStart });
+          throw error;
+        }
+
+        const served = nonBlankString(c.modelId);
+        Object.assign(facts, {
+          finishReason: c.unified,
+          rawFinishReason: c.raw ?? null,
+          usage: c.usage,
+          modelServed: served,
+        });
+        const fail = async (e: GatewayError): Promise<GatewayError> => {
+          await finalize({ error: e, parsed: null }, { startedAt, wireStart });
+          return e;
+        };
+
+        // The gate. A call is a success when the model made one. Then the
+        // finish reason may be tool-calls or stop (some workers send stop).
+        const callNames = c.toolCalls.map((t) => t.name);
+        const hasCall = c.toolCalls.length > 0;
+        if (c.unified === "length") {
+          throw await fail(
+            new LengthError({
+              facts,
+              message: `The answer was cut at the token limit (${maxOutputTokens}).`,
+              where: "output",
+              maxOutputTokens,
+              cutText: c.text,
+            }),
+          );
+        }
+        if (c.unified === "content-filter") {
+          throw await fail(
+            new ContentFilterError({
+              facts,
+              message: "The provider filtered the answer.",
+              via: "finish_reason",
+            }),
+          );
+        }
+        if (c.unified === "error" || c.unified === "other") {
+          throw await fail(
+            new AbnormalStopError({
+              facts,
+              message: `The provider stopped with finish reason ${c.unified}.`,
+              cause: c.unified,
+              retry: isRetry
+                ? null
+                : { change: "none", waitMs: backoffWaitMs() },
+            }),
+          );
+        }
+        if (hasRefusal(c.responseBody)) {
+          throw await fail(
+            new ContentFilterError({
+              facts,
+              message: "The model refused to answer.",
+              via: "refusal",
+            }),
+          );
+        }
+        if (c.raw === undefined || c.raw === null || c.raw === "") {
+          throw await fail(
+            new AbnormalStopError({
+              facts,
+              message: "The provider gave no raw finish reason.",
+              cause: "missing_raw",
+              runWide: true,
+            }),
+          );
+        }
+        const rawOk =
+          c.raw === acceptedRawStop(profile.provider, mode) ||
+          acceptedRawToolStops(profile.provider).includes(c.raw);
+        if (!rawOk) {
+          throw await fail(
+            new AbnormalStopError({
+              facts,
+              message: `The raw finish reason "${c.raw.slice(0, 40)}" is not a known stop.`,
+              cause: "unknown_raw",
+              runWide: true,
+            }),
+          );
+        }
+        if (!hasCall) {
+          const reasoningOnly =
+            c.text.trim() === "" &&
+            (c.reasoningChars > 0 || (c.usage.reasoning ?? 0) > 0);
+          const leak: "think_tag" | "empty_content_with_reasoning" | null =
+            THINK_TAG.test(c.text)
+              ? "think_tag"
+              : reasoningOnly
+                ? "empty_content_with_reasoning"
+                : null;
+          if (leak) {
+            throw await fail(
+              new ReasoningLeakError({
+                facts,
+                message: `The answer holds reasoning text (${leak}).`,
+                leak,
+                runWide: profile.reasoning.mode === "off",
+                retry: null,
+              }),
+            );
+          }
+        }
+        if (served === null) {
+          warnings.push("served model not reported");
+        } else if (!modelMatches(modelRequested, served)) {
+          throw await fail(
+            new ModelMismatchError({
+              facts,
+              message: `The served model differs from the requested one (${modelRequested} / ${served}).`,
+              requested: modelRequested,
+              served,
+              runWide: true,
+            }),
+          );
+        }
+
+        // Read the first call. A bad call gives `none` with a note.
+        let outcome: ToolTurnOutcome;
+        let note: string | null = null;
+        const first = c.toolCalls[0];
+        if (!first) {
+          outcome = { kind: "none", text: c.text };
+        } else if (!toolNames.has(first.name)) {
+          note = `unknown tool "${first.name.slice(0, 60)}"`;
+          outcome = { kind: "none", text: c.text };
+        } else {
+          const args = parseToolArgs(first.input);
+          if (args === null) {
+            note = `tool arguments of "${first.name}" are not a JSON object`;
+            outcome = { kind: "none", text: c.text };
+          } else {
+            outcome = { kind: "call", name: first.name, args };
+          }
+        }
+        const recorded = await finalize(
+          {
+            error: null,
+            parsed: { ...outcome, callNames, note },
+          },
+          { startedAt, wireStart },
+        );
+        return {
+          ...outcome,
+          callNames,
+          note,
+          rawFinishReason: c.raw,
+          usage: c.usage,
+          modelRequested,
+          modelServed: served,
+          latencyMs: facts.latencyMs,
+          queuedMs,
+          attempt: recorded.attempt,
+          paramsLedger: facts.paramsLedger,
+          callId: recorded.id,
+        } satisfies CallToolTurnResult;
       },
     );
   } catch (e) {

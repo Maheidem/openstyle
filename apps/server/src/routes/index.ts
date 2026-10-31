@@ -3,6 +3,7 @@ import { createAppLogger } from "@openstyle/utils";
 import { clientErrorSchema } from "@openstyle/validations";
 import { Hono } from "hono";
 import apiKeys from "./api-keys.js";
+import chat from "./chat.js";
 import configRoute from "./config.js";
 import dismissedNotifications from "./dismissed-notifications.js";
 import history from "./history.js";
@@ -53,6 +54,7 @@ const apiRouter = new Hono()
   .route("/meetings", meetingsImport)
   .route("/meetings", meetingsRuns)
   .route("/meetings", meetingsChat)
+  .route("/chat", chat)
   .route("/search", search)
   .route("/dismissed-notifications", dismissedNotifications)
   .route("/vocabulary", vocabulary)
