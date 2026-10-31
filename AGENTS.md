@@ -142,6 +142,19 @@ Before you add any new LLM model or model family (a built-in catalog entry, a bu
 
 The steps, the source order and the test are in `.claude/skills/model-catalog/SKILL.md`, section "Validate the inference parameters".
 
+## Diagram conventions (owner rule, 2026-10-31)
+
+Applies to every diagram in `specs/`, PR bodies and docs (Mermaid first).
+
+- One node per stage. The node shows the stage number, the type (`[CODE]` or `[LLM call]`) and a one-line contract: inputs, outputs, schema or caps. No file paths in a node.
+- Edges carry the condition in plain words ("no rows, round < max", "invalid JSON").
+- Draw fallbacks and every terminal outcome (each exit of the flow is a node).
+- A loop shows its bound (rounds, retries, deadline).
+- Mark LLM calls so they are visible at a glance (the type tag and a distinct node text).
+- Move detail out by reference: the diagram names the spec section, not the code.
+- One diagram per concern, at most about 20 nodes. Split a bigger flow.
+- Test: a reviewer can count the LLM calls, the retries and every exit from the diagram alone.
+
 ## UI conventions
 
 - Design tokens and the accent discipline live in `specs/design-system.md` and `apps/electron/src/renderer/src/globals.css`. The accent is deliberately **neutral grey**; `--accent-passive-tint`/`--accent-passive-ink` (blue) are the only sanctioned blue fills (selection, speaker/diarization chips), `--live` (coral) is **recording/live only**, and `--destructive` is kept distinct from both. Check that file before styling, and `specs/design/reskin-mockups.html` for pixel-level truth.
