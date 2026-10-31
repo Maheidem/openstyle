@@ -567,6 +567,23 @@ describe.skipIf(!VEC_PATH)("BM25 channel and hybrid retrieve, ON mode", () => {
       expect(docs.some((d) => d.includes("48213"))).toBe(true);
     });
 
+    it("passes the batch size of the request to the reranker", async () => {
+      await seedThree();
+      rerankStub.mockImplementation(async (_q: string, docs: string[]) =>
+        docs.map(() => 0.5),
+      );
+      await hybrid(4);
+      expect(rerankStub.mock.calls[0]?.[3]).toBeUndefined();
+      await retrieve({
+        query: { kind: "text", text: "invoice" },
+        scope: { kind: "all" },
+        k: 3,
+        mode: "hybrid",
+        rerank: { candidates: 4, batch: 2 },
+      });
+      expect(rerankStub.mock.calls[1]?.[3]).toBe(2);
+    });
+
     it("keeps the fused order for hits beyond the candidates", async () => {
       await seedThree();
       rerankStub.mockImplementation(async (_q: string, docs: string[]) =>

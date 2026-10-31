@@ -3,8 +3,10 @@ import type { SearchOffReason } from "@openstyle/validations";
 import { getDb } from "../db.js";
 import { getMeetingTags } from "../meetings/tags.js";
 import { EmbedError } from "../mlx-embed/client.js";
+import { RerankError, rerankPairs } from "../mlx-rerank/client.js";
 import { type ChunkKind, spanText } from "./chunker.js";
 import { embedInt8 } from "./embedder.js";
+import { type FtsHit, ftsSearch } from "./fts.js";
 import { isMeetingIndexCurrent } from "./indexer.js";
 import { buildMeetingChunks, loadMeetingSource, metaText } from "./source.js";
 import { searchState } from "./state.js";
@@ -40,6 +42,21 @@ export interface RetrieveInput {
   k: number;
   excludeMeetingIds?: readonly string[];
   signal?: AbortSignal;
+  /**
+   * "dense" (default) is the vector search only: the search UI and the
+   * Summary and Enhance memory use it. "hybrid" adds the BM25 channel, fuses
+   * both by RRF and can rerank (specs/meeting-chat-agent.md 7.4). A "meeting"
+   * query has no text, so it stays dense.
+   */
+  mode?: "dense" | "hybrid";
+  /**
+   * Hybrid only: score the top `candidates` fused hits with the reranker and
+   * sort them by that score. Without the reranker, the fused order stays.
+   */
+  rerank?: {
+    candidates: number /** Pairs per forward pass. Default: RERANK_BATCH. */;
+    batch?: number;
+  };
 }
 
 export interface RetrievalHit {
@@ -53,10 +70,36 @@ export interface RetrievalHit {
   /** null for meta and summary chunks. */
   startMs: number | null;
   endMs: number | null;
+  /** Hybrid only: the rank (from 1) in the fused list, before the rerank. */
+  fusedRank?: number;
+  /** Hybrid with a rerank only: the reranker score (0..1) of this hit. */
+  rerankScore?: number;
+}
+
+/** What the reranker did in a hybrid call. */
+export type RerankOutcome = "applied" | "unavailable" | "error" | "off";
+
+/** Milliseconds of each step of a hybrid call. */
+export interface RetrieveTimings {
+  /** The query embedding and the dense search. */
+  dense: number;
+  /** The BM25 search. 0 when the channel is off. */
+  fts: number;
+  /** The reranker call. 0 when it did not run. */
+  rerank: number;
+  total: number;
 }
 
 export type RetrieveResult =
-  | { status: "ok"; modelId: string; hits: RetrievalHit[] }
+  | {
+      status: "ok";
+      modelId: string;
+      hits: RetrievalHit[];
+      /** Hybrid mode only. */
+      rerank?: RerankOutcome;
+      /** Hybrid mode only. */
+      ms?: RetrieveTimings;
+    }
   | { status: "off"; reason: SearchOffReason }
   | {
       status: "error";
@@ -69,6 +112,46 @@ const MEETING_QUERY_VECTORS = 8;
 const EXCLUDE_IN_KNN_MAX = 5;
 /** Extra k for each exclude above the max: about one meeting of chunks. */
 const CHUNKS_PER_MEETING = 46;
+/** Hits taken from each channel before the fusion (7.4.2). */
+const CHANNEL_K = 50;
+/** The RRF constant (7.4.2). */
+const RRF_K = 60;
+/** Characters of a candidate that go to the reranker. */
+const RERANK_DOC_CHARS = 3000;
+
+/**
+ * Reciprocal rank fusion (7.4.2): score = sum over channels of 1 / (k + rank),
+ * ranks from 1. Ties break by the id, for a stable order.
+ */
+export function rrf(
+  lists: readonly (readonly number[])[],
+  k = RRF_K,
+): number[] {
+  const score = new Map<number, number>();
+  for (const list of lists) {
+    list.forEach((id, i) => {
+      score.set(id, (score.get(id) ?? 0) + 1 / (k + i + 1));
+    });
+  }
+  return [...score.entries()]
+    .sort((a, b) => b[1] - a[1] || a[0] - b[0])
+    .map(([id]) => id);
+}
+
+/** Cosine of two int8 vectors, the dense score of a hit. */
+function cosine(a: Int8Array, b: Int8Array): number {
+  let dot = 0;
+  let na = 0;
+  let nb = 0;
+  for (let i = 0; i < a.length; i++) {
+    const x = a[i] as number;
+    const y = b[i] as number;
+    dot += x * y;
+    na += x * x;
+    nb += y * y;
+  }
+  return na > 0 && nb > 0 ? dot / Math.sqrt(na * nb) : 0;
+}
 
 /** Up to `n` items, evenly spaced, first and last included. */
 function evenlySpaced<T>(items: readonly T[], n: number): T[] {
@@ -158,6 +241,7 @@ function errorResult(err: unknown, signal?: AbortSignal): RetrieveResult {
 }
 
 export async function retrieve(input: RetrieveInput): Promise<RetrieveResult> {
+  const t0 = performance.now();
   const st = searchState();
   if (st.state === "off") return { status: "off", reason: st.reason };
   const modelId = st.modelId;
@@ -206,11 +290,13 @@ export async function retrieve(input: RetrieveInput): Promise<RetrieveResult> {
 
   const exclude = [...new Set(input.excludeMeetingIds ?? [])];
   const inKnn = exclude.length <= EXCLUDE_IN_KNN_MAX ? exclude : [];
+  const hybrid = input.mode === "hybrid" && input.query.kind === "text";
+  const denseK = hybrid ? Math.max(k, CHANNEL_K) : k;
   const knnK = Math.min(
     4096,
     inKnn.length === exclude.length
-      ? k
-      : k + CHUNKS_PER_MEETING * exclude.length,
+      ? denseK
+      : denseK + CHUNKS_PER_MEETING * exclude.length,
   );
 
   let vectors: Int8Array[];
@@ -275,7 +361,96 @@ export async function retrieve(input: RetrieveInput): Promise<RetrieveResult> {
     });
   }
   hits.sort((a, b) => b.score - a.score || a.chunkId - b.chunkId);
-  return ok(hits.slice(0, k));
+  if (!hybrid || input.query.kind !== "text") return ok(hits.slice(0, k));
+
+  // Hybrid (7.4): the BM25 channel, the RRF fusion and the reranker.
+  const tDense = performance.now();
+  const queryText = input.query.text;
+  const ftsHits = ftsSearch(db, {
+    text: queryText,
+    allowMeetingIds: allow,
+    excludeMeetingIds: exclude,
+    folderKey,
+    modelId,
+    k: CHANNEL_K,
+  });
+  const tFts = performance.now();
+  const byId = new Map<number, RetrievalHit>(hits.map((h) => [h.chunkId, h]));
+  const ftsById = new Map<number, FtsHit>(ftsHits.map((h) => [h.chunkId, h]));
+  const fused = rrf([
+    hits.slice(0, CHANNEL_K).map((h) => h.chunkId),
+    ftsHits.map((h) => h.chunkId),
+  ]);
+  // The score of a hit from the BM25 channel only is its dense cosine, read
+  // from the stored vector.
+  const toHit = (id: number, rank: number): RetrievalHit => {
+    const known = byId.get(id);
+    if (known) return { ...known, fusedRank: rank };
+    const f = ftsById.get(id) as FtsHit;
+    const stored = readVecRow(db, id)?.vector;
+    const q = vectors[0];
+    return {
+      chunkId: id,
+      meetingId: f.meetingId,
+      score: stored && q ? cosine(q, stored) : 0,
+      ordinal: f.ordinal,
+      kind: f.kind,
+      startMs: f.startMs,
+      endMs: f.endMs,
+      fusedRank: rank,
+    };
+  };
+  let ordered = fused.map((id, i) => toHit(id, i + 1));
+  let outcome: RerankOutcome = "off";
+  let rerankMs = 0;
+  if (input.rerank && ordered.length > 0) {
+    const n = Math.max(
+      1,
+      Math.min(CHANNEL_K * 2, Math.floor(input.rerank.candidates)),
+    );
+    const head = ordered.slice(0, n);
+    const tRerank = performance.now();
+    try {
+      const docs = head.map((h) => hitText(h, RERANK_DOC_CHARS));
+      const scores = await rerankPairs(
+        queryText,
+        docs,
+        input.signal,
+        input.rerank.batch,
+      );
+      const scored = head
+        .map((h, i) => ({ ...h, rerankScore: scores[i] as number }))
+        .sort(
+          (a, b) =>
+            b.rerankScore - a.rerankScore ||
+            (a.fusedRank as number) - (b.fusedRank as number),
+        );
+      ordered = [...scored, ...ordered.slice(n)];
+      outcome = "applied";
+    } catch (err) {
+      if (input.signal?.aborted || (err as Error)?.name === "AbortError") {
+        return { status: "error", kind: "cancelled" };
+      }
+      outcome =
+        err instanceof RerankError && err.kind === "no_model"
+          ? "unavailable"
+          : "error";
+    }
+    rerankMs = performance.now() - tRerank;
+  }
+  const end = performance.now();
+  return {
+    status: "ok",
+    modelId,
+    hits: ordered.slice(0, k),
+    rerank: outcome,
+    ms: {
+      dense: tDense - t0,
+      fts: tFts - tDense,
+      rerank: rerankMs,
+      total: end - t0,
+    },
+  };
 }
 
 function currentMetaText(db: DatabaseSync, meetingId: string): string {
