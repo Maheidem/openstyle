@@ -2,8 +2,10 @@
 
 Status: DRAFT for owner review. Date: 2026-10-31. Base: `main` at `a7083674`.
 Revision 2 (2026-10-31, 09:49): owner answers applied. Section 12.1 lists them as decisions D1 to D4. Revision 3 (10:45): placement decided, D5 (section 11).
+Revision 4 (2026-10-31, 11:10): owner review applied, decisions D6 to D18 (section 12.1). Name note: `SD8` is decision D8 of `specs/local-semantic-search.md`. `D1` to `D18` are decisions of this spec.
 Scope of this document: design only. No product code is part of this change.
 Language: ASD-STE100 Simplified Technical English.
+Diagrams follow the rule "Diagram conventions" in `AGENTS.md`. The pipeline diagram (2.2) and the failure diagram (2.5) are written to it. The other diagrams are small single-concern sketches.
 
 ## 0. How to read this spec
 
@@ -48,7 +50,9 @@ I re-read the lines of the code that this spec cites most (retrieve, vector stor
 3. The model never writes data. It can only fill the slots of a proposal. The user confirms. Every apply is logged and can be undone.
 4. The design targets Gemma 4 E2B. A bigger model or a cloud model gets the same pipeline and must only do better.
 5. Owner decisions D1 to D4 (section 12.1): cloud is allowed like any provider, but local is first. The mic channel needs diarization. A person merge rewrites everything, with full undo. Retrieval gets a full measured workstream in P0.
-6. The work has 7 phases (P0 to P5 plus the mic workstream PM). Each phase ships behind a setting. Each phase needs an isolated-app E2E proof and gold-eval numbers.
+6. Principle (D8): structure and idempotency by default; relax only where the eval shows a cost. A weak model can be raised by a smart, well-built harness.
+7. Gemma 4 E2B is the floor (D9). Every other model must score better on the gold set.
+8. The work has 7 phases (P0 to P5 plus the mic workstream PM). Each phase ships behind a setting. Each phase needs an isolated-app E2E proof and gold-eval numbers.
 
 ## 1. Goals, non-goals and user stories
 
@@ -64,7 +68,7 @@ I re-read the lines of the code that this spec cites most (retrieve, vector stor
 
 ### 1.2 Non-goals
 
-1. No native tool calling in the local worker. The worker ignores `tools` and drops `tool` roles (`W:731`, `W:741-746`; Discovery B section 3.2). The spec does not need it.
+1. The default design does not use the native tools protocol. Tool choice and arguments come from `json_schema_strict` structured output. The local worker lacks the native tools protocol: it ignores `tools` and drops `tool` roles (`W:731`, `W:741-746`; Discovery B section 3.2). P0 measures a native-tools arm behind a flag against the structured router and keeps the winner (D11, section 2.1 point 6).
 2. No free ReAct loop. Reason: the owner ethos "one narrow job per LLM stage, code does rule-like work" (`AGENTS.md`, section "LLM design ethos").
 3. No delete by the agent. Not for meetings, folders, items or people (Discovery C section 3, risk tiers).
 4. No edit of transcript text by the agent. No edit of key points or the overview. (Reason: no user edit path exists for them today, Discovery A section 3 last paragraph.)
@@ -103,50 +107,58 @@ Live stories (P5): R1, R4 (Me or Them only), R8 and R9 during a recording. Write
 
 1. The local worker has no tool calling (`W:731`, `W:741-746`). It does support JSON-schema grammar through llguidance (`W:649-652`, `W:761-774`). The gateway ladder for the local provider is `json_schema_strict`, then `prompt_only` (`S/lib/llm/model-profiles.ts:198-200`).
 2. No measured tool-call accuracy exists for E2B in the repo (Discovery B section 4, row "Tool-calling accuracy"). Google gives Tau2 24.5% for E2B and 42.2% for E4B (https://huggingface.co/google/gemma-4-E2B-it/raw/main/README.md, Discovery C section 1.1). Tau2 measures agentic tool use. It is not our task. It still shows that E2B is weak at free tool use.
-3. Hard schema decoding can lower answer quality in small models: 91.5% with prompt-only JSON against 48.0% with a hard tool-call schema in one study (https://arxiv.org/abs/2605.26128, Qwen2.5-1.5B, not Gemma). ASSUMPTION: a smaller effect exists on E2B. Section 8 measures it (arm "strict" against arm "lenient").
+3. Owner principle (D8): structure and idempotency by default. Relax a rule only where the eval shows a cost. A weak model can be raised by a smart, well-built harness. One study warns of a cost: hard schema decoding gave 48.0% executable accuracy against 91.5% for prompt-only JSON on Qwen2.5-1.5B (https://arxiv.org/abs/2605.26128, not Gemma). So the answer stage has two arms ("strict" against "lenient", section 8.5). The default is strict. The lenient arm replaces it only for a model where the eval shows a cost. The code router and the closed choices are settled (owner agreed).
 4. Anthropic advises the simplest solution and fixed code paths for well-defined tasks (https://www.anthropic.com/engineering/building-effective-agents).
 5. DECISION: the model makes only small closed choices (intent, slot values, one choice from a list that code builds). Code runs the tools. Free text appears in one place: the answer call.
+6. Native tools arm (D11). mlx-lm ships a Gemma 4 tool-call parser. Checked by command on the bundled worker: `dist/mlx_asr_worker/_internal/mlx_lm/tool_parsers/gemma4.py` exists, the version file says `0.32.2` (the pin in `S/lib/mlx-asr/families.ts:24`), and `tokenizer_utils.py:735-739` reads a `tool_parser_type` or infers one. (`dist/` is build output and is not tracked. Re-run the check on the build used.) The Gemma 4 E2B chat template has `tools`, `tool_call` and `tool_response` blocks (Discovery B section 3.2). P0 adds an arm T1: the worker accepts `tools`, passes them to the chat template, parses the call with the Gemma 4 parser and returns `tool_calls`, behind a flag. The scope stays set by code. The model sees only the tools of the plan (at most 8). Code validates tool name and arguments in both arms. T1 is compared with the structured router (A1) on tool-choice accuracy and argument accuracy on the gold set. The winner stays; the loser is removed. T1 cannot use `callStructured`, which throws on a `tool-calls` finish (`S/lib/llm/gateway.ts:1089-1099`), so it needs a gateway entry or the light path. The Gemma card says thinking must stay in history for tool-call turns (Discovery C section 1.1). The T1 loop code keeps it.
 
 ### 2.2 The pipeline
 
-DECISION: five stages. Stages 1, 3 and 5 are code. Stages 2 and 4 are LLM calls. A turn has at most 3 tool rounds.
+DECISION: the turn has stages 0 to 5. Stages 0, 2, 3 and 5 are code. Stages 1, 2b and 4 are LLM calls. The number of tool rounds is a user setting (D7), default 3.
+
+Legend: boxes marked [CODE] run without a model. Boxes marked [LLM] are one model call. Every exit of the turn is drawn.
 
 ```mermaid
 flowchart TD
-  Q["User question + scope from UI"] --> G0["0 GATE, code<br/>setting on, model ready,<br/>provider allowed, scope valid"]
-  G0 -->|fail| ERR["Typed error block<br/>section 2.5"]
-  G0 --> PRE["0b PREFETCH, code<br/>scope header, last 4 messages,<br/>live tail if live"]
-  PRE --> RT["1 ROUTER, LLM call 1<br/>json_schema_strict<br/>intent enum, 1 field"]
-  RT -->|"invalid or unsure"| DEF["default intent = lookup"]
-  RT --> PL["2 PLAN, code<br/>intent + scope -> fixed plan<br/>1 to 3 tool steps"]
-  DEF --> PL
-  PL --> SL["2b SLOT FILL, LLM call 2<br/>closed choices built by code<br/>skipped when plan has no slot"]
-  SL --> TL["3 TOOLS, code<br/>round r = 1..3<br/>validate args, run, label sources"]
-  TL --> SUF{"enough<br/>rows?"}
-  SUF -->|"no and r < 3"| FB["fallback step of the plan<br/>widen k, drop date, keyword channel"]
-  FB --> TL
-  SUF -->|"no and r = 3"| NF["not_found block<br/>+ nearest sources"]
-  SUF -->|yes| MODE{"answer mode"}
-  MODE -->|"code: list, count, status"| BL["structured blocks from rows"]
-  MODE -->|"llm: lookup, who_said, temporal text"| AN["4 ANSWER, LLM call 3<br/>numbered sources S1..Sn<br/>JSON answer + cites"]
-  AN --> CV["5 CITE VALIDATION, code<br/>section 6"]
-  CV -->|pass| OUT["Response<br/>answer, cites, trace, proposals"]
-  CV -->|"fail, first time"| AN2["answer retry with the failure named"]
-  AN2 --> CV
-  CV -->|"fail, second time"| NF
-  BL --> OUT
-  NF --> OUT
+  IN(["Input: question, thread, scope set by UI"]) --> S0
+  S0["0 GATE [CODE]<br/>in: settings, model, scope<br/>out: ok or typed error"]
+  S0 -->|"no model or no key"| X1(["EXIT error block"])
+  S0 -->|ok| S0B["0b PREFETCH [CODE]<br/>in: scope, thread<br/>out: scope header, compact history, live tail"]
+  S0B --> S1["1 ROUTER [LLM call 1]<br/>in: question, last question<br/>out: intent enum, cap 24 tokens<br/>schema: json_schema_strict"]
+  S1 -->|"invalid JSON or other"| S1D["intent = lookup [CODE]"]
+  S1 -->|"valid intent"| S2
+  S1D --> S2["2 PLAN [CODE]<br/>in: intent, scope<br/>out: tool steps, 3 at most, per round"]
+  S2 --> S2B["2b SLOT FILL [LLM call, one per round]<br/>in: question, closed choices built by code<br/>out: query, dates, ids; cap 150 tokens"]
+  S2B -->|"invalid slots"| S2D["default slots: query = question [CODE]"]
+  S2B -->|valid| S3
+  S2D --> S3["3 TOOLS [CODE]<br/>in: validated args<br/>out: rows + labelled sources S1..Sn"]
+  S3 -->|"rows found"| MODE{"answer mode"}
+  S3 -->|"no rows, round < max rounds"| S2
+  S3 -->|"no rows, round = max rounds"| X2(["EXIT not_found block<br/>offers one step wider, asks the user"])
+  MODE -->|"list, count, status"| BL["blocks from rows [CODE]"]
+  BL --> X3(["EXIT blocks"])
+  MODE -->|"text answer"| S4["4 ANSWER [LLM call]<br/>in: sources, compact history, question<br/>out: answer + cite labels; cap 400 tokens"]
+  S4 --> S5["5 CITE CHECK [CODE]<br/>in: answer, source map<br/>out: valid cites or failure"]
+  S5 -->|pass| X4(["EXIT answer with cites"])
+  S5 -->|"fail, first time"| S4R["4r ANSWER RETRY [LLM call, once]<br/>failed tokens named"]
+  S4R --> S5
+  S5 -->|"fail, second time"| X5(["EXIT not_found block + top sources"])
 ```
 
-Budget of one turn (DECISION):
+Counting from the diagram: the LLM calls are 1 (router), 2b (once per round), 4 (answer) and 4r (retry, once). Each call has one transport retry from the gateway (`S/lib/llm/call-unit.ts:16-23`). The loop 3 to 2 is bounded by the round setting. The exits are X1 to X5.
 
-| Item | Limit |
-|---|---|
-| Tool rounds | 3 |
-| LLM calls | 1 router, up to 3 slot fills (one per round), 1 answer, 1 answer retry. Maximum 6. Typical 3. |
-| Answer call input | 6000 estimated tokens, cut to the window like the live chat (`S/routes/meetings-chat.ts:54-56`, `:104-111`) |
-| Output caps | router 24 tokens, slot fill 150, answer 400 (ASSUMPTION: caps given by the caller; section 2.6 says how) |
-| Turn deadline | 60 s warm. The first call after idle can load the model: the live chat uses a 120 s cold timeout and a 30 s warm timeout (`S/lib/llm/task-profiles.ts:130-136`; Discovery B section 2.1 step 6) |
+Budget of one turn (DECISION). The knobs are user settings on the Ask page (D7, section 2.9). The bars of section 8 are measured at the defaults only.
+
+| Item | Default | Range | Note |
+|---|---|---|---|
+| Tool rounds `R` | 3 | 1 to 5 | |
+| LLM calls (logical) | `R + 3` at most: 1 router, `R` slot fills, 1 answer, 1 answer retry. Typical 3. | | formula |
+| LLM calls (with transport retries) | `2 x (R + 3)` at most | | each call may be retried once by the gateway (`S/lib/llm/call-unit.ts:16-23`) |
+| Hard cap per turn | 16 calls (`2 x (5 + 3)`), a constant, not a setting | | stops any runaway loop. A turn that reaches it ends with the not_found block |
+| Answer source budget | 6000 estimated tokens | 2000 to the window of the model minus output minus fixed | cut to the window like the live chat (`S/routes/meetings-chat.ts:54-56`, `:104-111`) |
+| Retrieval `k` | 8 | 3 to 20 | |
+| Output caps | router 24, slot fill 150, answer 400 tokens | fixed | caps given by the caller; section 2.6 says how (ASSUMPTION) |
+| Turn deadline | 60 s | 20 to 180 s | The first call after an idle unload can load the model. The live chat uses a 120 s cold timeout and a 30 s warm timeout (`S/lib/llm/task-profiles.ts:130-136`; Discovery B section 2.1 step 6) |
 
 Typical cost on E2B (ASSUMPTION, arithmetic from numbers in the repo): the live chat answers in 246 ms warm (`specs/live-chat.md`, section 6). Prefill is 23,985 tok/s and decode 144 tok/s (`specs/llm-runtime-tuning.md:63`). A turn of 3 small calls should take about 1 to 2 s warm. Section 8 measures it.
 
@@ -156,7 +168,7 @@ Typical cost on E2B (ASSUMPTION, arithmetic from numbers in the repo): the live 
 
 1. The setting `meeting_chat_enabled` is `"true"`. DECISION: a new setting, default off, experimental. The live chat keeps `live_chat_enabled` (`V/settings-keys.ts:66`).
 2. `resolveTaskCall("meetingChat")` returns a model. DECISION: one new task id `meetingChat` for all stages. A new task id needs a profile, a settings key and a route branch (`S/lib/llm/task-profiles.ts:158-161`).
-3. Provider (decision D1). The chat uses the model that the user assigned to the task `meetingChat`, local or cloud, through the normal provider and key flow. The gate fails only when no model or no key is set. Today the live chat blocks non-local providers (`S/routes/meetings-chat.ts:98-103`). The new route has no such block. The old live route changes in P5 (section 10). Local stays the first target of the design and of the eval. Rules: the app sends only the sources of the turn (up to 6000 estimated tokens, section 2.2) to the chosen provider, never to another one. The thread shows the name of the provider and model that answered.
+3. Provider (decision D1). The chat uses the model that the user assigned to the task `meetingChat`, local or cloud, through the normal provider and key flow. The gate fails only when no model or no key is set. Today the live chat blocks non-local providers (`S/routes/meetings-chat.ts:98-103`). The new route has no such block. The old live route changes in P5 (section 10). Local stays the first target of the design and of the eval. Rules: the app sends only the sources of the turn (up to 6000 estimated tokens, section 2.2) to the chosen provider, never to another one. The thread shows the name of the provider and model that answered. The default model is the shared resident model (section 2.7).
 4. The scope exists (meeting or folder id found).
 5. Search state is read. `off` does not stop the turn. Only retrieval tools degrade (section 2.5).
 
@@ -277,7 +289,7 @@ flowchart TD
   X -->|"timeout of a stage"| F1["abort stage<br/>typed error, 1 retry if cold"]
   X -->|"finish = length"| F2["retry once with half the source budget<br/>then code fallback: top sources as links"]
   X -->|"context_length_exceeded"| F3["trim sources to the numbers in the error<br/>retry once"]
-  X -->|"all tools empty"| F4["not_found block + nearest sources"]
+  X -->|"all tools empty after the last round"| F4["EXIT not_found block + nearest sources<br/>asks permission for one step wider"]
   X -->|"invalid router or slot JSON"| F5["default intent lookup<br/>or default slots: query = question"]
   X -->|"cite validation fails twice"| F6["not_found block<br/>+ top sources, no model text"]
   X -->|"user cancels"| F7["abort signal to retrieve and calls<br/>no message saved as answer"]
@@ -300,6 +312,53 @@ Facts behind the paths:
 5. Sampling: the Auto path sends temperature 0 for every stage (`S/lib/llm/task-profiles.ts:51`; `AGENTS.md`, rule 2.2 "New model rule"). Runs at temperature 0 are deterministic (`specs/llm-runtime-tuning.md:427`). This makes the eval repeatable.
 6. Thinking is off, as for `liveChat` (`S/lib/llm/task-profiles.ts:130-136`).
 7. The lane: one request at a time per local model (`S/lib/llm/lane.ts:106`). The lane is held per request, so a dictation can run between two stages (Discovery B section 3.1, last bullet).
+
+### 2.7 Shared resident model (D6)
+
+Owner decision D6: chat (`meetingChat`) and the live chat default to the model that is already loaded and serving the other tasks. One serving instance serves all tasks, to save memory.
+
+1. The live chat already follows this: its default assignment is the app default LLM, which is the dictation cleanup model, so both share one worker (`specs/live-chat.md` section 3). The pool maps one model id to one HTTP worker, and two tasks with the same model share that worker (`specs/llm-runtime-tuning.md:365`). The cleanup model is pinned while cleanup is on (`specs/llm-runtime-tuning.md:367`).
+2. DECISION: the default assignment of `meetingChat` is the model of the task `cleanup`. No second model loads for chat.
+3. A different model for chat is an explicit opt-in on the Models page. Before the user confirms, the row shows a warning with the RAM cost (the MLX peak of the catalog entry, for example 5.1 GiB for E2B and 16.3 GiB for 26B-A4B, `S/lib/mlx-llm/constants.ts:65-73`, `:110-118`) and the load time (ASSUMPTION: measured in P1 and shown as a number). The pool admission rule can refuse a model that does not fit (`specs/llm-runtime-tuning.md:366`).
+4. The 120 s cold path applies mostly after an idle unload, because the shared model stays loaded while dictation uses it. "Keep ready" keeps it loaded (`specs/llm-runtime-tuning.md:368`).
+5. The sharing has two costs. Both are measured risks (section 9.2, risk 6), not assumptions:
+   - Dictation delay: all tasks of one model share one lane with one slot (`specs/llm-runtime-tuning.md:369`; `S/lib/llm/lane.ts:106`). A dictation can wait for one chat call. Bar in 8.7.
+   - Prefix cache: the worker keeps one prefix entry, sent on cleanup requests only (`W:905-925`). A chat call with a different system prompt can evict it, and the next cleanup prefills again.
+6. Fix options if the cost is too high (decided by the measurement, in order): (a) chat stages put the same fixed system prefix first, so the cached prefix survives. ASSUMPTION; the measurement shows if it works. (b) The worker keeps a prefix cache of 2 entries (a worker change). (c) The user opts in to a separate model for chat (point 3). (d) Chat calls are split so that each is short. No option is built before the number exists.
+
+### 2.8 Context window handling (D18)
+
+The owner calls this "one of the most sensitive parts of any chat". The rules are code, not model choices.
+
+1. Fixed budget split for each LLM call. Parts: system prompt, sources, history, question. Each part has its own cap. The answer call: system about 300 tokens, question up to 300, history up to 600, sources the rest of the source budget (default 6000 total, section 2.2). The live chat has the same idea with a fixed block order (`S/lib/meetings/live/chat-context.ts:22-31`). The caps are ASSUMPTIONS until P1 measures them.
+2. History never pushes sources out. If the parts do not fit, code shrinks history first (older turns drop), then the question stays whole, and sources are dropped whole, last-ranked first. A source is never cut in the middle, so a cite always points to complete text. The live chat drops whole blocks from the end of the list and cuts each hit to 320 characters (`S/lib/meetings/live/chat-context.ts:29`, Discovery B section 2.1). This spec keeps the 320 characters for chunk hits and cuts nothing else.
+3. Compact history. A past turn enters the prompt as: the question, a short answer (at most 200 characters, taken from the first sentence of the stored answer by code) and the cite ids. It does not include the full answer text or the source texts. The last 4 messages today are full text (`S/routes/meetings-chat.ts:53`). This spec replaces them with the compact form. The full thread stays in the database.
+4. Standalone follow-up rewrite before retrieval. The `query` slot of the slot fill (stage 2b) rewrites a follow-up ("and who owns it?") into a full search query, using the compact history. Retrieval never runs on the raw follow-up. The eval slice "follow-up" measures it.
+5. Budget per model. The window is the real context of the model (`contextWindowFor`, `S/lib/llm/token-budget.ts:88`; 32,768 for the catalog models, `S/lib/mlx-llm/constants.ts:65-135`; null for an own server, which has no guard, Discovery B section 3.3). The default source budget is capped by measured prefill time. At the prefill rates in `specs/llm-runtime-tuning.md:63` (E2B 23,985 tok/s, 26B-A4B 4,283, Qwen3.8 27B 736), 6000 tokens cost about 0.25 s, 1.4 s and 8.2 s (arithmetic, ASSUMPTION). P1 measures it and sets the default per model class. A user value above the measured default is labelled "unmeasured".
+6. The trace records what was cut: for each call, the token count of each part, the sources dropped (labels and titles), and the history turns dropped. The step trail in the UI can show "2 sources left out". The trace is stored in `trace_json` (section 4.2). The recorder keeps the final messages (`llm_calls.messages_json`, `S/lib/schema.ts:1070`).
+7. Overflow from the worker (`context_length_exceeded`, `W:672-698`) triggers one retry with the numbers from the error, as in the failure paths (2.5).
+8. Eval: threads of 5 to 10 turns with a fact planted early (turn 1 or 2) and asked again late. The fact must still be answerable, or the answer must be a correct not-found. Metrics: late-fact accuracy, sources dropped per turn, and answer accuracy against thread length (section 8.3).
+
+### 2.9 Settings: the "Ask" page (D7)
+
+Owner decision D7: the budget values are user settings on a new Settings sub-page "Ask" (chat parameters).
+
+| Setting | Default | Range |
+|---|---|---|
+| Tool rounds | 3 | 1 to 5 |
+| Answer source budget (tokens) | 6000 | 2000 to the model limit |
+| Retrieval k | 8 | 3 to 20 |
+| Turn deadline | 60 s | 20 to 180 s |
+| Search wider | "ask me, one step at a time" | also "do not offer" |
+| Chat history retention (later) | keep | one global knob, later (D18) |
+
+Rules:
+
+1. Every setting is read by the code at the moment of use, and a test pins it. The repo has a past case of a phantom knob: the enhance timeout shipped with a validator and no reader (`S/lib/llm/task-profiles.ts:158-161`). New settings need a settings key, a validator in `V/` and a route branch.
+2. The eval bars are measured at the defaults. A non-default value shows the label "unmeasured" next to the field.
+3. Decision D7 sets a UI knob for run settings. An older owner rule says no UI knobs for run settings (project memory "LLM runtime plan"; Discovery B section 4, last paragraph). D7 is the newer request and covers this page only.
+4. The switch `meeting_chat_enabled` and the model choice stay where they are (Settings, Meetings; Models page).
+5. Strings in 7 locales plus template.
 
 ## 3. Tool catalogue
 
@@ -574,7 +633,7 @@ What PM changes (DECISIONS):
 | Carry over | The carry rule after a re-transcribe (`S/lib/meetings/speaker-carry.ts`) must work with mic labels. It keys on time overlap. PM step 2 adds a test with mic labels. |
 | Summary owner strings | The summary prompt tells the model to write the transcript label as owner (`S/lib/meetings/workflow/prompts.ts:184-186`). A mic cluster label (a name or "Mic 2") flows through that rule with no prompt change. ASSUMPTION; the eval checks owner accuracy on multi-voice meetings. |
 | Cannot-link rule | Two mic clusters in one meeting are two people unless the user merged them (section 4.3, point 3). |
-| Cross-meeting voice identity | Not in scope. The user confirms clusters per meeting. A "same voice as last meeting" suggestion needs speaker embeddings from the helper. Whether the helper exposes them is UNKNOWN (OPEN Q12). |
+| Cross-meeting voice identity (D15) | Depends on four existing issues, all OPEN on 2026-10-31 (checked with the GitHub issue view): #67 "Recognize the same speaker across meetings", #73 "Store voiceprints on the device only", #79 "Add voiceprint enrollment with a consent screen", #85 "Match known voiceprints in new meetings". A mic or system cluster that is near a stored voiceprint becomes a suggestion ("same voice as Ana, last meeting"). The user confirms. Nothing links by voice alone. A voiceprint is created only after consent. It is kept until the person is deleted or the user asks, on the device only. Its retention does not depend on audio retention. PM does not build voiceprints. It only reads the suggestion when #85 exists. |
 | Live recording | The live view shows "Me" and "Them" until Stop (`specs/live-chat.md` section 7). The live chat answers with those two. |
 
 Risks specific to PM:
@@ -706,11 +765,16 @@ Discovery A section 2.1 lists where one person's strings live. The merge treats 
 | `meetings.title`, `meetings.context` | Replace aliases by the same rules | `agent_change_places` |
 | `meeting_chunks` and vectors | Re-embedded by the indexer after the summary and title change | The source hash changes (`S/lib/search/source.ts:146-154`). Undo changes it back and the indexer re-embeds. |
 | Chat history (`meeting_chat_messages`, `chat_messages`) | Display only: the renderer maps aliases of merged people to the canonical name when it shows a message. Stored text is not changed. | Nothing to version. Undo of the merge restores the old display at once. |
-| `meetings.calendar_attendees` | Not rewritten. It is calendar data and the email is the key. | n/a |
-| Transcript text (`meeting_segments.text`, `enhanced_text`) | Not rewritten. It is the record of the audio. A wrong spelling there is an ASR error, and the Enhance path owns it. | n/a |
+| `meetings.calendar_attendees` (display names) | Replace the `name` of an attendee that matches a confirmed alias. The `email` stays the key and is never changed. | `agent_change_places` |
+| Transcript text: `meeting_segments.text` and `enhanced_text` | Replace confirmed aliases (D13). Only confirmed aliases: an ASR misspelling is fixed only when the user confirmed it as an alias of the person. No fuzzy match. The transcript export file is rebuilt from the new text. | `agent_change_places`, one row per changed segment field (before text and after text) |
 | `vocabulary.term` | Not changed. It is a global list and not a project record. | n/a |
 
-The two "not rewritten" rows for stored records are a DECISION, with a reason each. They are OPEN Q14 for the owner.
+Decision D13 (was Q14): the merge also rewrites the stored transcript text and the attendee display names. Transcript rows in the preview start ticked, like all other places. Facts and limits:
+
+1. Until now the app does not overwrite the raw `text` of a segment after the transcription (Enhance writes `enhanced_text`, Discovery A section 3). This is the first agent write to `text`. The audit rows keep the old text, so it can be restored.
+2. A re-transcribe rewrites the segment rows (Discovery A section 1.1) and an Enhance run rewrites `enhanced_text`. A calendar re-sync rewrites the attendee columns (`S/routes/meetings.ts:1742`). In each case the affected places become `superseded` (section 5.7 rule 5).
+3. Changed segments change the source hash, so the indexer re-embeds only the changed chunks (`S/lib/search/source.ts:140-154`; Discovery B section 1.6).
+4. A large merge can change thousands of segments. The preview groups transcript rows by meeting with a count and a tick for the group, and each row can still be opened.
 
 Replacement rules (DECISION):
 
@@ -729,7 +793,7 @@ Preview content: every changed place is a row. A row shows table, meeting title,
 2. Undo goes place by place. For each place, code reads the current field value and compares its hash with `after_hash`.
 3. Same hash: restore `before_text`. Status `undone`.
 4. Different hash (the user or another process edited the text after the merge): try a patch-level undo. For each patch, if the `after` span is still at the expected place (same 40 characters of context), put back the `before` span. If all patches fit, status `undone`. If some do not fit, status `conflict` for those patches. Code leaves them as they are and lists them. The user can edit the text by hand.
-5. A summary replaced by a new Summarize run since the merge: the place is `superseded`. Undo skips it. The merge copy stays in `meeting_summary_versions`. The new summary is a fresh LLM output and has its own names.
+5. A summary replaced by a new Summarize run, a transcript replaced by a re-transcribe, an `enhanced_text` replaced by a new Enhance run, or attendee names replaced by a calendar re-sync since the merge: the place is `superseded`. Undo skips it. The merge copy stays in `meeting_summary_versions`. The new summary is a fresh LLM output and has its own names.
 6. Order rule: if a later applied change touched the same place, undo of the earlier change is blocked for that place until the later change is undone. The check uses `agent_change_places` for the same `(table_name, row_key, field)` with a newer `applied` row.
 7. Undo of the entity merge (`merged_into`) happens last and only when no place is in `conflict`. Otherwise the merge stays soft-merged and the UI says which places need manual work. DECISION: partial undo is allowed, and it is logged in the audit table with the per-place status.
 8. Undo re-reads and compares inside one transaction, like apply (section 5.4 rule 4).
@@ -778,7 +842,7 @@ Optional later check: an NLI score with HHEM-2.1-Open (https://huggingface.co/ve
 1. A turn is `not_found` when all tools return nothing after the fallback chain, when the best score is below a floor, or when cite validation fails twice. The score floor is a number that section 8 measures (no value is set here).
 2. The response is a structured block: `{kind:"not_found", scope, nearest:[cites]}`. The renderer writes the text in the UI language with `t()`. Reason: code answers need no server-side translation (7 locales, `AGENTS.md`, section "UI conventions").
 3. When the model itself says "not found" (the prompt rule as in `S/lib/meetings/live/chat-prompt.ts:13`), code converts the reply to the same block.
-4. A not-found block in scope M or F offers "search wider". The user clicks it. Code never widens the scope alone. DECISION.
+4. Search wider (D16). When the selected scope finds nothing, the not_found block asks the user for permission to widen. One confirm widens one step: meeting to folder, folder to everything. An unfiled meeting goes straight to everything. A new turn runs at the wider scope in the same thread, and its cites show that scope. Code never widens on its own, also not in the last tool round. The setting "Search wider" (section 2.9) can turn the offer off.
 
 ### 6.4 Language
 
@@ -813,14 +877,14 @@ Each step lists a measurement. All numbers come from the gold eval in section 8 
 
 ### 7.4 Retrieval workstream R4 (in P0, decision D4)
 
-Owner decision D4: "if we add anything, we do it right." The workstream compares four things on one gold set, then keeps only what the numbers support.
+Owner decision D4: "if we add anything, we do it right." Owner decision D10: the embedder stays EmbeddingGemma 2 (there is little reason for another embedder). A reranker is built only if the eval shows the need. The workstream compares four things on one gold set, then keeps only what the numbers support.
 
-Why this reverses decision D8 of the search spec. D8 says: "Vectors only, no plain-RRF hybrid" (`specs/local-semantic-search.md:71`). The same spec lists hybrid search, a reranker and an "ask" answer as non-goals (`specs/local-semantic-search.md:49`; Discovery B section 1.4). Reasons to reverse now:
+Why this reverses decision SD8 of the search spec. SD8 says: "Vectors only, no plain-RRF hybrid" (`specs/local-semantic-search.md:71`). The same spec lists hybrid search, a reranker and an "ask" answer as non-goals (`specs/local-semantic-search.md:49`; Discovery B section 1.4). Reasons to reverse now:
 
 1. The agent asks questions that hold exact names and numbers. The spike measured recall@10 of 0.613 (PT) and 0.703 (EN) for the current int8 vectors on a hard set (`specs/local-semantic-search.md:105-111`). About 3 of 10 hard queries miss in the top 10.
 2. The agent cannot repair a miss. It answers "not found" or a wrong fact, and the cite check cannot see what the search missed.
 3. Outside evidence says BM25 plus embeddings cut failed top-20 retrievals by 49% (5.7% to 2.9%), and a reranker cut them by 67% (to 1.9%) (https://www.anthropic.com/news/contextual-retrieval). Their data sets differ from ours. This is a hint, not a promise.
-4. The spec's own reason for D8 is in an issue comment that the spec links. This spec does not restate it. The P0 PR must quote it and answer it with the measured numbers. The search spec is edited in the P0 PR (D8 and the non-goal line change status to "reversed by `specs/meeting-chat-agent.md` section 7.4, with numbers").
+4. The spec's own reason for SD8 is in an issue comment that the spec links. This spec does not restate it. The P0 PR must quote it and answer it with the measured numbers. The search spec is edited in the P0 PR (SD8 and the non-goal line change status to "reversed by `specs/meeting-chat-agent.md` section 7.4, with numbers").
 
 Arms (all use the same gold set, section 8.2, plus the #233 hard set for continuity):
 
@@ -830,7 +894,7 @@ Arms (all use the same gold set, section 8.2, plus the #233 hard set for continu
 | H1 | V0 plus BM25 from SQLite FTS5, fused with RRF (k=60) | fusion: https://www.elastic.co/search-labs/blog/improving-information-retrieval-elastic-stack-hybrid |
 | H2 | H1 with a second FTS5 tokenizer (see below) | picks the tokenizer |
 | R1 | H1 or V0 candidates, then a cross-encoder reranker | picks the model |
-| M1 | V0 plus audio vectors from the multimodal model | spike only (section 7.4.4) |
+| M1 | V0 plus audio vectors from the multimodal EmbeddingGemma 2 (same family, so D10 holds) | spike only (section 7.4.4). Audio vectors follow the retention of D14. |
 
 ##### 7.4.1 BM25 with FTS5
 
@@ -847,7 +911,7 @@ Arms (all use the same gold set, section 8.2, plus the #233 hard set for continu
 
 ##### 7.4.3 Reranker
 
-Rule: a reranker is built only if it passes the bars in 7.4.6. Candidates:
+Rule (D10): a reranker is built only if the eval shows the need and it passes the bars in 7.4.6. No other embedder is tested. Candidates:
 
 | Candidate | Facts | Source |
 |---|---|---|
@@ -958,7 +1022,7 @@ DECISION: a script builds the corpus from templates and a seeded random number g
 
 ### 8.3 Question taxonomy and keys
 
-About 180 questions. The mix follows LongMemEval's abilities (https://arxiv.org/abs/2410.10813: extraction, multi-session reasoning, temporal reasoning, knowledge update, abstention) plus who-said, count and write.
+About 190 questions. The mix follows LongMemEval's abilities (https://arxiv.org/abs/2410.10813: extraction, multi-session reasoning, temporal reasoning, knowledge update, abstention) plus who-said, count and write.
 
 | Type | N | Scope mix | Key form (code-scored) |
 |---|---|---|---|
@@ -971,6 +1035,7 @@ About 180 questions. The mix follows LongMemEval's abilities (https://arxiv.org/
 | Not answerable | 30 (above 15%) | any | must be a `not_found` block, no text answer |
 | Scope trap | 10 | M, F | a fact that exists only outside the scope. The answer must be `not_found`. |
 | Follow-up | 10 | any | as lookup, with a prior turn |
+| Long thread (5 to 10 turns, a fact planted in turn 1 or 2 and asked again late) | 10 | M, F, A | as lookup, or a correct not-found. Also scores sources dropped per turn (section 2.8). |
 | Write proposal | 25 | M, F, A | expected proposal: kind plus id set. Compared as a set, not as prose. |
 
 Key forms for text answers: a list of "must contain" alternatives and a list of "must not contain" distractors. Both are normalized (accent fold, lowercase, digits). Pass means all must-contain groups match and no must-not-contain token appears. This is deterministic code. Free-text quality beyond the key is not scored by a judge. The owner spot-checks a sample of 20 answers per model (rule from Discovery C section 5.3).
@@ -1010,13 +1075,16 @@ Arms (each on E2B first):
 | A3 | Rules router instead of the LLM router |
 | A4 | A1 plus the FTS channel (when built) |
 | A5 | No slot fill (default slots) to measure the value of the slot call |
+| T1 | Native `tools` / `tool_calls` in the local worker behind a flag, with the Gemma 4 parser of mlx-lm (section 2.1 point 6). Compared with A1 on tool-choice accuracy and argument accuracy. The winner stays (D11). |
 
-An arm wins by the key metrics. Per decision D1, cloud models are normal providers. Local models are the focus and set the bars. Cloud reference runs (one or two models, chosen with the owner) use the fictional corpus only, so no private data leaves the Mac. The eval reports them as a ceiling. They never replace a local pass.
+An arm wins by the key metrics. Per decision D1, cloud models are normal providers. Local models are the focus and set the bars. Decision D12 (was Q15): no cloud reference models for now.
+
+E2B is the floor (D9). If E2B gives acceptable results, that is a win. Every other model must score better than E2B on the gold set. Rule: for a model to be offered as an option for the chat, its answer accuracy by key, list F1 and not-found accuracy must each be at least those of E2B, and its answer accuracy must be higher. A model that fails the rule is reported and not offered. The check runs at the default settings of section 2.9.
 
 ### 8.6 Name-dedup set
 
 1. A fictional set: 200 labelled string pairs from the corpus people (same person: yes or no), with ASR-style variants, nicknames, shared first names.
-2. An owner-labelled set: the owner labels 100 to 200 pairs from real data (Discovery C section 4). The labels and strings stay private. Only precision and recall numbers go into the repo.
+2. An owner-labelled set (D17): the owner labels by hand on a labelling page, like the earlier gold labelling page. Choices: same, different, unsure, skip. The pairs come from the likely and unsure candidates of the resolver on real meetings. This happens between P2 and P4 (100 to 200 pairs, Discovery C section 4). The page is a local tool and not part of the shipped app (DECISION). The labels and strings stay private on the Mac. Only precision and recall numbers go into the repo.
 3. Metrics: precision and recall of the clusters before the human step; precision after "certain" only. A wrong merge costs more than a missed one, so the bar is precision first.
 4. The eval compares code-only against code plus an LLM verifier that may answer "unsure". The verifier is built only if code-only precision is under the bar.
 
@@ -1086,7 +1154,7 @@ flowchart LR
 
 | Phase | Content | Schema | Setting | DoD (all needed) |
 |---|---|---|---|---|
-| P0 | R1 meeting scope and date filter; R3 `best_ms` and grouping helper; the retrieval workstream R4 of section 7.4 (FTS5 BM25, RRF fusion, reranker candidates, multimodal spike) with its own eval and bars; reversal of D8 in the search spec; the chat eval corpus builder and harness (`scripts/chat-eval/`); baseline runs of A0 on E2B, E4B, Nemotron, Qwen; a skill `.claude/skills/chat-eval/SKILL.md` | FTS table (version at build time) only if H1 passes its bar | none (no user feature) | Arms table (V0, H1, H2, R1, M1) with recall@k, nDCG@10 per language, latency, RAM, index size, in the PR. Unit tests of the new filters. The existing search eval does not regress. The harness runs against an isolated app. Bars of 7.4.6 met or the PR says which arm was dropped. |
+| P0 | R1 meeting scope and date filter; R3 `best_ms` and grouping helper; the retrieval workstream R4 of section 7.4 (FTS5 BM25, RRF fusion, reranker candidates, multimodal spike) with its own eval and bars; reversal of SD8 in the search spec; the chat eval corpus builder and harness (`scripts/chat-eval/`); the native-tools arm T1 in the worker behind a flag, compared with the structured router (D11); baseline runs of A0 on E2B, E4B, Nemotron, Qwen; a skill `.claude/skills/chat-eval/SKILL.md` | FTS table (version at build time) only if H1 passes its bar | none (no user feature) | Arms table (V0, H1, H2, R1, M1) with recall@k, nDCG@10 per language, latency, RAM, index size, in the PR. Unit tests of the new filters. The existing search eval does not regress. The harness runs against an isolated app. Bars of 7.4.6 met or the PR says which arm was dropped. T1 against A1 table (tool-choice and argument accuracy); the loser is removed. |
 | P1 | Router, plan table, slot fill, answer, cite validation. Tools: `search_chunks`, `get_meeting_summary`, `list_action_items` (read only, derived key), `folder_status`. Threads and messages. Scope M and F. The Ask tab on the meeting page only (section 11.4). | v54 (items), v55 (threads) | `meeting_chat_enabled` (default off) | E2E in the isolated app on the meeting Ask tab: a real question per story R1, R2 (one meeting), R5, R9 with screenshots in light and dark, and the accessibility tree check of 11.3. R6 and folder-level R2 and R5 are proven by the gold eval and by command (said so in the PR); their screen proof is in P2. Gold eval numbers for E2B meet the P1 bars. Failure paths 2.5 each tested. |
 | P2 | Scope A. Tools: `list_meetings`, `list_decisions_questions`, `list_people` (certain matches only), `get_transcript_window`. Resolver for certain matches. The Ask tab on the folder Overview, Cmd+K with widening to Everything, and the source-text panel of 11.5. | v56 (people) | same | E2E for R3, R4, R6, R7 and folder-level R2 and R5 in the screen, Cmd+K widen and continue-in-tab. Gold numbers meet the P2 bars. Resolver run on the fictional corpus. |
 | P3 | `propose_action_item_change`, `propose_retag`, `propose_move`. Proposal cards. Apply, undo, audit log. Extract the move and tag logic to lib functions. Item sync after summarize. | v57 (changes) | same | E2E: propose, apply, check in the screen, undo, check again, for each kind. The undo round trip hash test. Write bars met. No path writes without Apply (a test posts a write-intent question and checks the tables did not change). |
@@ -1105,7 +1173,7 @@ Rule for all phases: an E2E result on the screen is needed. A 200 response alone
 | 3 | A wrong person merge corrupts data in many meetings | Names appear in 7 places (Discovery A section 2.1) | Entity merge is soft (`merged_into`). The full rewrite (D3) is shown place by place in the preview. Cannot-link rule. Ambiguous-alias guard. User confirms every cluster. Versioned copy of every place. Patch-level undo with a conflict report. Precision first. |
 | 4 | Vector-only recall misses names and numbers | recall@10 0.613 PT, 0.703 EN (`specs/local-semantic-search.md:105-111`) | Structured tools for counts and owners. Optional FTS5 channel by a measured gate. |
 | 5 | Item ids drift on re-summarize or re-transcribe | Key hash changes with text (`S/lib/meetings/folder-overview.ts:40-42`); segment ids rewritten (Discovery A, gap 10) | `sameOverviewItem` sync, `text_hash` drift check, cites by `meeting_id` plus `start_ms`. |
-| 6 | The lane or RAM hurts dictation or small Macs | One request at a time per local model (`S/lib/llm/lane.ts:106`); peak 9.0 GB with ASR and chat models, 16 GB Macs untested (`specs/live-chat.md` section 7); the prefix cache of cleanup is one entry (`W:905-925`) | Measure dictation latency during a chat turn (bar in 8.7). Measure the cleanup prefix cache after a chat turn. Chat uses the interactive class. The turn deadline is 60 s. |
+| 6 | The lane or RAM hurts dictation or small Macs | One request at a time per local model (`S/lib/llm/lane.ts:106`); peak 9.0 GB with ASR and chat models, 16 GB Macs untested (`specs/live-chat.md` section 7); the prefix cache of cleanup is one entry (`W:905-925`) | The default is the shared resident model (D6). Measure dictation latency during a chat turn (bar in 8.7) and the cleanup prefix cache after a chat turn. If a cost shows, use the fix options of 2.7 point 6 in order. The turn deadline is a setting (default 60 s). |
 | 7 | Data goes to a cloud provider that the user chose, in a chat over many meetings | Decision D1 lifts the local-only rule of the live chat (`S/routes/meetings-chat.ts:98-103`) | The app sends only the sources of the turn (up to 6000 estimated tokens) to the provider that the user set for the task. The thread shows provider and model. The LLM inspector keeps the sent messages (`llm_calls.messages_json`, `S/lib/schema.ts:1070`). No fallback to another provider. |
 | 8 | Eval corpus does not match real use | Fictional corpus (8.2) | Owner-labelled private set for dedup. Owner spot check of 20 answers per model. The three spoken meetings. |
 | 9 | Scope creep from the UI | Three surfaces (tab, folder tab, Cmd+K) plus dissents (section 11.5) | The API is placement-agnostic. P1 builds only the meeting tab. Cmd+K and the folder tab wait for P2. |
@@ -1129,11 +1197,38 @@ See section 12.2. Decisions D1 to D5 are in section 12.1.
 | Cleanup (dictation cleanup, renamed from "Tone" in #398) | It shares the default LLM worker and the lane with the chat (`specs/live-chat.md` section 3). A chat turn of several calls can delay a dictation by up to one call. Chat does not send the prefix-cache header, so a chat call can evict the one-entry cleanup cache (`W:905-925`; `S/lib/llm/registry.ts:529-534`). Measured in P1. | `resolveTaskCall`, `withLlmLane`, the lane |
 | Summarize and Enhance | P3 item sync runs after the save step. A new summary keeps ids by `sameOverviewItem`. | `save.ts` pipeline |
 | Speaker naming and diarization | P4 uses the existing speaker update path. PM adds the mic channel to diarization and changes `merge.ts` (section 4.5). | `PATCH /:id/speakers/:label`, `fluidaudio-diarize` helper |
-| Search spec | D8 and the hybrid and reranker non-goals are reversed with numbers (section 7.4). | `specs/local-semantic-search.md` |
-| Audio retention | Audio vectors (if M1 ships) depend on audio that the sweep deletes (`S/lib/meetings/retention.ts:15-21`). | |
+| Search spec | SD8 and the hybrid and reranker non-goals are reversed with numbers (section 7.4). | `specs/local-semantic-search.md` |
+| Models page and Settings | A warning on the opt-in row for a separate chat model (2.7). A new Settings sub-page "Ask" (2.9). | Task rows of the Models page |
+| Voiceprints | Suggestions of the same voice depend on issues #67, #73, #79 and #85 (4.5). | |
+| Retention (work outside the chat spec, D14) | Listed below in 10.1. | |
+| AGENTS.md | A new rule "Diagram conventions" (same PR). | |
 | LLM inspector | Shows chat stages through `llm_runs` with `scope = "chat"`. | recorder, inspector UI |
 | Settings, Models page | New switch `meeting_chat_enabled`. New row for the task `meetingChat` on the Models page (as `models.taskProfiles.liveChat`, `specs/live-chat.md` section 5). 7 locales plus template. | task profile UI |
 | Knip | New files must be imported or listed in `knip.jsonc` (`AGENTS.md`, development gotchas). | |
+
+### 10.1 Retention work outside the chat spec (D14)
+
+Owner decision D14 (was Q13): audio vectors follow the retention of the app. The default is no retention: data persists. This is separate work with its own PR, because it changes existing behavior.
+
+Today: one global setting `meeting_retention_days` with a default of 30 days (`V/settings.ts:196`, `V/settings-keys.ts:93`). The sweep deletes only the WAV files and sets `audio_dir` to NULL. The database rows (segments and summaries) stay forever. A meeting with `retention_exempt = 1` is never swept (`S/lib/meetings/retention.ts:15-21`).
+
+New policy:
+
+1. Default: no retention. Meetings persist. Audio and vectors persist.
+2. Per folder: meetings in a folder persist by default. A folder may opt in to a retention period.
+3. Unfiled meetings get a retention period. When it ends, the purge removes the WHOLE meeting: audio, transcript, summary, vectors and chat. The delete path today removes the row with cascade and removes the audio directory (`S/routes/meetings.ts:2502`).
+4. Before the purge, the app shows a warning that lists the meetings, with a "move to a folder" action. A move exempts the meeting (the move route is `S/routes/meeting-folders.ts:166`).
+5. Vectors and audio are always deleted together. Audio vectors, if M1 ships, die with the audio. Text vectors die with the meeting.
+
+Work items (not part of the chat phases):
+
+| # | Item |
+|---|---|
+| 1 | A per-folder retention setting: a nullable column on `meeting_folders` (`NULL` = persist) and a field in the folder controls. |
+| 2 | The retention period for unfiled meetings: change the meaning of `meeting_retention_days` from "delete audio of all meetings" to "purge unfiled meetings". A migration decides what happens to users who have the 30-day default today (OPEN Q16). |
+| 3 | The warning surface and the move action. |
+| 4 | The sweep change in `S/lib/meetings/retention.ts`: whole-meeting purge with the vector cleanup that a meeting delete already does (the GC trigger of `meeting_chunk_gc`, Discovery A section 1.4), and the audio-vector deletion. |
+| 5 | Tests: a folder meeting is never purged, an unfiled meeting is purged only after the warning period, and an exempted meeting stays. |
 
 ## 11. UI placement: decided (D5)
 
@@ -1155,7 +1250,7 @@ The owner said the Cmd+K quick ask and the Ask tab have "an awesome synergy". Th
 
 1. A scope line in words, with the scope default from context: the meeting tab gives M, the folder tab gives F, Cmd+K gives the page scope. In Cmd+K the user widens to A with one action. In a tab the scope is fixed by the page, and the tab offers "ask across everything" which opens Cmd+K at A. DECISION: the tab does not change its own scope. Reason: a meeting tab that answers from other meetings confuses the cites.
 2. Cite chips. A chip opens the meeting at `start_ms`, or opens the item. A dead chip (meeting deleted) is shown as "removed".
-3. Answer blocks: text, list, count, status, not-found with "search wider" (a button, Q11).
+3. Answer blocks: text, list, count, status, not-found with the "search wider" offer (D16, section 6.3).
 4. Proposal cards with a before and after preview, row checkboxes, Apply, Reject, and Undo after Apply (P3 and later).
 5. An activity log of applied changes with Undo (reads `GET /api/chat/changes`).
 6. A step trail of the tools that ran ("searched 3 meetings, read 1 summary"). It comes from `trace_json`. The POST returns once, because the worker does not stream (`W:734-735`).
@@ -1196,23 +1291,30 @@ The owner said the Cmd+K quick ask and the Ask tab have "an awesome synergy". Th
 | D1 (was Q1) | Cloud models are allowed like every other provider and model the app supports. It is the user's choice. Local is always first and is the focus of the design and the eval. There is no special "cloud blocked" rule. The usual provider and key flow stays. Data goes only where the user chose. | 1.2, 2.3 stage 0, 2.5, 8.5, 9.2 risk 7, 10 |
 | D2 (was Q4) | The app creates the account-owner person after one confirmation. The mic channel can hold more than one person, so diarization is needed on all channels. "Me" is not "every mic segment". The owner person links only to the mic clusters that the user confirms. Other mic voices are their own speakers. | 4.3, 4.5, 8.8, 9.1 (PM) |
 | D3 (was Q5) | A person merge rewrites everything by default, prose included: speaker names, action item owners, summary prose, standing bullets, search chunks (re-index) and chat history display. Always a versioned copy, with full undo. The preview shows every changed place. | 5.6, 5.7, 4.4 |
-| D4 (was Q6) | Retrieval gets a full workstream in P0: FTS5 BM25 plus dense vectors with RRF, a reranker if it helps, and research on a multimodal embedding. Decision D8 of the search spec is reversed, with the reason in 7.4. Own metrics and initial bars. | 7.4, 8.8, 9.1 (P0) |
+| D4 (was Q6) | Retrieval gets a full workstream in P0: FTS5 BM25 plus dense vectors with RRF, a reranker if it helps, and research on a multimodal embedding. Decision SD8 of the search spec is reversed, with the reason in 7.4. Own metrics and initial bars. | 7.4, 8.8, 9.1 (P0) |
 | D5 (was Q2) | UI placement is concept C: an Ask tab on the meeting page and on the folder Overview (scope is where you are), plus a Cmd+K quick ask from anywhere that can widen to Everything and continue in the tab. The live view keeps its layout and its chat moves to the Ask pipeline in P5. The Ask page (concept B) is a later option for Everything and old-thread search. | 11, 9.1 (P1, P2, P5) |
+
+| D6 | Shared resident model: chat and live chat default to the model that already serves the other tasks. A separate chat model is an explicit opt-in with a RAM and load-time warning. Keep the two sharing costs as measured risks. | 2.7, 9.2 risk 6 |
+| D7 | Tool rounds (default 3, range 1 to 5) and the related budgets are user settings on a new Settings sub-page "Ask". Bars are measured at defaults. Non-default values are labelled "unmeasured". The call count is a formula with a hard cap. | 2.2, 2.9 |
+| D8 | Structure and idempotency by default. Relax only where the eval shows a cost. A weak model can be raised by a smart, well-built harness. The code router and closed choices are settled. | 2.1 |
+| D9 | E2B is the floor. If E2B gives acceptable results, that is a win. Every other model must score better than E2B on the gold set. | 8.5 |
+| D10 | Embeddings stay EmbeddingGemma 2. A reranker only if the eval shows the need. | 7.4 |
+| D11 | Tool choice and arguments come from structured output by default. P0 measures a native tools arm (T1) in the worker behind a flag and keeps the winner. | 1.2, 2.1, 8.5 |
+| D12 (was Q15) | No cloud reference models for now. Local models set the bars. | 8.5 |
+| D13 (was Q14) | A person merge also rewrites stored transcript text and attendee display names (email stays the key). Transcript rows start ticked. Re-transcribe, Enhance and calendar re-sync make places superseded. ASR misspellings only through confirmed aliases. Changed chunks are re-embedded. | 5.6, 5.7 |
+| D14 (was Q13) | Audio vectors follow app retention. Default is no retention. Folders persist by default. Unfiled meetings get a period, and the purge removes the whole meeting after a warning with a move option. Vectors and audio are deleted together. | 10.1 |
+| D15 (was Q12) | Voice fingerprints depend on issues #67, #73, #79 and #85. A near voiceprint is a suggestion, and the user confirms. Voiceprints are kept until the person is deleted or on request, on device only, created after consent, independent of audio retention. | 4.5 |
+| D16 (was Q11) | Search wider: ask permission, one step per confirm (meeting, folder, everything; unfiled goes to everything). Code never widens alone. | 6.3 |
+| D17 (was Q10) | The owner labels name pairs by hand on a labelling page (same, different, unsure, skip), from resolver candidates on real meetings, between P2 and P4. Labels stay private. | 8.6 |
+| D18 (was Q9) | Keep chats for now. Later one global retention knob on the Ask page. Threads cascade with their meeting or folder. Context window handling is specified in 2.8. | 2.8, 4.2 |
 
 ### 12.2 Open questions
 
 | # | Question | Default in this spec |
 |---|---|---|
 | Q3 | Approve the pass bars of sections 7.4.6, 8.7 and 8.8 after the P0 and PM measurements? | wait for the numbers |
+| Q16 | What happens to users who have the 30-day audio retention today when D14 lands: keep their period as the unfiled period, or switch to no retention? | keep their value for unfiled meetings; new installs get none |
 | Q7 | Is an unfiled meeting allowed to hold its own done marks (section 4.1)? | yes |
-| Q8 | Which bigger models count as the target set for "must do better": E4B, Nemotron Bolt, Qwen 27B, 26B-A4B? | E4B, Nemotron, Qwen |
-| Q9 | Keep chat history forever, or prune? Threads cascade with their meeting or folder. | keep, no prune |
-| Q10 | Owner-labelled dedup pairs: 100 to 200 pairs needed before P4. Who labels, and when? | owner, before P4 |
-| Q11 | First release: a "search wider" button, or widen the scope on its own when nothing is found? | button, no auto widen |
-| Q12 | Same voice across meetings: may the app suggest "this is the same voice as in the last meeting" if the diarizer helper can give speaker embeddings? Needs a check of the helper first. | not in scope |
-| Q13 | If the multimodal spike (7.4.4) succeeds, may the app keep audio vectors, given that the audio file is deleted after the retention period? | spike only |
-| Q14 | Person merge: should it also rewrite stored transcript text and the calendar attendee names? This spec leaves them out (5.6). | not rewritten |
-| Q15 | Which cloud model or models serve as the reference ceiling in the eval (8.5)? | none until the owner names them |
 
 ## 13. Sources
 
