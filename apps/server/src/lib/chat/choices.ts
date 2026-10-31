@@ -404,14 +404,12 @@ function allDefs(ch: Choices): Partial<Record<ToolName, NativeTool>> {
     list_action_items: def("list_action_items", "List action items", {
       ...(person ? { person } : {}),
       status: { type: "string", enum: ["open", "done", "all"] },
-      ...(meeting ? { meeting } : {}),
     }),
     list_decisions_questions: def(
       "list_decisions_questions",
       "List decisions or open questions",
       {
         kind: { type: "string", enum: ["decision", "open_question"] },
-        ...(meeting ? { meeting } : {}),
       },
       ["kind"],
     ),
@@ -614,9 +612,11 @@ function toIdArgs(
       // Code sets the window. The pipeline narrows it to the best hit.
       return { meeting_id: meetingId, from_ms: 0, to_ms: 180_000 };
     case "list_action_items":
-      return { status: a.status, person_id: a.person, meeting_id: meetingId };
+      // No meeting argument: the scope is set by code (P1 eval: the model
+      // narrowed a project list to one meeting).
+      return { status: a.status, person_id: a.person };
     case "list_decisions_questions":
-      return { kind: a.kind, meeting_id: meetingId };
+      return { kind: a.kind };
     case "list_people":
       return { query: text(a.query) };
     case "folder_status":

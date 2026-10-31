@@ -73,9 +73,11 @@ const THIN_ROWS = 3;
 /**
  * The not-found floor (spec 6.3 point 1): when the reranker gives the best hit
  * a score below this, the question has no source. The number comes from the
- * P1 eval (see the PR); 0 turns the floor off.
+ * P1 eval: the best hit of 33 not-found questions scored 0.00 to 0.31 (two
+ * 0.92 and 0.98), the best hit of 76 answerable questions scored 0.55 to 1.00
+ * (one 0.13). 0.5 sits in the gap. 0 turns the floor off.
  */
-export const SCORE_FLOOR = 0;
+export const SCORE_FLOOR = 0.5;
 /** Nearest sources shown in a not_found block. */
 const NEAREST = 3;
 /** Cites kept for a block answer (list, count, status). */
@@ -647,6 +649,7 @@ export async function runChatTurn(input: ChatTurnInput): Promise<TurnResult> {
       check.ok ? null : failureNote(check),
     );
     if (check.ok) {
+      tidyCites(check.sentences, sources);
       refineCiteTimes(check.sentences, sources);
       const cites = citeFromSentences(check.sentences, sources);
       const blocks: ChatBlock[] = check.sentences.map((s) => ({
@@ -726,5 +729,45 @@ function refineCiteTimes(
       }
       if (best && bestScore > 0) src.startMs = best.startMs;
     }
+  }
+}
+
+/**
+ * One cite for each sentence: the source that shares most content words with
+ * the sentence. A transcript line of a cited meeting wins over a summary line
+ * that says the same (the chip then opens the meeting at the spoken line).
+ */
+function tidyCites(
+  sentences: { text: string; cites: string[] }[],
+  sources: SourceMap,
+): void {
+  for (const sentence of sentences) {
+    const words = new Set(fold(sentence.text));
+    if (words.size === 0 || sentence.cites.length === 0) continue;
+    const meetings = new Set(
+      sentence.cites
+        .map((l) => sources.get(l)?.meetingId)
+        .filter((m): m is string => !!m),
+    );
+    const candidates = new Set(sentence.cites);
+    for (const src of sources.all()) {
+      if (src.kind === "transcript" && meetings.has(src.meetingId))
+        candidates.add(src.label);
+    }
+    let best = sentence.cites[0] as string;
+    let bestScore = -1;
+    for (const label of candidates) {
+      const src = sources.get(label);
+      if (!src) continue;
+      const have = new Set(fold(src.text));
+      let hit = 0;
+      for (const w of words) if (have.has(w)) hit++;
+      const score = hit / words.size + (src.kind === "transcript" ? 0.15 : 0);
+      if (score > bestScore) {
+        best = label;
+        bestScore = score;
+      }
+    }
+    sentence.cites = [best];
   }
 }
