@@ -208,3 +208,14 @@ The silence gate. The old gate (voiced time of the mic only) sent noise segments
 | natural gaps | 2 | 0 | 74 | 52 |
 
 All spoken sentences were still covered after the change. With the real model, silences gave no final line before or after on these files. The invented words of the field test did not appear on synthetic noise. Two transient one-word partial lines ("sim") from a breath that Silero marks as speech showed in the after runs.
+
+## 9. Live captions in the recording pill (option, default off)
+
+Owner idea 2026-10-30: the small recording pill can show the live text like subtitles. Setting `live_captions_pill` (only the value `"true"` turns it on), a switch in Settings, Meetings, under the live transcript switch. It has an effect only while `live_chat_enabled` is on. With the option off, the pill is unchanged in size and behaviour.
+
+- The pill is the window `pill.html` (`pages/app.tsx`, `pages/pill/meeting-capsule.tsx`). The tray popover does not show captions.
+- Data path: the pill reads `GET /api/meetings/:id/live` once each second, the route of the live view. There is no second ASR pass and no new IPC for the text. The pill reads the two settings once, when the capsule mounts.
+- Text: the newest final line (normal style) and the newest partial line (muted), at most one line height each. A line that is too long loses its start ("...").
+- Hide: the captions hide when the text does not change for 8 s. A silence gives no new line, so the captions go away. The silence gate and the language lock are in the loop and need no special code.
+- Window: the pill window is 160 x 60. While a caption is visible, main grows it to 360 x 96 around the anchored edge of the capsule (`pill:set-captions`, `setPillCaptions`), so the timer and Stop do not move. It shrinks 300 ms after the captions fade out. The failure card wins when both want room.
+- Theme: the pill has one dark surface in both themes (`SURFACE`, `INK`), so the captions read on light and dark desktops.

@@ -29,6 +29,18 @@ import { hideTrayPopover } from "./tray-popover-window";
 const PILL_CARD_WIDTH = 340;
 const PILL_CARD_HEIGHT = 144;
 
+/**
+ * The window is grown to this while the pill shows live captions (issue
+ * #375): two lines of text on the side of the capsule that faces the screen
+ * centre. It is grown only while a caption is visible.
+ */
+const PILL_CAPTIONS_WIDTH = 360;
+const PILL_CAPTIONS_HEIGHT = 96;
+
+/** What the renderer asked for. The card wins over the captions. */
+let cardWanted = false;
+let captionsWanted = false;
+
 // Tracks the exact coordinates of the last programmatic setPosition call.
 // The move listener compares reported coords against this target and ignores
 // matching events, eliminating the fixed-timeout race condition.
@@ -109,17 +121,30 @@ function getPillAnchor(): { side: "center" | "right"; edge: "top" | "bottom" } {
  * before it animates the card in, and gives it back once the card is gone.
  */
 export function setPillExpanded(expanded: boolean): void {
+  cardWanted = expanded;
+  applyPillSize();
+}
+
+/** Give the pill window room for the live captions, or take it back. */
+export function setPillCaptions(on: boolean): void {
+  captionsWanted = on;
+  applyPillSize();
+}
+
+function applyPillSize(): void {
   const win = state.mainWindow;
   if (!win || win.isDestroyed()) return;
+  const want = cardWanted
+    ? { width: PILL_CARD_WIDTH, height: PILL_CARD_HEIGHT }
+    : captionsWanted
+      ? { width: PILL_CAPTIONS_WIDTH, height: PILL_CAPTIONS_HEIGHT }
+      : null;
   const isExpanded = pillExpandOffset.dx !== 0 || pillExpandOffset.dy !== 0;
   // No-op if already collapsed/same size; re-run on size change to keep anchor.
-  if (expanded === isExpanded && !expanded) return;
-  if (expanded && isExpanded) {
+  if (!want && !isExpanded) return;
+  if (want && isExpanded) {
     const bounds = win.getBounds();
-    if (
-      bounds.width === PILL_CARD_WIDTH &&
-      bounds.height === PILL_CARD_HEIGHT
-    ) {
+    if (bounds.width === want.width && bounds.height === want.height) {
       return;
     }
   }
@@ -128,10 +153,9 @@ export function setPillExpanded(expanded: boolean): void {
   const [x, y] = win.getPosition();
   let target: { x: number; y: number; width: number; height: number };
 
-  if (expanded) {
+  if (want) {
     const { side, edge } = getPillAnchor();
-    const width = PILL_CARD_WIDTH;
-    const height = PILL_CARD_HEIGHT;
+    const { width, height } = want;
     pillExpandOffset = {
       dx:
         side === "right"

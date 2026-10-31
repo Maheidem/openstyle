@@ -247,7 +247,9 @@
       "liveChat": "Live-Transkript und Chat (experimentell)",
       "liveChatDesc": "Zeigt das Transkript während der Aufnahme und lässt dich Fragen zur Besprechung stellen. Es braucht ein heruntergeladenes lokales Transkriptionsmodell. Während einer Aufnahme nutzt es mehr Speicher.",
       "liveKeep": "Live-Transkript beim Stopp behalten (experimentell)",
-      "liveKeepDesc": "Beim Stopp der Aufnahme wird der Live-Text sofort zum Transkript der Besprechung, markiert als \"Aus Live\". Sprecherlabels folgen danach. Sie können später Neu transkribieren nutzen. Wirkt nur bei eingeschaltetem Live-Transkript."
+      "liveKeepDesc": "Beim Stopp der Aufnahme wird der Live-Text sofort zum Transkript der Besprechung, markiert als \"Aus Live\". Sprecherlabels folgen danach. Sie können später Neu transkribieren nutzen. Wirkt nur bei eingeschaltetem Live-Transkript.",
+      "liveCaptions": "Live-Untertitel in der Aufnahme-Pille anzeigen",
+      "liveCaptionsDesc": "Während eine Besprechung aufgenommen wird, zeigt die Pille die letzten Zeilen des Live-Texts wie Untertitel. Wirkt nur bei eingeschaltetem Live-Transkript."
     },
     "data": {
       "pauseHistory": "Verlauf pausieren",

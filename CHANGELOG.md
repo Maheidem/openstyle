@@ -23,6 +23,7 @@
 - The meeting list shows stage counts for each folder. You can run a batch and re-run many meetings at once.
 - The meeting pane has a live view. Live transcript and live chat during a recording are experimental and off by default.
 - New option, off by default: Keep the live transcript at Stop (Settings, Meetings). When on, the meeting is ready at once after Stop, with the mark "From live". Speaker labels are added next. Re-transcribe runs the full pass. The live chat is saved with the meeting, and you can read it after Stop.
+- New option, off by default: Show live captions in the recording pill (Settings, Meetings). While a meeting records, the pill shows the last two lines of the live text, like subtitles. It works only with the live transcript on.
 - The ASR prompt names the owner and the attendees first. It uses first names by default.
 - The Eval Lab runs grids of ASR settings and records each run. New gold keys and a span metric measure the quality of names and terms.
 
