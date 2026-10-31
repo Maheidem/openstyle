@@ -62,7 +62,7 @@ describe("schema 53: Shortcuts removal", () => {
     ).toEqual({ notes: null });
     expect(hasTable()).toBe(false);
     expect(db.prepare("SELECT version FROM schema_version").get()).toEqual({
-      version: 53,
+      version: 55,
     });
   });
 

@@ -61,6 +61,7 @@ import { DropdownMenu } from "radix-ui";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { SETTINGS_KEYS } from "../../../../shared/settings-keys";
+import { AskTab } from "./ask-tab";
 import { CalendarChip } from "./calendar-card";
 import {
   EditableTitle,
@@ -287,6 +288,9 @@ export function MeetingDetailView({
   const saveTags = useSaveMeetingTags(id);
   const calendarEnabled =
     appSettings?.[SETTINGS_KEYS.calendarEnabled] === "true";
+  // The Ask tab (meeting chat agent) shows with the setting on and a transcript.
+  const askEnabled =
+    appSettings?.[SETTINGS_KEYS.meetingChatEnabled] === "true" && hasTranscript;
   const advancedMode = isAdvancedMode(
     appSettings?.[SETTINGS_KEYS.advancedMode],
   );
@@ -543,6 +547,24 @@ export function MeetingDetailView({
         ?.scrollIntoView({ block: "center" });
     });
   }, [focus, transcript]);
+  // A cite chip of the Ask tab opens the Transcript tab at its time. The
+  // transcript list mounts after the tab change, so the effect waits for it.
+  const [citeJump, setCiteJump] = useState<{ startMs: number | null } | null>(
+    null,
+  );
+  useEffect(() => {
+    if (!citeJump || tab !== "transcript" || !transcript?.length) return;
+    setCiteJump(null);
+    if (citeJump.startMs === null) return;
+    const target = nearestSegmentId(transcript, citeJump.startMs);
+    if (!target) return;
+    setHitSegmentId(target);
+    requestAnimationFrame(() => {
+      tabBodyRef.current
+        ?.querySelector(`[data-segment-id="${CSS.escape(target)}"] p`)
+        ?.scrollIntoView({ block: "center" });
+    });
+  }, [citeJump, tab, transcript]);
   useEffect(() => {
     // The bar and the tab content render only after the meeting loads.
     if (!hasMeeting) return;
@@ -1228,6 +1250,11 @@ export function MeetingDetailView({
             <TabsTrigger value="summary">
               {t("meetings.tabSummary")}
             </TabsTrigger>
+            {askEnabled && (
+              <TabsTrigger value="ask" data-testid="meeting-ask-tab">
+                {t("meetings.ask.tab")}
+              </TabsTrigger>
+            )}
             {savedChat.length > 0 && (
               <TabsTrigger value="chat" data-testid="meeting-chat-tab">
                 {t("meetings.liveChat.chatHistoryTitle")}
@@ -1438,6 +1465,19 @@ export function MeetingDetailView({
               />
             )}
           </TabsContent>
+
+          {askEnabled && (
+            <TabsContent value="ask" className="mt-2">
+              <AskTab
+                meetingId={id}
+                onShowTranscript={(startMs) => {
+                  setCiteJump({ startMs });
+                  setTab("transcript");
+                }}
+                onShowSummary={() => setTab("summary")}
+              />
+            </TabsContent>
+          )}
 
           <TabsContent value="chat" className="mt-2">
             <div

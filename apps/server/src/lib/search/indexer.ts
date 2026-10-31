@@ -12,6 +12,12 @@ import { getSearchEmbeddingModelId } from "../mlx-embed/server.js";
 import { embedInt8 } from "./embedder.js";
 import { getExtensionState, isVecReady } from "./extension.js";
 import {
+  type FtsRow,
+  ftsBackfillMeeting,
+  ftsDrainGc,
+  ftsUpsertChunks,
+} from "./fts.js";
+import {
   pendingMeetingCount,
   setIndexerModelGone,
   setIndexerWake,
@@ -128,7 +134,10 @@ export function moveMeetingIndex(
 /** Delete the vectors that wait in meeting_chunk_gc (6.6). */
 export function drainSearchGc(db: DatabaseSync = getDb()): number {
   if (!isVecReady()) return 0;
-  return withTransaction(db, () => drainGc(db));
+  return withTransaction(db, () => {
+    ftsDrainGc(db);
+    return drainGc(db);
+  });
 }
 
 function recordFailure(
@@ -303,6 +312,10 @@ export async function indexMeeting(
       );
       const created = Date.now();
       const rows: Parameters<typeof insertVectors>[1][number][] = [];
+      // The BM25 rows of every chunk, in this transaction (7.4.1). A kept
+      // chunk is written again: its title may have changed.
+      const ftsRows: FtsRow[] = [];
+      const title = now.title ?? "";
       let v = 0;
       for (const c of p.chunks) {
         const kept = keep.get(c.ordinal);
@@ -317,12 +330,14 @@ export async function indexMeeting(
         ] as const;
         if (kept !== undefined) {
           update.run(...fields, kept);
+          ftsRows.push({ id: kept, text: c.text, title });
           continue;
         }
         const id = Number(
           insert.run(meetingId, ...fields, c.textHash, modelId, created, c.kind)
             .lastInsertRowid,
         );
+        ftsRows.push({ id, text: c.text, title });
         rows.push({
           chunkId: id,
           folderKey: now.folderKey,
@@ -333,6 +348,8 @@ export async function indexMeeting(
       }
       insertVectors(db, rows);
       moveVectors(db, keptIds, now.folderKey);
+      ftsUpsertChunks(db, ftsRows);
+      ftsDrainGc(db);
       drainGc(db);
       db.prepare(
         `INSERT INTO meeting_index_state
@@ -422,7 +439,12 @@ export function bootScan(db: DatabaseSync, modelId: string): string[] {
     .map((r) => r.id);
 }
 
-/** One step of the slow scan: compare one meeting's source hash (6.3). */
+/**
+ * One step of the slow scan: compare one meeting's source hash (6.3). A
+ * meeting whose index is current also gets the BM25 rows it misses (the
+ * rebuild of the FTS table after the schema step, 7.4.1). A meeting that is
+ * not current is indexed again, and that writes its BM25 rows.
+ */
 function slowScanStep(db: DatabaseSync, modelId: string): void {
   const ids = (
     db
@@ -444,6 +466,7 @@ function slowScanStep(db: DatabaseSync, modelId: string): void {
   }
   if (!isCurrent(p.state, modelId, p.hash)) enqueue([id]);
   else if (p.state?.folder_key !== p.src.folderKey) enqueue([id]);
+  else ftsBackfillMeeting(db, id, modelId);
 }
 
 async function runLoop(): Promise<void> {

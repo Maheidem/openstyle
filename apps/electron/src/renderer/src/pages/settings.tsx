@@ -114,6 +114,7 @@ import {
   type PillCancelMode,
 } from "../../../shared/pill-cancel";
 import { SETTINGS_KEYS } from "../../../shared/settings-keys";
+import { AskSettingsPanel } from "./settings-ask";
 import { sanitizeDigits } from "./settings-numeric-commit";
 import { useTimeoutSetting } from "./use-timeout-setting";
 
@@ -139,6 +140,7 @@ const settingsSectionIds = [
   "display",
   "permissions",
   "meetings",
+  "ask",
   "data",
   "network",
 ] as const;
@@ -211,6 +213,8 @@ export default function SettingsPage(): React.JSX.Element {
   // Project memory (#234) is on unless the row says "false".
   const [projectMemory, setProjectMemory] = useState(true);
   const [liveChat, setLiveChat] = useState(false);
+  // The Ask tab, meeting chat agent (experimental, off by default).
+  const [meetingChat, setMeetingChat] = useState(false);
   const [liveKeep, setLiveKeep] = useState(false);
   const [liveCaptions, setLiveCaptions] = useState(false);
   // The owner name: the first term of the meeting ASR bias. Saved on blur
@@ -328,6 +332,7 @@ export default function SettingsPage(): React.JSX.Element {
   const showSystemAudioRow = meetingsEnabled && systemAudioSupported;
   // The calendar link needs Meeting Mode and EventKit (macOS only).
   const showMeetingsSection = meetingsEnabled && IS_MAC;
+  const showAskSection = showMeetingsSection && meetingChat;
   // macOS has no preflight API for this TCC permission (see
   // system-audio-probe.ts): the only way to learn anything is to briefly run
   // the real capture pipeline. 'silent' is indeterminate (denied OR simply
@@ -510,6 +515,7 @@ export default function SettingsPage(): React.JSX.Element {
       setProjectMemory(false);
     }
     if (s[SETTINGS_KEYS.liveChatEnabled] === "true") setLiveChat(true);
+    if (s[SETTINGS_KEYS.meetingChatEnabled] === "true") setMeetingChat(true);
     if (s[SETTINGS_KEYS.liveKeepTranscriptAtStop] === "true") setLiveKeep(true);
     if (s[SETTINGS_KEYS.liveCaptionsPill] === "true") setLiveCaptions(true);
     savedOwnerName.current = s[SETTINGS_KEYS.ownerName] ?? "";
@@ -805,6 +811,16 @@ export default function SettingsPage(): React.JSX.Element {
     [queryClient],
   );
 
+  const handleMeetingChatToggle = useCallback(
+    (enabled: boolean) => {
+      setMeetingChat(enabled);
+      void putSetting(SETTINGS_KEYS.meetingChatEnabled, String(enabled)).then(
+        () => queryClient.invalidateQueries({ queryKey: queryKeys.settings }),
+      );
+    },
+    [queryClient],
+  );
+
   const handleLiveKeepToggle = useCallback((enabled: boolean) => {
     setLiveKeep(enabled);
     void putSetting(SETTINGS_KEYS.liveKeepTranscriptAtStop, String(enabled));
@@ -920,6 +936,7 @@ export default function SettingsPage(): React.JSX.Element {
           active={activeSection}
           onSelect={selectSection}
           showMeetings={showMeetingsSection}
+          showAsk={showAskSection}
         />
 
         <div className="min-h-0 max-w-[694px] overflow-y-auto px-1 -mx-1">
@@ -1447,6 +1464,18 @@ export default function SettingsPage(): React.JSX.Element {
                 />
               </Row>
               <Row
+                label={t("settings.meetings.meetingChat")}
+                desc={t("settings.meetings.meetingChatDesc")}
+              >
+                <Switch
+                  id="settings-meeting-chat"
+                  checked={meetingChat}
+                  onCheckedChange={handleMeetingChatToggle}
+                  aria-label={t("settings.meetings.meetingChat")}
+                  data-testid="settings-meeting-chat"
+                />
+              </Row>
+              <Row
                 label={t("settings.meetings.liveKeep")}
                 desc={t("settings.meetings.liveKeepDesc")}
               >
@@ -1506,6 +1535,12 @@ export default function SettingsPage(): React.JSX.Element {
                   )}
                 </div>
               </Row>
+            </SettingsPanel>
+          )}
+
+          {activeSection === "ask" && showAskSection && (
+            <SettingsPanel>
+              <AskSettingsPanel Row={Row} />
             </SettingsPanel>
           )}
 
@@ -1678,10 +1713,12 @@ function SettingsSidebar({
   active,
   onSelect,
   showMeetings,
+  showAsk,
 }: {
   active: SettingsSectionId;
   onSelect: (id: SettingsSectionId) => void;
   showMeetings: boolean;
+  showAsk: boolean;
 }): React.JSX.Element {
   const { t } = useTranslation();
 
@@ -1689,6 +1726,7 @@ function SettingsSidebar({
     <nav className="border-border flex h-full min-h-0 shrink-0 gap-1 overflow-x-auto pb-1 min-[900px]:flex-col min-[900px]:overflow-visible min-[900px]:border-r min-[900px]:pr-4 min-[900px]:pb-0">
       {visibleSettingsSectionIds
         .filter((id) => id !== "meetings" || showMeetings)
+        .filter((id) => id !== "ask" || showAsk)
         .map((id) => {
           const isActive = id === active;
           return (

@@ -51,6 +51,69 @@ Extra, for the arms that need them:
 
 Results go to `~/.openstyle-eval/chat-p0/<command>-<time>.json` (per-query ranks, per-question rows). They hold fictional ids and numbers only.
 
+## P1 eval (`pnpm chat-eval p1`)
+
+Measures the P1 production code (the real `retrieve()`, `runChatTurn`, `createChatLlm`) on the P0 gold set. Nothing is mocked. The scratch profile is `/tmp/chatp0/run/p1`. The default model is Gemma 4 E2B (`local-mlx-llm/gemma-4-e2b-qat-4bit`). The settings `meeting_chat_enabled` and `chat_native_tools` are `true`, as in the app.
+
+```bash
+# once: a scratch HF cache with symlinks to the model folders (read only, never write into the eval cache)
+mkdir -p /tmp/chatp1/hf/hub && cd /tmp/chatp1/hf/hub
+E="$HOME/Library/Application Support/Openstyle-eval/hf/hub"
+ln -sfn "$E/models--jayyun98--embeddinggemma-2-text-270m-mlx-bf16" .
+ln -sfn "$E/models--mlx-community--gemma-4-E2B-it-qat-4bit" .
+ln -sfn /tmp/chatp0/hf-r1/hub/models--Qwen--Qwen3-Reranker-0.6B .
+# run: the dev launcher is the LLM, embed and rerank worker (it execs the venv python on scripts/mlx_asr_server.py)
+export OPENSTYLE_EVAL_HF_HOME=/tmp/chatp1/hf
+export OPENSTYLE_MLX_LLM_WORKER=<launcher script>      # keeps stdin open; the worker exits when stdin closes
+pnpm chat-eval p1 [--no-mlflow] [--only a,b,c] [--limit N] [--scale N]
+```
+
+`OPENSTYLE_MLX_RERANK_WORKER` defaults to the same launcher. The command takes the GPU lock itself. The MLflow server comes from the environment (rule 6); the experiment is `openstyle-lab-chat-agent-p1`. The result JSON goes to `~/.openstyle-eval/chat-p1/p1-<time>.json` (saved after every part).
+
+| Part (run `p1-<part>`) | What it measures |
+|---|---|
+| `retrieval` | 147 queries through the production `retrieve()`, k=10, arms dense, hybrid, hybrid + rerank 15, hybrid + rerank 30: recall@1/5/10, r@10 any, nDCG@10 per language and slice, warm p50/p95, reranker added time, embed and rerank worker RSS |
+| `router` | `ROUTER_SYSTEM` + `ROUTER_SCHEMA` (step `chatRoute`) on the 190 gold questions and the 224 blind items: accuracy per set and language, confusion matrix, p50/p95 |
+| `slots` | `slotZod` + `slotSystem` (step `chatSlots`) with the gold intent; dates by code (`datesFromQuestion`); accuracy per intent and per arg key. `p1-score.mts` maps corpus ids to production ids |
+| `e2e` | `runChatTurn` on the 190 questions, fresh `createChatLlm` per turn, `allowProposals`, history = gold answers. Answer accuracy per type, list F1, cite precision and recall, cite validity (checked against the DB), not-found accuracy, false not-found, tool choice, tool + args, write proposals, router share, native call outcome, calls, latency, RSS, sources dropped, direct writes (data hash before and after) |
+| `a0` | Compares the A0 question ids of the saved `a0-*.json` with the gold set. Same ids: the A0 numbers apply. Else run `pnpm chat-eval a0` in its own process |
+| `scale` | Only with `--scale N` (or `--only scale`, N=256): retrieve latency at N times the corpus. Slow. It adds the distractor corpora to the same DB, so it runs last |
+| `bars` | The table of pass bars from the runs of the same invocation. A part that did not run shows NOT RUN |
+
+`--limit N` takes N items spread over each set (a smoke test). Do not log a smoke run to MLflow (`--no-mlflow`).
+
+The bars (`BARS` in `p1-score.mts`; thresholds are never changed in code):
+
+| Bar | Threshold | Source |
+|---|---|---|
+| Retrieval nDCG@10, hybrid + rerank 15 | >= 0.65 | report 7 |
+| Recall@10 any evidence, hybrid + rerank 15 | >= 85% | report 7 |
+| Recall@10 numbers and names slices (rerank 15, rerank 30) | >= 85% each | report 7 |
+| Hybrid latency p95 warm, no reranker, 46,000 rows | <= 150 ms | report 7 |
+| Reranker added time p95 (15, 30) | <= 400 ms | report 7, decision 3 |
+| Reranker worker RAM | <= 1.5 GB | report 7 |
+| Route accuracy, blind set / gold set | >= 90% / >= 85% | report 7 |
+| Slot accuracy with the gold intent, dates by code | >= 90% | report 7 |
+| Tool and args together (190) | >= 85% | report 7 |
+| Write proposal (kind and id set, 25) | >= 90% | report 7 |
+| Route latency p95 (router + slots) | <= 700 ms | report 7 |
+| Answer accuracy lookup + follow-up: 22 A0 questions / 25 + 10 | >= 74% / >= 85% | report 7 |
+| Cite validity / invalid cite shown | 100% / 0 | spec 8.7 |
+| Not-found accuracy / false not-found | >= 90% / <= 15% | spec 8.7 |
+| List F1 (aggregation) | >= 0.85 | spec 8.7 |
+| Cite precision (cite `start_ms` inside the gold segment) | >= 0.8 | spec 8.7 |
+| Route accuracy on the gold set (spec 8.7 wording) | >= 90% | spec 8.7 |
+| Turn latency p95, warm | <= 6 s | spec 8.7 |
+| Direct writes by the model | 0 | spec 8.7 |
+| Who-said accuracy | reported | spec 8.7 |
+
+Scoring rules that are not obvious:
+- A status block has only counts. Its answer passes when `open_actions` equals the size of the gold set (the only fact it shows). The report names this.
+- `list_meetings` gives no list block. A meeting-set answer reads the meeting ids of the shown cites.
+- A group of equal action items, decisions or questions counts as the gold id when any member is a gold id (the production code groups them).
+- Cite precision has three variants: `start` (the bar: `start_ms` of the cite inside the gold segment), `range` (the chunk span of the cite meets the gold segment), `meeting`. A chunk cite starts before its segment, so `start` is strict.
+- Cite validity does not trust the cite object: a label in a block must have a cite, the meeting must exist, a `start_ms` must be the start of a real segment or chunk, an item cite must name a known item, a list item label must have a cite.
+
 ## Definitions
 
 - recall@k: a transcript chunk that holds the gold segment is in the top k (grade 2). "r@10 any" also counts a summary chunk of the gold meeting that holds the value (grade 1). nDCG@10 uses the gains 2 and 1.

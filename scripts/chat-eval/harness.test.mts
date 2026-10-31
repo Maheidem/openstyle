@@ -313,17 +313,13 @@ test("closed dates: the period resolves to the ranges of the gold set", () => {
   assert.equal(s.properties.date_from, undefined);
 });
 
-test("the blind held-out router set has 4 items per intent and language", () => {
+test("the blind held-out router set has 224 items, 7 languages, 8 intents", () => {
   const h = heldoutRouterItems();
   assert.equal(h.length, 224);
-  const per = new Map<string, number>();
-  for (const x of h)
-    per.set(
-      `${x.intent}|${x.lang}`,
-      (per.get(`${x.intent}|${x.lang}`) ?? 0) + 1,
-    );
-  assert.equal(per.size, 56);
-  assert.ok([...per.values()].every((n) => n === 4));
+  // The blind labels are 4 per intent and language. relabelIntent moves
+  // "When is X?" and "Who will do X?" items (owner decision 2026-10-31).
+  assert.equal(new Set(h.map((x) => x.lang)).size, 7);
+  assert.equal(new Set(h.map((x) => x.intent)).size, 8);
   assert.equal(new Set(h.map((x) => x.text)).size, 224);
 });
 

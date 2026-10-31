@@ -21,7 +21,7 @@ describe("schema 42: meeting tags", () => {
   it("adds the tag tables and index on a new DB", () => {
     initSchema(db);
     expect(db.prepare("SELECT version FROM schema_version").get()).toEqual({
-      version: 53,
+      version: 55,
     });
     expect(columns("tags")).toEqual(["id", "name", "created_at"]);
     expect(columns("meeting_tags")).toEqual([
@@ -65,7 +65,7 @@ describe("schema 42: meeting tags", () => {
     initSchema(db);
 
     expect(db.prepare("SELECT version FROM schema_version").get()).toEqual({
-      version: 53,
+      version: 55,
     });
     expect(db.prepare("SELECT * FROM meetings").all()).toEqual(before);
     expect(db.prepare("SELECT * FROM meeting_segments").all()).toEqual(

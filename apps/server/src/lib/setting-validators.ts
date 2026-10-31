@@ -1,4 +1,5 @@
 import {
+  CHAT_SETTING_LIMITS,
   caCertPathSettingSchema,
   cleanupAppAssignmentsSchema,
   cleanupCustomPromptSchema,
@@ -21,6 +22,7 @@ import {
   mlxLlmKeepReadySchema,
   ownerNameSettingSchema,
   proxyUrlSettingSchema,
+  SETTINGS_KEYS,
 } from "@openstyle/validations";
 import { HISTORY_RETENTION_SETTING_KEY } from "./history-store.js";
 import { CA_CERT_PATH_SETTING, PROXY_URL_SETTING } from "./network.js";
@@ -89,6 +91,23 @@ const TASK_ASSIGNMENTS_MESSAGE = "Invalid task assignments setting";
 const ENHANCE_FLAG_MESSAGE = 'Value must be "true" or "false"';
 const checkBooleanFlag: SettingCheck = (value) =>
   value === "true" || value === "false" ? null : ENHANCE_FLAG_MESSAGE;
+
+// The Ask page numbers (specs/meeting-chat-agent.md 2.9): a whole number in the
+// range of `CHAT_SETTING_LIMITS`. An empty value is valid and means the default.
+// The reader (`lib/chat/settings.ts`) also clamps, so a stored value is safe.
+function intRangeCheck(
+  limits: { min: number; max: number },
+  label: string,
+): SettingCheck {
+  const message = `${label} must be a whole number from ${limits.min} to ${limits.max}`;
+  return (value) => {
+    if (value.trim() === "") return null;
+    const n = Number(value);
+    return Number.isInteger(n) && n >= limits.min && n <= limits.max
+      ? null
+      : message;
+  };
+}
 
 // The PUT must reject a body that is not a JSON object. It must also reject a
 // known task whose entry fails its schema. Unknown task keys are ignored. The
@@ -232,6 +251,27 @@ const SETTING_VALIDATORS: ReadonlyMap<string, SettingCheck> = new Map([
   ["meeting_project_memory", checkBooleanFlag],
   // Live transcript and chat (issue #375): experimental, off by default.
   ["live_chat_enabled", checkBooleanFlag],
+  // The Ask tab (specs/meeting-chat-agent.md 2.9): the switch is off by
+  // default, the two flags are on by default; same contract.
+  [SETTINGS_KEYS.meetingChatEnabled, checkBooleanFlag],
+  [SETTINGS_KEYS.chatSearchWider, checkBooleanFlag],
+  [SETTINGS_KEYS.chatNativeTools, checkBooleanFlag],
+  [
+    SETTINGS_KEYS.chatRounds,
+    intRangeCheck(CHAT_SETTING_LIMITS.rounds, "Tool rounds"),
+  ],
+  [
+    SETTINGS_KEYS.chatSourceBudget,
+    intRangeCheck(CHAT_SETTING_LIMITS.sourceBudget, "Source budget"),
+  ],
+  [
+    SETTINGS_KEYS.chatRetrievalK,
+    intRangeCheck(CHAT_SETTING_LIMITS.k, "Retrieval k"),
+  ],
+  [
+    SETTINGS_KEYS.chatDeadlineSeconds,
+    intRangeCheck(CHAT_SETTING_LIMITS.deadlineSeconds, "Turn deadline"),
+  ],
   // Keep the live transcript at Stop (issue #375): off by default.
   ["live_keep_transcript_at_stop", checkBooleanFlag],
   // Live captions in the recording pill (issue #375): off by default.

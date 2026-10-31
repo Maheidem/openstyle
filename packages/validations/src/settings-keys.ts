@@ -65,6 +65,26 @@ export const SETTINGS_KEYS = {
    */
   liveChatEnabled: "live_chat_enabled",
   /**
+   * The meeting chat agent, Ask tab (specs/meeting-chat-agent.md 2.3 stage 0).
+   * Experimental. OFF by default: only the value `"true"` turns it on.
+   */
+  meetingChatEnabled: "meeting_chat_enabled",
+  /** Ask page (spec 2.9): tool rounds, 1 to 5. A missing row means 3. */
+  chatRounds: "chat_rounds",
+  /** Ask page: answer source budget in estimated tokens. A missing row means 6000. */
+  chatSourceBudget: "chat_source_budget",
+  /** Ask page: retrieval k, 3 to 20. A missing row means 8. */
+  chatRetrievalK: "chat_retrieval_k",
+  /** Ask page: turn deadline in seconds, 20 to 180. A missing row means 60. */
+  chatDeadlineSeconds: "chat_deadline_seconds",
+  /** Ask page: `"false"` turns the "search wider" offer off. */
+  chatSearchWider: "chat_search_wider",
+  /**
+   * Ask page: the router uses the native tool calls of the local worker
+   * (spec 2.1 point 6). A missing row means on; only `"false"` turns it off.
+   */
+  chatNativeTools: "chat_native_tools",
+  /**
    * Stop saves the live transcript as the transcript of the meeting (mark
    * "From live"). OFF by default: only the value `"true"` turns it on. It
    * has an effect only while `live_chat_enabled` is on.

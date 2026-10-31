@@ -13,6 +13,7 @@ import {
   rng,
 } from "./corpus.mts";
 import { normalize } from "./keys.mts";
+import { relabelIntent } from "./router-data.mts";
 import type {
   AnswerKey,
   Corpus,
@@ -98,7 +99,11 @@ export function buildGold(c: Corpus): GoldSet {
   const questions: Question[] = [];
   const langAt = (i: number): Lang => (i % 2 === 0 ? "en" : "pt");
   const add = (q: Omit<Question, "id">) => {
-    questions.push({ ...q, id: `q${String(++n).padStart(3, "0")}` });
+    questions.push({
+      ...q,
+      intent: relabelIntent(q.text, q.intent),
+      id: `q${String(++n).padStart(3, "0")}`,
+    });
   };
 
   // ---- phrasing -----------------------------------------------------------

@@ -9,6 +9,8 @@ import { repoRoot } from "../meeting-v2/eval/runtime.mts";
 
 /** The spec names no experiment for the chat eval; this follows `openstyle-lab-<stage>`. */
 export const EXPERIMENT = "openstyle-lab-chat-agent-p0";
+/** The P1 eval (`pnpm chat-eval p1`) logs to its own experiment. */
+export const EXPERIMENT_P1 = "openstyle-lab-chat-agent-p1";
 
 export function chatMlflowUri(): string {
   const u = (
@@ -47,9 +49,10 @@ export async function logRun(
   params: Record<string, string | number | boolean>,
   tags: Record<string, string>,
   metrics: Record<string, number>,
+  experiment: string = EXPERIMENT,
 ): Promise<{ runId: string; experiment: string; n: number }> {
   const ml = new Mlflow(chatMlflowUri());
-  const exp = (await ml.experimentId(EXPERIMENT)) as string;
+  const exp = (await ml.experimentId(experiment)) as string;
   const p = Object.fromEntries(
     Object.entries(params).map(([k, v]) => [k, String(v)]),
   );
@@ -74,5 +77,5 @@ export async function logRun(
       `MLflow read-back of run ${runId} differs: ${bad.slice(0, 5).join(", ")}`,
     );
   }
-  return { runId, experiment: EXPERIMENT, n: Object.keys(m).length };
+  return { runId, experiment, n: Object.keys(m).length };
 }

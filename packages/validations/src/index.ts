@@ -1,4 +1,5 @@
 export * from "./api-keys.js";
+export * from "./chat.js";
 export * from "./cleanup-presets.js";
 export * from "./cleanup-tones.js";
 export * from "./diagnostics.js";

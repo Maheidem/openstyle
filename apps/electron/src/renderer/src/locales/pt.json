@@ -131,7 +131,8 @@
       "permissions": "Permissões",
       "meetings": "Reuniões",
       "data": "Dados",
-      "network": "Rede"
+      "network": "Rede",
+      "ask": "Ask"
     },
     "application": {
       "autoUpdate": "Atualizações automáticas",
@@ -249,7 +250,9 @@
       "liveKeep": "Manter a transcrição ao vivo ao parar (experimental)",
       "liveKeepDesc": "Ao parar a gravação, o texto ao vivo vira a transcrição da reunião na hora, marcada como \"Do ao vivo\". Os rótulos de falantes vêm depois. Você pode usar Transcrever novamente. Só funciona com a transcrição ao vivo ligada.",
       "liveCaptions": "Mostrar legendas ao vivo na pílula de gravação",
-      "liveCaptionsDesc": "Enquanto uma reunião é gravada, a pílula mostra as últimas linhas do texto ao vivo, como legendas. Só funciona com a transcrição ao vivo ligada."
+      "liveCaptionsDesc": "Enquanto uma reunião é gravada, a pílula mostra as últimas linhas do texto ao vivo, como legendas. Só funciona com a transcrição ao vivo ligada.",
+      "meetingChat": "Chat da reunião (aba Perguntar, experimental)",
+      "meetingChatDesc": "Adiciona a aba Perguntar a uma reunião. Você faz perguntas e recebe respostas da transcrição e do resumo, com fontes. Precisa de um modelo local. Uma nova seção Ask aparece nos Ajustes."
     },
     "data": {
       "pauseHistory": "Pausar histórico",
@@ -303,6 +306,29 @@
       "statusOk": "Conectado",
       "statusUnreachable": "Não foi possível conectar a esse servidor",
       "statusUnauthorized": "Token de acesso inválido ou ausente"
+    },
+    "ask": {
+      "rounds": "Rodadas de ferramentas",
+      "roundsDesc": "Quantas vezes o Ask pode buscar antes de responder. Padrão: {{value}}.",
+      "sourceBudget": "Orçamento de fontes da resposta",
+      "sourceBudgetDesc": "Quanto texto de fonte o Ask dá ao modelo para uma resposta. Padrão: {{value}}.",
+      "k": "k de recuperação",
+      "kDesc": "Quantos trechos uma busca retorna. Padrão: {{value}}.",
+      "deadline": "Prazo por pergunta",
+      "deadlineDesc": "O Ask para depois desse tempo e avisa. Padrão: {{value}} segundos.",
+      "searchWider": "Buscar mais amplo",
+      "searchWiderDesc": "Quando o Ask não encontra nada, pode oferecer uma busca mais ampla. Nunca faz isso sozinho.",
+      "searchWiderAsk": "Perguntar a mim",
+      "searchWiderOff": "Não oferecer",
+      "nativeTools": "Usar chamadas de ferramentas nativas do modelo local",
+      "nativeToolsDesc": "Vale a partir da próxima inicialização do modelo.",
+      "unmeasured": "não medido",
+      "tokens": "tokens",
+      "seconds": "segundos",
+      "numberRange": "Permitido: {{min}}–{{max}}",
+      "numberInvalid": "Digite {{min}}–{{max}}",
+      "numberSaveFailed": "Não foi possível salvar. O servidor ainda tem {{value}}.",
+      "numberStripped": "Somente dígitos. {{dropped}} removido, o campo mostra {{value}}."
     }
   },
   "today": {
@@ -685,6 +711,10 @@
       "liveChat": {
         "name": "Chat ao vivo (experimental)",
         "desc": "Responde suas perguntas durante uma gravação."
+      },
+      "meetingChat": {
+        "name": "Chat da reunião (experimental)",
+        "desc": "Responde às suas perguntas na aba Perguntar de uma reunião."
       }
     },
     "loading": "Carregando modelos",
@@ -1258,6 +1288,93 @@
       "fromLive": "Do ao vivo",
       "fromLiveHint": "Esta transcrição vem da visão ao vivo. Use Transcrever novamente para rodar a passagem completa.",
       "chatHistoryTitle": "Chat ao vivo"
+    },
+    "ask": {
+      "tab": "Perguntar",
+      "title": "Perguntar sobre esta reunião",
+      "experimental": "Experimental",
+      "scopeMeeting": "Esta reunião",
+      "threads": "Conversas desta reunião",
+      "threadNew": "Nova conversa",
+      "threadUntitled": "Conversa de {{date}}",
+      "newChat": "Nova conversa",
+      "empty": "Faça uma pergunta sobre esta reunião. O Ask lê a transcrição e o resumo.",
+      "exampleDecisions": "O que decidimos?",
+      "exampleActions": "Quais ações estão em aberto?",
+      "exampleStatus": "Em que pé estamos?",
+      "you": "Você",
+      "thinking": "Pensando...",
+      "warming": "Aquecendo o modelo...",
+      "placeholder": "Pergunte sobre esta reunião",
+      "inputLabel": "Sua pergunta",
+      "send": "Enviar",
+      "hint": "Enter envia. Shift+Enter adiciona uma linha. Até {{max}} caracteres.",
+      "errOff": "O Ask está desativado. Ative em Ajustes, Reuniões.",
+      "errNoModel": "Nenhum modelo está definido para o Ask. Escolha e baixe um modelo na página Modelos.",
+      "errProviderNotReady": "O modelo do Ask não está pronto. Verifique na página Modelos.",
+      "errBusy": "O modelo está ocupado. Tente de novo em instantes.",
+      "errScope": "Esta reunião não está disponível.",
+      "errFailed": "O Ask não conseguiu responder. Tente de novo.",
+      "retry": "Tentar de novo",
+      "openModels": "Abrir Modelos",
+      "openSettings": "Abrir Ajustes",
+      "untitled": "Reunião sem título",
+      "citeOpen": "Abrir a reunião {{title}} em {{time}}",
+      "citeOpenNoTime": "Abrir a reunião {{title}}",
+      "citeRemovedName": "Fonte {{label}}: a reunião foi removida",
+      "citeRemoved": "removida",
+      "citeSummary": "resumo",
+      "done": "Feito",
+      "open": "Em aberto",
+      "owner": "Responsável: {{name}}",
+      "due": "Prazo: {{date}}",
+      "list": {
+        "action_items_one": "{{count}} ação",
+        "action_items_other": "{{count}} ações",
+        "decisions_one": "{{count}} decisão",
+        "decisions_other": "{{count}} decisões",
+        "open_questions_one": "{{count}} pergunta em aberto",
+        "open_questions_other": "{{count}} perguntas em aberto",
+        "meetings_one": "{{count}} reunião",
+        "meetings_other": "{{count}} reuniões"
+      },
+      "count": {
+        "action_items_one": "ação",
+        "action_items_other": "ações",
+        "decisions_one": "decisão",
+        "decisions_other": "decisões",
+        "open_questions_one": "pergunta em aberto",
+        "open_questions_other": "perguntas em aberto",
+        "meetings_one": "reunião",
+        "meetings_other": "reuniões"
+      },
+      "statusCounts": "Ações em aberto: {{actions}}. Perguntas em aberto: {{questions}}.",
+      "notFound": {
+        "noSourcesMeeting": "Não encontrei nada sobre isso nesta reunião.",
+        "noSourcesFolder": "Não encontrei nada sobre isso nesta pasta.",
+        "cite_check": "Não consegui conferir minha resposta com as fontes, então não a mostro.",
+        "deadline": "Demorou demais, então parei.",
+        "call_cap": "Atingi o limite de buscas para esta pergunta.",
+        "model_error": "O modelo falhou ao responder."
+      },
+      "nearest": "Fontes mais próximas",
+      "readOnly": "O Ask ainda não pode alterar dados. Ele só lê suas reuniões.",
+      "trailTitle": "Como encontrei isto",
+      "trailNone": "Nenhuma fonte foi lida.",
+      "trail": {
+        "searched_one": "buscou {{count}} trecho",
+        "searched_other": "buscou {{count}} trechos",
+        "readSummary_one": "leu {{count}} resumo",
+        "readSummary_other": "leu {{count}} resumos",
+        "readTranscript_one": "leu {{count}} parte da transcrição",
+        "readTranscript_other": "leu {{count}} partes da transcrição",
+        "listed_one": "listou {{count}} item",
+        "listed_other": "listou {{count}} itens",
+        "meetings_one": "listou {{count}} reunião",
+        "meetings_other": "listou {{count}} reuniões"
+      },
+      "trailDropped_one": "{{count}} fonte deixada de fora",
+      "trailDropped_other": "{{count}} fontes deixadas de fora"
     }
   },
   "help": {

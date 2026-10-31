@@ -1635,5 +1635,174 @@ class JsonGrammarOptionsTests(unittest.TestCase):
         self.assertEqual(ok, total)
 
 
+# --- Rerank mode (specs/meeting-chat-agent.md 7.4.3) -----------------------
+
+
+class FakeRerankTokenizer:
+    """One token per character. The text of a pair has a fixed prefix, so the
+    row length grows with the document."""
+
+    def encode(self, text):
+        return [ord(c) % 251 + 1 for c in text]
+
+    def decode(self, ids):
+        return "".join(chr((i - 1) % 251) for i in ids)
+
+
+def _rerank_engine(pad_id: int = 0):
+    """A stub forward whose score depends ONLY on the real tokens of a row."""
+    calls: list[tuple[int, int]] = []
+
+    def forward(rows, lengths):
+        calls.append((len(rows), len(rows[0])))
+        out = []
+        for row, n in zip(rows, lengths):
+            real = row[:n]
+            value = (sum(real) * 31 + real[-1]) % 1000 / 1000.0
+            out.append(value)
+        return out
+
+    return mlx_asr_server._RerankEngine("org/fake-rerank", FakeRerankTokenizer(), forward, pad_id=pad_id), calls
+
+
+class RerankRequestTests(unittest.TestCase):
+    def test_good_body_and_default_batch(self) -> None:
+        q, docs, batch = mlx_asr_server._parse_rerank_request({"query": "q", "documents": ["a", "b"]})
+        self.assertEqual((q, docs, batch), ("q", ["a", "b"], mlx_asr_server._RERANK_DEFAULT_BATCH))
+
+    def test_batch_is_kept(self) -> None:
+        self.assertEqual(mlx_asr_server._parse_rerank_request({"query": "q", "documents": ["a"], "batch": 5})[2], 5)
+
+    def test_bad_bodies_are_rejected(self) -> None:
+        bad = [
+            None,
+            {},
+            {"query": "", "documents": ["a"]},
+            {"query": "q", "documents": []},
+            {"query": "q", "documents": [1]},
+            {"query": "q", "documents": ["a"] * 65},
+            {"query": "q", "documents": ["a"], "batch": 0},
+            {"query": "q", "documents": ["a"], "batch": 33},
+            {"query": "q", "documents": ["a"], "batch": True},
+        ]
+        for body in bad:
+            with self.subTest(body=body), self.assertRaises(mlx_asr_server._BadRequest):
+                mlx_asr_server._parse_rerank_request(body)
+
+
+class RerankEngineTests(unittest.TestCase):
+    DOCS = ["a", "a much longer document " * 5, "mid size doc", "x" * 40, "second short", "z"]
+
+    def test_batched_scores_equal_unbatched_scores(self) -> None:
+        engine, _ = _rerank_engine()
+        single = engine.score("question", self.DOCS, batch=1)
+        for batch in (2, 4, 32):
+            got = engine.score("question", self.DOCS, batch=batch)
+            for a, b in zip(single, got):
+                self.assertAlmostEqual(a, b, places=3)
+
+    def test_rows_are_right_padded_with_the_pad_id_and_lengths_are_real(self) -> None:
+        seen: list[tuple[list[list[int]], list[int]]] = []
+
+        def forward(rows, lengths):
+            seen.append((rows, lengths))
+            return [0.5] * len(rows)
+
+        engine = mlx_asr_server._RerankEngine("m", FakeRerankTokenizer(), forward, pad_id=7)
+        engine.score("q", ["a", "a longer document here"], batch=2)
+        rows, lengths = seen[0]
+        self.assertEqual(len({len(r) for r in rows}), 1)
+        for row, n in zip(rows, lengths):
+            self.assertEqual(row[n:], [7] * (len(row) - n))
+            self.assertNotEqual(row[n - 1], 7)
+        self.assertLess(min(lengths), max(lengths))
+
+    def test_order_of_the_scores_is_the_order_of_the_documents(self) -> None:
+        engine, _ = _rerank_engine()
+        full = engine.score("question", self.DOCS, batch=3)
+        for i, doc in enumerate(self.DOCS):
+            self.assertAlmostEqual(engine.score("question", [doc], batch=1)[0], full[i], places=3)
+
+    def test_batches_are_cut_by_the_batch_size_and_sorted_by_length(self) -> None:
+        engine, calls = _rerank_engine()
+        engine.score("question", self.DOCS, batch=4)
+        self.assertEqual([n for n, _ in calls], [4, 2])
+        widths = [w for _, w in calls]
+        self.assertEqual(widths, sorted(widths))
+
+    def test_long_document_is_cut_to_700_tokens(self) -> None:
+        engine, calls = _rerank_engine()
+        engine.score("q", ["w" * 5000], batch=1)
+        prefix_and_suffix = len(engine._pair_ids("q", ""))
+        self.assertEqual(calls[-1][1], prefix_and_suffix + mlx_asr_server._RERANK_MAX_DOC_TOKENS)
+
+    def test_not_finite_output_raises(self) -> None:
+        engine = mlx_asr_server._RerankEngine(
+            "m", FakeRerankTokenizer(), lambda rows, lengths: [float("nan")] * len(rows)
+        )
+        with self.assertRaises(RuntimeError):
+            engine.score("q", ["a"])
+
+    def test_wrong_size_output_raises(self) -> None:
+        engine = mlx_asr_server._RerankEngine("m", FakeRerankTokenizer(), lambda rows, lengths: [0.5])
+        with self.assertRaises(RuntimeError):
+            engine.score("q", ["a", "b"], batch=2)
+
+
+class RerankHttpTests(unittest.TestCase):
+    def setUp(self) -> None:
+        from http.server import HTTPServer
+
+        self._log_patch = mock.patch.object(mlx_asr_server, "_log", lambda _m: None)
+        self._log_patch.start()
+        self.engine, _ = _rerank_engine()
+        self.httpd = HTTPServer(("127.0.0.1", 0), mlx_asr_server._make_rerank_handler(self.engine))
+        self.port = self.httpd.server_address[1]
+        self.thread = threading.Thread(target=self.httpd.serve_forever, daemon=True)
+        self.thread.start()
+
+    def tearDown(self) -> None:
+        self.httpd.shutdown()
+        self.httpd.server_close()
+        self._log_patch.stop()
+
+    def _call(self, method: str, path: str, body: object = None) -> tuple[int, dict[str, object]]:
+        import urllib.error
+        import urllib.request
+
+        data = None if body is None else json.dumps(body).encode()
+        req = urllib.request.Request(f"http://127.0.0.1:{self.port}{path}", data=data, method=method)
+        req.add_header("Content-Type", "application/json")
+        try:
+            with urllib.request.urlopen(req, timeout=10) as resp:
+                return resp.status, json.loads(resp.read())
+        except urllib.error.HTTPError as err:
+            return err.code, json.loads(err.read())
+
+    def test_models(self) -> None:
+        self.assertEqual(
+            self._call("GET", "/v1/models"),
+            (200, {"object": "list", "data": [{"id": "org/fake-rerank", "object": "model"}]}),
+        )
+
+    def test_rerank(self) -> None:
+        status, out = self._call("POST", "/v1/rerank", {"query": "q", "documents": ["a", "bb", "ccc"], "batch": 2})
+        self.assertEqual(status, 200)
+        self.assertEqual(len(out["scores"]), 3)
+        self.assertGreaterEqual(out["ms"], 0)
+
+    def test_bad_request_is_400(self) -> None:
+        status, out = self._call("POST", "/v1/rerank", {"query": "q", "documents": []})
+        self.assertEqual((status, out["error"]["type"]), (400, "invalid_request_error"))
+
+    def test_engine_error_is_500(self) -> None:
+        with mock.patch.object(self.engine, "score", side_effect=RuntimeError("boom")):
+            status, out = self._call("POST", "/v1/rerank", {"query": "q", "documents": ["a"]})
+        self.assertEqual((status, out["error"]["type"]), (500, "server_error"))
+
+    def test_embed_path_is_404(self) -> None:
+        self.assertEqual(self._call("POST", "/v1/embeddings", {"input": "a"})[0], 404)
+
+
 if __name__ == "__main__":
     unittest.main()

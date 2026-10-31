@@ -21,7 +21,7 @@
     "meeting:eval:screen-remote": "node --import ./scripts/meeting-v2/ts-register.mjs scripts/meeting-v2/eval/screen-remote.mts",
     "meeting:eval:test": "node --import ./scripts/meeting-v2/ts-register.mjs --test scripts/meeting-v2/eval/checks.test.mts scripts/meeting-v2/eval/score.test.mts scripts/meeting-v2/eval/gold-tools.test.mts scripts/meeting-v2/eval/gpu-queue.test.mts scripts/meeting-v2/eval/task-params.test.mts scripts/meeting-v2/eval/seed-folder-memory.test.mts scripts/meeting-v2/eval/memory-recall-metrics.test.mts scripts/meeting-v2/eval/sweep.test.mts scripts/meeting-v2/eval/silver/score/names.test.mts scripts/meeting-v2/eval/lab/lab.test.mts",
     "chat-eval": "node --import ./scripts/meeting-v2/ts-register.mjs --import ./scripts/meeting-v2/ts-transform.mjs scripts/chat-eval/run.mts",
-    "chat-eval:test": "node --import ./scripts/meeting-v2/ts-register.mjs --import ./scripts/meeting-v2/ts-transform.mjs --test scripts/chat-eval/corpus.test.mts scripts/chat-eval/harness.test.mts",
+    "chat-eval:test": "node --import ./scripts/meeting-v2/ts-register.mjs --import ./scripts/meeting-v2/ts-transform.mjs --test scripts/chat-eval/corpus.test.mts scripts/chat-eval/harness.test.mts scripts/chat-eval/p1.test.mts",
     "lab": "node --import ./scripts/meeting-v2/ts-register.mjs scripts/meeting-v2/eval/lab/lab.mts",
     "meeting:silver:witness": "python3 -I scripts/meeting-v2/eval/silver/witness/witness.py",
     "meeting:silver:parakeet": "python3 -I scripts/meeting-v2/eval/silver/witness/parakeet.py",

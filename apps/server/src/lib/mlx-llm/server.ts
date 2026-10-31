@@ -183,6 +183,22 @@ async function refreshTaskModels(): Promise<void> {
   taskModels = next;
 }
 
+/** The env flag that turns on native tool calls in the worker (`scripts/mlx_asr_server.py`). */
+const NATIVE_TOOLS_ENV = "OPENSTYLE_MLX_LLM_NATIVE_TOOLS";
+
+/**
+ * The Ask tab router uses native tool calls (spec 2.1 point 6). The worker
+ * reads the flag once, at start. When the settings change while a worker runs,
+ * the new value applies at the next start of that worker. Until then the
+ * fallback router of the chat covers the gap (`chat_native_tools`).
+ */
+function nativeToolsEnv(): Record<string, string> {
+  const on =
+    readSetting(SETTINGS_KEYS.meetingChatEnabled) === "true" &&
+    readSetting(SETTINGS_KEYS.chatNativeTools) !== "false";
+  return on ? { [NATIVE_TOOLS_ENV]: "1" } : {};
+}
+
 function workerFor(def: MlxLlmModelDef): PoolEntry {
   const existing = pool.get(def.id);
   if (existing) return existing;
@@ -206,6 +222,7 @@ function workerFor(def: MlxLlmModelDef): PoolEntry {
       String(d.contextTokens),
     ],
     keepAliveMinutes: () => keepAliveFor(def.id),
+    extraEnv: nativeToolsEnv,
     onReady: (line) => {
       // Each worker reports the GPU cap. The pool uses the smallest value.
       const info = gpuInfoFromReadyLine(line);

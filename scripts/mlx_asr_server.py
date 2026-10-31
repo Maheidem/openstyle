@@ -16,6 +16,10 @@ Embed mode: ``--embed --model <hfId> [--revision <sha>] --port <port>`` loads an
 embedding model with mlx-vlm and serves ``POST /v1/embeddings`` on 127.0.0.1
 (specs/local-semantic-search.md section 5.2).
 
+Rerank mode: ``--rerank --model <hfId> [--revision <sha>] --port <port>`` loads a
+Qwen3-Reranker model with mlx-lm and serves ``POST /v1/rerank`` on 127.0.0.1
+(specs/meeting-chat-agent.md section 7.4.3).
+
 Re-publish the frozen worker release when this script or mlx-audio dependencies change.
 """
 
@@ -1649,6 +1653,151 @@ def _make_embed_handler(engine: _EmbedEngine) -> Any:
     return Handler
 
 
+# ---------------------------------------------------------------------------
+# Rerank mode (specs/meeting-chat-agent.md 7.4.3)
+#
+# ``--rerank --model <hfId> [--revision <sha>] --port <port>`` loads a
+# Qwen3-Reranker checkpoint with mlx_lm and serves ``POST /v1/rerank``. The
+# model is a causal LM. The score of a (query, document) pair is the
+# probability of the token "yes" against "no" at the last position of the
+# prompt (https://huggingface.co/Qwen/Qwen3-Reranker-0.6B). Several pairs go
+# through one forward pass: the rows are right-padded, the model is causal,
+# and the score is read at the last REAL position of each row, so a padded
+# row scores the same as the same row alone.
+# ---------------------------------------------------------------------------
+
+_RERANK_MAX_DOCS = 64
+_RERANK_MAX_DOC_TOKENS = 700
+_RERANK_MAX_QUERY_TOKENS = 256
+# Pairs per forward pass when the request has no ``batch``.
+_RERANK_DEFAULT_BATCH = 8
+_RERANK_MAX_BATCH = 32
+_RERANK_PREFIX = (
+    "<|im_start|>system\nJudge whether the Document meets the requirements based on the Query "
+    'and the Instruct provided. Note that the answer can only be "yes" or "no".<|im_end|>\n'
+    "<|im_start|>user\n"
+)
+_RERANK_SUFFIX = "<|im_end|>\n<|im_start|>assistant\n<think>\n\n</think>\n\n"
+_RERANK_INSTRUCT = "Given a question about a meeting, retrieve the passages of meetings that answer it"
+
+
+def _parse_rerank_request(body: Any) -> tuple[str, list[str], int]:
+    """Validate a /v1/rerank body. Returns (query, documents, batch)."""
+    if not isinstance(body, dict):
+        raise _BadRequest("request body must be a JSON object")
+    query = body.get("query")
+    if not isinstance(query, str) or not query.strip():
+        raise _BadRequest("query must be a non-empty string")
+    docs = body.get("documents")
+    if not (isinstance(docs, list) and docs and all(isinstance(d, str) for d in docs)):
+        raise _BadRequest("documents must be a non-empty list of strings")
+    if len(docs) > _RERANK_MAX_DOCS:
+        raise _BadRequest(f"documents has more than {_RERANK_MAX_DOCS} items")
+    batch = body.get("batch", _RERANK_DEFAULT_BATCH)
+    if isinstance(batch, bool) or not isinstance(batch, int) or not 1 <= batch <= _RERANK_MAX_BATCH:
+        raise _BadRequest(f"batch must be an integer from 1 to {_RERANK_MAX_BATCH}")
+    return query, docs, batch
+
+
+class _RerankEngine:
+    """One loaded reranker. ``tokenizer`` has ``encode(text) -> list[int]`` and
+    ``decode(ids) -> str``. ``forward(rows, lengths)`` gets ``rows`` (a list of
+    equal-length token lists, right-padded) and ``lengths`` (the real token
+    count of each row) and returns the "yes" probability of each row. Both are
+    injected for unit tests."""
+
+    def __init__(self, model_id: str, tokenizer: Any, forward: Any, pad_id: int = 0) -> None:
+        self.model_id = model_id
+        self.tok = tokenizer
+        self._forward = forward
+        self._pad_id = pad_id
+
+    def _cut(self, text: str, max_tokens: int) -> str:
+        ids = self.tok.encode(text)
+        return text if len(ids) <= max_tokens else self.tok.decode(ids[:max_tokens])
+
+    def _pair_ids(self, query: str, doc: str) -> list[int]:
+        text = (
+            f"{_RERANK_PREFIX}<Instruct>: {_RERANK_INSTRUCT}\n<Query>: {query}\n"
+            f"<Document>: {doc}{_RERANK_SUFFIX}"
+        )
+        return list(self.tok.encode(text))
+
+    def score(self, query: str, docs: list[str], batch: int = _RERANK_DEFAULT_BATCH) -> list[float]:
+        query = self._cut(query, _RERANK_MAX_QUERY_TOKENS)
+        ids = [self._pair_ids(query, self._cut(d, _RERANK_MAX_DOC_TOKENS)) for d in docs]
+        # Sort by length, so a batch has little padding. Put the scores back in
+        # the order of ``docs``.
+        order = sorted(range(len(ids)), key=lambda i: len(ids[i]))
+        scores = [0.0] * len(ids)
+        for start in range(0, len(order), batch):
+            chunk = order[start : start + batch]
+            lengths = [len(ids[i]) for i in chunk]
+            width = max(lengths)
+            rows = [ids[i] + [self._pad_id] * (width - len(ids[i])) for i in chunk]
+            probs = [float(p) for p in self._forward(rows, lengths)]
+            if len(probs) != len(chunk) or not all(math.isfinite(p) for p in probs):
+                raise RuntimeError("rerank output is not finite or has a wrong size")
+            for i, p in zip(chunk, probs):
+                scores[i] = p
+        return scores
+
+
+def _load_rerank_engine(model_id: str, revision: str | None = None) -> _RerankEngine:
+    import mlx.core as mx
+    from mlx_lm import load
+
+    _log(f"loading reranker {model_id}@{revision or 'main'} ...")
+    path = _resolve_model_dir(model_id, revision)
+    model, tok = load(str(path))
+    hf = getattr(tok, "_tokenizer", tok)
+    yes_id = hf.convert_tokens_to_ids("yes")
+    no_id = hf.convert_tokens_to_ids("no")
+    pad_id = getattr(hf, "pad_token_id", None) or 0
+
+    # The "no" and "yes" rows of the output head, in float32. The head is tied
+    # to the embedding in Qwen3, so these are two rows of the embedding. A
+    # bf16 head rounds a logit near 20 to a step of 0.125, which moves a
+    # probability by a few percent.
+    head = getattr(model, "lm_head", None)
+    head_weight = head.weight if head is not None else model.model.embed_tokens.weight
+    pair_weight = head_weight[mx.array([no_id, yes_id])].astype(mx.float32)
+
+    def forward(rows: list[list[int]], lengths: list[int]) -> list[float]:
+        # The decoder only (``model.model``), then the two head rows on the last
+        # real position of each row. The full logits (rows x width x
+        # vocabulary) would need gigabytes.
+        hidden = model.model(mx.array(rows))
+        last = hidden[mx.arange(len(rows)), mx.array([n - 1 for n in lengths])]
+        pair = last.astype(mx.float32) @ pair_weight.T
+        p_yes = mx.softmax(pair, axis=1)[:, 1]
+        mx.eval(p_yes)
+        mx.clear_cache()
+        return np.array(p_yes).tolist()
+
+    engine = _RerankEngine(model_id, tok, forward, pad_id=int(pad_id))
+    engine.score("warm up", ["warm up"])
+    _log("reranker ready")
+    return engine
+
+
+def _make_rerank_handler(engine: _RerankEngine) -> Any:
+    class Handler(_http_handler_base(engine.model_id)):
+        route = "/v1/rerank"
+
+        def handle_body(self, body: Any) -> dict[str, Any]:
+            query, docs, batch = _parse_rerank_request(body)
+            started = time.perf_counter()
+            scores = engine.score(query, docs, batch)
+            return {
+                "model": engine.model_id,
+                "scores": scores,
+                "ms": (time.perf_counter() - started) * 1000.0,
+            }
+
+    return Handler
+
+
 def _exit_now(reason: str) -> None:
     """End the HTTP worker at once, also when stderr is gone.
 
@@ -1723,6 +1872,16 @@ def _run_embed(model_id: str, revision: str | None, port: int | None) -> None:
     )
 
 
+def _run_rerank(model_id: str, revision: str | None, port: int | None) -> None:
+    _serve_http(
+        "rerank",
+        port,
+        lambda: _load_rerank_engine(model_id, revision),
+        _make_rerank_handler,
+        lambda _engine: {"model": model_id},
+    )
+
+
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument(
@@ -1745,7 +1904,12 @@ def main() -> None:
         action="store_true",
         help="serve an embedding model over an OpenAI-style /v1/embeddings on 127.0.0.1:--port",
     )
-    parser.add_argument("--revision", default=None, help="Hugging Face commit of --model (embed mode)")
+    parser.add_argument(
+        "--rerank",
+        action="store_true",
+        help="serve a reranker over /v1/rerank on 127.0.0.1:--port",
+    )
+    parser.add_argument("--revision", default=None, help="Hugging Face commit of --model (embed and rerank mode)")
     parser.add_argument(
         "--context-tokens",
         type=int,
@@ -1762,6 +1926,10 @@ def main() -> None:
 
     if args.embed:
         _run_embed(args.model, args.revision, args.port)
+        return
+
+    if args.rerank:
+        _run_rerank(args.model, args.revision, args.port)
         return
 
     if args.model_status:
