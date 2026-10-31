@@ -2,6 +2,7 @@
 // All text is fictional.
 import { describe, expect, it } from "vitest";
 import {
+  assignMissingCites,
   checkAnswer,
   citeFromSentences,
   extractFacts,
@@ -383,5 +384,55 @@ describe("checkAnswer details", () => {
     const note = failureNote(check);
     expect(note).toContain('Remove or fix: "99"');
     expect(note).toContain("S42");
+  });
+});
+
+describe("assignMissingCites (grounding guard)", () => {
+  const map = (): SourceMap => {
+    const m = new SourceMap();
+    m.add({
+      kind: "transcript",
+      meetingId: "m1",
+      title: "Weekly sync",
+      startedAt: 1,
+      startMs: 1000,
+      endMs: 2000,
+      itemId: null,
+      text: "The vendor quote for the storage cluster is 41500 dollars",
+    });
+    return m;
+  };
+
+  it("attaches the source that holds most words of the sentence", () => {
+    const sources = map();
+    const s = [
+      {
+        text: "The storage cluster quote is 41500 dollars",
+        cites: [] as string[],
+      },
+    ];
+    assignMissingCites(s, sources);
+    expect(s[0]?.cites).toEqual(["S1"]);
+  });
+
+  it("never attaches the closest source to a claim it does not support", () => {
+    const sources = map();
+    const s = [
+      {
+        text: "Priya promised to hire three engineers next quarter",
+        cites: [] as string[],
+      },
+    ];
+    assignMissingCites(s, sources);
+    expect(s[0]?.cites).toEqual([]);
+    const check = checkAnswer({
+      sentences: s,
+      sources,
+      question: "Who will hire?",
+      allowedMeetingIds: "all",
+      knownNames: [],
+    });
+    expect(check.sentences).toEqual([]);
+    expect(check.ok).toBe(false);
   });
 });

@@ -401,3 +401,113 @@ export function failureNote(check: CiteCheck): string {
   }
   return parts.join(" ");
 }
+
+const WORD = /[\p{L}\p{N}]{2,}/gu;
+const foldWords = (t: string): string[] =>
+  (
+    t
+      .normalize("NFD")
+      .replace(/\p{M}+/gu, "")
+      .toLowerCase()
+      .match(WORD) ?? []
+  ).filter((w) => w.length > 2 || /\d/.test(w));
+
+/**
+ * The chip opens the meeting at the line that the sentence is about: for each
+ * transcript source, the segment with the most words of the sentence (spec 7.3
+ * point 1, applied to the answer and not to the query).
+ */
+export function refineCiteTimes(
+  sentences: { text: string; cites: string[] }[],
+  sources: SourceMap,
+): void {
+  for (const sentence of sentences) {
+    const words = new Set(foldWords(sentence.text));
+    for (const label of sentence.cites) {
+      const segs = sources.segments.get(label);
+      const src = sources.get(label);
+      if (!segs || !src || src.kind !== "transcript") continue;
+      let best = segs[0];
+      let bestScore = -1;
+      for (const seg of segs) {
+        const score = foldWords(seg.text).filter((w) => words.has(w)).length;
+        if (score > bestScore) {
+          best = seg;
+          bestScore = score;
+        }
+      }
+      if (best && bestScore > 0) src.startMs = best.startMs;
+    }
+  }
+}
+
+/**
+ * One cite for each sentence: the source that shares most content words with
+ * the sentence. A transcript line of a cited meeting wins over a summary line
+ * that says the same (the chip then opens the meeting at the spoken line).
+ */
+export function tidyCites(
+  sentences: { text: string; cites: string[] }[],
+  sources: SourceMap,
+): void {
+  for (const sentence of sentences) {
+    const words = new Set(foldWords(sentence.text));
+    if (words.size === 0 || sentence.cites.length === 0) continue;
+    const meetings = new Set(
+      sentence.cites
+        .map((l) => sources.get(l)?.meetingId)
+        .filter((m): m is string => !!m),
+    );
+    const candidates = new Set(sentence.cites);
+    for (const src of sources.all()) {
+      if (src.kind === "transcript" && meetings.has(src.meetingId))
+        candidates.add(src.label);
+    }
+    let best = sentence.cites[0] as string;
+    let bestScore = -1;
+    for (const label of candidates) {
+      const src = sources.get(label);
+      if (!src) continue;
+      const have = new Set(foldWords(src.text));
+      let hit = 0;
+      for (const w of words) if (have.has(w)) hit++;
+      const score = hit / words.size + (src.kind === "transcript" ? 0.15 : 0);
+      if (score > bestScore) {
+        best = label;
+        bestScore = score;
+      }
+    }
+    sentence.cites = [best];
+  }
+}
+
+/**
+ * A sentence with no valid cite gets the source that shares most of its words,
+ * when the share is at least a half. Code verifies the match; the fact check
+ * runs after this. A sentence with no such source stays uncited and the cite
+ * check removes it (spec 6.2 rule 4).
+ */
+export function assignMissingCites(
+  sentences: { text: string; cites: string[] }[],
+  sources: SourceMap,
+): void {
+  for (const sentence of sentences) {
+    if (sentence.cites.some((l) => sources.get(l))) continue;
+    const words = new Set(foldWords(sentence.text));
+    if (words.size === 0) continue;
+    let best: string | null = null;
+    let bestShare = 0;
+    for (const src of sources.all()) {
+      if (src.kind === "folder") continue;
+      const have = new Set(foldWords(src.text));
+      let hit = 0;
+      for (const w of words) if (have.has(w)) hit++;
+      const share = hit / words.size;
+      if (share > bestShare) {
+        best = src.label;
+        bestShare = share;
+      }
+    }
+    if (best && bestShare >= 0.5) sentence.cites = [best];
+  }
+}
