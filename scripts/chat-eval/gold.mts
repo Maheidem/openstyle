@@ -66,7 +66,7 @@ type Vendor = { name: string; asr: string };
 type Sub = { s: L };
 
 export function buildGold(c: Corpus): GoldSet {
-  const r = rng(c.seed ^ 0x9e3779b9);
+  const _r = rng(c.seed ^ 0x9e3779b9);
   const people = new Map(c.people.map((p) => [p.id, p]));
   const meetingById = new Map(c.meetings.map((m) => [m.id, m]));
   const folderName = (id: string | null) =>
@@ -117,7 +117,7 @@ export function buildGold(c: Corpus): GoldSet {
     };
   };
   const dateWords = (d: MD, lang: Lang) => fmtDate(d, lang);
-  const sub = (f: Fact) => (f.slots.sub ?? f.slots.m) as { s?: L; m?: L };
+  const _sub = (f: Fact) => (f.slots.sub ?? f.slots.m) as { s?: L; m?: L };
   const subjPair = (f: Fact): L => {
     const o = (f.slots.sub ??
       f.slots.m ??
