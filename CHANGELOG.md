@@ -1,5 +1,11 @@
 # Changelog
 
+## 2.25.0-alpha.11
+
+### Bug Fixes 🐛
+
+- The live transcript keeps one language and does not read silence. The live chat is saved with the meeting. New option, off by default: Keep the live transcript at Stop (Settings, Meetings), with the mark "From live". by @Maheidem in [#394](https://github.com/Maheidem/openstyle/pull/394)
+
 ## 2.25.0-alpha.10
 
 ### New Features ✨
