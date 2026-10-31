@@ -107,7 +107,9 @@ export function remapRetiredPresetId(id: string): string {
  * sources are in the PR body). Every profile sends `enable_thinking`
  * explicitly. No profile sets `max_tokens`: it stays derived from the task,
  * so a profile cannot lift a call past the context window. No task overrides
- * the temperature of a profile (owner decision: pure values).
+ * the temperature of a profile (owner decision: pure values). The Auto path
+ * (no user link) is the one exception: it sends the Instruct values with
+ * temperature 0 (`AUTO_TEMPERATURE` in the server, owner decision 2026-10-30).
  */
 interface BuiltinFamilyDef {
   key: string;

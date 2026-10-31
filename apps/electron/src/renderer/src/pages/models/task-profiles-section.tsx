@@ -571,7 +571,11 @@ function TaskRow({
           )}
           {chipMode === "auto" ? (
             <span className="text-muted-foreground text-[11.5px]">
-              {t("models.taskProfiles.assignmentAuto")}
+              {autoProfile
+                ? t("models.taskProfiles.assignmentAutoProfile", {
+                    profile: autoProfile.name,
+                  })
+                : t("models.taskProfiles.assignmentAuto")}
             </span>
           ) : chipMode === "preset" ? (
             <Badge variant={dangling ? "outline" : "secondary"}>

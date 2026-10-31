@@ -417,4 +417,20 @@ Qwen 3.8 has three Thinking profiles: xhigh (the default level), medium and low.
 
 Matcher for a model of an own server or a cloud provider (`qwenFamilyKey`): the id (case ignored) must hold `qwen`, then `3.5`, `3.6` or `3.8`, then a covered size right after the version (3.8: 27B, Flash, Flash-Next; 3.6: 27B, 35B-A3B; 3.5: 0.8B, 2B, 4B, 9B, 27B, 35B-A3B, 122B-A10B). A quant or file suffix is fine. An id with coder, embed, rerank, vl, audio, asr, omni, math or base gives no match. An unknown version or size gives no match, and then no automatic profile applies. A built-in MLX model matches by its catalog id (Gemma, Nemotron) or by the same Qwen rule.
 
-Side effect: a meeting run is no longer byte-identical between two runs. The measurements in sections 4.3 and 10 compare outputs at temperature 0. A comparison of two runs on a built-in model now needs a link with `temperature: 0`.
+### 13.1 Auto sends temperature 0 (owner decision, 2026-10-30)
+
+When a stage has no user link (Auto), the model uses its Instruct profile with `temperature` 0. All other values stay the validated vendor values (top_p, top_k, min_p, penalties, `enable_thinking` false). This holds for every task (`cleanup`, `meetingEnhance`, `meetingSummarize`, `liveChat`, and the folder, tag and speaker stages that run through them) and for the auto-matched own-server and cloud models (Qwen matcher). Code: `AUTO_TEMPERATURE` in `apps/server/src/lib/llm/task-profiles.ts`.
+
+- The stored built-in profile keeps the vendor temperature, so the research record stays true. The Auto default is applied when the profile is resolved.
+- A user link always wins. A linked Instruct profile and a linked Thinking profile send their stored values, including the vendor temperature. A Thinking profile keeps its vendor temperature on purpose: the Qwen model card warns against greedy decoding in thinking mode.
+- The picker and the collapsed row say it: "Auto (Gemma 4 E2B – Instruct, temperature 0)".
+- Runs on the Auto path are deterministic again, so two runs on the same input give the same output. The measurements in sections 4.3 and 10 stay comparable.
+
+Evidence (gold eval, `pnpm meeting:eval --gold`, Gemma 4 E2B, fixed worker, 3 runs each, both gold meetings):
+
+| Auto temperature | Hard fails | Summary items matched (of 13) |
+|---|---|---|
+| 1.0 (vendor Instruct value) | hard fails in 4 of 6 meeting runs | 6.0 (range 5 to 7) |
+| 0 | 0 in 6 meeting runs | 8 (range 8 to 8) |
+
+Check of the built default (this change, one `pnpm meeting:eval --gold --keep` run per gold meeting, no `--task-params`, worker built from the branch): all 28 calls of the run have `temperature` 0 on the wire (`llm_calls.params_json`, `capturedFrom` wire) and source `builtin:model:gemma-4-e2b-qat-4bit:instruct`. With the same ASR transcripts as the earlier temperature 0 runs, the scores are equal: summary matched 8 of 13 (5578edb0 3 of 6, ca70f895 5 of 7), tags P 0.70 R 0.50, speakers 2 of 6, 0 hard fails. A run with a fresh transcript (another ASR hash) gave 10 of 13 and 0 hard fails: the transcript changes the score, the temperature does not add noise.

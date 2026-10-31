@@ -1,5 +1,26 @@
 # Changelog
 
+## 2.25.0
+
+### New Features ✨
+
+- Built-in local models now run at temperature 0 by default, for every stage (Auto). Gold eval on Gemma 4 E2B, 3 runs each: temperature 0 gave 0 hard fails in 6 meeting runs and matched 8 of 13 summary items in every run. The vendor value 1.0 gave hard fails in 4 of 6 runs and matched 6 of 13 (range 5 to 7). A profile that you link keeps its own values. Thinking profiles keep the vendor temperature.
+- Each model has its own profile for each stage. Every built-in model has an Instruct profile and a Thinking profile with checked vendor values. This fixes the failures on long meetings.
+- The project page shows an Overview for each folder. Openstyle can suggest the project description from the meetings of the folder.
+- The meeting list shows stage counts for each folder. You can run a batch and re-run many meetings at once.
+- The meeting pane has a live view. Live transcript and live chat during a recording are experimental and off by default.
+- The ASR prompt names the owner and the attendees first. It uses first names by default.
+- The Eval Lab runs grids of ASR settings and records each run. New gold keys and a span metric measure the quality of names and terms.
+
+### Bug Fixes 🐛
+
+- A summary that the model cuts short no longer fails the whole summary.
+- A failed batch run counts as failed, not as done.
+- The meeting list keeps your last selection when you change pages.
+- Speaker and summary output is bounded on your own servers.
+- The renderer sends no request before the server port is known.
+- Restart to update stays clickable with a long version.
+
 ## 2.25.0-alpha.9
 
 ### Bug Fixes 🐛

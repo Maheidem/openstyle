@@ -138,6 +138,7 @@ Before you add any new LLM model or model family (a built-in catalog entry, a bu
 - Record the quotes and the URLs. List each conflict and say which source wins.
 - Add both a Thinking and an Instruct built-in profile.
 - Never copy `max_tokens` from a vendor page. It stays derived from the task and below the context window.
+- The stored profile keeps the vendor temperature (the research record). The Auto path (no user link) sends the Instruct profile with `temperature` 0 for every stage (owner decision 2026-10-30, `specs/llm-runtime-tuning.md` section 13.1). A linked profile sends its stored values.
 
 The steps, the source order and the test are in `.claude/skills/model-catalog/SKILL.md`, section "Validate the inference parameters".
 
