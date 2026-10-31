@@ -16,7 +16,7 @@
 - The project page shows an Overview for each folder. Openstyle can suggest the project description from the meetings of the folder.
 - The meeting list shows stage counts for each folder. You can run a batch and re-run many meetings at once.
 - The meeting pane has a live view. Live transcript and live chat during a recording are experimental and off by default.
-- Stop keeps the live transcript. The meeting is ready at once, with the mark "From live". Speaker labels are added next. Re-transcribe runs the full pass. The live chat is saved with the meeting, and you can read it after Stop.
+- New option, off by default: Keep the live transcript at Stop (Settings, Meetings). When on, the meeting is ready at once after Stop, with the mark "From live". Speaker labels are added next. Re-transcribe runs the full pass. The live chat is saved with the meeting, and you can read it after Stop.
 - The ASR prompt names the owner and the attendees first. It uses first names by default.
 - The Eval Lab runs grids of ASR settings and records each run. New gold keys and a span metric measure the quality of names and terms.
 

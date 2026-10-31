@@ -245,7 +245,9 @@
       "calendarUnavailable": "Openstyle n'a pas pu joindre le calendrier. La demande a peut-être expiré, ou ce Mac utilise une version de macOS antérieure à la 14. Réessayez.",
       "calendarSaveFailed": "Openstyle n'a pas pu enregistrer ce réglage. Le calendrier reste désactivé.",
       "liveChat": "Transcription et chat en direct (expérimental)",
-      "liveChatDesc": "Affiche la transcription pendant l'enregistrement et permet de poser des questions sur la réunion. Il faut un modèle de transcription local téléchargé. Cela utilise plus de mémoire pendant un enregistrement."
+      "liveChatDesc": "Affiche la transcription pendant l'enregistrement et permet de poser des questions sur la réunion. Il faut un modèle de transcription local téléchargé. Cela utilise plus de mémoire pendant un enregistrement.",
+      "liveKeep": "Garder la transcription en direct à l'arrêt (expérimental)",
+      "liveKeepDesc": "À l'arrêt de l'enregistrement, le texte en direct devient aussitôt la transcription de la réunion, marquée \"Issu du direct\". Les étiquettes de locuteurs sont ajoutées ensuite. Vous pouvez utiliser Retranscrire. Fonctionne seulement avec la transcription en direct activée."
     },
     "data": {
       "pauseHistory": "Suspendre l'historique",

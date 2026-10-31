@@ -286,7 +286,9 @@
       "calendarUnavailable": "Openstyle could not reach the calendar. The request may have timed out, or this Mac may run a macOS version older than 14. Try again.",
       "calendarSaveFailed": "Openstyle could not save this setting. The calendar stays off.",
       "liveChat": "Live transcript and chat (experimental)",
-      "liveChatDesc": "Shows the transcript while you record and lets you ask questions about the meeting. It needs a downloaded local transcription model. It uses more memory during a recording."
+      "liveChatDesc": "Shows the transcript while you record and lets you ask questions about the meeting. It needs a downloaded local transcription model. It uses more memory during a recording.",
+      "liveKeep": "Keep the live transcript at Stop (experimental)",
+      "liveKeepDesc": "When you stop a recording, the live text becomes the transcript of the meeting at once, marked \"From live\". Speaker labels are added next. You can run Re-transcribe later. Works only with the live transcript on."
     },
     "data": {
       "pauseHistory": "Pause history",

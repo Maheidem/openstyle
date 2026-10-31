@@ -19,6 +19,7 @@ import {
   meetingListResponseSchema,
   meetingStartResponseSchema,
   meetingSummaryVersionsResponseSchema,
+  SETTINGS_KEYS,
   type StartRunResponse,
   SYNC_JSON,
   SYSTEM_WAV,
@@ -33,7 +34,7 @@ import {
   type WavInfo,
   wavDurationMs,
 } from "../lib/audio/wav.js";
-import { getDb, withTransaction } from "../lib/db.js";
+import { getDb, readSetting, withTransaction } from "../lib/db.js";
 import {
   isDictationActive,
   type WaitForDictationIdleOptions,
@@ -1817,7 +1818,10 @@ const meetings = new Hono()
     const { ended_at, duration_ms, status, error } = c.req.valid("json");
     // Wait for the live loop: the next pass needs the one ASR worker. On a
     // clean stop the loop first reads the rest of the audio.
-    const live = await stopLive(id, { flush: status === "recorded" });
+    const keepLive =
+      status === "recorded" &&
+      readSetting(SETTINGS_KEYS.liveKeepTranscriptAtStop) === "true";
+    const live = await stopLive(id, { flush: keepLive });
     const db = getDb();
     const result = db
       .prepare(
@@ -1829,7 +1833,7 @@ const meetings = new Hono()
     if (result.changes === 0) return c.json({ error: "Not found" }, 404);
     // Keep the live transcript (issue #375): the meeting is usable at once.
     // The speaker and word-timing steps run next, as a job.
-    if (status === "recorded" && live.modelId !== null) {
+    if (keepLive && live.modelId !== null) {
       const row = getMeetingRow(id);
       const saved = saveLiveTranscript(db, id, live.lines, {
         provider: MLX_ASR_PROVIDER_ID,

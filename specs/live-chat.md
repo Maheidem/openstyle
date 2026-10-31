@@ -151,20 +151,24 @@ The proofs are:
 - Experimental. Off by default. The owner decides if it stays.
 - One ASR worker. While a dictation runs, live text pauses.
 - If the dictation model differs from the meeting model, a dictation reloads the worker. Live text then pauses until the meeting model loads again.
-- Live text can differ from the full pass (section 8 has the measured word error). Stop saves it as the transcript. "Re-transcribe" replaces it with the full pass.
+- Live text can differ from the full pass (section 8 has the measured word error). with the option on, Stop saves it as the transcript. "Re-transcribe" replaces it with the full pass.
 - The language lock needs 10 s of speech. The first lines have auto language until then, and are read again once. A meeting that mixes two languages gets the language of its first 10 s for every later read, like the full pass does for a meeting with more than one declared language.
 - The speech gate uses the Silero model of the app. A breath or a click that Silero marks as speech can still give a short word. The full pass has the same gap.
 - No token streaming. No second ASR worker. No live diarization during the recording (the speaker pass runs after Stop).
 - The claim "30 minutes on a 16 GB Mac without memory pressure" is **not verified**. The test Mac has 128 GB. Section 6 gives the memory of a 10-minute run on this Mac only. The peak of 9.0 GB with the 1.7B ASR model and the chat model loaded together is a warning for a 16 GB Mac. A test on a 16 GB Mac is still open. Only English and one voice for each channel were tested.
 
-## 8. Keep the live transcript at Stop
+## 8. Keep the live transcript at Stop (option, default off)
 
-Owner decision 2026-10-30: the live text is not lost at Stop.
+Owner decision 2026-10-30: the live text can be kept at Stop. It is an option, **off by default**: setting `live_keep_transcript_at_stop` (only the value `"true"` turns it on), a switch in Settings, Meetings, next to the live chat switch. It has an effect only while `live_chat_enabled` is on. With the option off, Stop does what it did before: the meeting is `recorded`, with 0 segments, and the live text is dropped.
 
-1. `POST /api/meetings/:id/stop` with `status: "recorded"` first stops the loop with `flush`: the loop reads the rest of the audio (the open tail too), for at most 15 s. Then the route saves the final lines as `meeting_segments` (`live/finish.ts`, one row for each line, `idx` for each channel in time order, `status` `ok`) and sets the meeting to `transcribed` with `transcript_source = 'live'` (schema 52). A stop with `status: "failed"`, or a meeting with no live line, saves nothing. The meeting stays `recorded`, as before.
+With the option on:
+
+1. `POST /api/meetings/:id/stop` with `status: "recorded"` first stops the loop with `flush`: the loop reads the rest of the audio (the open tail too), for at most 15 s. Then the route saves the final lines as `meeting_segments` (`live/finish.ts`, one row for each line, `idx` for each channel in time order, `status` `ok`) and sets the meeting to `transcribed` with `transcript_source = 'live'` (schema 52). A stop with `status: "failed"`, or a meeting with no live line, saves nothing. The meeting stays `recorded`.
 2. The meeting detail shows the status "Transcribed" and the mark "From live". The mark goes away when a full transcription replaces the segments (`startTranscribe` clears `transcript_source`).
 3. "Re-transcribe" stays available. It runs the full pass and replaces the live segments, as for any transcript.
 4. The steps that the live loop does not do run next, as a job of kind `diarize` that holds the job slot (`runLiveFinishJob`, `routes/meetings.ts`): the speaker pass on the system channel (`runDiarizer`, when the setting is on and `system.wav` exists), then the word-timing split of mixed chunks (`decideAlignPlan`, `runAlignPass`, the same code as the full pass) when the meeting has a declared language, else the speaker labels from the overlap (`applyDiarization`). Then the markdown export, and the auto-run Enhance and Summarize when that setting is on (`startAutoRun`, shared with the full pass). A failure keeps the live transcript as it is.
+
+Why an option: see the measurement below. The live text is as good as the full pass on single-language audio, but worse on mixed-language audio.
 
 ### Measured, live text against the full pass (2026-10-30)
 
@@ -182,7 +186,7 @@ Fictional scripts (macOS voices Luciana and Samantha), 8 audio files of 82 to 18
 | Portuguese, far field, milder (102 s) | 42.0 % | 43.5 % |
 | Mixed Portuguese and English (148 s) | 15.1 % (5.4 % in the app run) | 6.3 % |
 
-Decision: live is as good as the full pass, or better, on single-language audio, and worse by 3 points or less on the other single-language files. It is clearly worse only on the mixed file in one of the two runs: with the language locked to Portuguese, an English sentence that sits in the same segment as Portuguese is translated or dropped. So Stop keeps the live transcript by default, with the mark "From live" and "Re-transcribe" one click away. No setting was added. An idea for a later change if a mixed-language user needs it: for an auto-language meeting, read a segment again with auto language when the locked read has far fewer words than the speech time allows.
+Live is as good as the full pass, or better, on single-language audio, and worse by 3 points or less on the other single-language files. It is clearly worse only on the mixed file in one of the two runs: with the language locked to Portuguese, an English sentence that sits in the same segment as Portuguese is translated or dropped. The owner chose an option, default off. An idea for a later change if a mixed-language user needs it: for an auto-language meeting, read a segment again with auto language when the locked read has far fewer words than the speech time allows.
 
 The language lock, before and after, on the same audio (lines in the wrong language; `x/y` is lines that the check could judge):
 

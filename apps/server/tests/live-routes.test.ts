@@ -97,12 +97,14 @@ describe("live routes", () => {
     vi.useRealTimers();
     dir = mkdtempSync(join(tmpdir(), "openstyle-live-routes-"));
     writeSetting("meeting_diarization_enabled", "false");
+    writeSetting("live_keep_transcript_at_stop", "true");
   });
   afterEach(async () => {
     await stopLive("m-live");
     resetMeetingTables();
     deleteSetting("meeting_diarization_enabled");
     deleteSetting("live_chat_enabled");
+    deleteSetting("live_keep_transcript_at_stop");
     rmSync(dir, { recursive: true, force: true });
   });
 
@@ -197,6 +199,30 @@ describe("live routes", () => {
     } finally {
       __setMeetingsTestOverrides({});
     }
+  });
+
+  it("with the option off, Stop leaves the meeting recorded with no segments", async () => {
+    deleteSetting("live_keep_transcript_at_stop");
+    growingWav(join(dir, MIC_WAV), concat(silence(300), speech(2000)));
+    growingWav(join(dir, SYSTEM_WAV), silence(2300));
+    await startMeeting();
+    await startLive("m-live", dir, stubDeps());
+    await waitFor(() => (getLive("m-live")?.lines.length ?? 0) > 0);
+    const stop = await jsonRequest(app, "POST", "/api/meetings/m-live/stop", {
+      ended_at: Date.now(),
+      duration_ms: 2300,
+      status: "recorded",
+    });
+    expect(stop.status).toBe(200);
+    const detail = (await (
+      await app.request("/api/meetings/m-live")
+    ).json()) as { status: string; transcript_source: string | null };
+    expect(detail.status).toBe("recorded");
+    expect(detail.transcript_source).toBeNull();
+    expect(
+      getDb().prepare("SELECT COUNT(*) AS c FROM meeting_segments").get(),
+    ).toEqual({ c: 0 });
+    expect(hasJob("m-live")).toBe(false);
   });
 
   it("a failed stop keeps no live transcript", async () => {

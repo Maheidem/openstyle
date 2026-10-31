@@ -223,3 +223,60 @@ test("setting on, no local model: the live view opens in the right pane and says
   const after = await (await fetch(`${base}/api/meetings/${id}/live`)).json();
   expect(after.status).toBe("off");
 });
+
+test("keep the live transcript at Stop: a setting, off by default, and Stop saves nothing without live text", async () => {
+  test.setTimeout(120_000);
+  const read = async (): Promise<string | undefined> => {
+    const all = (await (await fetch(`${base}/api/settings`)).json()) as Record<
+      string,
+      string
+    >;
+    return all.live_keep_transcript_at_stop;
+  };
+  // Off by default. The switch is in Settings > Meetings next to the live chat.
+  expect(await read()).not.toBe("true");
+  await dashboard.goto("app://renderer/settings#meetings");
+  const keep = dashboard.locator("#settings-live-keep");
+  await expect(dashboard.locator("#settings-live-chat")).toBeVisible();
+  await expect(keep).toBeVisible();
+  await expect(keep).toHaveAttribute("aria-checked", "false");
+  await keep.click();
+  await expect.poll(read).toBe("true");
+  await dashboard.reload();
+  await expect(dashboard.locator("#settings-live-keep")).toHaveAttribute(
+    "aria-checked",
+    "true",
+  );
+  // On, but there is no local model, so the loop has no line to keep: the
+  // meeting stays recorded with no segment. With the option off it is the same.
+  for (const value of ["true", "false"]) {
+    const put = await fetch(
+      `${base}/api/settings/live_keep_transcript_at_stop`,
+      {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ value }),
+      },
+    );
+    expect(put.ok).toBe(true);
+    const id = await startMeeting();
+    await stopMeeting();
+    const detail = (await (
+      await fetch(`${base}/api/meetings/${id}`)
+    ).json()) as {
+      status: string;
+      transcript_source: string | null;
+      segment_counts: { total: number };
+    };
+    expect(detail.status).toBe("recorded");
+    expect(detail.transcript_source).toBeNull();
+    expect(detail.segment_counts.total).toBe(0);
+  }
+  // A value that is not a boolean flag is refused.
+  const bad = await fetch(`${base}/api/settings/live_keep_transcript_at_stop`, {
+    method: "PUT",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ value: "maybe" }),
+  });
+  expect(bad.ok).toBe(false);
+});

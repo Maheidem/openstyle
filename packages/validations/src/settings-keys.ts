@@ -65,6 +65,12 @@ export const SETTINGS_KEYS = {
    */
   liveChatEnabled: "live_chat_enabled",
   /**
+   * Stop saves the live transcript as the transcript of the meeting (mark
+   * "From live"). OFF by default: only the value `"true"` turns it on. It
+   * has an effect only while `live_chat_enabled` is on.
+   */
+  liveKeepTranscriptAtStop: "live_keep_transcript_at_stop",
+  /**
    * I2 (specs/meeting-transcription-v2.md §3.2): the one-time auto-Enhance
    * prompt (or the onboarding step for new users) has been shown. Only
    * `"true"` counts as shown; a missing row means not shown yet. Written

@@ -245,7 +245,9 @@
       "calendarUnavailable": "O Openstyle não conseguiu acessar o calendário. A solicitação pode ter expirado, ou este Mac usa um macOS anterior ao 14. Tente novamente.",
       "calendarSaveFailed": "O Openstyle não conseguiu salvar esta configuração. O calendário continua desativado.",
       "liveChat": "Transcrição e chat ao vivo (experimental)",
-      "liveChatDesc": "Mostra a transcrição enquanto você grava e deixa você fazer perguntas sobre a reunião. Precisa de um modelo local de transcrição baixado. Usa mais memória durante uma gravação."
+      "liveChatDesc": "Mostra a transcrição enquanto você grava e deixa você fazer perguntas sobre a reunião. Precisa de um modelo local de transcrição baixado. Usa mais memória durante uma gravação.",
+      "liveKeep": "Manter a transcrição ao vivo ao parar (experimental)",
+      "liveKeepDesc": "Ao parar a gravação, o texto ao vivo vira a transcrição da reunião na hora, marcada como \"Do ao vivo\". Os rótulos de falantes vêm depois. Você pode usar Transcrever novamente. Só funciona com a transcrição ao vivo ligada."
     },
     "data": {
       "pauseHistory": "Pausar histórico",
