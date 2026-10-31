@@ -84,7 +84,8 @@ export interface P1Result {
   runs: RunOut[];
 }
 
-const MODEL_ID = "gemma-4-e2b-qat-4bit";
+// Any built-in catalog id (apps/server/src/lib/mlx-llm/constants.ts). E2B is the floor.
+const MODEL_ID = process.env.CHAT_EVAL_MODEL ?? "gemma-4-e2b-qat-4bit";
 const LLM_STORED_ID = `local-mlx-llm/${MODEL_ID}`;
 const DAY = 86_400_000;
 const f3 = (x: number) => x.toFixed(3);
@@ -1333,10 +1334,10 @@ export async function runP1(
   stack.db
     .prepare(
       `INSERT INTO model_configs (provider, model_id, model_name, type, is_default)
-       VALUES ('local-mlx-llm', ?, 'Gemma 4 E2B', 'llm', 1)
+       VALUES ('local-mlx-llm', ?, ?, 'llm', 1)
        ON CONFLICT(provider, model_id, type) DO UPDATE SET is_default = 1`,
     )
-    .run(LLM_STORED_ID);
+    .run(LLM_STORED_ID, MODEL_ID);
   const maps = buildIdMaps(corpus, stack.mod.actionItemKey);
   const env: Env = {
     stack,
