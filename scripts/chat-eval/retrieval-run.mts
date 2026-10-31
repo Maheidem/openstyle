@@ -4,6 +4,7 @@
 
 import { existsSync, readdirSync, statSync } from "node:fs";
 import { join } from "node:path";
+import { buildCorpus } from "./corpus.mts";
 import { mean, percentile } from "./keys.mts";
 import { type RerankStats, runRerank } from "./rerank.mts";
 import {
