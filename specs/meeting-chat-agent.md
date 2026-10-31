@@ -1,7 +1,7 @@
 # Meeting chat agent (engineering spec)
 
 Status: DRAFT for owner review. Date: 2026-10-31. Base: `main` at `a7083674`.
-Revision 2 (2026-10-31, 09:49): owner answers applied. Section 12.1 lists them as decisions D1 to D4.
+Revision 2 (2026-10-31, 09:49): owner answers applied. Section 12.1 lists them as decisions D1 to D4. Revision 3 (10:45): placement decided, D5 (section 11).
 Scope of this document: design only. No product code is part of this change.
 Language: ASD-STE100 Simplified Technical English.
 
@@ -1087,8 +1087,8 @@ flowchart LR
 | Phase | Content | Schema | Setting | DoD (all needed) |
 |---|---|---|---|---|
 | P0 | R1 meeting scope and date filter; R3 `best_ms` and grouping helper; the retrieval workstream R4 of section 7.4 (FTS5 BM25, RRF fusion, reranker candidates, multimodal spike) with its own eval and bars; reversal of D8 in the search spec; the chat eval corpus builder and harness (`scripts/chat-eval/`); baseline runs of A0 on E2B, E4B, Nemotron, Qwen; a skill `.claude/skills/chat-eval/SKILL.md` | FTS table (version at build time) only if H1 passes its bar | none (no user feature) | Arms table (V0, H1, H2, R1, M1) with recall@k, nDCG@10 per language, latency, RAM, index size, in the PR. Unit tests of the new filters. The existing search eval does not regress. The harness runs against an isolated app. Bars of 7.4.6 met or the PR says which arm was dropped. |
-| P1 | Router, plan table, slot fill, answer, cite validation. Tools: `search_chunks`, `get_meeting_summary`, `list_action_items` (read only, derived key), `folder_status`. Threads and messages. Scope M and F. A basic UI in the placement chosen in section 11. | v54 (items), v55 (threads) | `meeting_chat_enabled` (default off) | E2E in the isolated app: a real question per story R1, R2, R5, R6, R9 with screenshots in light and dark. Gold eval numbers for E2B meet the P1 bars. Failure paths 2.5 each tested. |
-| P2 | Scope A. Tools: `list_meetings`, `list_decisions_questions`, `list_people` (certain matches only), `get_transcript_window`. Resolver for certain matches. Optional FTS5 channel by the R4 gate. | v56 (people) | same | E2E for R3, R4, R7. Gold numbers meet the P2 bars. Resolver run on the fictional corpus. |
+| P1 | Router, plan table, slot fill, answer, cite validation. Tools: `search_chunks`, `get_meeting_summary`, `list_action_items` (read only, derived key), `folder_status`. Threads and messages. Scope M and F. The Ask tab on the meeting page only (section 11.4). | v54 (items), v55 (threads) | `meeting_chat_enabled` (default off) | E2E in the isolated app on the meeting Ask tab: a real question per story R1, R2 (one meeting), R5, R9 with screenshots in light and dark, and the accessibility tree check of 11.3. R6 and folder-level R2 and R5 are proven by the gold eval and by command (said so in the PR); their screen proof is in P2. Gold eval numbers for E2B meet the P1 bars. Failure paths 2.5 each tested. |
+| P2 | Scope A. Tools: `list_meetings`, `list_decisions_questions`, `list_people` (certain matches only), `get_transcript_window`. Resolver for certain matches. The Ask tab on the folder Overview, Cmd+K with widening to Everything, and the source-text panel of 11.5. | v56 (people) | same | E2E for R3, R4, R6, R7 and folder-level R2 and R5 in the screen, Cmd+K widen and continue-in-tab. Gold numbers meet the P2 bars. Resolver run on the fictional corpus. |
 | P3 | `propose_action_item_change`, `propose_retag`, `propose_move`. Proposal cards. Apply, undo, audit log. Extract the move and tag logic to lib functions. Item sync after summarize. | v57 (changes) | same | E2E: propose, apply, check in the screen, undo, check again, for each kind. The undo round trip hash test. Write bars met. No path writes without Apply (a test posts a write-intent question and checks the tables did not change). |
 | PM | Workstream of section 4.5: spike of the helper on `mic.wav`, mic labels `m1..`, `source` column in diarizer turns, merge output without the hard-coded "Me", owner confirmation flow, echo check, carry rule with mic labels. Starts after P1 (one PR open at a time with the main line, WIP limit 2). | rebuild of `meeting_diarizer_turns` (version at build time) | extends the diarization setting | Multi-voice mic eval of 8.8 meets its bars. E2E in the isolated app: a fictional 3-voice mic meeting shows 3 speakers, the user confirms one as owner, light and dark screenshots. No regression on single-voice meetings. |
 | P4 | `propose_merge_people`, resolver clusters (likely, unsure), confirm UI, full rewrite of D3 with the preview of every changed place, `agent_change_places`, conflict rules of 5.7. Needs PM for the owner link. | none beyond v57 | same | E2E on a fictional folder with 3 name variants and a mic with 2 voices: merge, check every place in the screen, edit one summary line by hand, undo, see the conflict report. Dedup precision bar. Round trip hash test for tables without a conflict. |
@@ -1108,13 +1108,13 @@ Rule for all phases: an E2E result on the screen is needed. A 200 response alone
 | 6 | The lane or RAM hurts dictation or small Macs | One request at a time per local model (`S/lib/llm/lane.ts:106`); peak 9.0 GB with ASR and chat models, 16 GB Macs untested (`specs/live-chat.md` section 7); the prefix cache of cleanup is one entry (`W:905-925`) | Measure dictation latency during a chat turn (bar in 8.7). Measure the cleanup prefix cache after a chat turn. Chat uses the interactive class. The turn deadline is 60 s. |
 | 7 | Data goes to a cloud provider that the user chose, in a chat over many meetings | Decision D1 lifts the local-only rule of the live chat (`S/routes/meetings-chat.ts:98-103`) | The app sends only the sources of the turn (up to 6000 estimated tokens) to the provider that the user set for the task. The thread shows provider and model. The LLM inspector keeps the sent messages (`llm_calls.messages_json`, `S/lib/schema.ts:1070`). No fallback to another provider. |
 | 8 | Eval corpus does not match real use | Fictional corpus (8.2) | Owner-labelled private set for dedup. Owner spot check of 20 answers per model. The three spoken meetings. |
-| 9 | Scope creep from the UI placement | Placement is open (section 11) | The API is placement-agnostic. P1 builds one thin UI only. |
+| 9 | Scope creep from the UI | Three surfaces (tab, folder tab, Cmd+K) plus dissents (section 11.5) | The API is placement-agnostic. P1 builds only the meeting tab. Cmd+K and the folder tab wait for P2. |
 
 Two more risks come from the owner decisions. Risk 10: a mic diarizer that splits one voice, or makes clusters from echo (section 4.5). Risk 11: a prose rewrite that changes the wrong word (section 5.6 rules 4 to 6). Mitigation for 11: ambiguous-alias guard, per-place preview, patch-level undo. Top five by impact: 1, 3, 4, 5, 6.
 
 ### 9.3 Open questions for the owner
 
-See section 12.2. Decisions D1 to D4 are in section 12.1.
+See section 12.2. Decisions D1 to D5 are in section 12.1.
 
 ## 10. Effect on existing features
 
@@ -1135,32 +1135,57 @@ See section 12.2. Decisions D1 to D4 are in section 12.1.
 | Settings, Models page | New switch `meeting_chat_enabled`. New row for the task `meetingChat` on the Models page (as `models.taskProfiles.liveChat`, `specs/live-chat.md` section 5). 7 locales plus template. | task profile UI |
 | Knip | New files must be imported or listed in `knip.jsonc` (`AGENTS.md`, development gotchas). | |
 
-## 11. UI placement: pending owner choice
+## 11. UI placement: decided (D5)
 
-Status: UNDECIDED. A persona conference and three prototypes are in progress: a drawer, an "Ask" page, and an embedded tab with a command palette (Cmd+K). This spec does not choose. The server API in section 5.3 does not depend on the choice.
+Status: DECIDED by the owner on 2026-10-31 (decision D5, section 12.1). The choice is concept C of the prototype canvas, with the dissents of the persona conference recorded in 11.5. The server API in section 5.3 did not depend on the choice and does not change.
 
-Requirements that every placement must meet:
+### 11.1 The placement
 
-1. A scope selector with a default from context: a meeting page gives scope M, a folder page gives scope F, the Ask entry gives scope A. The user can change it. The selector shows the scope in words.
+| Surface | What it is | Scope |
+|---|---|---|
+| Ask tab on the meeting page | A tab in the tab row of the meeting detail (the active tab is state in `R/pages/meetings/detail.tsx:171-173`; the live chat already adds a tab when a meeting has chat messages, `R/pages/meetings/detail.tsx:225`). | this meeting (M) |
+| Ask tab on the folder Overview | A tab next to the Overview in the folder panel (`R/pages/meetings/folder-panel.tsx:75`, tab row at `:383`). | this folder (F) |
+| Cmd+K quick ask | A palette opened from anywhere in the app. It starts with the scope of the page the user is on. The user can widen it to Everything (A). A long exchange continues in the Ask tab of the matching meeting or folder, or in an Everything thread. | page scope, widenable to A |
+| Live view during a recording | The live view stays as it is: transcript left, chat right (`specs/live-chat.md` section 5). Its chat becomes the same Ask pipeline at scope "this meeting, live" (section 2.4). Until P5, today's live chat panel (`R/pages/meetings/live-chat-panel.tsx`) stays unchanged. | this meeting, live |
+| Ask page (concept B) | Not built now. A later option only for the Everything scope and for search over old threads. | A |
+
+The owner said the Cmd+K quick ask and the Ask tab have "an awesome synergy". The design keeps one thread model for both (section 4.2): a thread made in Cmd+K has a scope, and the tab for that scope lists it.
+
+### 11.2 Requirements for the surfaces
+
+1. A scope line in words, with the scope default from context: the meeting tab gives M, the folder tab gives F, Cmd+K gives the page scope. In Cmd+K the user widens to A with one action. In a tab the scope is fixed by the page, and the tab offers "ask across everything" which opens Cmd+K at A. DECISION: the tab does not change its own scope. Reason: a meeting tab that answers from other meetings confuses the cites.
 2. Cite chips. A chip opens the meeting at `start_ms`, or opens the item. A dead chip (meeting deleted) is shown as "removed".
-3. Answer blocks: text, list, count, status, not-found with "search wider".
-4. Proposal cards with a before and after preview, row checkboxes, Apply, Reject, and Undo after Apply.
+3. Answer blocks: text, list, count, status, not-found with "search wider" (a button, Q11).
+4. Proposal cards with a before and after preview, row checkboxes, Apply, Reject, and Undo after Apply (P3 and later).
 5. An activity log of applied changes with Undo (reads `GET /api/chat/changes`).
 6. A step trail of the tools that ran ("searched 3 meetings, read 1 summary"). It comes from `trace_json`. The POST returns once, because the worker does not stream (`W:734-735`).
 7. A "warming" state for the first call, as in the live chat (`specs/live-chat.md` section 5).
-8. The live view shows the same panel with the live scope. The live panel exists today as a right-pane column (`specs/live-chat.md` section 5).
-9. All strings through `t()` in 7 locales. Light and dark themes. Accent rules of `specs/design-system.md`.
-10. The thread list: threads of the current scope, newest first.
+8. All strings through `t()` in 7 locales. Light and dark themes. Accent rules of `specs/design-system.md`.
+9. The thread list of the current scope, newest first. Cmd+K shows recent threads of the scope.
+10. Cmd+K is a keyboard shortcut of the renderer. It must not clash with a global dictation hotkey (OS-level hotkeys go through the main process, `AGENTS.md` section "IPC"). ASSUMPTION; P2 checks the existing shortcuts before it binds the key.
 
-What each placement changes in the plan:
+### 11.3 Accessibility notes (from the persona conference)
 
-| Placement | Effect |
+1. Tab semantics: the Ask tab is a real tab in the existing tab list, with the tab role, `aria-selected`, arrow-key movement and a tab panel. The tab row of the meeting page and the folder panel already use the shared `Tabs` component (`R/pages/meetings/folder-panel.tsx:383`; `R/components/ui/tabs.tsx:87`). The component wraps the Radix tabs primitive (`R/components/ui/tabs.tsx:3`), which is expected to give the roles (ASSUMPTION). P1 checks it in the screen (accessibility tree) and does not claim it from code reading.
+2. Live region for the thinking state: the "thinking" and "warming" text, and the step trail, sit in a polite live region (`aria-live="polite"`), so a screen reader hears "thinking", the steps and then the answer. The answer itself is added to the message list and is not read twice. Because the answer is not streamed (`W:734-735`), the live region announces only state changes.
+3. Cmd+K palette: dialog role with a label, focus moves into the input on open, Escape closes and returns focus to the element that opened it, and arrow keys move in the result list.
+4. Cite chips and proposal buttons are real buttons with names that include the target ("Open meeting Weekly sync at 12:40"). Do not rely on colour alone for applied, undone and conflict states.
+5. Both themes are checked (project rule: UI proofs in light and dark).
+
+### 11.4 What this changes in the plan
+
+| Phase | UI scope |
 |---|---|
-| Drawer | One component mounted in the app shell. Scope follows the page. Live view can host it. The least code for P1. (ASSUMPTION) |
-| Ask page | A new route with the thread list. Scope A is the default. Folder and meeting pages need an "ask about this" link. (ASSUMPTION) |
-| Embedded tab and Cmd+K | A tab in the meeting page and the folder page (the live chat already has a "Live chat" tab after Stop, `specs/live-chat.md` section 5). Cmd+K opens scope A. Two entry points to build. (ASSUMPTION) |
+| P1 | One thin UI: the Ask tab on the meeting page (scope M). The API and the eval already cover scope F. The folder questions (R2 at folder level, R5, R6) are proven by the gold eval and by command against the real server in P1, and this is stated in the PR. Their screen proof comes in P2. |
+| P2 | The Ask tab on the folder Overview (scope F), and Cmd+K with widening to Everything (scope A) and "continue in the tab". Screen proofs for R3, R4, R6, R7. |
+| P3 and P4 | Proposal cards and the activity log in the same tab (and in the Cmd+K result when a proposal comes from there). |
+| P5 | The live view chat panel switches to the Ask pipeline at scope "this meeting, live". |
+| Later | Ask page for the Everything scope and old-thread search. |
 
-P1 waits for this choice. P0 does not.
+### 11.5 Dissents (recorded)
+
+1. Power user: wants an optional drawer later, so the chat stays open while the user moves between pages. Not in the plan. Reopen after P2 if Cmd+K plus the tab is not enough.
+2. Product manager: wants the source-text panel of concept B (the cited text next to the answer) inside the tab. Plan: a cite chip opens the cited lines in a side panel of the tab (transcript lines around `start_ms`, from `get_transcript_window`, section 3.2), in addition to opening the meeting. DECISION: P2 builds it, because it needs the window tool.
 
 ## 12. Owner decisions and open questions
 
@@ -1172,12 +1197,12 @@ P1 waits for this choice. P0 does not.
 | D2 (was Q4) | The app creates the account-owner person after one confirmation. The mic channel can hold more than one person, so diarization is needed on all channels. "Me" is not "every mic segment". The owner person links only to the mic clusters that the user confirms. Other mic voices are their own speakers. | 4.3, 4.5, 8.8, 9.1 (PM) |
 | D3 (was Q5) | A person merge rewrites everything by default, prose included: speaker names, action item owners, summary prose, standing bullets, search chunks (re-index) and chat history display. Always a versioned copy, with full undo. The preview shows every changed place. | 5.6, 5.7, 4.4 |
 | D4 (was Q6) | Retrieval gets a full workstream in P0: FTS5 BM25 plus dense vectors with RRF, a reranker if it helps, and research on a multimodal embedding. Decision D8 of the search spec is reversed, with the reason in 7.4. Own metrics and initial bars. | 7.4, 8.8, 9.1 (P0) |
+| D5 (was Q2) | UI placement is concept C: an Ask tab on the meeting page and on the folder Overview (scope is where you are), plus a Cmd+K quick ask from anywhere that can widen to Everything and continue in the tab. The live view keeps its layout and its chat moves to the Ask pipeline in P5. The Ask page (concept B) is a later option for Everything and old-thread search. | 11, 9.1 (P1, P2, P5) |
 
 ### 12.2 Open questions
 
 | # | Question | Default in this spec |
 |---|---|---|
-| Q2 | UI placement: drawer, Ask page, or embedded tab with Cmd+K. | open (section 11) |
 | Q3 | Approve the pass bars of sections 7.4.6, 8.7 and 8.8 after the P0 and PM measurements? | wait for the numbers |
 | Q7 | Is an unfiled meeting allowed to hold its own done marks (section 4.1)? | yes |
 | Q8 | Which bigger models count as the target set for "must do better": E4B, Nemotron Bolt, Qwen 27B, 26B-A4B? | E4B, Nemotron, Qwen |
