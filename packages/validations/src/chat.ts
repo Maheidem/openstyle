@@ -80,6 +80,11 @@ export const chatBlockSchema = z.discriminatedUnion("kind", [
     open_actions: z.number().int(),
     open_questions: z.number().int(),
   }),
+  /**
+   * The question asks for a change. P1 is read only: no change is applied
+   * (spec 9.1). The renderer says so with `t()`.
+   */
+  z.object({ kind: z.literal("read_only") }),
   z.object({
     kind: z.literal("not_found"),
     scope: chatScopeSchema,
