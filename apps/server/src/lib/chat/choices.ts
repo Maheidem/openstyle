@@ -419,9 +419,12 @@ function allDefs(ch: Choices): Partial<Record<ToolName, NativeTool>> {
       query: { type: "string" },
     }),
     folder_status: def("folder_status", "Show where the project stands"),
-    list_meetings: def("list_meetings", "List the meetings", {
-      tag: { type: "string" },
-    }),
+    // No `tag` argument: the model filled it with the folder name and the
+    // list was empty (P1 eval, count questions).
+    list_meetings: def(
+      "list_meetings",
+      "List the meetings of the scope (also to count them)",
+    ),
   };
   if (meeting) {
     out.get_meeting_summary = def(
@@ -619,7 +622,7 @@ function toIdArgs(
     case "folder_status":
       return {};
     case "list_meetings":
-      return { tag: text(a.tag) };
+      return {};
     case "propose_action_item_change":
       return {
         item_id: ch.items.find((i) => i.label === a.item)?.id,

@@ -836,7 +836,7 @@ describe("search_chunks", () => {
       endMs: 60_000,
       title: "Harbor kickoff",
     });
-    expect(best?.text.length).toBeLessThanOrEqual(320);
+    expect(best?.text.length).toBeLessThanOrEqual(640);
     expect(best?.text).toContain("buoy upkeep budget"); // the cited line is inside the text
     expect(best?.text).toContain(
       "We must fix the buoy upkeep budget before the winter storms arrive",

@@ -70,6 +70,12 @@ import {
 export const HARD_CAP_CALLS = 16;
 /** The thin-hit rule: fewer search rows than this adds the summary. */
 const THIN_ROWS = 3;
+/**
+ * The not-found floor (spec 6.3 point 1): when the reranker gives the best hit
+ * a score below this, the question has no source. The number comes from the
+ * P1 eval (see the PR); 0 turns the floor off.
+ */
+export const SCORE_FLOOR = 0;
 /** Nearest sources shown in a not_found block. */
 const NEAREST = 3;
 /** Cites kept for a block answer (list, count, status). */
@@ -88,6 +94,8 @@ export interface ChatTurnInput {
   now?: number;
   /** Eval only: a write question gives a proposal. Nothing is applied in any case. */
   allowProposals?: boolean;
+  /** Override of `SCORE_FLOOR` (the eval measures it). */
+  scoreFloor?: number;
 }
 
 /** Tool name to the intent it stands for (trace and answer mode). */
@@ -411,7 +419,14 @@ export async function runChatTurn(input: ChatTurnInput): Promise<TurnResult> {
     try {
       const r = await runTool(ctx, call.tool as never, call.args);
       toolCalls.push({ tool: call.tool, args: call.args, rows: r.rows });
-      step("tool", call.tool, started, r.rows, r.degraded);
+      step(
+        "tool",
+        call.tool,
+        started,
+        r.rows,
+        r.degraded ??
+          (r.topScore !== null ? `top=${r.topScore.toFixed(3)}` : null),
+      );
       results.push(r);
       return r;
     } catch (e) {
@@ -524,6 +539,18 @@ export async function runChatTurn(input: ChatTurnInput): Promise<TurnResult> {
     return finish(blocks, cites, "");
   }
 
+  // ---- The not-found floor: the best hit is too weak for an answer. ----
+  const floor = input.scoreFloor ?? SCORE_FLOOR;
+  const searched = results.find((r) => r.tool === "search_chunks");
+  if (
+    floor > 0 &&
+    searched &&
+    searched.topScore !== null &&
+    searched.topScore < floor
+  ) {
+    return notFound("no_sources");
+  }
+
   // ---- Stage 4: the answer from the numbered sources. ----
   const ranked = sources
     .all()
@@ -620,6 +647,7 @@ export async function runChatTurn(input: ChatTurnInput): Promise<TurnResult> {
       check.ok ? null : failureNote(check),
     );
     if (check.ok) {
+      refineCiteTimes(check.sentences, sources);
       const cites = citeFromSentences(check.sentences, sources);
       const blocks: ChatBlock[] = check.sentences.map((s) => ({
         kind: "text",
@@ -660,4 +688,43 @@ function choiceLists(ch: Choices, write: boolean): string[] {
       );
   }
   return lines;
+}
+
+const WORD = /[\p{L}\p{N}]{2,}/gu;
+const fold = (t: string): string[] =>
+  (
+    t
+      .normalize("NFD")
+      .replace(/\p{M}+/gu, "")
+      .toLowerCase()
+      .match(WORD) ?? []
+  ).filter((w) => w.length > 2 || /\d/.test(w));
+
+/**
+ * The chip opens the meeting at the line that the sentence is about: for each
+ * transcript source, the segment with the most words of the sentence (spec 7.3
+ * point 1, applied to the answer and not to the query).
+ */
+function refineCiteTimes(
+  sentences: { text: string; cites: string[] }[],
+  sources: SourceMap,
+): void {
+  for (const sentence of sentences) {
+    const words = new Set(fold(sentence.text));
+    for (const label of sentence.cites) {
+      const segs = sources.segments.get(label);
+      const src = sources.get(label);
+      if (!segs || !src || src.kind !== "transcript") continue;
+      let best = segs[0];
+      let bestScore = -1;
+      for (const seg of segs) {
+        const score = fold(seg.text).filter((w) => words.has(w)).length;
+        if (score > bestScore) {
+          best = seg;
+          bestScore = score;
+        }
+      }
+      if (best && bestScore > 0) src.startMs = best.startMs;
+    }
+  }
 }

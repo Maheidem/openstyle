@@ -328,7 +328,7 @@ describe("POST /threads/:id/messages", () => {
     const pending = ask(id, "q", { signal: controller.signal });
     await vi.waitFor(() => expect(pipeline.run).toHaveBeenCalledTimes(1));
     controller.abort();
-    await pending.catch(() => {});
+    await Promise.resolve(pending).catch(() => {});
     await vi.waitFor(() => {
       const run = db()
         .prepare("SELECT status FROM llm_runs WHERE scope_id = ?")

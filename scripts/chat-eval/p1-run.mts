@@ -718,7 +718,8 @@ interface E2eRow {
   coveredStart: number;
   coveredRange: number;
   invalidCites: string[];
-  toolCalls: { tool: string; rows: number }[];
+  toolCalls: { tool: string; rows: number; args?: unknown }[];
+  notes?: string[];
   blocks: string[];
   answer: string;
 }
@@ -751,7 +752,12 @@ async function partE2e(env: Env, M: Record<string, number>): Promise<PartOut> {
     return r?.e ?? null;
   };
   const rows: E2eRow[] = [];
+  const only = process.env.CHAT_EVAL_IDS?.split(",");
+  const floor = process.env.CHAT_EVAL_FLOOR
+    ? Number(process.env.CHAT_EVAL_FLOOR)
+    : undefined;
   for (const q of qs) {
+    if (only && !only.includes(q.id)) continue;
     const signal = AbortSignal.timeout(120_000);
     const settings = mods.settings.readChatSettings();
     const scope = { kind: q.scope.kind, id: q.scope.id } as never;
@@ -770,6 +776,7 @@ async function partE2e(env: Env, M: Record<string, number>): Promise<PartOut> {
         signal,
         now: corpus.todayMs,
         allowProposals: true,
+        ...(floor !== undefined ? { scoreFloor: floor } : {}),
       });
       llm.finish("succeeded");
       const wall = performance.now() - t0;
@@ -840,11 +847,18 @@ async function partE2e(env: Env, M: Record<string, number>): Promise<PartOut> {
         coveredStart: cs.covered,
         coveredRange: cr.covered,
         invalidCites: chk.invalid,
-        toolCalls: res.toolCalls.map((c) => ({ tool: c.tool, rows: c.rows })),
+        toolCalls: res.toolCalls.map((c) => ({
+          tool: c.tool,
+          rows: c.rows,
+          args: c.args,
+        })),
         blocks: res.blocks.map((b) =>
           b.kind === "not_found" ? `not_found:${b.reason}` : b.kind,
         ),
         answer: res.content.slice(0, 300),
+        notes: res.trace.steps
+          .filter((s) => s.note)
+          .map((s) => `${s.stage}:${s.name}:${s.note}`),
       };
     } catch (e) {
       llm?.finish("failed", { errorDetail: String(e).slice(0, 200) });

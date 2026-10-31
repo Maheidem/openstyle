@@ -32,12 +32,18 @@ export interface Source {
   startMs: number | null;
   endMs: number | null;
   itemId: string | null;
-  /** The text shown to the model. Chunk hits are cut to 320 characters. */
+  /** The text shown to the model. Chunk hits are cut to 640 characters. */
   text: string;
 }
 
 /** The per-turn source map. Labels are S1..Sn in the order of `add`. */
 export class SourceMap {
+  /**
+   * The segments of each transcript chunk source, by label. The pipeline picks
+   * the cited line from them after the answer (cite time, spec 7.3 point 1).
+   */
+  readonly segments = new Map<string, { startMs: number; text: string }[]>();
+
   private readonly byLabel = new Map<string, Source>();
 
   /** Adds a source and gives it the next label. An equal source returns the first one. */
@@ -115,6 +121,8 @@ export interface ToolResult {
   /** Labels of the sources that this call added. */
   labels: string[];
   blocks: ChatBlock[];
+  /** The reranker score of the best hit (0 to 1), else null. Used for the not-found floor. */
+  topScore: number | null;
   /** Set when retrieval was off or failed; structured tools still ran (spec 2.5a). */
   degraded: "search_off" | "search_error" | null;
   ms: number;

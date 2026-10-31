@@ -41,7 +41,7 @@ import type { Source, ToolContext, ToolResult, TurnScope } from "./types.js";
 // 2 and 3, 2.3 stage 3 rule 1).
 
 /** Characters of a chunk hit that go to the model (spec 3.2). */
-export const HIT_CHARS = 320;
+export const HIT_CHARS = 640;
 /** A window of the transcript, at most (spec 3.2). */
 export const WINDOW_MAX_MS = 180_000;
 /** Characters of the text of a window, at most. */
@@ -70,6 +70,7 @@ interface ToolOutput {
   labels: string[];
   blocks: ChatBlock[];
   degraded?: ToolResult["degraded"];
+  topScore?: number | null;
 }
 
 export interface ToolDef<A = unknown> {
@@ -410,6 +411,8 @@ function wordsOf(text: string): string[] {
 interface Snippet {
   text: string;
   bestMs: number | null;
+  /** All segments of the chunk (start and text), for the cite time. */
+  segments: { startMs: number; text: string }[];
 }
 
 /**
@@ -476,7 +479,9 @@ function transcriptSnippet(
   let best = pieces[0] as (typeof pieces)[number];
   for (const p of pieces) if (p.score > best.score) best = p;
   const full = pieces.map((p) => p.text).join(" ");
-  if (full.length <= HIT_CHARS) return { text: full, bestMs: best.start };
+  const segments = pieces.map((p) => ({ startMs: p.start, text: p.text }));
+  if (full.length <= HIT_CHARS)
+    return { text: full, bestMs: best.start, segments };
   // Window of HIT_CHARS - 2 characters (room for two "…"), from the best segment.
   const room = HIT_CHARS - 2;
   const start = Math.max(0, Math.min(best.offset, full.length - room));
@@ -485,6 +490,7 @@ function transcriptSnippet(
   return {
     text: `${start > 0 ? "…" : ""}${body}${end < full.length ? "…" : ""}`,
     bestMs: best.start,
+    segments,
   };
 }
 
@@ -572,7 +578,7 @@ const searchChunks: ToolDef<z.infer<typeof searchChunksArgs>> = {
         const snip = transcriptSnippet(ctx.db, h, a.query);
         const text = snip?.text ?? hitText(h, HIT_CHARS);
         if (text === "") continue;
-        addSource(
+        const label = addSource(
           ctx,
           {
             kind: "transcript",
@@ -586,6 +592,7 @@ const searchChunks: ToolDef<z.infer<typeof searchChunksArgs>> = {
           },
           labels,
         );
+        if (snip) ctx.sources.segments.set(label, snip.segments);
       } else {
         // A summary hit, or a meta hit that shows as a summary.
         const text = hitText(h, HIT_CHARS);
@@ -606,7 +613,16 @@ const searchChunks: ToolDef<z.infer<typeof searchChunksArgs>> = {
         );
       }
     }
-    return { rows: labels.length, labels, blocks: [], degraded: null };
+    const scores = res.hits
+      .map((h) => h.rerankScore)
+      .filter((x): x is number => typeof x === "number");
+    return {
+      rows: labels.length,
+      labels,
+      blocks: [],
+      degraded: null,
+      topScore: scores.length > 0 ? Math.max(...scores) : null,
+    };
   },
 };
 
@@ -1125,6 +1141,7 @@ export async function runTool(
     labels: out.labels,
     blocks: out.blocks,
     degraded: out.degraded ?? null,
+    topScore: out.topScore ?? null,
     ms: Math.round(performance.now() - t0),
   };
 }
