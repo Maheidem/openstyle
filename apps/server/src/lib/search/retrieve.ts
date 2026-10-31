@@ -17,7 +17,9 @@ import { KNN_IN_LIST_MAX, knn, readVecRow } from "./vec-store.js";
 export type RetrievalScope =
   | { kind: "all" }
   | { kind: "folder"; folderId: string }
-  | { kind: "unfiled" };
+  | { kind: "unfiled" }
+  // One meeting (specs/meeting-chat-agent.md 7.1). Not used by the search UI.
+  | { kind: "meeting"; meetingId: string };
 
 export type RetrievalQuery =
   | { kind: "text"; text: string }
@@ -28,6 +30,12 @@ export interface RetrieveInput {
   scope: RetrievalScope;
   /** Tag names, any of them (S5). */
   tags?: readonly string[];
+  /**
+   * Only meetings that started in [fromMs, toMs) (specs/meeting-chat-agent.md
+   * 7.1). A meeting with no start time uses its creation time. Combined with
+   * the scope and the tags by AND.
+   */
+  dateRange?: { fromMs: number; toMs: number };
   /** 1..50 */
   k: number;
   excludeMeetingIds?: readonly string[];
@@ -120,6 +128,22 @@ function tagMeetingIds(db: DatabaseSync, tags: readonly string[]): string[] {
   ).map((r) => r.meeting_id);
 }
 
+/** The ids of the meetings that started in [fromMs, toMs). */
+function dateMeetingIds(
+  db: DatabaseSync,
+  range: { fromMs: number; toMs: number },
+): string[] {
+  return (
+    db
+      .prepare(
+        `SELECT id FROM meetings
+          WHERE COALESCE(started_at, created_at) >= ? AND COALESCE(started_at, created_at) < ?
+          ORDER BY id`,
+      )
+      .all(range.fromMs, range.toMs) as { id: string }[]
+  ).map((r) => r.id);
+}
+
 function errorResult(err: unknown, signal?: AbortSignal): RetrieveResult {
   if (signal?.aborted || (err as Error)?.name === "AbortError") {
     return { status: "error", kind: "cancelled" };
@@ -156,13 +180,27 @@ export async function retrieve(input: RetrieveInput): Promise<RetrieveResult> {
     folderKey = "";
   }
 
-  let groups: (string[] | undefined)[] = [undefined];
+  // The allow list of meeting ids: the meeting scope, the tags and the date
+  // range, ANDed. No filter means no list (the KNN scans the partition).
+  const narrow = (cur: string[] | undefined, ids: string[]): string[] => {
+    const set = new Set(ids);
+    return cur === undefined ? ids : cur.filter((id) => set.has(id));
+  };
+  let allow: string[] | undefined;
+  if (input.scope.kind === "meeting") {
+    allow = narrow(allow, [input.scope.meetingId]);
+  }
   if (input.tags && input.tags.length > 0) {
-    const ids = tagMeetingIds(db, input.tags);
-    if (ids.length === 0) return ok([]);
+    allow = narrow(allow, tagMeetingIds(db, input.tags));
+  }
+  if (input.dateRange)
+    allow = narrow(allow, dateMeetingIds(db, input.dateRange));
+  let groups: (string[] | undefined)[] = [undefined];
+  if (allow !== undefined) {
+    if (allow.length === 0) return ok([]);
     groups = [];
-    for (let i = 0; i < ids.length; i += KNN_IN_LIST_MAX) {
-      groups.push(ids.slice(i, i + KNN_IN_LIST_MAX));
+    for (let i = 0; i < allow.length; i += KNN_IN_LIST_MAX) {
+      groups.push(allow.slice(i, i + KNN_IN_LIST_MAX));
     }
   }
 

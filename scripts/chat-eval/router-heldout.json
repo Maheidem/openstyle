@@ -1,0 +1,1570 @@
+[
+  {
+    "id": "h001",
+    "lang": "en",
+    "intent": "lookup",
+    "text": "How much did the Harbor vendor quote come to?",
+    "hard": false
+  },
+  {
+    "id": "h002",
+    "lang": "en",
+    "intent": "lookup",
+    "text": "Yesterday's call: what price did Brightline give us for the Orion licences?",
+    "hard": true
+  },
+  {
+    "id": "h003",
+    "lang": "en",
+    "intent": "lookup",
+    "text": "whats the renewl date for the Zephyr contract",
+    "hard": false
+  },
+  {
+    "id": "h004",
+    "lang": "en",
+    "intent": "lookup",
+    "text": "Tomasz: what is the name of the contractor handling the Atlas migration?",
+    "hard": false
+  },
+  {
+    "id": "h005",
+    "lang": "de",
+    "intent": "lookup",
+    "text": "Wie hoch war das Angebot von Brightline für Orion?",
+    "hard": false
+  },
+  {
+    "id": "h006",
+    "lang": "de",
+    "intent": "lookup",
+    "text": "Wann ist der Go-live von Atlas?",
+    "hard": false
+  },
+  {
+    "id": "h007",
+    "lang": "de",
+    "intent": "lookup",
+    "text": "Tomasz: Wie heißt der Dienstleister, der die Harbor-Migration macht?",
+    "hard": false
+  },
+  {
+    "id": "h008",
+    "lang": "de",
+    "intent": "lookup",
+    "text": "Was haben wir bezueglich des Vertragsendes mit Nordlicht beschlossen?",
+    "hard": false
+  },
+  {
+    "id": "h009",
+    "lang": "es",
+    "intent": "lookup",
+    "text": "¿Qué fecha límite fijamos ayer para la entrega de Zephyr?",
+    "hard": true
+  },
+  {
+    "id": "h010",
+    "lang": "es",
+    "intent": "lookup",
+    "text": "¿Cuánto costaba la oferta de Brightline para Orion?",
+    "hard": false
+  },
+  {
+    "id": "h011",
+    "lang": "es",
+    "intent": "lookup",
+    "text": "cuando es el lanzamiento de atlas",
+    "hard": false
+  },
+  {
+    "id": "h012",
+    "lang": "es",
+    "intent": "lookup",
+    "text": "Sofia, ¿cómo se llama el proveedor que hace la migración de Harbor?",
+    "hard": false
+  },
+  {
+    "id": "h013",
+    "lang": "fr",
+    "intent": "lookup",
+    "text": "Quel était le montant du devis de Brightline pour Orion ?",
+    "hard": false
+  },
+  {
+    "id": "h014",
+    "lang": "fr",
+    "intent": "lookup",
+    "text": "Quand est la mise en production d'Atlas",
+    "hard": false
+  },
+  {
+    "id": "h015",
+    "lang": "fr",
+    "intent": "lookup",
+    "text": "Ana : comment s'appelle le prestataire qui gère la migration Harbor ?",
+    "hard": false
+  },
+  {
+    "id": "h016",
+    "lang": "fr",
+    "intent": "lookup",
+    "text": "Qu'avons-nous decide pour le contrat avec Nordlicht ?",
+    "hard": false
+  },
+  {
+    "id": "h017",
+    "lang": "it",
+    "intent": "lookup",
+    "text": "Qual era l'importo del preventivo di Brightline per Orion?",
+    "hard": false
+  },
+  {
+    "id": "h018",
+    "lang": "it",
+    "intent": "lookup",
+    "text": "Quando va in produzione Atlas",
+    "hard": false
+  },
+  {
+    "id": "h019",
+    "lang": "it",
+    "intent": "lookup",
+    "text": "Rafael: come si chiama il fornitore che segue la migrazione di Harbor?",
+    "hard": false
+  },
+  {
+    "id": "h020",
+    "lang": "it",
+    "intent": "lookup",
+    "text": "cosa abbiamo deciso sul contratto con Nordlicht",
+    "hard": false
+  },
+  {
+    "id": "h021",
+    "lang": "ja",
+    "intent": "lookup",
+    "text": "Brightlineから出たOrionの見積もり金額はいくらでしたか？",
+    "hard": false
+  },
+  {
+    "id": "h022",
+    "lang": "ja",
+    "intent": "lookup",
+    "text": "Atlasのリリース日はいつ？",
+    "hard": false
+  },
+  {
+    "id": "h023",
+    "lang": "ja",
+    "intent": "lookup",
+    "text": "Priya：Harbor移行を担当している業者の名前は何ですか？",
+    "hard": false
+  },
+  {
+    "id": "h024",
+    "lang": "ja",
+    "intent": "lookup",
+    "text": "Nordlichtとの契約について何を決めましたか",
+    "hard": false
+  },
+  {
+    "id": "h025",
+    "lang": "pt",
+    "intent": "lookup",
+    "text": "Qual foi o valor da proposta da Brightline para o Orion?",
+    "hard": false
+  },
+  {
+    "id": "h026",
+    "lang": "pt",
+    "intent": "lookup",
+    "text": "quando e o go-live do atlas",
+    "hard": false
+  },
+  {
+    "id": "h027",
+    "lang": "pt",
+    "intent": "lookup",
+    "text": "Tomasz, qual o nome do fornecedor que cuida da migração do Harbor?",
+    "hard": false
+  },
+  {
+    "id": "h028",
+    "lang": "pt",
+    "intent": "lookup",
+    "text": "O que decidimos sobre o contrato com a Nordlicht?",
+    "hard": false
+  },
+  {
+    "id": "h029",
+    "lang": "en",
+    "intent": "who_said",
+    "text": "Who proposed the pilot for Orion?",
+    "hard": false
+  },
+  {
+    "id": "h030",
+    "lang": "en",
+    "intent": "who_said",
+    "text": "Who approved the decision to postpone the Zephyr launch?",
+    "hard": true
+  },
+  {
+    "id": "h031",
+    "lang": "en",
+    "intent": "who_said",
+    "text": "What did Sofia say about the Harbor budget",
+    "hard": false
+  },
+  {
+    "id": "h032",
+    "lang": "en",
+    "intent": "who_said",
+    "text": "Priya, can you tell me who raised the licence concern during the Atlas kickoff?",
+    "hard": false
+  },
+  {
+    "id": "h033",
+    "lang": "de",
+    "intent": "who_said",
+    "text": "Wer hat den Pilot für Orion vorgeschlagen?",
+    "hard": false
+  },
+  {
+    "id": "h034",
+    "lang": "de",
+    "intent": "who_said",
+    "text": "Was hat Sofia zum Harbor-Budget gesagt?",
+    "hard": false
+  },
+  {
+    "id": "h035",
+    "lang": "de",
+    "intent": "who_said",
+    "text": "Von wem kam der Einwand zur Lizenz im Atlas-Kickoff?",
+    "hard": false
+  },
+  {
+    "id": "h036",
+    "lang": "de",
+    "intent": "who_said",
+    "text": "wer hat dem neuen Zeitplan zugestimmt",
+    "hard": false
+  },
+  {
+    "id": "h037",
+    "lang": "es",
+    "intent": "who_said",
+    "text": "¿Quién propuso el piloto de Orion?",
+    "hard": false
+  },
+  {
+    "id": "h038",
+    "lang": "es",
+    "intent": "who_said",
+    "text": "¿Qué dijo Rafael sobre el presupuesto de Harbor?",
+    "hard": false
+  },
+  {
+    "id": "h039",
+    "lang": "es",
+    "intent": "who_said",
+    "text": "¿Quién aprobó el nuevo calendario?",
+    "hard": false
+  },
+  {
+    "id": "h040",
+    "lang": "es",
+    "intent": "who_said",
+    "text": "Me gustaría saber quién planteó la objeción sobre la licencia en la reunión inicial de Atlas.",
+    "hard": false
+  },
+  {
+    "id": "h041",
+    "lang": "fr",
+    "intent": "who_said",
+    "text": "Qui a proposé le pilote pour Orion ?",
+    "hard": false
+  },
+  {
+    "id": "h042",
+    "lang": "fr",
+    "intent": "who_said",
+    "text": "Qu'a dit Sofia sur le budget de Harbor ?",
+    "hard": false
+  },
+  {
+    "id": "h043",
+    "lang": "fr",
+    "intent": "who_said",
+    "text": "Qui a soulevé l'objection sur la licence lors du lancement d'Atlas ?",
+    "hard": false
+  },
+  {
+    "id": "h044",
+    "lang": "fr",
+    "intent": "who_said",
+    "text": "qui a validé le nouveau planning",
+    "hard": false
+  },
+  {
+    "id": "h045",
+    "lang": "it",
+    "intent": "who_said",
+    "text": "Chi ha proposto il pilota per Orion?",
+    "hard": false
+  },
+  {
+    "id": "h046",
+    "lang": "it",
+    "intent": "who_said",
+    "text": "Cos'ha detto Sofia sul budget di Harbor?",
+    "hard": false
+  },
+  {
+    "id": "h047",
+    "lang": "it",
+    "intent": "who_said",
+    "text": "Chi ha proposto di rimandare la decisione sul fornitore di Orion?",
+    "hard": true
+  },
+  {
+    "id": "h048",
+    "lang": "it",
+    "intent": "who_said",
+    "text": "Vorrei sapere chi ha sollevato l'obiezione sulla licenza al kickoff di Atlas.",
+    "hard": false
+  },
+  {
+    "id": "h049",
+    "lang": "ja",
+    "intent": "who_said",
+    "text": "Orionのパイロットを提案したのは誰ですか？",
+    "hard": false
+  },
+  {
+    "id": "h050",
+    "lang": "ja",
+    "intent": "who_said",
+    "text": "Harborの予算についてSofiaは何と言っていましたか？",
+    "hard": false
+  },
+  {
+    "id": "h051",
+    "lang": "ja",
+    "intent": "who_said",
+    "text": "Atlasのキックオフでライセンスの懸念を出したのは誰？",
+    "hard": false
+  },
+  {
+    "id": "h052",
+    "lang": "ja",
+    "intent": "who_said",
+    "text": "新しいスケジュールを承認したのは誰でしたっけ",
+    "hard": false
+  },
+  {
+    "id": "h053",
+    "lang": "pt",
+    "intent": "who_said",
+    "text": "Quem propôs o piloto do Orion?",
+    "hard": false
+  },
+  {
+    "id": "h054",
+    "lang": "pt",
+    "intent": "who_said",
+    "text": "O que a Sofia disse sobre o orçamento do Harbor?",
+    "hard": false
+  },
+  {
+    "id": "h055",
+    "lang": "pt",
+    "intent": "who_said",
+    "text": "Quem levantou a objeção sobre a licença no kickoff do Atlas?",
+    "hard": false
+  },
+  {
+    "id": "h056",
+    "lang": "pt",
+    "intent": "who_said",
+    "text": "quem aprovou o novo cronograma",
+    "hard": false
+  },
+  {
+    "id": "h057",
+    "lang": "en",
+    "intent": "aggregate",
+    "text": "List the open action items for Ana in Atlas.",
+    "hard": false
+  },
+  {
+    "id": "h058",
+    "lang": "en",
+    "intent": "aggregate",
+    "text": "How many meetings mentioned the Brightline audit?",
+    "hard": false
+  },
+  {
+    "id": "h059",
+    "lang": "en",
+    "intent": "aggregate",
+    "text": "what tasks does tomasz still have open",
+    "hard": false
+  },
+  {
+    "id": "h060",
+    "lang": "en",
+    "intent": "aggregate",
+    "text": "Rafael's open tasks across all projects, please.",
+    "hard": false
+  },
+  {
+    "id": "h061",
+    "lang": "de",
+    "intent": "aggregate",
+    "text": "Liste die offenen Aufgaben von Ana in Atlas auf.",
+    "hard": false
+  },
+  {
+    "id": "h062",
+    "lang": "de",
+    "intent": "aggregate",
+    "text": "Wie viele Meetings haben das Audit erwähnt?",
+    "hard": false
+  },
+  {
+    "id": "h063",
+    "lang": "de",
+    "intent": "aggregate",
+    "text": "Welche Aufgaben hat Rafael noch offen?",
+    "hard": false
+  },
+  {
+    "id": "h064",
+    "lang": "de",
+    "intent": "aggregate",
+    "text": "Wie viele offene Aufgaben hat Priya insgesamt",
+    "hard": false
+  },
+  {
+    "id": "h065",
+    "lang": "es",
+    "intent": "aggregate",
+    "text": "Lista las tareas abiertas de Ana en Atlas.",
+    "hard": false
+  },
+  {
+    "id": "h066",
+    "lang": "es",
+    "intent": "aggregate",
+    "text": "¿Cuántas reuniones mencionaron la auditoría?",
+    "hard": false
+  },
+  {
+    "id": "h067",
+    "lang": "es",
+    "intent": "aggregate",
+    "text": "que tareas le quedan pendientes a tomasz",
+    "hard": false
+  },
+  {
+    "id": "h068",
+    "lang": "es",
+    "intent": "aggregate",
+    "text": "¿Cuántas acciones abiertas tiene Priya en total?",
+    "hard": false
+  },
+  {
+    "id": "h069",
+    "lang": "fr",
+    "intent": "aggregate",
+    "text": "Liste les tâches ouvertes d'Ana sur Atlas.",
+    "hard": false
+  },
+  {
+    "id": "h070",
+    "lang": "fr",
+    "intent": "aggregate",
+    "text": "Combien de réunions ont parlé de l'audit ?",
+    "hard": false
+  },
+  {
+    "id": "h071",
+    "lang": "fr",
+    "intent": "aggregate",
+    "text": "quelles tâches reste-t-il à Tomasz",
+    "hard": false
+  },
+  {
+    "id": "h072",
+    "lang": "fr",
+    "intent": "aggregate",
+    "text": "Combien d'actions ouvertes Priya a-t-elle au total ?",
+    "hard": false
+  },
+  {
+    "id": "h073",
+    "lang": "it",
+    "intent": "aggregate",
+    "text": "Elenca i compiti aperti di Ana su Atlas.",
+    "hard": false
+  },
+  {
+    "id": "h074",
+    "lang": "it",
+    "intent": "aggregate",
+    "text": "Quante riunioni hanno parlato dell'audit?",
+    "hard": false
+  },
+  {
+    "id": "h075",
+    "lang": "it",
+    "intent": "aggregate",
+    "text": "che compiti ha ancora aperti tomasz",
+    "hard": false
+  },
+  {
+    "id": "h076",
+    "lang": "it",
+    "intent": "aggregate",
+    "text": "Quante azioni aperte ha Priya in totale?",
+    "hard": false
+  },
+  {
+    "id": "h077",
+    "lang": "ja",
+    "intent": "aggregate",
+    "text": "AtlasでAnaが未完了のタスクを一覧にしてください。",
+    "hard": false
+  },
+  {
+    "id": "h078",
+    "lang": "ja",
+    "intent": "aggregate",
+    "text": "監査に触れた会議は何件ありますか？",
+    "hard": false
+  },
+  {
+    "id": "h079",
+    "lang": "ja",
+    "intent": "aggregate",
+    "text": "tomaszの残っているタスクは？",
+    "hard": false
+  },
+  {
+    "id": "h080",
+    "lang": "ja",
+    "intent": "aggregate",
+    "text": "Priyaの未完了アクションアイテムは全部で何件ですか",
+    "hard": false
+  },
+  {
+    "id": "h081",
+    "lang": "pt",
+    "intent": "aggregate",
+    "text": "Liste as tarefas abertas da Ana no Atlas.",
+    "hard": false
+  },
+  {
+    "id": "h082",
+    "lang": "pt",
+    "intent": "aggregate",
+    "text": "Quantas reuniões mencionaram a auditoria?",
+    "hard": false
+  },
+  {
+    "id": "h083",
+    "lang": "pt",
+    "intent": "aggregate",
+    "text": "que tarefas o tomasz ainda tem em aberto",
+    "hard": false
+  },
+  {
+    "id": "h084",
+    "lang": "pt",
+    "intent": "aggregate",
+    "text": "Quantos itens de ação em aberto a Priya tem no total?",
+    "hard": false
+  },
+  {
+    "id": "h085",
+    "lang": "en",
+    "intent": "temporal",
+    "text": "Which meetings did we have last week?",
+    "hard": false
+  },
+  {
+    "id": "h086",
+    "lang": "en",
+    "intent": "temporal",
+    "text": "What changed between the 3 Oct and the 17 Oct Harbor meetings?",
+    "hard": false
+  },
+  {
+    "id": "h087",
+    "lang": "en",
+    "intent": "temporal",
+    "text": "any calls in September with Zephyr people",
+    "hard": false
+  },
+  {
+    "id": "h088",
+    "lang": "en",
+    "intent": "temporal",
+    "text": "Could you tell me what meetings took place between 12 and 20 October?",
+    "hard": false
+  },
+  {
+    "id": "h089",
+    "lang": "de",
+    "intent": "temporal",
+    "text": "Was hat sich zwischen dem Meeting vom 3. Oktober und dem vom 17. Oktober am Budget geändert?",
+    "hard": true
+  },
+  {
+    "id": "h090",
+    "lang": "de",
+    "intent": "temporal",
+    "text": "Welche Meetings hatten wir letzte Woche?",
+    "hard": false
+  },
+  {
+    "id": "h091",
+    "lang": "de",
+    "intent": "temporal",
+    "text": "gab es im September Termine zu Zephyr",
+    "hard": false
+  },
+  {
+    "id": "h092",
+    "lang": "de",
+    "intent": "temporal",
+    "text": "Zeig mir die Besprechungen vom 12. bis 20. Oktober.",
+    "hard": false
+  },
+  {
+    "id": "h093",
+    "lang": "es",
+    "intent": "temporal",
+    "text": "¿Qué reuniones tuvimos la semana pasada?",
+    "hard": false
+  },
+  {
+    "id": "h094",
+    "lang": "es",
+    "intent": "temporal",
+    "text": "¿Qué cambió entre la reunión del 3 de octubre y la del 17 de octubre?",
+    "hard": false
+  },
+  {
+    "id": "h095",
+    "lang": "es",
+    "intent": "temporal",
+    "text": "hubo llamadas en septiembre sobre Zephyr",
+    "hard": false
+  },
+  {
+    "id": "h096",
+    "lang": "es",
+    "intent": "temporal",
+    "text": "Muéstrame las reuniones entre el 12 y el 20 de octubre, por favor.",
+    "hard": false
+  },
+  {
+    "id": "h097",
+    "lang": "fr",
+    "intent": "temporal",
+    "text": "Quelles réunions avons-nous eues la semaine dernière ?",
+    "hard": false
+  },
+  {
+    "id": "h098",
+    "lang": "fr",
+    "intent": "temporal",
+    "text": "Qu'est-ce qui a changé entre la réunion du 3 octobre et celle du 17 octobre ?",
+    "hard": false
+  },
+  {
+    "id": "h099",
+    "lang": "fr",
+    "intent": "temporal",
+    "text": "y a-t-il eu des appels en septembre sur Zephyr",
+    "hard": false
+  },
+  {
+    "id": "h100",
+    "lang": "fr",
+    "intent": "temporal",
+    "text": "Montre-moi les réunions du 12 au 20 octobre.",
+    "hard": false
+  },
+  {
+    "id": "h101",
+    "lang": "it",
+    "intent": "temporal",
+    "text": "Quali riunioni abbiamo avuto la settimana scorsa?",
+    "hard": false
+  },
+  {
+    "id": "h102",
+    "lang": "it",
+    "intent": "temporal",
+    "text": "Cosa è cambiato tra la riunione del 3 ottobre e quella del 17 ottobre?",
+    "hard": false
+  },
+  {
+    "id": "h103",
+    "lang": "it",
+    "intent": "temporal",
+    "text": "ci sono state chiamate a settembre su Zephyr",
+    "hard": false
+  },
+  {
+    "id": "h104",
+    "lang": "it",
+    "intent": "temporal",
+    "text": "Mostrami le riunioni dal 12 al 20 ottobre, per favore.",
+    "hard": false
+  },
+  {
+    "id": "h105",
+    "lang": "ja",
+    "intent": "temporal",
+    "text": "先週どんな会議がありましたか？",
+    "hard": false
+  },
+  {
+    "id": "h106",
+    "lang": "ja",
+    "intent": "temporal",
+    "text": "10月3日の会議と10月17日の会議の間で何が変わりましたか？",
+    "hard": false
+  },
+  {
+    "id": "h107",
+    "lang": "ja",
+    "intent": "temporal",
+    "text": "9月にZephyrの打ち合わせはありましたか",
+    "hard": false
+  },
+  {
+    "id": "h108",
+    "lang": "ja",
+    "intent": "temporal",
+    "text": "10月12日から20日までの会議を見せてください。",
+    "hard": false
+  },
+  {
+    "id": "h109",
+    "lang": "pt",
+    "intent": "temporal",
+    "text": "Quais reuniões tivemos semana passada?",
+    "hard": false
+  },
+  {
+    "id": "h110",
+    "lang": "pt",
+    "intent": "temporal",
+    "text": "O que mudou entre a reunião de 3 de outubro e a de 17 de outubro?",
+    "hard": false
+  },
+  {
+    "id": "h111",
+    "lang": "pt",
+    "intent": "temporal",
+    "text": "teve alguma call em setembro sobre o Zephyr",
+    "hard": false
+  },
+  {
+    "id": "h112",
+    "lang": "pt",
+    "intent": "temporal",
+    "text": "Me mostre as reuniões de 12 a 20 de outubro, por favor.",
+    "hard": false
+  },
+  {
+    "id": "h113",
+    "lang": "en",
+    "intent": "review",
+    "text": "Show all decisions of October.",
+    "hard": false
+  },
+  {
+    "id": "h114",
+    "lang": "en",
+    "intent": "review",
+    "text": "Which questions are still open?",
+    "hard": false
+  },
+  {
+    "id": "h115",
+    "lang": "en",
+    "intent": "review",
+    "text": "give me every decision we made on Orion",
+    "hard": false
+  },
+  {
+    "id": "h116",
+    "lang": "en",
+    "intent": "review",
+    "text": "I would like to see all the open questions from the Harbor folder, please.",
+    "hard": false
+  },
+  {
+    "id": "h117",
+    "lang": "de",
+    "intent": "review",
+    "text": "Zeig mir alle Entscheidungen vom Oktober.",
+    "hard": false
+  },
+  {
+    "id": "h118",
+    "lang": "de",
+    "intent": "review",
+    "text": "Welche Fragen sind noch offen?",
+    "hard": false
+  },
+  {
+    "id": "h119",
+    "lang": "de",
+    "intent": "review",
+    "text": "Alle Beschlüsse zu Orion, bitte",
+    "hard": false
+  },
+  {
+    "id": "h120",
+    "lang": "de",
+    "intent": "review",
+    "text": "Ich möchte sämtliche offenen Fragen aus dem Harbor-Ordner sehen.",
+    "hard": false
+  },
+  {
+    "id": "h121",
+    "lang": "es",
+    "intent": "review",
+    "text": "Muestra todas las decisiones de octubre.",
+    "hard": false
+  },
+  {
+    "id": "h122",
+    "lang": "es",
+    "intent": "review",
+    "text": "¿Qué preguntas siguen abiertas?",
+    "hard": false
+  },
+  {
+    "id": "h123",
+    "lang": "es",
+    "intent": "review",
+    "text": "todas las decisiones de Orion",
+    "hard": false
+  },
+  {
+    "id": "h124",
+    "lang": "es",
+    "intent": "review",
+    "text": "Quisiera ver todas las preguntas abiertas de la carpeta Harbor.",
+    "hard": false
+  },
+  {
+    "id": "h125",
+    "lang": "fr",
+    "intent": "review",
+    "text": "Montre-moi toutes les décisions prises sur Harbor, même celles de la semaine dernière.",
+    "hard": true
+  },
+  {
+    "id": "h126",
+    "lang": "fr",
+    "intent": "review",
+    "text": "Quelles questions sont encore ouvertes ?",
+    "hard": false
+  },
+  {
+    "id": "h127",
+    "lang": "fr",
+    "intent": "review",
+    "text": "toutes les décisions d'octobre",
+    "hard": false
+  },
+  {
+    "id": "h128",
+    "lang": "fr",
+    "intent": "review",
+    "text": "J'aimerais voir toutes les questions ouvertes du dossier Orion.",
+    "hard": false
+  },
+  {
+    "id": "h129",
+    "lang": "it",
+    "intent": "review",
+    "text": "Mostra tutte le decisioni di ottobre.",
+    "hard": false
+  },
+  {
+    "id": "h130",
+    "lang": "it",
+    "intent": "review",
+    "text": "Quali domande sono ancora aperte?",
+    "hard": false
+  },
+  {
+    "id": "h131",
+    "lang": "it",
+    "intent": "review",
+    "text": "tutte le decisioni su Orion",
+    "hard": false
+  },
+  {
+    "id": "h132",
+    "lang": "it",
+    "intent": "review",
+    "text": "Vorrei vedere tutte le domande aperte della cartella Harbor.",
+    "hard": false
+  },
+  {
+    "id": "h133",
+    "lang": "ja",
+    "intent": "review",
+    "text": "10月の決定事項をすべて見せてください。",
+    "hard": false
+  },
+  {
+    "id": "h134",
+    "lang": "ja",
+    "intent": "review",
+    "text": "まだ未解決の質問はどれですか？",
+    "hard": false
+  },
+  {
+    "id": "h135",
+    "lang": "ja",
+    "intent": "review",
+    "text": "Orionの決定事項を全部",
+    "hard": false
+  },
+  {
+    "id": "h136",
+    "lang": "ja",
+    "intent": "review",
+    "text": "Harborフォルダの未解決の質問をすべて確認したいです。",
+    "hard": false
+  },
+  {
+    "id": "h137",
+    "lang": "pt",
+    "intent": "review",
+    "text": "Mostre todas as decisões de outubro.",
+    "hard": false
+  },
+  {
+    "id": "h138",
+    "lang": "pt",
+    "intent": "review",
+    "text": "Quais perguntas ainda estão em aberto?",
+    "hard": false
+  },
+  {
+    "id": "h139",
+    "lang": "pt",
+    "intent": "review",
+    "text": "todas as decisões do Orion",
+    "hard": false
+  },
+  {
+    "id": "h140",
+    "lang": "pt",
+    "intent": "review",
+    "text": "Gostaria de ver todas as perguntas em aberto da pasta Harbor.",
+    "hard": false
+  },
+  {
+    "id": "h141",
+    "lang": "en",
+    "intent": "status",
+    "text": "Where do we stand on Zephyr?",
+    "hard": false
+  },
+  {
+    "id": "h142",
+    "lang": "en",
+    "intent": "status",
+    "text": "How is the Atlas project going",
+    "hard": false
+  },
+  {
+    "id": "h143",
+    "lang": "en",
+    "intent": "status",
+    "text": "Status of Orion?",
+    "hard": false
+  },
+  {
+    "id": "h144",
+    "lang": "en",
+    "intent": "status",
+    "text": "Can you give me an overview of the current state of the Harbor folder?",
+    "hard": false
+  },
+  {
+    "id": "h145",
+    "lang": "de",
+    "intent": "status",
+    "text": "Wo stehen wir bei Zephyr?",
+    "hard": false
+  },
+  {
+    "id": "h146",
+    "lang": "de",
+    "intent": "status",
+    "text": "Wie läuft das Projekt Atlas?",
+    "hard": false
+  },
+  {
+    "id": "h147",
+    "lang": "de",
+    "intent": "status",
+    "text": "Stand Orion?",
+    "hard": false
+  },
+  {
+    "id": "h148",
+    "lang": "de",
+    "intent": "status",
+    "text": "Kannst du mir kurz den aktuellen Stand im Harbor-Ordner zusammenfassen?",
+    "hard": false
+  },
+  {
+    "id": "h149",
+    "lang": "es",
+    "intent": "status",
+    "text": "¿Cómo vamos con Zephyr?",
+    "hard": false
+  },
+  {
+    "id": "h150",
+    "lang": "es",
+    "intent": "status",
+    "text": "¿Cómo va el proyecto Atlas?",
+    "hard": false
+  },
+  {
+    "id": "h151",
+    "lang": "es",
+    "intent": "status",
+    "text": "Estado de Orion",
+    "hard": false
+  },
+  {
+    "id": "h152",
+    "lang": "es",
+    "intent": "status",
+    "text": "¿Puedes darme un resumen de en qué punto está la carpeta Harbor?",
+    "hard": false
+  },
+  {
+    "id": "h153",
+    "lang": "fr",
+    "intent": "status",
+    "text": "Où en est-on sur Zephyr ?",
+    "hard": false
+  },
+  {
+    "id": "h154",
+    "lang": "fr",
+    "intent": "status",
+    "text": "Comment avance le projet Atlas ?",
+    "hard": false
+  },
+  {
+    "id": "h155",
+    "lang": "fr",
+    "intent": "status",
+    "text": "Point sur Orion",
+    "hard": false
+  },
+  {
+    "id": "h156",
+    "lang": "fr",
+    "intent": "status",
+    "text": "Peux-tu me résumer l'état actuel du dossier Harbor ?",
+    "hard": false
+  },
+  {
+    "id": "h157",
+    "lang": "it",
+    "intent": "status",
+    "text": "A che punto siamo con Zephyr?",
+    "hard": false
+  },
+  {
+    "id": "h158",
+    "lang": "it",
+    "intent": "status",
+    "text": "Come sta andando il progetto Atlas?",
+    "hard": false
+  },
+  {
+    "id": "h159",
+    "lang": "it",
+    "intent": "status",
+    "text": "Stato di Orion",
+    "hard": false
+  },
+  {
+    "id": "h160",
+    "lang": "it",
+    "intent": "status",
+    "text": "Puoi riassumermi la situazione attuale della cartella Harbor?",
+    "hard": false
+  },
+  {
+    "id": "h161",
+    "lang": "ja",
+    "intent": "status",
+    "text": "Atlasの今週の決定事項を踏まえて、プロジェクトの現状はどうですか？",
+    "hard": true
+  },
+  {
+    "id": "h162",
+    "lang": "ja",
+    "intent": "status",
+    "text": "Zephyrの進捗はどう？",
+    "hard": false
+  },
+  {
+    "id": "h163",
+    "lang": "ja",
+    "intent": "status",
+    "text": "Orionの状況",
+    "hard": false
+  },
+  {
+    "id": "h164",
+    "lang": "ja",
+    "intent": "status",
+    "text": "Harborフォルダが今どの段階にあるか教えていただけますか。",
+    "hard": false
+  },
+  {
+    "id": "h165",
+    "lang": "pt",
+    "intent": "status",
+    "text": "Como estamos no Zephyr?",
+    "hard": false
+  },
+  {
+    "id": "h166",
+    "lang": "pt",
+    "intent": "status",
+    "text": "Como vai o projeto Atlas?",
+    "hard": false
+  },
+  {
+    "id": "h167",
+    "lang": "pt",
+    "intent": "status",
+    "text": "Situação do Orion",
+    "hard": false
+  },
+  {
+    "id": "h168",
+    "lang": "pt",
+    "intent": "status",
+    "text": "Pode me resumir em que pé está a pasta Harbor?",
+    "hard": false
+  },
+  {
+    "id": "h169",
+    "lang": "en",
+    "intent": "write",
+    "text": "Mark Ana's task about the vendor contract as done.",
+    "hard": false
+  },
+  {
+    "id": "h170",
+    "lang": "en",
+    "intent": "write",
+    "text": "Please move the Harbor kickoff meeting to the Orion folder.",
+    "hard": false
+  },
+  {
+    "id": "h171",
+    "lang": "en",
+    "intent": "write",
+    "text": "merge Tomasz K. and Tom Kowal, they are the same person",
+    "hard": false
+  },
+  {
+    "id": "h172",
+    "lang": "en",
+    "intent": "write",
+    "text": "Tag the last three Zephyr meetings as 'planning'.",
+    "hard": false
+  },
+  {
+    "id": "h173",
+    "lang": "de",
+    "intent": "write",
+    "text": "Markiere Anas Aufgabe zum Dienstleistervertrag als erledigt.",
+    "hard": false
+  },
+  {
+    "id": "h174",
+    "lang": "de",
+    "intent": "write",
+    "text": "Verschiebe das Harbor-Kickoff in den Ordner Orion.",
+    "hard": false
+  },
+  {
+    "id": "h175",
+    "lang": "de",
+    "intent": "write",
+    "text": "fuehre Tomasz K. und Tom Kowal zusammen, das ist dieselbe Person",
+    "hard": false
+  },
+  {
+    "id": "h176",
+    "lang": "de",
+    "intent": "write",
+    "text": "Tagge die letzten drei Zephyr-Meetings mit 'Planung'.",
+    "hard": false
+  },
+  {
+    "id": "h177",
+    "lang": "es",
+    "intent": "write",
+    "text": "Marca como hecha la tarea de Ana sobre el contrato del proveedor.",
+    "hard": false
+  },
+  {
+    "id": "h178",
+    "lang": "es",
+    "intent": "write",
+    "text": "Mueve la reunión de arranque de Harbor a la carpeta Orion.",
+    "hard": false
+  },
+  {
+    "id": "h179",
+    "lang": "es",
+    "intent": "write",
+    "text": "une a Tomasz K. y Tom Kowal, son la misma persona",
+    "hard": false
+  },
+  {
+    "id": "h180",
+    "lang": "es",
+    "intent": "write",
+    "text": "Etiqueta las tres últimas reuniones de Zephyr como 'planificación'.",
+    "hard": false
+  },
+  {
+    "id": "h181",
+    "lang": "fr",
+    "intent": "write",
+    "text": "Marque la tâche d'Ana sur le contrat fournisseur comme terminée.",
+    "hard": false
+  },
+  {
+    "id": "h182",
+    "lang": "fr",
+    "intent": "write",
+    "text": "Déplace la réunion de lancement Harbor dans le dossier Orion.",
+    "hard": false
+  },
+  {
+    "id": "h183",
+    "lang": "fr",
+    "intent": "write",
+    "text": "fusionne Tomasz K. et Tom Kowal, c'est la même personne",
+    "hard": false
+  },
+  {
+    "id": "h184",
+    "lang": "fr",
+    "intent": "write",
+    "text": "Ajoute le tag « planification » aux trois dernières réunions Zephyr.",
+    "hard": false
+  },
+  {
+    "id": "h185",
+    "lang": "it",
+    "intent": "write",
+    "text": "Segna come fatto il compito di Ana sul contratto del fornitore.",
+    "hard": false
+  },
+  {
+    "id": "h186",
+    "lang": "it",
+    "intent": "write",
+    "text": "Sposta la riunione di kickoff di Harbor nella cartella Orion.",
+    "hard": false
+  },
+  {
+    "id": "h187",
+    "lang": "it",
+    "intent": "write",
+    "text": "unisci Tomasz K. e Tom Kowal, sono la stessa persona",
+    "hard": false
+  },
+  {
+    "id": "h188",
+    "lang": "it",
+    "intent": "write",
+    "text": "Aggiungi il tag 'pianificazione' alle ultime tre riunioni di Zephyr.",
+    "hard": false
+  },
+  {
+    "id": "h189",
+    "lang": "ja",
+    "intent": "write",
+    "text": "Anaのベンダー契約のタスクを完了にしてください。",
+    "hard": false
+  },
+  {
+    "id": "h190",
+    "lang": "ja",
+    "intent": "write",
+    "text": "Harborのキックオフ会議をOrionフォルダに移動して",
+    "hard": false
+  },
+  {
+    "id": "h191",
+    "lang": "ja",
+    "intent": "write",
+    "text": "Tomasz KとTom Kowalは同一人物なので統合してください",
+    "hard": false
+  },
+  {
+    "id": "h192",
+    "lang": "ja",
+    "intent": "write",
+    "text": "Zephyrの直近3件の会議に「計画」タグを付けて。",
+    "hard": false
+  },
+  {
+    "id": "h193",
+    "lang": "pt",
+    "intent": "write",
+    "text": "Marque como concluída a tarefa de acompanhar a decisão do contrato, da Ana.",
+    "hard": true
+  },
+  {
+    "id": "h194",
+    "lang": "pt",
+    "intent": "write",
+    "text": "Mova a reunião de kickoff do Harbor para a pasta Orion.",
+    "hard": false
+  },
+  {
+    "id": "h195",
+    "lang": "pt",
+    "intent": "write",
+    "text": "una o Tomasz K. e o Tom Kowal, são a mesma pessoa",
+    "hard": false
+  },
+  {
+    "id": "h196",
+    "lang": "pt",
+    "intent": "write",
+    "text": "Adicione a tag 'planejamento' nas últimas três reuniões do Zephyr.",
+    "hard": false
+  },
+  {
+    "id": "h197",
+    "lang": "en",
+    "intent": "other",
+    "text": "Hello!",
+    "hard": false
+  },
+  {
+    "id": "h198",
+    "lang": "en",
+    "intent": "other",
+    "text": "thanks, that helps",
+    "hard": false
+  },
+  {
+    "id": "h199",
+    "lang": "en",
+    "intent": "other",
+    "text": "Which model are you running on?",
+    "hard": false
+  },
+  {
+    "id": "h200",
+    "lang": "en",
+    "intent": "other",
+    "text": "What's a good recipe for lasagna?",
+    "hard": false
+  },
+  {
+    "id": "h201",
+    "lang": "de",
+    "intent": "other",
+    "text": "Hallo!",
+    "hard": false
+  },
+  {
+    "id": "h202",
+    "lang": "de",
+    "intent": "other",
+    "text": "danke dir",
+    "hard": false
+  },
+  {
+    "id": "h203",
+    "lang": "de",
+    "intent": "other",
+    "text": "Welches Modell steckt hinter dir?",
+    "hard": false
+  },
+  {
+    "id": "h204",
+    "lang": "de",
+    "intent": "other",
+    "text": "Wie wird das Wetter morgen in Köln?",
+    "hard": false
+  },
+  {
+    "id": "h205",
+    "lang": "es",
+    "intent": "other",
+    "text": "¡Hola!",
+    "hard": false
+  },
+  {
+    "id": "h206",
+    "lang": "es",
+    "intent": "other",
+    "text": "gracias, me ayudó mucho",
+    "hard": false
+  },
+  {
+    "id": "h207",
+    "lang": "es",
+    "intent": "other",
+    "text": "¿Qué modelo eres?",
+    "hard": false
+  },
+  {
+    "id": "h208",
+    "lang": "es",
+    "intent": "other",
+    "text": "¿Cuál es la capital de Australia?",
+    "hard": false
+  },
+  {
+    "id": "h209",
+    "lang": "fr",
+    "intent": "other",
+    "text": "Bonjour !",
+    "hard": false
+  },
+  {
+    "id": "h210",
+    "lang": "fr",
+    "intent": "other",
+    "text": "merci beaucoup",
+    "hard": false
+  },
+  {
+    "id": "h211",
+    "lang": "fr",
+    "intent": "other",
+    "text": "Tu tournes sur quel modèle ?",
+    "hard": false
+  },
+  {
+    "id": "h212",
+    "lang": "fr",
+    "intent": "other",
+    "text": "Quelle est la meilleure recette de crêpes ?",
+    "hard": false
+  },
+  {
+    "id": "h213",
+    "lang": "it",
+    "intent": "other",
+    "text": "Ciao!",
+    "hard": false
+  },
+  {
+    "id": "h214",
+    "lang": "it",
+    "intent": "other",
+    "text": "grazie mille",
+    "hard": false
+  },
+  {
+    "id": "h215",
+    "lang": "it",
+    "intent": "other",
+    "text": "Che modello sei?",
+    "hard": false
+  },
+  {
+    "id": "h216",
+    "lang": "it",
+    "intent": "other",
+    "text": "Qual è la ricetta della carbonara?",
+    "hard": false
+  },
+  {
+    "id": "h217",
+    "lang": "ja",
+    "intent": "other",
+    "text": "こんにちは",
+    "hard": false
+  },
+  {
+    "id": "h218",
+    "lang": "ja",
+    "intent": "other",
+    "text": "ありがとう、助かりました",
+    "hard": false
+  },
+  {
+    "id": "h219",
+    "lang": "ja",
+    "intent": "other",
+    "text": "どのモデルで動いていますか？",
+    "hard": false
+  },
+  {
+    "id": "h220",
+    "lang": "ja",
+    "intent": "other",
+    "text": "東京の明日の天気は？",
+    "hard": false
+  },
+  {
+    "id": "h221",
+    "lang": "pt",
+    "intent": "other",
+    "text": "Oi!",
+    "hard": false
+  },
+  {
+    "id": "h222",
+    "lang": "pt",
+    "intent": "other",
+    "text": "valeu, ajudou muito",
+    "hard": false
+  },
+  {
+    "id": "h223",
+    "lang": "pt",
+    "intent": "other",
+    "text": "Qual modelo você usa?",
+    "hard": false
+  },
+  {
+    "id": "h224",
+    "lang": "pt",
+    "intent": "other",
+    "text": "Qual a capital da Austrália?",
+    "hard": false
+  }
+]

@@ -524,6 +524,132 @@ class ParseChatRequestTests(unittest.TestCase):
                 self.parse(body)
 
 
+# --- T1: native tool calling (flag OPENSTYLE_MLX_LLM_NATIVE_TOOLS) ---------
+
+TOOLS = [
+    {
+        "type": "function",
+        "function": {
+            "name": "search_chunks",
+            "description": "Search meeting text.",
+            "parameters": {"type": "object", "properties": {"query": {"type": "string"}}},
+        },
+    }
+]
+GEMMA_CALL = '<|tool_call>call:search_chunks{query:<|"|>budget review<|"|>}<tool_call|>'
+
+
+def _fake_gemma_parser(text: str, _tools: object) -> dict[str, object]:
+    # Same format as mlx_lm.tool_parsers.gemma4: call:name{key:<|"|>value<|"|>}
+    import re
+
+    m = re.fullmatch(r'call:([\w-]+)\{(\w+):<\|"\|>(.*)<\|"\|>\}', text)
+    if not m:
+        raise ValueError("No function provided.")
+    return {"name": m.group(1), "arguments": {m.group(2): m.group(3)}}
+
+
+class NativeToolsTests(unittest.TestCase):
+    ENV = {mlx_asr_server._NATIVE_TOOLS_ENV: "1"}
+
+    def _body(self, **extra: object) -> dict[str, object]:
+        return {"messages": [{"role": "user", "content": "find the budget"}], "tools": TOOLS, **extra}
+
+    def _tool_engine(self, chunks: list[tuple[str, str | None]]):
+        engine, tok, calls = _engine(chunks)
+        tok.tool_call_start, tok.tool_call_end = "<|tool_call>", "<tool_call|>"
+        tok.tool_parser = _fake_gemma_parser
+        return engine, tok, calls
+
+    def test_flag_off_ignores_tools(self) -> None:
+        with mock.patch.dict(os.environ, clear=False):
+            os.environ.pop(mlx_asr_server._NATIVE_TOOLS_ENV, None)
+            req = mlx_asr_server._parse_chat_request(
+                self._body(tool_choice="bogus", response_format={"type": "json_object"})
+            )
+            self.assertNotIn("tools", req)
+            self.assertEqual(req["messages"], [{"role": "user", "content": "find the budget"}])
+            engine, tok, _ = self._tool_engine([(GEMMA_CALL, "stop")])
+            out = engine.complete(req)
+        self.assertNotIn("tools", tok.template_kwargs)
+        choice = out["choices"][0]
+        self.assertNotIn("tool_calls", choice["message"])
+        self.assertEqual(choice["finish_reason"], "stop")
+
+    def test_flag_on_parses_gemma_call(self) -> None:
+        with mock.patch.dict(os.environ, self.ENV):
+            req = mlx_asr_server._parse_chat_request(self._body(tool_choice="auto"))
+            engine, tok, _ = self._tool_engine([("<|tool_call>call:search_", None), ('chunks{query:<|"|>budget review<|"|>}<tool_call|>', "stop")])
+            out = engine.complete(req)
+        self.assertEqual(tok.template_kwargs["tools"], TOOLS)
+        self.assertIs(tok.template_kwargs["enable_thinking"], False)
+        choice = out["choices"][0]
+        self.assertEqual(choice["finish_reason"], "tool_calls")
+        (call,) = choice["message"]["tool_calls"]
+        self.assertEqual((call["type"], call["function"]["name"]), ("function", "search_chunks"))
+        self.assertEqual(json.loads(call["function"]["arguments"]), {"query": "budget review"})
+        self.assertTrue(call["id"])
+        self.assertEqual(choice["message"]["content"], "")
+
+    def test_text_answer_keeps_stop_and_cut_call_is_dropped(self) -> None:
+        with mock.patch.dict(os.environ, self.ENV):
+            req = mlx_asr_server._parse_chat_request(self._body())
+            engine, _, _ = self._tool_engine([("Plain answer.", "stop")])
+            choice = engine.complete(req)["choices"][0]
+            self.assertEqual((choice["message"]["content"], choice["finish_reason"]), ("Plain answer.", "stop"))
+            self.assertNotIn("tool_calls", choice["message"])
+            engine, _, _ = self._tool_engine([("<|tool_call>call:search_chunks{query:<|", "length")])
+            choice = engine.complete(req)["choices"][0]
+            self.assertNotIn("tool_calls", choice["message"])
+            self.assertEqual(choice["finish_reason"], "length")
+
+    def test_tool_choice_none_sends_no_tools(self) -> None:
+        with mock.patch.dict(os.environ, self.ENV):
+            req = mlx_asr_server._parse_chat_request(self._body(tool_choice="none"))
+            engine, tok, _ = self._tool_engine([(GEMMA_CALL, "stop")])
+            out = engine.complete(req)
+        self.assertNotIn("tools", tok.template_kwargs)
+        self.assertEqual(out["choices"][0]["finish_reason"], "stop")
+
+    def test_history_with_tool_calls_and_tool_role(self) -> None:
+        messages = [
+            {"role": "user", "content": "find it"},
+            {
+                "role": "assistant",
+                "content": None,
+                "tool_calls": [
+                    {"id": "c1", "type": "function", "function": {"name": "search_chunks", "arguments": '{"query": "x"}'}}
+                ],
+            },
+            {"role": "tool", "tool_call_id": "c1", "content": "chunk text"},
+        ]
+        with mock.patch.dict(os.environ, self.ENV):
+            req = mlx_asr_server._parse_chat_request({"messages": messages, "tools": TOOLS})
+        self.assertEqual(req["messages"][1]["tool_calls"][0]["function"]["arguments"], {"query": "x"})
+        self.assertEqual(req["messages"][2], {"role": "tool", "content": "chunk text", "tool_call_id": "c1"})
+
+    def test_bad_requests_with_flag_on(self) -> None:
+        with mock.patch.dict(os.environ, self.ENV):
+            for body in (
+                self._body(response_format={"type": "json_object"}),
+                self._body(tool_choice="sometimes"),
+                self._body(tools=[{"type": "function"}]),
+                self._body(tools="search"),
+                {
+                    "messages": [{"role": "assistant", "content": "", "tool_calls": [{"function": {"name": "a", "arguments": "{"}}]}],
+                },
+            ):
+                with self.assertRaises(mlx_asr_server._BadRequest, msg=str(body)):
+                    mlx_asr_server._parse_chat_request(body)
+
+    def test_model_without_tool_parser_is_a_bad_request(self) -> None:
+        with mock.patch.dict(os.environ, self.ENV):
+            req = mlx_asr_server._parse_chat_request(self._body())
+            engine, _, _ = _engine([("x", "stop")])
+            with self.assertRaises(mlx_asr_server._BadRequest):
+                engine.complete(req)
+
+
 class StopIdsTests(unittest.TestCase):
     def test_tokenizer_eos_generation_config_and_im_end(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
