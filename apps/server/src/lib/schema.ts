@@ -11,7 +11,7 @@ const DEFAULT_CLOUD_URL = "https://service.freestylevoice.com";
 // reports 26). Migrations only run while currentVersion < SCHEMA_VERSION, so a
 // fork migration numbered below that is silently skipped for anyone arriving
 // from upstream. Keep this above the highest upstream version we have seen.
-const SCHEMA_VERSION = 53;
+const SCHEMA_VERSION = 55;
 
 // Legacy default format-rule patterns (used only by pre-v12 migrations below):
 // domain/phrase entries match as substrings of url+title+app; bare words match
@@ -1368,6 +1368,62 @@ function applyMigrations(db: DatabaseSync, currentVersion: number): void {
       seen.add(term.toLowerCase());
     }
     db.exec("DROP TABLE dictionary");
+  }
+
+  if (currentVersion < 54 && tableExists(db, "meeting_chunks")) {
+    // BM25 channel of the meeting search (specs/meeting-chat-agent.md 7.4.1,
+    // owner decision 2026-10-31): a CONTENTLESS FTS5 table with the word
+    // tokenizer. It holds the index only and no copy of the chunk text. The
+    // rowid is meeting_chunks.id. A meeting, folder or date filter is a join
+    // with meeting_chunks (a contentless table cannot filter by a column).
+    // If this SQLite has no FTS5, the table is not made and the search stays
+    // dense only.
+    try {
+      db.exec(`
+        CREATE VIRTUAL TABLE IF NOT EXISTS meeting_chunks_fts USING fts5(
+          text, title,
+          content='', contentless_delete=1,
+          tokenize='unicode61 remove_diacritics 2'
+        )
+      `);
+    } catch {
+      // FTS5 is not available: the chat uses the dense channel only.
+    }
+  }
+
+  if (currentVersion < 55 && tableExists(db, "meetings")) {
+    // Chat threads and messages (specs/meeting-chat-agent.md 4.2). A thread
+    // has a meeting, a folder, or neither (scope "all"). P1 uses meeting and
+    // folder. A deleted meeting or folder removes its threads.
+    db.exec(`
+      CREATE TABLE IF NOT EXISTS chat_threads (
+        id TEXT PRIMARY KEY,
+        meeting_id TEXT REFERENCES meetings(id) ON DELETE CASCADE,
+        folder_id TEXT REFERENCES meeting_folders(id) ON DELETE CASCADE,
+        title TEXT,
+        created_at INTEGER NOT NULL,
+        updated_at INTEGER NOT NULL,
+        CHECK (NOT (meeting_id IS NOT NULL AND folder_id IS NOT NULL))
+      );
+      CREATE INDEX IF NOT EXISTS idx_chat_threads_scope
+        ON chat_threads(meeting_id, folder_id, updated_at);
+      CREATE TABLE IF NOT EXISTS chat_messages (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        thread_id TEXT NOT NULL REFERENCES chat_threads(id) ON DELETE CASCADE,
+        role TEXT NOT NULL CHECK(role IN ('user','assistant')),
+        content TEXT NOT NULL,
+        blocks_json TEXT,
+        cites_json TEXT,
+        trace_json TEXT,
+        run_id TEXT,
+        model_id TEXT,
+        provider TEXT,
+        ms INTEGER,
+        created_at INTEGER NOT NULL
+      );
+      CREATE INDEX IF NOT EXISTS idx_chat_messages_thread
+        ON chat_messages(thread_id, id);
+    `);
   }
 
   // Upsert schema version
