@@ -23,6 +23,18 @@ Command: `scripts/memory-tier-test.sh`. Load: `apps/electron/tests/memory-tier.t
 - Wired memory cannot be swapped. If other apps already use a lot of wired memory, a big ballast cannot push it out. The script lowers the ballast by the extra OS use (`--os-used-gib auto`). Close other apps and VMs before a real tier run.
 - MLX reads its GPU cap from the sysctl at process start. The script sets nothing itself unless `--sudo` works.
 
+## Results folder
+
+Results go to `~/Library/Application Support/Openstyle-eval/memtier/<stamp>-<label>/`. Do not use /tmp: the macOS tmp cleanup deleted eval data before. Pass `--out DIR` only for a throwaway run.
+
+## Pre-run checklist (before a tier run)
+
+1. Close other apps, VMs (UTM, Docker/Colima) and model servers (oMLX, llama.cpp, other MLX workers). Their memory is wired or active and cannot be squeezed out.
+2. Check the memory use: `vm_stat | head -12`. Wired = `Pages wired down` x 16384 B. On 2026-10-30 this Mac already used about 77 GiB (wired + compressor + active) with a VM, Docker and MLX workers. A big value cuts the ballast and makes the tier result weak.
+3. Compare with the script line `OS and apps use <N> GiB`. For a valid tier run, N should be near the OS reserve, not tens of GiB.
+4. Take the GPU lock (the script does it) and check no other session runs a model.
+5. Check the GPU cap (the script does it) and have the restore command ready.
+
 ## Commands
 
 Baseline, no cap, no ballast (no sudo). Run it once, keep `summary.json`:
@@ -34,7 +46,7 @@ scripts/memory-tier-test.sh --no-ballast --minutes 30
 One tier. The script checks the GPU cap first. If the cap is wrong, it prints the two sudo commands and exits with code 3:
 
 ```bash
-scripts/memory-tier-test.sh --tier 16 --minutes 30 --baseline <baseline-results>/summary.json
+scripts/memory-tier-test.sh --tier 16 --minutes 30 --baseline ~/Library/Application\ Support/Openstyle-eval/memtier/<baseline-folder>/summary.json
 ```
 
 Owner steps for each tier (the script prints the exact numbers for this Mac):

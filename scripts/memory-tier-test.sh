@@ -60,7 +60,8 @@ Usage: scripts/memory-tier-test.sh --tier <8|16|24> [options]
                          commands for the owner.
   --allow-gpu-mismatch   Go on with the wrong GPU cap. The result is marked as
                          NOT a valid tier result.
-  --out DIR              Results folder. Default /tmp/openstyle-memtier-results/<stamp>.
+  --out DIR              Results folder. Default ~/Library/Application Support/Openstyle-eval/memtier/<stamp>-<label>
+                         (not /tmp: macOS tmp cleanup deletes eval data).
   --worker PATH          mlx_asr_worker binary (ASR, LLM and embed modes).
                          Default: dist/mlx_asr_worker in this checkout or in
                          the main checkout.
@@ -133,7 +134,7 @@ STAMP=$(date +%Y%m%d-%H%M%S)
 if [ -z "$LABEL" ]; then
   if [ "$NO_BALLAST" = 1 ]; then LABEL=baseline; else LABEL=tier${TIER}; fi
 fi
-[ -n "$OUT" ] || OUT=/tmp/openstyle-memtier-results/$STAMP-$LABEL
+[ -n "$OUT" ] || OUT="$HOME/Library/Application Support/Openstyle-eval/memtier/$STAMP-$LABEL"
 SCRATCH=/tmp/openstyle-memtier-$STAMP
 
 print_owner_commands() {
