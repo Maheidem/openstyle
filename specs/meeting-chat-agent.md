@@ -1,0 +1,999 @@
+# Meeting chat agent (engineering spec)
+
+Status: DRAFT for owner review. Date: 2026-10-31. Base: `main` at `a7083674`.
+Scope of this document: design only. No product code is part of this change.
+Language: ASD-STE100 Simplified Technical English.
+
+## 0. How to read this spec
+
+### 0.1 Labels
+
+Every claim has one label or one source.
+
+| Label | Meaning |
+|---|---|
+| `path:line` | VERIFIED. A line in the tree at `a7083674` shows it. |
+| URL | VERIFIED in a discovery file. The URL is the source. |
+| ASSUMPTION | My inference. No source says it. A test in section 8 must confirm it. |
+| DECISION | A design choice of this spec. The reason follows. The owner can reverse it. |
+| OPEN | The owner must decide. Section 12 lists them. |
+
+### 0.2 Path prefixes
+
+| Prefix | Path |
+|---|---|
+| `S/` | `apps/server/src/` |
+| `V/` | `packages/validations/src/` |
+| `R/` | `apps/electron/src/renderer/src/` |
+| `W/` | `scripts/mlx_asr_server.py` (the local LLM worker) |
+
+### 0.3 Sources
+
+Three discovery files hold the research. They are in the private eval folder of the owner.
+This spec names them. It does not copy their paths.
+
+| Name | Content |
+|---|---|
+| Discovery A (`A-data-model.md`) | Tables, entities, write routes, gaps. |
+| Discovery B (`B-retrieval-llm.md`) | Retrieval, live chat, LLM layer, worker limits. |
+| Discovery C (`C-patterns.md`) | External research: small-model tool use, RAG, write safety, evaluation. |
+
+I re-read the lines of the code that this spec cites most (retrieve, vector store, chat route, schema, gateway, worker). Other lines come from Discovery A and B.
+
+### 0.4 Short summary
+
+1. The agent is a fixed pipeline. It is not a free tool-calling loop.
+2. Code sets the scope. A small router call picks the intent. Code runs 1 to 3 typed tools. One answer call writes the text from numbered sources. Code validates the cites.
+3. The model never writes data. It can only fill the slots of a proposal. The user confirms. Every apply is logged and can be undone.
+4. The design targets Gemma 4 E2B. A bigger model or a cloud model gets the same pipeline and must only do better.
+5. The work has 6 phases. Each phase ships behind a setting. Each phase needs an isolated-app E2E proof and gold-eval numbers.
+
+## 1. Goals, non-goals and user stories
+
+### 1.1 Goals
+
+1. The user asks a question about one meeting, one folder (project) or all meetings. The user gets a short answer with cites.
+2. Every fact in an answer traces to a source that the user can open.
+3. When no source supports the answer, the answer says "not found".
+4. The user can ask for a change (close an action item, merge two names, retag, move). The agent proposes it. The user confirms it.
+5. The feature works with local Gemma 4 E2B on a Mac. Local first.
+6. The same feature works during a recording (live variant). It reuses the live loop.
+7. Every default has a measured number from the gold eval (section 8). This follows the owner rule "every default needs a measured number" (Discovery B section 4, last paragraph).
+
+### 1.2 Non-goals
+
+1. No native tool calling in the local worker. The worker ignores `tools` and drops `tool` roles (`W:731`, `W:741-746`; Discovery B section 3.2). The spec does not need it.
+2. No free ReAct loop. Reason: the owner ethos "one narrow job per LLM stage, code does rule-like work" (`AGENTS.md`, section "LLM design ethos").
+3. No delete by the agent. Not for meetings, folders, items or people (Discovery C section 3, risk tiers).
+4. No edit of transcript text by the agent. No edit of key points or the overview. (Reason: no user edit path exists for them today, Discovery A section 3 last paragraph.)
+5. No new embedding model, no reranker in v1. (FTS5 hybrid is an option, section 7.)
+6. No streaming of tokens. The worker does not stream (`W:734-735`).
+7. No voice input, no speech output.
+8. No chat over dictation history. (Non-goal D17 of the search spec, Discovery B section 1.2.)
+9. No cloud model for chat over private data by default. This is an OPEN question (section 12, Q1).
+
+### 1.3 User stories and tool mapping
+
+Scope key: M = one meeting, F = one folder, A = all meetings.
+Tool names are in section 3.
+
+| ID | Story | Scope | Intent | Tools | Answer mode |
+|---|---|---|---|---|---|
+| R1 | Lookup: "What did we decide about the vendor contract?" | M, F, A | lookup | `search_chunks`, then `get_meeting_summary` when needed | text with cites |
+| R2 | Aggregation across meetings: "List the open action items for Ana in project X." | F, A | aggregate | `list_people`, `list_action_items` | list blocks, no LLM text |
+| R3 | Temporal: "Which meetings did we have last week?" "What changed between the 3 Oct and the 17 Oct meeting?" | F, A | temporal | `list_meetings`, `get_meeting_summary` (2 calls) | list blocks, or text with cites |
+| R4 | Who said: "Who proposed the pilot?" "What did Ana say about the budget?" | M, F, A | who_said | `search_chunks`, `get_transcript_window`, `list_people` | text with cites |
+| R5 | Review: "Show all decisions of October." "Which questions are still open?" | F, A | review | `list_decisions_questions`, `list_action_items` | list blocks |
+| R6 | Project status: "Where do we stand on project X?" | F | status | `folder_status` | status blocks (code) |
+| R7 | Count: "How many meetings mentioned the audit?" | F, A | aggregate | `search_chunks` (grouped by meeting), `list_meetings` | number block + cites |
+| R8 | Follow-up in the same thread: "And who owns it?" | any | any | same as above, with the last question | as above |
+| R9 | Not answerable: "What was the budget?" (never said) | any | any | any | "not found" block |
+| W1 | Dedup person names in a project | F | write | `list_people`, `propose_merge_people` | proposal cards |
+| W2 | Close, reopen or edit an action item | M, F, A | write | `list_action_items`, `propose_action_item_change` | proposal card |
+| W3 | Retag meetings | M, F, A | write | `list_meetings`, `propose_retag` | proposal card |
+| W4 | Move a meeting to another folder | M, F, A | write | `list_meetings`, `propose_move` | proposal card |
+
+Live stories (P5): R1, R4 (Me or Them only), R8 and R9 during a recording. Writes during a recording touch only other meetings (section 2.4).
+
+## 2. Architecture
+
+### 2.1 Why a code router and not a tool loop
+
+1. The local worker has no tool calling (`W:731`, `W:741-746`). It does support JSON-schema grammar through llguidance (`W:649-652`, `W:761-774`). The gateway ladder for the local provider is `json_schema_strict`, then `prompt_only` (`S/lib/llm/model-profiles.ts:198-200`).
+2. No measured tool-call accuracy exists for E2B in the repo (Discovery B section 4, row "Tool-calling accuracy"). Google gives Tau2 24.5% for E2B and 42.2% for E4B (https://huggingface.co/google/gemma-4-E2B-it/raw/main/README.md, Discovery C section 1.1). Tau2 measures agentic tool use. It is not our task. It still shows that E2B is weak at free tool use.
+3. Hard schema decoding can lower answer quality in small models: 91.5% with prompt-only JSON against 48.0% with a hard tool-call schema in one study (https://arxiv.org/abs/2605.26128, Qwen2.5-1.5B, not Gemma). ASSUMPTION: a smaller effect exists on E2B. Section 8 measures it (arm "strict" against arm "lenient").
+4. Anthropic advises the simplest solution and fixed code paths for well-defined tasks (https://www.anthropic.com/engineering/building-effective-agents).
+5. DECISION: the model makes only small closed choices (intent, slot values, one choice from a list that code builds). Code runs the tools. Free text appears in one place: the answer call.
+
+### 2.2 The pipeline
+
+DECISION: five stages. Stages 1, 3 and 5 are code. Stages 2 and 4 are LLM calls. A turn has at most 3 tool rounds.
+
+```mermaid
+flowchart TD
+  Q["User question + scope from UI"] --> G0["0 GATE, code<br/>setting on, model ready,<br/>provider allowed, scope valid"]
+  G0 -->|fail| ERR["Typed error block<br/>section 2.5"]
+  G0 --> PRE["0b PREFETCH, code<br/>scope header, last 4 messages,<br/>live tail if live"]
+  PRE --> RT["1 ROUTER, LLM call 1<br/>json_schema_strict<br/>intent enum, 1 field"]
+  RT -->|"invalid or unsure"| DEF["default intent = lookup"]
+  RT --> PL["2 PLAN, code<br/>intent + scope -> fixed plan<br/>1 to 3 tool steps"]
+  DEF --> PL
+  PL --> SL["2b SLOT FILL, LLM call 2<br/>closed choices built by code<br/>skipped when plan has no slot"]
+  SL --> TL["3 TOOLS, code<br/>round r = 1..3<br/>validate args, run, label sources"]
+  TL --> SUF{"enough<br/>rows?"}
+  SUF -->|"no and r < 3"| FB["fallback step of the plan<br/>widen k, drop date, keyword channel"]
+  FB --> TL
+  SUF -->|"no and r = 3"| NF["not_found block<br/>+ nearest sources"]
+  SUF -->|yes| MODE{"answer mode"}
+  MODE -->|"code: list, count, status"| BL["structured blocks from rows"]
+  MODE -->|"llm: lookup, who_said, temporal text"| AN["4 ANSWER, LLM call 3<br/>numbered sources S1..Sn<br/>JSON answer + cites"]
+  AN --> CV["5 CITE VALIDATION, code<br/>section 6"]
+  CV -->|pass| OUT["Response<br/>answer, cites, trace, proposals"]
+  CV -->|"fail, first time"| AN2["answer retry with the failure named"]
+  AN2 --> CV
+  CV -->|"fail, second time"| NF
+  BL --> OUT
+  NF --> OUT
+```
+
+Budget of one turn (DECISION):
+
+| Item | Limit |
+|---|---|
+| Tool rounds | 3 |
+| LLM calls | 1 router, up to 3 slot fills (one per round), 1 answer, 1 answer retry. Maximum 6. Typical 3. |
+| Answer call input | 6000 estimated tokens, cut to the window like the live chat (`S/routes/meetings-chat.ts:54-56`, `:104-111`) |
+| Output caps | router 24 tokens, slot fill 150, answer 400 (ASSUMPTION: caps given by the caller; section 2.6 says how) |
+| Turn deadline | 60 s warm. The first call after idle can load the model: the live chat uses a 120 s cold timeout and a 30 s warm timeout (`S/lib/llm/task-profiles.ts:130-136`; Discovery B section 2.1 step 6) |
+
+Typical cost on E2B (ASSUMPTION, arithmetic from numbers in the repo): the live chat answers in 246 ms warm (`specs/live-chat.md`, section 6). Prefill is 23,985 tok/s and decode 144 tok/s (`specs/llm-runtime-tuning.md:63`). A turn of 3 small calls should take about 1 to 2 s warm. Section 8 measures it.
+
+### 2.3 Stages in detail
+
+#### Stage 0 Gate (code)
+
+1. The setting `meeting_chat_enabled` is `"true"`. DECISION: a new setting, default off, experimental. The live chat keeps `live_chat_enabled` (`V/settings-keys.ts:66`).
+2. `resolveTaskCall("meetingChat")` returns a model. DECISION: one new task id `meetingChat` for all stages. A new task id needs a profile, a settings key and a route branch (`S/lib/llm/task-profiles.ts:158-161`).
+3. Provider policy (OPEN Q1). Default: local only, like the live chat (`S/routes/meetings-chat.ts:98-103`).
+4. The scope exists (meeting or folder id found).
+5. Search state is read. `off` does not stop the turn. Only retrieval tools degrade (section 2.5).
+
+#### Stage 0b Prefetch (code)
+
+Code reuses the live chat context builder for the blocks `[F]` (folder name and description) and `[L#]` (live tail) (`S/lib/meetings/live/chat-context.ts:22-31`, `:146-161`, `:84-105`). The last 4 saved messages join the prompt (`S/routes/meetings-chat.ts:53`).
+
+#### Stage 1 Router (LLM call 1)
+
+DECISION: the router is one small call with `json_schema_strict`. Its job is one choice.
+
+Schema:
+
+```json
+{ "type": "object", "required": ["intent"], "additionalProperties": false,
+  "properties": { "intent": { "enum": ["lookup","who_said","aggregate","temporal","review","status","write","other"] } } }
+```
+
+1. The router does not choose the scope. The UI sets the scope. Reason: a scope guess is one more error source, and Granola also lets the user choose the scope (https://help.granola.ai/article/chatting-with-your-meetings-ask-granola; Discovery C section 2.1).
+2. The router prompt is under 150 words. It lists the 8 intents, each with 2 short examples. ASSUMPTION: examples in the 7 UI languages are needed. Section 8 measures router accuracy per language.
+3. Invalid output or `other` gives the default intent `lookup`. A lookup with the answer call is the safest path.
+4. Why an LLM and not rules: the question can be in 7 languages (`AGENTS.md`, section "UI conventions"). A rule list per language is a large, brittle table. DECISION: rules stay as the baseline arm in the eval. A rule route is used only if it matches the router on the gold set (section 8).
+
+#### Stage 2 Plan (code)
+
+A table maps (intent, scope) to a plan. A plan is a list of at most 3 tool steps and one fallback chain.
+
+| Intent | Scope M | Scope F | Scope A |
+|---|---|---|---|
+| lookup | `search_chunks(meeting)`, then `get_meeting_summary` if the hit is thin | `search_chunks(folder)` | `search_chunks(all)` |
+| who_said | `search_chunks(meeting)`, `get_transcript_window` | `search_chunks(folder)`, `get_transcript_window` on the best hit | same as F |
+| aggregate | `list_action_items(meeting)` | `list_people`, `list_action_items(folder)` or `search_chunks` grouped by meeting | same, all scope |
+| temporal | `get_transcript_window` | `list_meetings`, `get_meeting_summary` x2 | same |
+| review | `list_decisions_questions` or `list_action_items` | same, folder | same, all |
+| status | `get_meeting_summary` | `folder_status` | `list_meetings` + `list_action_items(all, open)` |
+| write | write plan, section 5 | write plan | write plan |
+
+Fallback chain for an empty `search_chunks` (DECISION): round 2 raises `k` from 8 to 20 and drops the date filter. Round 3 adds the keyword channel (section 7.4) when it exists. Then `not_found`.
+
+#### Stage 2b Slot fill (LLM call)
+
+The model fills slots. Code builds each slot as a closed choice where it can.
+
+| Slot | Form | Who builds the choices |
+|---|---|---|
+| `query` | short standalone search text, max 200 chars | model (it rewrites a follow-up into a full query) |
+| `date_from`, `date_to` | ISO date or null | model, with today's date in the prompt. Code checks that both parse and `from <= to`. |
+| `person` | one `person_id` from a list, or `none` | code lists people of the scope (max 30, ranked by string match with the question) |
+| `item` | one candidate label `A1..A8`, or `none` | code ranks open items by word overlap with the question and lists the top 8 |
+| `meeting` | one of the meetings in a short list, or `none` | code lists meetings that match the date filter (max 12) |
+
+Reason: a choice from a list is the most reliable output for a small model. ASSUMPTION; section 8 measures slot accuracy per model.
+
+#### Stage 3 Tools (code)
+
+Section 3 has the catalogue. Rules:
+
+1. Code validates the arguments with zod before each call. Unknown meeting ids and ids outside the scope are rejected, not repaired.
+2. Every tool result registers sources in a per-turn map: label `S1..Sn` to a source record (section 6.1).
+3. A tool never returns more than the source budget. Long text is cut by code.
+4. Tools read the database directly. They do not call HTTP routes.
+
+#### Stage 4 Answer (LLM call)
+
+1. Input: system prompt (one job: "answer from the numbered sources, cite labels"), sources, question, last 4 messages. Same pattern as `S/lib/meetings/live/chat-prompt.ts:9-16`.
+2. Output: `{ "answer": string, "cites": string[] }`. The live chat reply format is the same (`S/lib/meetings/live/chat-prompt.ts:15-16`).
+3. The answer is in the language of the question (`S/lib/meetings/live/chat-prompt.ts:10` rule).
+4. Two arms are measured: strict schema (with `maxLength` on `answer` and `maxItems` on `cites`, to prevent `length` loops, precedent `S/lib/meetings/workflow/unit.ts:36-57`) and lenient parse (as the live chat does, `S/lib/meetings/live/chat-prompt.ts:24-55`). The arm with the higher answer accuracy wins per model class. Reason: the Constraint Tax finding (section 2.1 point 3).
+
+#### Stage 5 Cite validation (code)
+
+Section 6.
+
+### 2.4 Live variant
+
+During a recording the meeting has no index rows. `BUSY_STATUSES` (`recording`, `transcribing`) skip the indexer (`S/lib/search/indexer.ts:44`, `:212`). Its text is only in the in-memory live store (`S/lib/meetings/live/store.ts:99-113`).
+
+DECISION:
+
+1. The live variant is the same pipeline with scope `meeting` and the flag `live=true`.
+2. A tool `get_live_tail` joins the tool set. It reads the live store and returns `[L#]` lines (labels as today).
+3. Live lines win over older sources, as the live chat rule says (`S/lib/meetings/live/chat-prompt.ts:12`).
+4. During a recording the intents are limited to `lookup`, `who_said`, `other`. Speaker labels in live lines are only Me and Them. The speaker pass runs after Stop (`specs/live-chat.md`, section 7 "No live diarization").
+5. Write proposals never target the live meeting. Reason: its ids are not final. Segments are rewritten by the final pass (`specs/live-chat.md`, section 8).
+6. The router call is skipped in live mode when the question has no write verb. DECISION to save latency: live mode uses intent `lookup` directly. ASSUMPTION; the eval compares both.
+7. The chat model and the ASR model are different workers. The live chat already runs this way (`specs/live-chat.md`, section 6, memory numbers).
+
+```mermaid
+flowchart LR
+  LQ["Question in live view"] --> GL["Gate + scope: meeting, live=true"]
+  GL --> PF["Prefetch: F block, 4 messages"]
+  PF --> LT["get_live_tail<br/>L# lines from live store"]
+  PF --> SC["search_chunks<br/>folder scope, current meeting excluded<br/>8 s wait max"]
+  LT --> AN["Answer call<br/>live lines win"]
+  SC --> AN
+  AN --> CV["Cite validation"]
+  CV --> OUT["Answer with live and past chips"]
+  STORE[("live store, memory")] --> LT
+  IDX[("vec index")] --> SC
+```
+
+The 8 s retrieval wait is the live chat value (`S/lib/meetings/live/chat-context.ts:31`).
+
+### 2.5 Failure paths
+
+```mermaid
+flowchart TD
+  T["Turn starts"] --> A{"model resolved?"}
+  A -->|no| E1["409 no_model<br/>block: choose a model"]
+  A -->|yes| B{"provider allowed?"}
+  B -->|"no (not local)"| E2["409 not_local<br/>as live chat"]
+  B -->|yes| C{"search state"}
+  C -->|"off"| D1["retrieval tools return status off<br/>structured tools still run<br/>answer notes: search is off"]
+  C -->|on| D2["all tools available"]
+  D1 --> R["run plan"]
+  D2 --> R
+  R --> X{"result"}
+  X -->|"timeout of a stage"| F1["abort stage<br/>typed error, 1 retry if cold"]
+  X -->|"finish = length"| F2["retry once with half the source budget<br/>then code fallback: top sources as links"]
+  X -->|"context_length_exceeded"| F3["trim sources to the numbers in the error<br/>retry once"]
+  X -->|"all tools empty"| F4["not_found block + nearest sources"]
+  X -->|"invalid router or slot JSON"| F5["default intent lookup<br/>or default slots: query = question"]
+  X -->|"cite validation fails twice"| F6["not_found block<br/>+ top sources, no model text"]
+  X -->|"user cancels"| F7["abort signal to retrieve and calls<br/>no message saved as answer"]
+```
+
+Facts behind the paths:
+
+1. Search off returns `{status:"off", reason}`. The search route answers 200 with the reason (`S/lib/search/retrieve.ts:137-138`; `S/routes/search.ts:52-58`). An embed worker error returns `{status:"error", kind}` (`S/lib/search/retrieve.ts:123-134`).
+2. The worker returns a typed 400 `context_length_exceeded` with the token numbers (`W:672-698`).
+3. A `length` finish with a whitespace loop was a real failure on E2B. The worker now bounds whitespace to 24 characters (`W:649-657`; Discovery B section 4).
+4. The gateway never loops. It makes one request per call and has typed errors and one retry (`S/lib/llm/gateway.ts:68`; `S/lib/llm/call-unit.ts:16-23`; Discovery B section 3.1).
+5. The embed worker unloads after 5 idle minutes. The first search can wait for the load (`S/lib/mlx-embed/server.ts:17-32`).
+
+### 2.6 How the stages call the model
+
+1. DECISION: all LLM calls use the gateway (`callUnit` with a zod schema). Reason: typed errors, one retry, and the recorder (`S/lib/llm/recorder.ts`) so the LLM inspector shows each stage (Discovery B section 3.1, style b).
+2. The agent does not use `callStructured` for a native tool loop. The gateway throws `UnexpectedToolCallsError` on a `tool-calls` finish (`S/lib/llm/gateway.ts:1089-1099`). This spec has no native tool loop, so it does not matter.
+3. `llm_runs` has `scope` and `scope_id` columns and no fixed enum (`S/lib/schema.ts:1036-1050`). DECISION: one run per turn with `scope = "chat"` and `scope_id = thread id`. Each stage is one `llm_calls` row.
+4. Output caps per stage are given by the caller. ASSUMPTION: `callUnit` accepts a per-call `maxOutputTokens`. P1 must verify this in code before the build. If not, add one task id per stage (`meetingChatRoute`, `meetingChatAnswer`).
+5. Sampling: the Auto path sends temperature 0 for every stage (`S/lib/llm/task-profiles.ts:51`; `AGENTS.md`, rule 2.2 "New model rule"). Runs at temperature 0 are deterministic (`specs/llm-runtime-tuning.md:427`). This makes the eval repeatable.
+6. Thinking is off, as for `liveChat` (`S/lib/llm/task-profiles.ts:130-136`).
+7. The lane: one request at a time per local model (`S/lib/llm/lane.ts:106`). The lane is held per request, so a dictation can run between two stages (Discovery B section 3.1, last bullet).
+
+## 3. Tool catalogue
+
+### 3.1 Rules for all tools
+
+1. A tool is a TypeScript function with a zod input schema. Code calls it. The model never calls it directly.
+2. Every tool gets `scope` from the turn context. A tool input cannot widen the scope. DECISION.
+3. Scope rule: scope M allows one `meeting_id`. Scope F allows meetings with that `folder_id`. Scope A allows all. Unfiled meetings belong to scope A only. (The vector store uses the partition `''` for unfiled, `S/lib/search/vec-store.ts:18-25`.)
+4. At most 8 tools are visible per turn. Visible means "in the plan and in the slot-fill prompt". Read-only turns show at most 5. Write turns show the read tools of the plan plus one write tool.
+5. Cost classes: C0 SQL read, under 20 ms. C1 embed plus KNN, about 80 ms embed per batch and about 1.2 ms KNN on 46,000 rows once the embed worker is loaded (Discovery B section 1.6; `S/lib/mlx-embed/client.ts:23`; `specs/local-semantic-search.md` S1). C2 resolver or LLM work.
+6. Every result row carries what code needs for a cite: `meeting_id`, `title`, `started_at` and a time or item id.
+
+### 3.2 Read tools
+
+| Tool | Purpose | Input (JSON schema, short) | Output | Scope rule | Stories | Cost |
+|---|---|---|---|---|---|---|
+| `search_chunks` | Find text by meaning. Add meeting and date filters. | `{query:string(1..200), meeting_ids?:string[](<=500), date_from?:iso, date_to?:iso, kinds?:("transcript"\|"summary")[], k?:int(1..50, default 8)}` | `hits[{label, meeting_id, title, started_at, kind, start_ms, end_ms, best_ms, text(<=320 chars), score}]`, grouped: best chunk per meeting plus up to 2 more transcript chunks | `meeting_ids` is intersected with the scope. In scope F code sets the folder partition. | R1, R4, R7, R9 | C1 |
+| `get_meeting_summary` | Read the summary of one meeting. | `{meeting_id}` | `{meeting_id, title, started_at, overview, key_points[], decisions[{item_id,text}], action_items[{item_id,task,owner,due,done}], open_questions[{item_id,text}]}` | meeting in scope | R1, R3, R5, R6 | C0 |
+| `list_action_items` | List action items with done state. | `{status?:"open"\|"done"\|"all", person_id?, date_from?, date_to?, meeting_id?}` | `{total, items[{item_id, meeting_id, title, task, owner_person?, owner_text, due, done, group_size}]}` grouped like the folder overview (`S/lib/meetings/folder-overview.ts:85`) | folder or all, as scope | R2, R5, W2 | C0 |
+| `list_decisions_questions` | List decisions or open questions. | `{kind:"decision"\|"open_question", date_from?, date_to?, meeting_id?, limit?:int(<=50)}` | `{total, items[{item_id, meeting_id, title, text, started_at}]}` | as scope | R5 | C0 |
+| `list_people` | List people (resolved). | `{query?:string, min_meetings?:int}` | `{people[{person_id, name, aliases[], meetings_count, confirmed}]}`. Before P4 it returns only certain matches (section 4.3). | as scope | R2, R4, W1 | C0 |
+| `get_transcript_window` | Read transcript lines of one meeting, with speakers. | `{meeting_id, from_ms:int, to_ms:int (max 180000 span), speaker?:string}` | `lines[{label, start_ms, end_ms, speaker, text}]` | one meeting in scope | R4, R3 | C0 |
+| `folder_status` | Where a project stands. | `{}` (folder from scope) | `{folder:{name,description}, standing:{bullets[],generated_at,stale}, overview:{open_actions, recent_decisions, open_questions, people, timeline}}` | scope F only | R6 | C0 |
+| `list_meetings` | List meetings by date, tag, folder. | `{date_from?, date_to?, tag?, limit?:int(<=50)}` | `{total, meetings[{meeting_id,title,started_at,folder,tags[],has_summary}]}` | as scope | R3, R7, W3, W4 | C0 |
+| `get_live_tail` | Live lines of the recording. | `{}` | `lines[{label:"L#", time, speaker:"Me"\|"Them", text}]` | live meeting only | live R1 | C0 |
+
+Notes and grounding:
+
+1. `search_chunks` extends `retrieve()` (`S/lib/search/retrieve.ts:136`). Today `RetrieveInput` has no meeting scope and no date filter (`S/lib/search/retrieve.ts:26-35`). The KNN layer has `meetingIds` (`S/lib/search/vec-store.ts:133`, `:159-166`) with a cap of 500 per query (`KNN_IN_LIST_MAX`, `S/lib/search/vec-store.ts:16`). The tag path already groups ids by 500 (Discovery B section 1.3). A date filter becomes a SQL pre-filter on `meetings.started_at` that yields a `meetingIds` list. Section 7 has the plan.
+2. `search_chunks` returns no `meta` chunks. The live chat drops them too (`S/lib/meetings/live/chat-context.ts:233`).
+3. `get_meeting_summary` and the list tools read `meeting_summaries.summary_json` through `parseSummary` (`S/lib/meetings/folder-overview.ts:158`). Older rows have NULL `summary_json` (Discovery A section 1.2). The tool then returns `has_summary:false` and the markdown text as one source.
+4. `list_action_items` in scope F uses the group logic of `folderActionGroups` (`S/lib/meetings/folder-overview.ts:252`). The overview limits are 100 meetings and 30 people (`S/lib/meetings/folder-overview.ts:16-18`). For scope A the tool loops over folders and reads unfiled meetings too. Done state of an unfiled meeting does not exist today: `folder_action_item_state` has a foreign key to `meeting_folders` (`S/lib/schema.ts:1291-1298`). Section 4.1 fixes this.
+5. `get_transcript_window` reads `loadMergedTranscript` (`S/lib/meetings/transcript-io.ts:90-123`). It returns `speaker_label` and the speaker names from `meeting_speakers`. The mic channel is always "Me" (`S/lib/meetings/merge.ts:412`).
+6. `folder_status` reuses `buildFolderOverview` (`S/lib/meetings/folder-overview.ts:341`, no LLM) and the stored `folder_standing` row (Discovery A section 1.3). It never starts a standing LLM call. If the standing is stale, the block says so.
+7. The cap on `date` filters uses epoch ms in `meetings.started_at` (Discovery A section 2, row "Date/time").
+
+### 3.3 Write proposal tools
+
+Write tools return a proposal object. They change no data. Section 5 has the object.
+
+| Tool | Purpose | Input | Proposal payload | Applied through | Stories | Risk tier |
+|---|---|---|---|---|---|---|
+| `propose_action_item_change` | Close, reopen or edit one action item. | `{item_id, change:{done?:bool, task?:string(<=220), owner_person_id?, owner_text?, due?:string\|null}}` | `{item_id, before, after}` | done: `setActionItemDone` (`S/lib/meetings/folder-overview.ts:428`). Edit: new write path on `summary_json` (section 5.5). | W2 | low (done), medium (edit) |
+| `propose_retag` | Add or remove tags on meetings. | `{meeting_ids[] (<=20), add?:string[], remove?:string[]}` | per meeting: `{before:tags[], after:tags[]}` | `setMeetingTags` is a full replace (`S/lib/meetings/tags.ts:74`). Code computes the full new set. | W3 | low |
+| `propose_move` | Move meetings to a folder or to unfiled. | `{meeting_ids[] (<=20), folder_id:string\|null}` | per meeting: `{from_folder, to_folder}` | the move logic of `POST /meetings/move` (`S/routes/meeting-folders.ts:166`), which also re-partitions vectors (`S/routes/meeting-folders.ts:197-203`; `S/lib/search/indexer.ts:104-121`) | W4 | low |
+| `propose_merge_people` | Merge a cluster of names into one person. | `{cluster_id}` (a cluster from the resolver, not free names) | `{person_ids[], canonical, affected:{meetings, speaker_rows, action_items}, rewrite:bool}` | person tables and the rewrite of section 5.6 | W1 | medium |
+
+Rules:
+
+1. Write tools take ids from the lists that code built. The model cannot pass a free name.
+2. Moving a meeting does not move the done marks. They stay under the old folder id (Discovery A section 3, row "POST /meetings/move", marked there as inference). Section 4.1 fixes this with per-item status.
+3. The move and retag tools handle at most 20 meetings per proposal. A larger request becomes several proposals.
+
+## 4. Data model changes
+
+### 4.1 Stable ids for action items, decisions and questions
+
+Gap: items live only inside `summary_json` as plain strings (`S/lib/meetings/workflow/schemas.ts:224-240`). The done mark key is a hash of meeting id and the normalized task (`S/lib/meetings/folder-overview.ts:43-48`). A changed task text gives a new key and loses the mark (`S/lib/meetings/folder-overview.ts:40-42`).
+
+DECISION: `summary_json` stays the stored LLM output and the source that all existing readers use. A new table `meeting_items` adds ids and state on top of it. Reason: no change for current readers (folder overview, summary view). Rollback means dropping the table.
+
+```sql
+-- schema v54 (next free version at build time; SCHEMA_VERSION is 53 today, S/lib/schema.ts:14)
+CREATE TABLE IF NOT EXISTS meeting_items (
+  id TEXT PRIMARY KEY,                    -- UUID, stable
+  meeting_id TEXT NOT NULL REFERENCES meetings(id) ON DELETE CASCADE,
+  kind TEXT NOT NULL CHECK(kind IN ('decision','action','question')),
+  ordinal INTEGER NOT NULL,               -- index in the summary_json array
+  text_hash TEXT NOT NULL,                -- sha256 of normalized text, drift check
+  legacy_key TEXT,                        -- actionItemKey(), kinds 'action' only
+  status TEXT NOT NULL DEFAULT 'open' CHECK(status IN ('open','done')),
+  status_updated_at INTEGER,
+  created_at INTEGER NOT NULL,
+  superseded_at INTEGER                   -- set when a new summary drops the item
+);
+CREATE INDEX IF NOT EXISTS idx_meeting_items_meeting ON meeting_items(meeting_id, kind, ordinal);
+CREATE UNIQUE INDEX IF NOT EXISTS uq_meeting_items_pos ON meeting_items(meeting_id, kind, ordinal) WHERE superseded_at IS NULL;
+```
+
+Migration (one transaction, in `S/lib/schema.ts`, like the v52 block at `:1324`):
+
+1. For each row of `meeting_summaries` with `summary_json`: parse it with `parseSummary`. Insert one `meeting_items` row for each decision, action and question. Compute `legacy_key` for actions with `actionItemKey(meeting_id, task)`.
+2. For each row of `folder_action_item_state` with `done = 1`: find the `meeting_items` row with the same `legacy_key` in a meeting of that folder. Set `status = 'done'`. Keep the old table untouched.
+3. Old summaries with NULL `summary_json` get no items. The tool reads their markdown.
+
+Sync rule (DECISION):
+
+1. After a new summary is saved (`S/lib/meetings/workflow/nodes/save.ts:242`), a sync step compares the new items with the live rows. A new item matches an old one when `sameOverviewItem` is true (`S/lib/meetings/folder-overview.ts:57`; it builds on `sameItem`, `S/lib/meetings/workflow/schemas.ts:118`). A match keeps the id and status. A non-match gets a new id. Old rows without a match get `superseded_at`.
+2. The `text_hash` detects a `summary_json` change that bypassed the sync. A read tool with a hash mismatch re-syncs first.
+3. Dual write for the done state: a done change writes `meeting_items.status` and `folder_action_item_state` in one transaction. The folder overview keeps reading the old table, so it needs no change in P3. Unfiled meetings have only `meeting_items.status`. This closes the unfiled gap. A later change can make the overview read `meeting_items`. It is not part of this spec.
+4. Rollback: stop reading `meeting_items`. The old table is complete for filed meetings because of the dual write. Unfiled done marks are lost on rollback. DECISION: accept this, because they never existed before.
+
+Stability limits:
+
+1. A re-summarize can change the wording, so a match can fail. The old item goes to `superseded_at` and its done mark is lost. This is the same behavior as the key hash today (`S/lib/meetings/folder-overview.ts:40-42`). It is a known limit.
+2. A re-transcribe rewrites segment rows (`INSERT OR REPLACE`, Discovery A section 1.1). Items do not depend on segment ids. Cites use `meeting_id` plus `start_ms` (Discovery A, gap 10).
+
+### 4.2 Chat threads for folder and global scope
+
+Gap: `meeting_chat_messages` has one meeting id and cascades with the meeting (`S/lib/schema.ts:1324-1342`; `S/lib/meetings/live/chat-store.ts:1-6`).
+
+```sql
+-- schema v55
+CREATE TABLE IF NOT EXISTS chat_threads (
+  id TEXT PRIMARY KEY,                                  -- UUID
+  meeting_id TEXT REFERENCES meetings(id) ON DELETE CASCADE,
+  folder_id  TEXT REFERENCES meeting_folders(id) ON DELETE CASCADE,
+  title TEXT,
+  created_at INTEGER NOT NULL,
+  updated_at INTEGER NOT NULL,
+  CHECK (NOT (meeting_id IS NOT NULL AND folder_id IS NOT NULL))
+);                                    -- both NULL = scope "all"
+CREATE INDEX IF NOT EXISTS idx_chat_threads_scope ON chat_threads(meeting_id, folder_id, updated_at);
+CREATE TABLE IF NOT EXISTS chat_messages (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  thread_id TEXT NOT NULL REFERENCES chat_threads(id) ON DELETE CASCADE,
+  role TEXT NOT NULL CHECK(role IN ('user','assistant')),
+  content TEXT NOT NULL,                -- plain text of the answer, or the question
+  blocks_json TEXT,                     -- structured answer blocks (list, count, status, not_found)
+  cites_json TEXT,                      -- [{label, meeting_id, start_ms, item_id, kind}]
+  trace_json TEXT,                      -- tool names, row counts, ms per stage
+  change_ids_json TEXT,                 -- proposal ids (section 5)
+  run_id TEXT REFERENCES llm_runs(id) ON DELETE SET NULL,
+  model_id TEXT,
+  ms INTEGER,
+  created_at INTEGER NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_chat_messages_thread ON chat_messages(thread_id, id);
+```
+
+DECISION: two nullable foreign keys with a CHECK. Reason: SQLite has no polymorphic foreign key. A deleted meeting or folder removes its threads, as `meeting_chat_messages` does today. A folder delete is blocked when the folder is not empty (Discovery A section 3, row `DELETE`), so folder threads rarely cascade.
+
+Migration: `meeting_chat_messages` is copied into `chat_messages` with one thread per meeting. It runs in P5 (section 9). The old table stays for one release. Rollback: the old table is complete until the P5 switch.
+
+### 4.3 Cross-meeting person entity
+
+Gap: no person table exists. One human appears as an attendee name or email, a `display_name`, a `suggested_name`, an action item owner, loose text, `speaker_names_lost`, and a vocabulary term (Discovery A section 2.1). The only merge logic today is `countPeople`, which lowercases and trims names (`S/lib/meetings/folder-overview.ts:297`).
+
+```sql
+-- schema v56
+CREATE TABLE IF NOT EXISTS people (
+  id TEXT PRIMARY KEY,                 -- UUID
+  display_name TEXT NOT NULL,          -- canonical name shown in answers
+  email TEXT,                          -- from calendar, if any
+  is_account_owner INTEGER NOT NULL DEFAULT 0,   -- the "Me" person; set by the user
+  merged_into TEXT REFERENCES people(id),        -- soft merge pointer
+  created_at INTEGER NOT NULL,
+  updated_at INTEGER NOT NULL
+);
+CREATE TABLE IF NOT EXISTS person_aliases (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  person_id TEXT NOT NULL REFERENCES people(id) ON DELETE CASCADE,
+  alias TEXT NOT NULL,                 -- as written
+  alias_norm TEXT NOT NULL,            -- folded, lowercase
+  source TEXT NOT NULL CHECK(source IN ('attendee','speaker_display','speaker_suggested','owner','vocabulary','manual')),
+  meeting_id TEXT REFERENCES meetings(id) ON DELETE CASCADE,
+  speaker_label TEXT,                  -- link to (meeting_id, speaker_label) when source is a speaker
+  confirmed INTEGER NOT NULL DEFAULT 0,
+  created_at INTEGER NOT NULL
+);
+CREATE UNIQUE INDEX IF NOT EXISTS uq_person_alias ON person_aliases(person_id, alias_norm, source, COALESCE(meeting_id,''), COALESCE(speaker_label,''));
+CREATE INDEX IF NOT EXISTS idx_person_alias_norm ON person_aliases(alias_norm);
+```
+
+The label "Me" and the labels "Them N" are not names. The resolver skips them. "Me" links to the person with `is_account_owner = 1` after the user confirms who that is (OPEN Q4). Source: the mic channel is "Me" and has no `meeting_speakers` row (`S/lib/meetings/merge.ts:15`, `:412`; Discovery A section 1.1). The prompt tells the summary model to write "Me", "Them 2" or a confirmed name as owner (`S/lib/meetings/workflow/prompts.ts:185-186`).
+
+Entity resolution (DECISION: code first, human confirms):
+
+```mermaid
+flowchart LR
+  H["Harvest strings, code<br/>attendees, speaker display_name,<br/>suggested_name, action item owners,<br/>vocabulary terms"] --> N["Normalize<br/>fold accents, lowercase,<br/>strip punctuation"]
+  N --> B["Block and score, code<br/>same email = certain<br/>same normalized full string = certain<br/>first name vs full name = candidate<br/>edit distance + phonetic key = candidate<br/>nickname table = candidate"]
+  B --> CL["Cannot-link filter<br/>two labels of one meeting<br/>are two people unless merged_into"]
+  CL --> CTX["Context features<br/>same folder, shared attendees,<br/>same email domain"]
+  CTX --> CH["Clusters with a score<br/>certain / likely / unsure"]
+  CH --> V{"LLM verifier?<br/>off in v1"}
+  V --> UI["User confirms each cluster"]
+  UI --> W["people + person_aliases rows<br/>confirmed = 1"]
+```
+
+1. Certain matches (same email, or the same normalized full string inside one folder) create unconfirmed `people` rows. They are used by `list_people` and by owner filters at once. DECISION: a certain match does not change any text.
+2. Likely and unsure clusters are not used by tools until the user confirms them (P4).
+3. The cannot-link rule: `meeting_speakers` has one row per label per meeting (`S/lib/schema.ts:856` block; Discovery A section 1.1). Two different labels in one meeting are two people, except when the user set `merged_into` (`S/routes/meetings.ts:2286` route).
+4. ASR spelling variants of one name are common. One-word bias-term segments are noise and are not evidence (owner-verified note in project memory "short leak segments"; Discovery C section 4, last bullet). DECISION: the resolver reads names, never segments.
+5. The LLM verifier is off in v1. If the dedup precision on the labelled set (section 8.6) is below the bar, P4 adds a verifier call that may answer "unsure". An LLM judge raised precision to 95.4% and cut recall to 50.9% in one blog test on products (https://pub.towardsai.net/using-gpt-4o-mini-as-an-entity-resolution-judge-95-precision-for-0-04-b216d44a7f20; a blog, not people). With a human confirm step, a lower recall is acceptable. ASSUMPTION.
+6. The nickname table is a small data file per language. ASSUMPTION; the eval measures its gain.
+7. The first run on a folder builds the rows. Later runs update them when a speaker or summary changes. Staleness uses the same idea as the index source hash (`S/lib/search/source.ts:146-154`).
+
+### 4.4 Apply and undo audit log
+
+```sql
+-- schema v57
+CREATE TABLE IF NOT EXISTS agent_changes (
+  id TEXT PRIMARY KEY,                    -- UUID, the proposal id
+  batch_id TEXT NOT NULL,                 -- groups proposals from one turn
+  thread_id TEXT REFERENCES chat_threads(id) ON DELETE SET NULL,
+  message_id INTEGER,
+  kind TEXT NOT NULL CHECK(kind IN ('action_item','retag','move','merge_people')),
+  status TEXT NOT NULL CHECK(status IN ('proposed','applied','undone','failed','expired','rejected')),
+  payload_json TEXT NOT NULL,             -- what to do, ids only
+  payload_hash TEXT NOT NULL,             -- sha256 of canonical payload_json
+  idempotency_key TEXT NOT NULL UNIQUE,   -- hash(kind, payload_hash)
+  preview_json TEXT NOT NULL,             -- before/after rows shown to the user
+  before_hash TEXT NOT NULL,              -- hash of the rows read at proposal time
+  inverse_json TEXT,                      -- old values, written at apply
+  after_hash TEXT,                        -- hash of the rows right after apply
+  run_id TEXT REFERENCES llm_runs(id) ON DELETE SET NULL,   -- the LLM run that built the proposal
+  model_id TEXT,
+  created_at INTEGER NOT NULL,
+  expires_at INTEGER NOT NULL,
+  applied_at INTEGER,
+  undone_at INTEGER,
+  error TEXT
+);
+CREATE INDEX IF NOT EXISTS idx_agent_changes_thread ON agent_changes(thread_id, created_at);
+ALTER TABLE meeting_summary_versions ADD COLUMN change_id TEXT;   -- nullable
+```
+
+DECISION: a new table and not `llm_call_links`. Reason: `llm_call_links` records what an LLM wrote (`target_type`, `applied_text`, `outcome`, `S/lib/schema.ts:1082-1093`). Here the user writes, and the LLM only proposes. The table links to the run through `run_id`, so the inspector can show the proposal call.
+
+Migration plan for v54 to v57:
+
+1. All four migrations are additive (new tables, one nullable column). The migration block pattern is `if (currentVersion < N && tableExists(...))` (`S/lib/schema.ts:1324`).
+2. An app that is older than the database returns early at `if (currentVersion >= SCHEMA_VERSION) return;` (`S/lib/schema.ts:168`). It ignores the new tables. ASSUMPTION: no old code path fails on extra tables. A test opens a v57 database with the v53 build (P0 gate for the first migration).
+3. Rollback of the feature: set `meeting_chat_enabled` off. No data loss. Applied changes stay applied. The user can undo them before the rollback; after it, undo is not available.
+4. Data written by P3 apply (done marks, tags, folder, summary versions) is normal app data. It stays valid without the new tables, except `meeting_items.status` of unfiled meetings (section 4.1 point 4).
+5. Each migration needs a unit test with a seeded v53 database. The test checks counts and the dual write.
+
+## 5. Write safety
+
+### 5.1 The rule
+
+The model never writes. The path is: propose, preview, user confirms, apply, log, undo. This follows the pattern in Discovery C section 3: Linear keeps the human as owner and the agent as delegate (https://linear.app/developers/agents). Granola lets chat fix names and reassign action points (https://help.granola.ai/article/chatting-with-your-meetings-ask-granola). Approval requests hold the action, params, a preview, an expiry and an idempotency key (https://pypi.org/project/agent-runtime-governance/). Sources for the last pattern are practitioner pages, not standards (Discovery C section 3).
+
+### 5.2 Proposal object
+
+```json
+{
+  "id": "uuid",
+  "batch_id": "uuid",
+  "kind": "action_item | retag | move | merge_people",
+  "scope": {"kind": "folder", "id": "..."},
+  "payload": { "...ids and new values only..." },
+  "payload_hash": "sha256 of canonical JSON of payload",
+  "idempotency_key": "sha256(kind + payload_hash)",
+  "before_hash": "sha256 of the rows read now",
+  "preview": [ { "row_id": "...", "label": "...", "before": "...", "after": "...", "cite": {"meeting_id": "...", "start_ms": 0} } ],
+  "risk": "low | medium",
+  "expires_at": 0
+}
+```
+
+1. Code builds the proposal. The model only chose ids from a list (section 2.3, slot fill).
+2. The preview has one row per change. The user can untick single rows (a merge or a retag of many meetings).
+3. `expires_at`: DECISION 30 minutes. A late apply needs a new proposal. Reason: the data can change.
+
+### 5.3 Routes
+
+DECISION: placement-agnostic routes under `/api/chat`. The names are proposals.
+
+| Route | Action |
+|---|---|
+| `POST /api/chat/threads` | Create a thread `{scope}`. |
+| `POST /api/chat/threads/:id/messages` | Ask `{question}`. Returns the answer, cites, trace and `changes[]` (proposals). |
+| `GET /api/chat/threads/:id` | Messages, oldest first. |
+| `POST /api/chat/changes/:id/apply` | Body `{payload_hash, row_ids?}`. Applies. |
+| `POST /api/chat/changes/:id/reject` | Marks `rejected`. |
+| `POST /api/chat/changes/:id/undo` | Undoes an applied change. |
+| `GET /api/chat/changes` | The audit log, newest first, filter by thread or folder. |
+
+### 5.4 Apply and undo
+
+```mermaid
+sequenceDiagram
+  participant U as User
+  participant UI as UI card
+  participant S as Server
+  participant DB as SQLite
+  U->>UI: asks for a change
+  UI->>S: POST messages
+  S->>S: router, slots, resolver (code)
+  S->>DB: INSERT agent_changes (proposed), no data change
+  S-->>UI: proposal with preview
+  U->>UI: untick rows, press Apply
+  UI->>S: POST apply {payload_hash, row_ids}
+  S->>DB: BEGIN
+  S->>DB: read rows now, compare before_hash
+  alt hash differs or expired
+    S->>DB: ROLLBACK, status expired
+    S-->>UI: 409 conflict, ask again
+  else same
+    S->>DB: write via existing domain functions
+    S->>DB: write inverse_json, after_hash
+    S->>DB: read back rows, compare with expected after
+    alt read back differs
+      S->>DB: ROLLBACK, status failed
+      S-->>UI: 500 not persisted
+    else equal
+      S->>DB: status applied, COMMIT
+      S-->>UI: applied, undo handle
+    end
+  end
+  U->>UI: Undo
+  UI->>S: POST undo
+  S->>DB: BEGIN, rows still equal after_hash?
+  alt not equal
+    S-->>UI: 409 conflict, show which rows changed
+  else equal
+    S->>DB: write inverse_json, read back, status undone, COMMIT
+    S-->>UI: undone
+  end
+```
+
+Rules:
+
+1. Apply is idempotent. The `idempotency_key` is unique. A second apply of an applied change returns the first result and writes nothing.
+2. Apply checks `payload_hash` from the client against the stored hash. A changed payload is refused.
+3. Apply re-reads the rows and compares `before_hash`. A mismatch means the data changed since the proposal. The change expires.
+4. Every write reads back inside the transaction and compares with the expected state. Reason: the owner rule "a write that returns success may have stored nothing. Read it back" (user-wide `CLAUDE.md`, section "How the Definition of Done gets faked").
+5. Undo applies `inverse_json` only when the rows still equal `after_hash`. Otherwise it reports a conflict and lists the rows.
+6. Apply uses the existing domain code, not raw SQL, so side effects stay right. Examples: the vector re-partition of a move, the `transcript.md` rewrite of a speaker rename (Discovery A section 3). ASSUMPTION: some route bodies (`POST /meetings/move`, `PATCH /:id/speakers/:label`) hold inline logic. P3 and P4 extract it to `S/lib/` functions first, with a no-behavior-change test.
+7. Delete is not a change kind (non-goal 3).
+
+### 5.5 Edit of an action item
+
+1. `done` changes use the dual write of section 4.1.
+2. A text, owner or due edit patches `summary_json.actionItems[ordinal]`. Steps in one transaction: copy the current row to `meeting_summary_versions` with `change_id` (same pattern as `S/lib/meetings/workflow/nodes/save.ts:231-242`), update `summary_json`, re-render `markdown` with `renderSummaryMarkdown` (`S/lib/meetings/workflow/summary-pure.ts:44`), update `meeting_items.text_hash` and `legacy_key`, and copy the done state to the new `folder_action_item_state` key.
+3. Reason to re-render: `markdown` and `summary_json` can drift apart if only one changes (Discovery A section 4, gap 4).
+4. The index sees the summary change through its source hash and re-embeds the summary chunk (`S/lib/search/source.ts:146-154`).
+5. No summary restore route exists today (Discovery A section 1.2). Undo uses `inverse_json`. DECISION: P3 does not add a restore UI for versions.
+
+### 5.6 Person merge: what text changes
+
+Discovery A section 2.1 lists where one person's strings live. The merge decides for each place:
+
+| Place | What a merge does | How |
+|---|---|---|
+| `people`, `person_aliases` | Soft merge: `merged_into` points to the canonical person. Aliases move. | Always. Undo clears the pointer and moves aliases back (ids in `inverse_json`). |
+| `meeting_speakers.display_name` | Optional rewrite to the canonical name, per meeting row | Through the existing speaker update path (`S/routes/meetings.ts:2286`), which also rewrites `transcript.md` (Discovery A section 3). User ticks it in the preview. |
+| `summary_json.actionItems[].owner` | Optional rewrite of the owner string when it equals an alias | Versioned summary copy as in 5.5, markdown re-rendered. Owners "Me" and "Them N" are never rewritten. |
+| `summary_json` free text (overview, key points, decisions, questions) | Not rewritten in v1 | DECISION. Whole-text replacement of a name is unsafe. The preview shows the count of mentions left unchanged. |
+| `folder_standing.bullets_json` | Not rewritten. Marked stale. | The standing has an `input_hash` of its inputs (`S/lib/meetings/folder-standing.ts`; Discovery A section 1.3). An owner change alters the input, so the next view shows it stale. |
+| `meeting_chunks` and vectors | Re-embedded by the indexer | A summary change changes the source hash (`S/lib/search/source.ts:146-154`). |
+| `meeting_chat_messages`, `chat_messages` | Not rewritten | History is a record of what was said. |
+| `meetings.calendar_attendees` | Not rewritten | Calendar data. The email stays the key. |
+| `vocabulary.term` | Not changed | Global list. |
+
+The user sees the count of rows for each place in the preview before Apply. The default for both optional rewrites is on. Reason: "dedup the names" with no visible change in the summary fails the user's intent (ASSUMPTION; OPEN Q5 asks the owner).
+
+## 6. Grounding and citations
+
+### 6.1 Source labels
+
+DECISION: numbered labels `S1..Sn` per turn. In live mode the live lines keep `L1..Lm`. The model sees only the label, the meeting title, the date and the text. Reason: short labels are easy to copy for a small model, and the live chat already works with short labels (`S/lib/meetings/live/chat-prompt.ts:9-16`). ASSUMPTION: E2B copies labels with high accuracy. The eval measures label copy accuracy (section 8).
+
+The per-turn source map:
+
+| Field | Meaning |
+|---|---|
+| `label` | `S3` |
+| `kind` | `transcript`, `summary`, `item`, `window`, `live`, `folder` |
+| `meeting_id`, `title`, `started_at` | for display |
+| `start_ms`, `end_ms` | time range for transcript, window and live |
+| `item_id` | for action items, decisions, questions |
+| `text` | the text shown to the model, kept for the checks |
+| `scope_ok` | set by code at tool time |
+
+The cite that goes to the UI and the database is `{label, kind, meeting_id, start_ms, item_id}`. It uses `meeting_id` plus `start_ms`. It does not use segment ids, because a re-transcribe rewrites them (Discovery A, gap 10).
+
+### 6.2 Code checks
+
+For each answer, code checks in this order. No LLM is used.
+
+1. Label exists: every cite label is in the source map. This is the live chat check (`S/routes/meetings-chat.ts:155-169`).
+2. In scope: the source `scope_ok` is true and its meeting is in the scope.
+3. Fact check (DECISION). Code extracts three kinds of tokens from the answer: numbers and dates (digits, resolved date strings), known entity names (people aliases, folder names, meeting titles, attendee names), and quoted strings. Each token must appear (after accent folding and lowercase) in the text of the cited sources, the question, or the tool metadata (titles and dates). Names and numbers that fail are the main small-model errors (Discovery C section 2.4, last bullet; ASSUMPTION).
+4. Coverage: an answer with text and zero valid cites is not shown as an answer. It becomes "not found", unless the intent is `other`.
+
+On a failed check:
+
+1. If the unsupported token appears in another source of the turn, code adds that source to the cites (repair).
+2. Else the answer call runs once more, with the failed tokens named ("remove or fix: ...").
+3. Else the response is a `not_found` block with the top sources as links. No model text is shown.
+
+Optional later check: an NLI score with HHEM-2.1-Open (https://huggingface.co/vectara/hallucination_evaluation_model; Apache-2.0, small, local). No speed number on Apple Silicon is known (Discovery C section 2.4, gap). It is not in the plan. The eval may test it as an extra signal. ALCE reports 85.1% and 77.6% agreement with humans for its NLI checks (https://arxiv.org/abs/2305.14627, a search-summary figure in Discovery C). So the NLI check is a signal and not the truth.
+
+### 6.3 Not-found behavior
+
+1. A turn is `not_found` when all tools return nothing after the fallback chain, when the best score is below a floor, or when cite validation fails twice. The score floor is a number that section 8 measures (no value is set here).
+2. The response is a structured block: `{kind:"not_found", scope, nearest:[cites]}`. The renderer writes the text in the UI language with `t()`. Reason: code answers need no server-side translation (7 locales, `AGENTS.md`, section "UI conventions").
+3. When the model itself says "not found" (the prompt rule as in `S/lib/meetings/live/chat-prompt.ts:13`), code converts the reply to the same block.
+4. A not-found block in scope M or F offers "search wider". The user clicks it. Code never widens the scope alone. DECISION.
+
+### 6.4 Language
+
+1. A text answer uses the language of the question (the live chat rule).
+2. Code-mode answers (lists, counts, status, not-found) are structured blocks. The renderer localizes the fixed words. Item texts stay in the language of the summary.
+3. Question language: the live loop already uses `tinyld` for text language detection (`specs/live-chat.md`, section 1). The router prompt does not need it.
+
+## 7. Retrieval improvements (in order)
+
+Each step lists a measurement. All numbers come from the gold eval in section 8 (recall of gold source ranges at k, and cite precision).
+
+### 7.1 R1 Meeting scope and date filter in `retrieve()`
+
+1. Add `scope: {kind:"meeting", meetingId}` and an optional `dateRange` to `RetrieveInput` (`S/lib/search/retrieve.ts:26-35`). Meeting scope passes `meetingIds=[id]` to `knn` (`S/lib/search/vec-store.ts:133`).
+2. A date range runs a SQL query on `meetings.started_at` (within the folder scope) and passes the ids as `meetingIds`. Above 500 ids, the call splits into groups of 500, as the tag path does (Discovery B section 1.3; `S/lib/search/vec-store.ts:16`).
+3. The public route `POST /api/search/meetings` stays as is (`V/search.ts:42-49`). The new filters are used by the tools. A later change can expose them.
+4. Measure: recall@8 of the gold source range on the "lookup" and "temporal" questions, before and after, for scope M and for date-bounded questions. No regression on the existing search eval of `specs/local-semantic-search.md`.
+
+### 7.2 R2 Who said
+
+1. Keep rule S7: no speaker label in chunk text (`S/lib/search/chunker.ts:6`). Changing it would force a full re-embed of all meetings.
+2. Add `get_transcript_window` (section 3.2). A chunk stores its `segment_ids` (`S/lib/schema.ts:1177-1190`; Discovery A section 1.4). Code joins them to `meeting_segments.speaker_label` and the speaker names. This needs no re-index.
+3. Plan for who_said: `search_chunks` finds the chunk. Code opens the window of the best segment. The answer call gets lines with speaker names.
+4. Measure: who-said accuracy by key (speaker person id). Compare with the arm that has no window (retrieval text only).
+
+### 7.3 R3 Fix #297 and #298 where they hurt cites
+
+1. #297 (open): a transcript hit opens at the first segment of the chunk, not at the matching line (Discovery B section 1.5). A chunk has several segments. The `search_chunks` tool adds `best_ms`: code picks the segment inside the chunk with the highest word overlap with the query. The cite uses `best_ms`.
+2. #298 (open): one meeting can give up to 3 rows (meta, summary, transcript). The tool groups by meeting and keeps the best row plus up to 2 more transcript chunks (section 3.2).
+3. DECISION: the fix lives in the tool first, so the agent does not wait for the UI issues. The two issues stay open for the search UI. A shared helper can fix both later.
+4. Measure: cite time error (ms between `best_ms` and the gold line start) and duplicate meeting rate per answer.
+
+### 7.4 R4 Optional keyword channel with FTS5
+
+Gap: vectors only. The spike measured recall@10 of 0.613 (PT) and 0.703 (EN) on a hard set (`specs/local-semantic-search.md:105-111`; Discovery B section 1.4). Names and exact numbers are the weak case.
+
+Option (DECISION: build only if the eval shows the need):
+
+1. A virtual table `meeting_segments_fts` over `meeting_segments` text and `enhanced_text`, external content, with triggers. The repo has the same pattern for dictation history, with the `trigram` tokenizer (`S/lib/schema.ts:960-975`). The trigram tokenizer matches any substring of 3 or more characters, so it also works for Japanese (same code comment).
+2. `search_chunks` runs the vector channel and the FTS channel. Code merges them with reciprocal rank fusion, k=60 (https://www.elastic.co/search-labs/blog/improving-information-retrieval-elastic-stack-hybrid; Discovery C section 2.2).
+3. External evidence for the gain: BM25 plus embeddings cut failed top-20 retrievals by 49% (5.7% to 2.9%) on Anthropic data sets (https://www.anthropic.com/news/contextual-retrieval). Their data differ from ours. Treat this as a hint.
+4. Cost: index size and write cost. ASSUMPTION; the build measures both.
+5. Measure: recall@8 on the "names and exact numbers" slice of the gold set. Build the channel only if vector recall on that slice is below the pass bar (section 8.5) and the hybrid gain is at least 10 points. These numbers are initial targets.
+6. This reverses decision D8 "vectors only, no plain-RRF hybrid" of the search spec (`specs/local-semantic-search.md:71`). The owner must approve (OPEN Q6).
+
+### 7.5 R5 Chunk context by code
+
+Idea from Anthropic's contextual retrieval: prepend context to each chunk (https://www.anthropic.com/news/contextual-retrieval). Their method calls an LLM for each chunk. A code-only version prepends title, date and folder. ASSUMPTION. It needs a re-embed of every chunk, so it is out of v1. The `meta` chunk already holds title and tags (`S/lib/search/source.ts:84-92`).
+
+### 7.6 Order
+
+| Step | Phase | Gate |
+|---|---|---|
+| R1 meeting scope and date filter | P0 | recall@8 not lower than the current search eval |
+| R3 `best_ms` and grouping (in the tool) | P0 | cite time error measured |
+| R2 transcript window | P2 | who-said accuracy measured |
+| R4 FTS5 channel | P2 or later, only if needed | slice recall gain |
+| R5 contextual chunk text | not planned | |
+
+## 8. Evaluation plan
+
+### 8.1 Rules
+
+1. Fixed answer keys. No LLM judge decides pass or fail. This is the owner rule. Reasons on record: blind judges and gold keys were wrong against the owner on 22 answers (project memory "judges unreliable"; Discovery B section 4). Judges over-credit wrong answers without a reference (https://arxiv.org/abs/2607.12885).
+2. The corpus is fictional (privacy). No owner data enters the repo or the eval keys.
+3. The eval runs against the real server over HTTP in an isolated app (skill `.claude/skills/live-testing/SKILL.md`). A mock of the model does not count as a result.
+4. Each model run takes the shared GPU lock (`/tmp/openstyle-gpu.lock`) only for the model steps, like `.claude/skills/app-check/SKILL.md` step 4.
+5. Temperature 0. Same input gives same output (`specs/llm-runtime-tuning.md:427`), so one run per cell is a valid measure. A rerun checks it.
+
+### 8.2 Corpus
+
+DECISION: a script builds the corpus from templates and a seeded random number generator. It is in `scripts/chat-eval/` (new, P0).
+
+1. 30 fictional meetings. 4 folders (6 to 8 meetings each) and 4 unfiled meetings. Dates over 12 weeks.
+2. 12 fictional people. Each has 2 to 4 spelling variants and a nickname ("Ana", "Ana S.", "Anna"). 4 people share a first name.
+3. Languages: 20 meetings in English, 6 in Portuguese, 4 mixed. ASSUMPTION: these cover the owner's main case (Discovery B section 6 spike set is PT and EN).
+4. Each meeting has transcript segments with speakers (Me and Them N, some named), a summary with decisions, action items (some done) and questions. Facts are planted at known lines. Some facts change between meetings (knowledge update).
+5. Distractors: similar numbers, similar names in other folders.
+6. The corpus loads into the isolated app through the seed path used by the live-testing skill. A subset of 3 meetings is also spoken with the macOS speech tool and run through the ASR path, to check that the chat works on real pipeline output (like the live chat proof).
+
+### 8.3 Question taxonomy and keys
+
+About 180 questions. The mix follows LongMemEval's abilities (https://arxiv.org/abs/2410.10813: extraction, multi-session reasoning, temporal reasoning, knowledge update, abstention) plus who-said, count and write.
+
+| Type | N | Scope mix | Key form (code-scored) |
+|---|---|---|---|
+| Lookup | 25 | M, F, A | regex set of accepted values (normalized), plus the gold cite range |
+| Who said | 20 | M, F, A | person id set |
+| Aggregation (lists) | 20 | F, A | set of item ids (precision, recall, F1) |
+| Count | 10 | F, A | integer |
+| Temporal | 20 | F, A | list of facts with gold ranges, or meeting id set |
+| Knowledge update | 10 | F, A | date or value plus the id of the newest meeting |
+| Not answerable | 30 (above 15%) | any | must be a `not_found` block, no text answer |
+| Scope trap | 10 | M, F | a fact that exists only outside the scope. The answer must be `not_found`. |
+| Follow-up | 10 | any | as lookup, with a prior turn |
+| Write proposal | 25 | M, F, A | expected proposal: kind plus id set. Compared as a set, not as prose. |
+
+Key forms for text answers: a list of "must contain" alternatives and a list of "must not contain" distractors. Both are normalized (accent fold, lowercase, digits). Pass means all must-contain groups match and no must-not-contain token appears. This is deterministic code. Free-text quality beyond the key is not scored by a judge. The owner spot-checks a sample of 20 answers per model (rule from Discovery C section 5.3).
+
+### 8.4 Metrics
+
+| Metric | Definition | How scored |
+|---|---|---|
+| Answer accuracy | pass by key | code |
+| List F1 | precision and recall of item ids | code |
+| Cite precision | valid cites whose source range overlaps a gold range / all cites shown | code |
+| Cite recall | gold ranges covered by a cite / gold ranges | code |
+| Cite validity | shown cites with a label in the source map | code (must be 100% by construction) |
+| Not-found accuracy | not-answerable and scope-trap questions answered with a `not_found` block | code |
+| False not-found rate | answerable questions answered with `not_found` | code |
+| Route accuracy | router intent equals the gold intent (labelled per question) | code |
+| Slot accuracy | slot values equal the gold slots | code |
+| Label copy accuracy | labels in the answer that exist in the source map / labels in the answer | code |
+| Rounds per turn, calls per turn | from the trace | code |
+| Latency p50, p95 | wall time of a turn, warm and cold separate | harness clock |
+| RAM | RSS of the chat worker, sampled every 5 s (method of `specs/live-chat.md`, section 6, proof 9) | harness |
+| Write proposal match | kind and id set equal the key | code |
+| Apply and undo round trip | hash of the affected tables before and after undo is equal | code |
+| Dedup precision, recall | on the labelled set (8.6) | code |
+
+### 8.5 Arms and models
+
+Per-model runs: Gemma 4 E2B (`gemma-4-e2b-qat-4bit`), Gemma 4 E4B (`gemma-4-e4b-qat-4bit`), Nemotron 3.5 Bolt E4B (`nemotron-3.5-bolt-e4b-4bit`), Qwen3.8 27B (`qwen3.8-27b-4bit`), and Gemma 4 26B-A4B (`gemma-4-26b-a4b-qat-4bit`) (ids: `S/lib/mlx-llm/constants.ts:66,77,95,111,128`). The owner said "E2B, E4B, Qwen, Nemotron Bolt". The 26B model is optional.
+
+Arms (each on E2B first):
+
+| Arm | Change |
+|---|---|
+| A0 | Baseline: the live chat as it is (one-shot context, no router), on the same questions with scope M or F |
+| A1 | Router, tools, answer, strict answer schema |
+| A2 | Same, lenient answer parse |
+| A3 | Rules router instead of the LLM router |
+| A4 | A1 plus the FTS channel (when built) |
+| A5 | No slot fill (default slots) to measure the value of the slot call |
+
+An arm wins by the key metrics. A cloud model arm runs only if the owner allows cloud (OPEN Q1) and only on the fictional corpus.
+
+### 8.6 Name-dedup set
+
+1. A fictional set: 200 labelled string pairs from the corpus people (same person: yes or no), with ASR-style variants, nicknames, shared first names.
+2. An owner-labelled set: the owner labels 100 to 200 pairs from real data (Discovery C section 4). The labels and strings stay private. Only precision and recall numbers go into the repo.
+3. Metrics: precision and recall of the clusters before the human step; precision after "certain" only. A wrong merge costs more than a missed one, so the bar is precision first.
+4. The eval compares code-only against code plus an LLM verifier that may answer "unsure". The verifier is built only if code-only precision is under the bar.
+
+### 8.7 Pass bars
+
+No measured baseline exists for any of these numbers. The values below are initial targets (ASSUMPTION). P0 measures A0 and the arms, then the owner confirms the bars before P1 starts. This follows the rule "every default needs a measured number".
+
+| Metric | P1 (E2B) | P2 | P3 write | P4 |
+|---|---|---|---|---|
+| Cite validity | 100% | 100% | 100% | 100% |
+| Invalid cite shown | 0 | 0 | 0 | 0 |
+| Not-found accuracy (not-answerable plus scope trap) | at least 90% | at least 90% | at least 90% | at least 90% |
+| False not-found rate | at most 15% | at most 15% | at most 15% | at most 15% |
+| Answer accuracy, lookup and follow-up | beat A0 by at least 10 points | at least 70% | | |
+| List F1 (aggregation) | at least 0.85 | at least 0.85 | | |
+| Route accuracy | at least 90% | at least 90% | | |
+| Cite precision | at least 0.8 | at least 0.8 | | |
+| Who-said accuracy | n/a | at least 70% | | |
+| Write proposal match | n/a | n/a | at least 90% | |
+| Apply then undo equals before (hash) | n/a | n/a | 100% | 100% |
+| Direct writes by the model | 0 | 0 | 0 | 0 |
+| Dedup precision (certain plus confirmed) | n/a | n/a | n/a | at least 0.98 before confirm on "certain"; recall reported |
+| Latency p95 warm, E2B | at most 6 s | at most 6 s | at most 6 s | at most 6 s |
+| Dictation latency while a chat turn runs | not more than 1 call later | | | |
+
+E4B, Nemotron and Qwen must meet the same bars or better. A bar missed by E2B but met by bigger models is a finding for the owner. It does not change the E2B target silently.
+
+## 9. Phased plan
+
+### 9.1 Phases
+
+Every phase is a vertical slice behind a setting. Every phase has a draft PR at birth (`.claude/skills/branch-lifecycle/SKILL.md`, rule 1). At most 2 PRs are open at once (rule 2). Each phase is one or more PRs.
+
+```mermaid
+flowchart LR
+  P0["P0 Retrieval fixes<br/>+ eval harness + baseline"] --> P1["P1 Read-only chat<br/>meeting + folder, 4 tools"]
+  P1 --> P2["P2 Everything scope<br/>+ people entity read<br/>+ who-said + 4 more read tools"]
+  P2 --> P3["P3 Write proposals<br/>action items, retag, move<br/>apply + undo + audit"]
+  P3 --> P4["P4 Person merge<br/>resolver + confirm UI"]
+  P4 --> P5["P5 Live variant unify<br/>replace live chat route"]
+```
+
+| Phase | Content | Schema | Setting | DoD (all needed) |
+|---|---|---|---|---|
+| P0 | R1 meeting scope and date filter; R3 `best_ms` and grouping helper; the eval corpus builder and harness (`scripts/chat-eval/`); baseline runs of A0 on E2B, E4B, Nemotron, Qwen; a skill `.claude/skills/chat-eval/SKILL.md` | none (FTS5 later, if needed) | none (no user feature) | Baseline numbers table in the PR. Unit tests of the new filters. The existing search eval does not regress. The harness runs against an isolated app. |
+| P1 | Router, plan table, slot fill, answer, cite validation. Tools: `search_chunks`, `get_meeting_summary`, `list_action_items` (read only, derived key), `folder_status`. Threads and messages. Scope M and F. A basic UI in the placement chosen in section 11. | v54 (items), v55 (threads) | `meeting_chat_enabled` (default off) | E2E in the isolated app: a real question per story R1, R2, R5, R6, R9 with screenshots in light and dark. Gold eval numbers for E2B meet the P1 bars. Failure paths 2.5 each tested. |
+| P2 | Scope A. Tools: `list_meetings`, `list_decisions_questions`, `list_people` (certain matches only), `get_transcript_window`. Resolver for certain matches. Optional FTS5 channel by the R4 gate. | v56 (people) | same | E2E for R3, R4, R7. Gold numbers meet the P2 bars. Resolver run on the fictional corpus. |
+| P3 | `propose_action_item_change`, `propose_retag`, `propose_move`. Proposal cards. Apply, undo, audit log. Extract the move and tag logic to lib functions. Item sync after summarize. | v57 (changes) | same | E2E: propose, apply, check in the screen, undo, check again, for each kind. The undo round trip hash test. Write bars met. No path writes without Apply (a test posts a write-intent question and checks the tables did not change). |
+| P4 | `propose_merge_people`, resolver clusters (likely, unsure), confirm UI, rewrite options and versioned summary copy. | none | same | E2E on a fictional folder with 3 name variants. Dedup precision bar. Merge then undo round trip. |
+| P5 | Live variant on the pipeline, `get_live_tail`, thread migration from `meeting_chat_messages`, the old route becomes an adapter. | none (data copy) | `live_chat_enabled` keeps gating the live view | The 9 proofs of `specs/live-chat.md` section 6 still pass. Latency and RSS no worse than today (246 ms warm chat, 231 to 247 MB app RSS, 9.0 GB peak all processes). Gold live questions pass. |
+
+Rule for all phases: an E2E result on the screen is needed. A 200 response alone does not count (user-wide `CLAUDE.md`, "A 200 is not evidence"). Evidence is the command and its real output, plus screenshots in light and dark (project memory "UI proof: both themes").
+
+### 9.2 Risks and mitigations
+
+| # | Risk | Why it matters (source) | Mitigation |
+|---|---|---|---|
+| 1 | E2B is too weak for the router, the slots or the answer | Tau2 24.5% for E2B (https://huggingface.co/google/gemma-4-E2B-it/raw/main/README.md); a 4k multi-job prompt lost to a focused prompt on E2B (`AGENTS.md` ethos section) | Small closed choices. Code renders lists. P0 baseline before any build. Arms A1 to A5. Bars confirmed by the owner. |
+| 2 | Hard schema lowers answer quality | https://arxiv.org/abs/2605.26128 | Strict only on small closed outputs. Arm A2 compares lenient parse. |
+| 3 | A wrong person merge corrupts data in many meetings | Names appear in 7 places (Discovery A section 2.1) | Link-only entity merge. Rewrite only structured fields. Cannot-link rule. User confirms every cluster. Versioned copy. Undo with conflict check. Precision first. |
+| 4 | Vector-only recall misses names and numbers | recall@10 0.613 PT, 0.703 EN (`specs/local-semantic-search.md:105-111`) | Structured tools for counts and owners. Optional FTS5 channel by a measured gate. |
+| 5 | Item ids drift on re-summarize or re-transcribe | Key hash changes with text (`S/lib/meetings/folder-overview.ts:40-42`); segment ids rewritten (Discovery A, gap 10) | `sameOverviewItem` sync, `text_hash` drift check, cites by `meeting_id` plus `start_ms`. |
+| 6 | The lane or RAM hurts dictation or small Macs | One request at a time per local model (`S/lib/llm/lane.ts:106`); peak 9.0 GB with ASR and chat models, 16 GB Macs untested (`specs/live-chat.md` section 7); the prefix cache of cleanup is one entry (`W:905-925`) | Measure dictation latency during a chat turn (bar in 8.7). Measure the cleanup prefix cache after a chat turn. Chat uses the interactive class. The turn deadline is 60 s. |
+| 7 | Privacy: chat over many meetings with a cloud model | Live chat is local only (`S/routes/meetings-chat.ts:98-103`) | Local only by default. OPEN Q1. |
+| 8 | Eval corpus does not match real use | Fictional corpus (8.2) | Owner-labelled private set for dedup. Owner spot check of 20 answers per model. The three spoken meetings. |
+| 9 | Scope creep from the UI placement | Placement is open (section 11) | The API is placement-agnostic. P1 builds one thin UI only. |
+
+Top five by impact: 1, 3, 4, 5, 6.
+
+### 9.3 Open questions for the owner
+
+See section 12.
+
+## 10. Effect on existing features
+
+| Feature | Effect | What is reused |
+|---|---|---|
+| Live chat (`S/routes/meetings-chat.ts`, `S/lib/meetings/live/*`) | Replaced in P5. Until then it is untouched. The routes `GET/POST /api/meetings/:id/chat` stay as an adapter in P5 so the live panel keeps working. The 9 proofs must pass again. | Context builder blocks F and L, prompt style, cite drop, live store, panel (`R/pages/meetings/live-chat-panel.tsx`), cite chips |
+| `meeting_chat_messages` | Copied to threads in P5. Kept one release. | Table rows |
+| Folder standing and overview | Read only through `folder_status`. Overview unchanged. After a merge the standing shows stale through its input hash. | `buildFolderOverview`, `folder_standing`, `folderActionGroups` |
+| Folder action item done marks | P3 adds a dual write with `meeting_items.status`. The overview stays unchanged. | `setActionItemDone` |
+| Search UI (`R/pages/meetings/search.tsx`) | Unchanged API. Retrieval changes are additive. #297 and #298 stay open for the UI. | `retrieve()`, `hitText()` |
+| Search index | A summary edit by Apply re-embeds the summary chunk. A move re-partitions vectors. | indexer, vec store |
+| Cleanup (dictation cleanup, renamed from "Tone" in #398) | It shares the default LLM worker and the lane with the chat (`specs/live-chat.md` section 3). A chat turn of several calls can delay a dictation by up to one call. Chat does not send the prefix-cache header, so a chat call can evict the one-entry cleanup cache (`W:905-925`; `S/lib/llm/registry.ts:529-534`). Measured in P1. | `resolveTaskCall`, `withLlmLane`, the lane |
+| Summarize and Enhance | P3 item sync runs after the save step. A new summary keeps ids by `sameOverviewItem`. | `save.ts` pipeline |
+| Speaker naming | P4 uses the existing speaker update path. | `PATCH /:id/speakers/:label` |
+| LLM inspector | Shows chat stages through `llm_runs` with `scope = "chat"`. | recorder, inspector UI |
+| Settings, Models page | New switch `meeting_chat_enabled`. New row for the task `meetingChat` on the Models page (as `models.taskProfiles.liveChat`, `specs/live-chat.md` section 5). 7 locales plus template. | task profile UI |
+| Knip | New files must be imported or listed in `knip.jsonc` (`AGENTS.md`, development gotchas). | |
+
+## 11. UI placement: pending owner choice
+
+Status: UNDECIDED. A persona conference and three prototypes are in progress: a drawer, an "Ask" page, and an embedded tab with a command palette (Cmd+K). This spec does not choose. The server API in section 5.3 does not depend on the choice.
+
+Requirements that every placement must meet:
+
+1. A scope selector with a default from context: a meeting page gives scope M, a folder page gives scope F, the Ask entry gives scope A. The user can change it. The selector shows the scope in words.
+2. Cite chips. A chip opens the meeting at `start_ms`, or opens the item. A dead chip (meeting deleted) is shown as "removed".
+3. Answer blocks: text, list, count, status, not-found with "search wider".
+4. Proposal cards with a before and after preview, row checkboxes, Apply, Reject, and Undo after Apply.
+5. An activity log of applied changes with Undo (reads `GET /api/chat/changes`).
+6. A step trail of the tools that ran ("searched 3 meetings, read 1 summary"). It comes from `trace_json`. The POST returns once, because the worker does not stream (`W:734-735`).
+7. A "warming" state for the first call, as in the live chat (`specs/live-chat.md` section 5).
+8. The live view shows the same panel with the live scope. The live panel exists today as a right-pane column (`specs/live-chat.md` section 5).
+9. All strings through `t()` in 7 locales. Light and dark themes. Accent rules of `specs/design-system.md`.
+10. The thread list: threads of the current scope, newest first.
+
+What each placement changes in the plan:
+
+| Placement | Effect |
+|---|---|
+| Drawer | One component mounted in the app shell. Scope follows the page. Live view can host it. The least code for P1. (ASSUMPTION) |
+| Ask page | A new route with the thread list. Scope A is the default. Folder and meeting pages need an "ask about this" link. (ASSUMPTION) |
+| Embedded tab and Cmd+K | A tab in the meeting page and the folder page (the live chat already has a "Live chat" tab after Stop, `specs/live-chat.md` section 5). Cmd+K opens scope A. Two entry points to build. (ASSUMPTION) |
+
+P1 waits for this choice. P0 does not.
+
+## 12. Open questions for the owner
+
+| # | Question | Default in this spec |
+|---|---|---|
+| Q1 | May chat over private meeting data use a cloud model? Live chat is local only. Summarize and Enhance may use cloud (Discovery B section 3.4). Options: (a) local only; (b) cloud allowed per scope, with a warning; (c) cloud only for questions that use structured tools and send no transcript text. | (a) local only |
+| Q2 | UI placement: drawer, Ask page, or embedded tab with Cmd+K. | open (section 11) |
+| Q3 | Approve the pass bars of section 8.7 after the P0 baseline? | wait for P0 numbers |
+| Q4 | Who is "Me"? May the app create the account-owner person after one confirmation? | yes, one confirmation |
+| Q5 | Person merge: should the rewrite of speaker names and action item owners be on by default in the preview? | on |
+| Q6 | May we reverse decision D8 of the search spec (no hybrid search) and build the FTS5 channel if the eval shows the need? | yes, gated by measurement |
+| Q7 | Is an unfiled meeting allowed to hold its own done marks (section 4.1)? | yes |
+| Q8 | Which bigger models count as the target set for "must do better": E4B, Nemotron Bolt, Qwen 27B, 26B-A4B? | E4B, Nemotron, Qwen |
+| Q9 | Keep chat history forever, or prune? Threads cascade with their meeting or folder. | keep, no prune |
+| Q10 | Owner-labelled dedup pairs: 100 to 200 pairs needed before P4. Who labels, and when? | owner, before P4 |
+| Q11 | Should the first release of the agent include a "search wider" button, or widen the scope on its own when nothing is found? | button, no auto widen |
+
+## 13. Sources
+
+### 13.1 Repo (re-read for this spec)
+
+`S/lib/search/retrieve.ts`, `S/lib/search/vec-store.ts`, `S/routes/meetings-chat.ts`, `S/lib/schema.ts`, `S/lib/llm/gateway.ts`, `S/lib/llm/task-profiles.ts`, `S/lib/llm/lane.ts`, `S/lib/llm/model-profiles.ts`, `S/lib/meetings/folder-overview.ts`, `S/lib/meetings/workflow/schemas.ts`, `S/lib/meetings/workflow/nodes/save.ts`, `S/lib/meetings/workflow/summary-pure.ts`, `S/lib/meetings/transcript-io.ts`, `S/lib/meetings/live/chat-prompt.ts`, `S/lib/meetings/live/chat-store.ts`, `S/lib/meetings/live/store.ts`, `V/llm-task-profiles.ts`, `V/search.ts`, `W` (the local LLM worker), `specs/live-chat.md`, `AGENTS.md`, `.claude/skills/branch-lifecycle/SKILL.md`, `.claude/skills/app-check/SKILL.md`.
+
+### 13.2 Repo (taken from Discovery A or B, line numbers not re-read by me)
+
+`S/lib/meetings/live/chat-context.ts`, `S/lib/meetings/merge.ts`, `S/lib/meetings/tags.ts`, `S/lib/search/indexer.ts`, `S/lib/search/source.ts`, `S/lib/search/chunker.ts`, `S/lib/mlx-embed/*`, `S/routes/meeting-folders.ts`, `S/routes/meetings.ts`, `S/routes/search.ts`, `S/lib/llm/registry.ts`, `S/lib/llm/call-unit.ts`, `S/lib/llm/recorder.ts`, `S/lib/meetings/workflow/prompts.ts`, `S/lib/meetings/workflow/unit.ts`, `S/lib/meetings/folder-standing.ts`, `specs/local-semantic-search.md`, `specs/llm-runtime-tuning.md`. A build step re-verifies each line before it uses it (house convention, `AGENTS.md`, last paragraph).
+
+### 13.3 External (from Discovery C)
+
+- https://huggingface.co/google/gemma-4-E2B-it/raw/main/README.md
+- https://arxiv.org/abs/2605.26128 (Constraint Tax)
+- https://arxiv.org/abs/2410.10813 (LongMemEval)
+- https://arxiv.org/abs/2305.14627 (ALCE)
+- https://arxiv.org/abs/2607.12885 (judges and references)
+- https://www.anthropic.com/engineering/building-effective-agents
+- https://www.anthropic.com/news/contextual-retrieval
+- https://www.elastic.co/search-labs/blog/improving-information-retrieval-elastic-stack-hybrid
+- https://help.granola.ai/article/chatting-with-your-meetings-ask-granola
+- https://linear.app/developers/agents
+- https://pypi.org/project/agent-runtime-governance/
+- https://huggingface.co/vectara/hallucination_evaluation_model
+- https://pub.towardsai.net/using-gpt-4o-mini-as-an-entity-resolution-judge-95-precision-for-0-04-b216d44a7f20 (blog)
+
+### 13.4 Known gaps in the evidence
+
+1. No tool-call accuracy for E2B, E4B, Nemotron Bolt on our task. P0 measures the router, slot and answer stages instead.
+2. The Qwen3.5-4B BFCL table needs a re-check (Discovery C section 6, item 6). This spec does not use it.
+3. Notion and Granola help pages do not state confirm or undo rules for agent edits (Discovery C section 3). The write design rests on the practitioner pattern.
+4. The wait for the index after a meeting finishes is not measured (Discovery B section 8, item 5). P1 measures it.
+5. Behavior of the lane when a dictation arrives between two stages is not measured (Discovery B section 8, item 6). P1 measures it.
