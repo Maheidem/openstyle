@@ -374,12 +374,14 @@ The bars below come from the measured numbers. They are the numbers that P1 must
 
 ## 9. Decisions for the owner
 
-1. Approve or change the bars of section 7.
-2. Router: keep the structured router (A1) with a better prompt and code dates, or move to native tools (T1), or build the mixed design. The data in 4.5 does not settle it. The cost of T1 is a flag in the worker and a gateway entry (the gateway throws on a `tool-calls` finish, spec 2.1 point 6).
-3. Reranker: 15 candidates (207 ms p50, nDCG@10 0.668) or 30 candidates (396 ms p50, 0.746), or a batched reranker that may bring 30 candidates under 400 ms (not tried). Spec D10 allows a reranker only if the eval shows the need. The eval shows it: R1 adds 17 to 25 points of nDCG@10.
-4. FTS table: the word tokenizer wins. Only the contentless table (no text copy) is under the size bar at 46,000 rows (0.73 x against 2.31 x with content). A contentless table cannot filter by meeting id inside FTS5 (the harness used a stored column for the filter), so the filter needs a join with `meeting_chunks`. The spec text says the FTS table stores its own copy of the chunk text. Decide.
-5. M1: drop it (section 3.7).
-6. Intent labels: should "When is X?" and "Who will do X?" be `lookup` (my gold) or `temporal` and `who_said` (what E2B says)? The first tool is `search_chunks` for lookup and who_said. Only `temporal` changes the plan.
+All six decisions are DECIDED by the owner on 2026-10-31.
+
+1. Bars of section 7: DECIDED 2026-10-31. Approved as proposed. The answer-stage bars stay as in spec 8.7 until P1 measures them.
+2. Router: DECIDED 2026-10-31. MIXED design. Native tool calls (T1, flag `OPENSTYLE_MLX_LLM_NATIVE_TOOLS` and its app-side setting) give the tool and the arguments, and the write proposals. Code validates the call (tool name, argument schema, ids exist, scope). On an invalid or missing call, the pipeline falls back to the structured JSON router (A1) and the slot call. Dates come from the code date parser. The gateway must not throw on a `tool-calls` finish (spec 2.1 point 6).
+3. Reranker: DECIDED 2026-10-31. Qwen3-Reranker-0.6B with 15 candidates now (added p95 at most 400 ms, RAM at most 1.5 GB, idle unload like the embed worker). P1 also tries a batched reranker with 30 candidates. It switches to 30 only if the measured added p95 stays at most 400 ms.
+4. FTS table: DECIDED 2026-10-31. Word tokenizer, CONTENTLESS table. The meeting filter is a join with `meeting_chunks`. The spec text that said the FTS table stores its own copy of the chunk text is updated (spec 7.4.1).
+5. M1 (audio tower): DECIDED 2026-10-31. Dropped.
+6. Intent labels: DECIDED 2026-10-31. Follow E2B. "When is X?" is `temporal`. "Who will do X?" is `who_said`. The gold labels in `scripts/chat-eval` are fixed to match.
 
 ## 10. Reproduce
 
