@@ -16,7 +16,6 @@ import {
   FileText,
   Settings,
   Upload,
-  Zap,
 } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
@@ -73,12 +72,6 @@ const STATIC_NAV: {
     icon: Book,
     shortcut: "3",
     labelKey: "shell.nav.vocabulary",
-  },
-  {
-    to: "/settings/dictionary",
-    icon: Zap,
-    shortcut: "3",
-    labelKey: "shell.nav.dictionary",
   },
   {
     to: "/settings/tone",

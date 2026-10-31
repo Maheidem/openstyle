@@ -42,7 +42,6 @@ const REQUEST_TIMEOUT_MS = 30_000;
 const TIMEOUT_PREFIXES = [
   "/api/settings",
   "/api/keys",
-  "/api/dictionary",
   "/api/dismissed-notifications",
   "/api/vocabulary",
   "/api/history",

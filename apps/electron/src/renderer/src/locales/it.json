@@ -375,32 +375,6 @@
     "dismissHero": "Chiudi",
     "selectDate": "Seleziona"
   },
-  "dictionary": {
-    "title": "Scorciatoie",
-    "subtitle": "Scorciatoie che si espandono mentre parli.",
-    "loading": "Caricamento scorciatoie…",
-    "searchPlaceholder": "Cerca scorciatoie…",
-    "exportLabel": "Esporta",
-    "importLabel": "Importa",
-    "exportTitle": "Esporta come JSON",
-    "importTitle": "Importa da JSON",
-    "addEntry": "Aggiungi voce",
-    "addFirstEntry": "Aggiungi la tua prima voce",
-    "editEntry": "Modifica voce",
-    "newEntry": "Nuova voce",
-    "keyLabel": "Chiave · frase da rilevare",
-    "valueLabel": "Valore · testo sostitutivo",
-    "cancel": "Annulla",
-    "update": "Aggiorna",
-    "entrySingular": "voce",
-    "entryPlural": "voci",
-    "emptyTitle": "Ancora nessuna scorciatoia.",
-    "emptyDesc": "Aggiungi una frase che dici spesso e Openstyle la espanderà in linea.",
-    "noResults": "nessuna corrispondenza per \"{{search}}\".",
-    "noEntries": "nessuna voce — aggiungine una per iniziare.",
-    "failedToSave": "Salvataggio non riuscito.",
-    "usedCount": "usato {{count}}×"
-  },
   "vocabulary": {
     "title": "Vocabolario",
     "loading": "Caricamento vocabolario...",
@@ -430,13 +404,13 @@
     "biasNote": "Le frasi di più parole funzionano con Nova 3, OpenAI e Groq. Nova 2 favorisce le parole singole. Scribe v1 non usa il bias del vocabolario."
   },
   "tone": {
-    "title": "Tono",
-    "subtitle": "Quanto Openstyle ripulisce e come suona in ogni app.",
-    "loading": "Caricamento tono…",
-    "disabledBanner": {
-      "title": "La pulizia è disattivata.",
-      "desc": "Queste impostazioni di intensità e tono si applicano quando attivi la pulizia con IA in Modelli. Le tue scelte restano salvate fino ad allora.",
-      "goToModels": "Vai a Modelli"
+    "title": "Pulizia",
+    "subtitle": "Quanto Openstyle ripulisce ciò che dici.",
+    "loading": "Caricamento pulizia…",
+    "switch": {
+      "label": "Pulizia con IA",
+      "descOn": "Openstyle ripulisce il tuo dettato con il modello scelto.",
+      "descOff": "La pulizia è disattivata. Il dettato resta la trascrizione grezza. La tua scelta di intensità resta salvata."
     },
     "routesFrom": "Instradato da",
     "previewLabel": "Anteprima",
@@ -451,9 +425,6 @@
       "eyebrow": "Pulizia",
       "title": "Sistema mentre parlo.",
       "desc": "Quanto correggere prima che le tue parole arrivino.",
-      "currentMode": "Modalità attuale",
-      "toggleLabel": "Pulizia",
-      "strengthLabel": "Intensità",
       "noModelTitle": "Nessun modello di pulizia selezionato.",
       "noModelDesc": "Scegline uno in Modelli. Queste impostazioni si applicano non appena un modello è configurato.",
       "noModelCta": "Apri Modelli",
@@ -799,9 +770,8 @@
   "shell": {
     "nav": {
       "today": "Trascrizioni",
-      "dictionary": "Scorciatoie",
       "vocabulary": "Vocabolario",
-      "tone": "Tono",
+      "tone": "Pulizia",
       "models": "Modelli",
       "settings": "Impostazioni",
       "help": "Aiuto",

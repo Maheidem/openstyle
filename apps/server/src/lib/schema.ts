@@ -11,7 +11,7 @@ const DEFAULT_CLOUD_URL = "https://service.freestylevoice.com";
 // reports 26). Migrations only run while currentVersion < SCHEMA_VERSION, so a
 // fork migration numbered below that is silently skipped for anyone arriving
 // from upstream. Keep this above the highest upstream version we have seen.
-const SCHEMA_VERSION = 52;
+const SCHEMA_VERSION = 53;
 
 // Legacy default format-rule patterns (used only by pre-v12 migrations below):
 // domain/phrase entries match as substrings of url+title+app; bare words match
@@ -1343,6 +1343,31 @@ function applyMigrations(db: DatabaseSync, currentVersion: number): void {
     if (!hasColumn(db, "meetings", "transcript_source")) {
       db.exec(`ALTER TABLE meetings ADD COLUMN transcript_source TEXT`);
     }
+  }
+
+  if (currentVersion < 53 && tableExists(db, "dictionary")) {
+    // The Shortcuts feature (say X, write Y) is removed. Keep the words of the
+    // user: copy each entry VALUE into the vocabulary as a term, then drop the
+    // table. A value that is already a term (any letter case) is skipped, and
+    // so is a value longer than the 200 character term limit of the
+    // vocabulary routes. No notes. The step is safe to run again: with no
+    // table, it does nothing.
+    const rows = db
+      .prepare("SELECT value FROM dictionary ORDER BY id ASC")
+      .all() as { value: string }[];
+    const seen = new Set(
+      (
+        db.prepare("SELECT term FROM vocabulary").all() as { term: string }[]
+      ).map((r) => r.term.toLowerCase()),
+    );
+    const insert = db.prepare("INSERT INTO vocabulary (term) VALUES (?)");
+    for (const { value } of rows) {
+      const term = value.trim();
+      if (!term || term.length > 200 || seen.has(term.toLowerCase())) continue;
+      insert.run(term);
+      seen.add(term.toLowerCase());
+    }
+    db.exec("DROP TABLE dictionary");
   }
 
   // Upsert schema version

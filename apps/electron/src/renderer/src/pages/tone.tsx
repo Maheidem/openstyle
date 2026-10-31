@@ -43,6 +43,7 @@ import {
   RadioCard,
   RadioCardGroup,
 } from "@renderer/components/ui/radio-card-group";
+import { Switch } from "@renderer/components/ui/switch";
 import {
   Tabs,
   TabsContent,
@@ -185,6 +186,11 @@ export default function TonePage(): React.JSX.Element {
 
   const loading = settingsQuery.isLoading || configuredQuery.isLoading;
 
+  // The four destination tones and the app routes are advanced settings.
+  // Without Advanced mode the page shows the cleanup strength and the switch.
+  const advancedMode =
+    settingsQuery.data?.[SETTINGS_KEYS.advancedMode] === "true";
+
   // Whether a default cleanup (LLM) model is configured — drives the banners.
   const hasCleanupModel = useMemo(
     () =>
@@ -247,7 +253,7 @@ export default function TonePage(): React.JSX.Element {
 
   const selectCleanupMode = useCallback(
     (next: CleanupCardValue) => {
-      // Enablement lives on the Models page now — this only picks the strength.
+      // This only picks the strength. The on/off switch is separate.
       if (next === "custom" && cleanupIntensity !== "custom") {
         const seed =
           cleanupCustomPrompt.trim() ||
@@ -279,6 +285,17 @@ export default function TonePage(): React.JSX.Element {
   const resetToPresetMode = useCallback(() => {
     selectCleanupMode("low");
   }, [selectCleanupMode]);
+
+  const toggleCleanup = useCallback(
+    (next: boolean) => {
+      setLlmCleanup(next);
+      saveSetting(SETTINGS_KEYS.llmCleanup, String(next)).catch((err) => {
+        setLlmCleanup(!next);
+        console.error("Failed to save LLM cleanup:", err);
+      });
+    },
+    [saveSetting],
+  );
 
   const savePersonalTone = useCallback(
     (value: CleanupPersonalTone) => {
@@ -367,36 +384,36 @@ export default function TonePage(): React.JSX.Element {
       <div className="mx-auto w-full max-w-[1060px]">
         <PageHeader title={t("tone.title")} subtitle={t("tone.subtitle")} />
 
-        {!llmCleanup ? (
-          <CleanupDisabledBanner />
-        ) : !hasCleanupModel ? (
-          <CleanupNoModelBanner />
-        ) : null}
+        <CleanupSwitchRow checked={llmCleanup} onChange={toggleCleanup} />
+
+        {llmCleanup && !hasCleanupModel ? <CleanupNoModelBanner /> : null}
 
         <Tabs
-          value={activeTab}
+          value={advancedMode ? activeTab : "cleanup"}
           onValueChange={(value) => setActiveTab(value as ToneTab)}
           className="mt-8 gap-7"
         >
-          <TabsList className="h-11 w-fit max-w-full items-stretch gap-1 self-start overflow-x-auto overflow-y-hidden rounded-full border border-border bg-card p-[3px]">
-            {(
-              [
-                ["cleanup", "tone.tabs.cleanup"],
-                ["personal", "tone.tabs.personal"],
-                ["work", "tone.tabs.work"],
-                ["email", "tone.tabs.email"],
-                ["everythingElse", "tone.tabs.everythingElse"],
-              ] as const
-            ).map(([value, key]) => (
-              <TabsTrigger
-                key={value}
-                value={value}
-                className="h-full flex-none rounded-full px-4 py-0 text-[13px] font-medium leading-none data-active:border-border data-active:bg-background data-active:text-foreground"
-              >
-                {t(key)}
-              </TabsTrigger>
-            ))}
-          </TabsList>
+          {advancedMode ? (
+            <TabsList className="h-11 w-fit max-w-full items-stretch gap-1 self-start overflow-x-auto overflow-y-hidden rounded-full border border-border bg-card p-[3px]">
+              {(
+                [
+                  ["cleanup", "tone.tabs.cleanup"],
+                  ["personal", "tone.tabs.personal"],
+                  ["work", "tone.tabs.work"],
+                  ["email", "tone.tabs.email"],
+                  ["everythingElse", "tone.tabs.everythingElse"],
+                ] as const
+              ).map(([value, key]) => (
+                <TabsTrigger
+                  key={value}
+                  value={value}
+                  className="h-full flex-none rounded-full px-4 py-0 text-[13px] font-medium leading-none data-active:border-border data-active:bg-background data-active:text-foreground"
+                >
+                  {t(key)}
+                </TabsTrigger>
+              ))}
+            </TabsList>
+          ) : null}
 
           <TabsContent value="cleanup" className="mt-0">
             <CleanupTonePanel
@@ -411,104 +428,119 @@ export default function TonePage(): React.JSX.Element {
             />
           </TabsContent>
 
-          <TabsContent value="personal" className="mt-0">
-            <SubsetTonePanel
-              destination="personal"
-              title={t("tone.personal.title")}
-              apps={getVisibleBuiltinRouteIds("personal", assignments)}
-              value={personalTone}
-              options={PERSONAL_OPTIONS}
-              onChange={savePersonalTone}
-              assignments={assignments.filter(
-                (a) => a.destination === "personal",
-              )}
-              allAssignments={assignments}
-              onAddAssignment={addAssignment}
-              onRemoveAssignment={removeAssignment}
-            />
-          </TabsContent>
+          {advancedMode ? (
+            <>
+              <TabsContent value="personal" className="mt-0">
+                <SubsetTonePanel
+                  destination="personal"
+                  title={t("tone.personal.title")}
+                  apps={getVisibleBuiltinRouteIds("personal", assignments)}
+                  value={personalTone}
+                  options={PERSONAL_OPTIONS}
+                  onChange={savePersonalTone}
+                  assignments={assignments.filter(
+                    (a) => a.destination === "personal",
+                  )}
+                  allAssignments={assignments}
+                  onAddAssignment={addAssignment}
+                  onRemoveAssignment={removeAssignment}
+                />
+              </TabsContent>
 
-          <TabsContent value="work" className="mt-0">
-            <SubsetTonePanel
-              destination="work"
-              title={t("tone.work.title")}
-              apps={getVisibleBuiltinRouteIds("work", assignments)}
-              value={workTone}
-              options={WORK_OPTIONS}
-              onChange={saveWorkTone}
-              assignments={assignments.filter((a) => a.destination === "work")}
-              allAssignments={assignments}
-              onAddAssignment={addAssignment}
-              onRemoveAssignment={removeAssignment}
-            />
-          </TabsContent>
+              <TabsContent value="work" className="mt-0">
+                <SubsetTonePanel
+                  destination="work"
+                  title={t("tone.work.title")}
+                  apps={getVisibleBuiltinRouteIds("work", assignments)}
+                  value={workTone}
+                  options={WORK_OPTIONS}
+                  onChange={saveWorkTone}
+                  assignments={assignments.filter(
+                    (a) => a.destination === "work",
+                  )}
+                  allAssignments={assignments}
+                  onAddAssignment={addAssignment}
+                  onRemoveAssignment={removeAssignment}
+                />
+              </TabsContent>
 
-          <TabsContent value="email" className="mt-0">
-            <SubsetTonePanel
-              destination="email"
-              title={t("tone.email.title")}
-              apps={getVisibleBuiltinRouteIds("email", assignments)}
-              value={emailTone}
-              options={EMAIL_OPTIONS}
-              onChange={saveEmailTone}
-              assignments={assignments.filter((a) => a.destination === "email")}
-              allAssignments={assignments}
-              onAddAssignment={addAssignment}
-              onRemoveAssignment={removeAssignment}
-            />
-          </TabsContent>
+              <TabsContent value="email" className="mt-0">
+                <SubsetTonePanel
+                  destination="email"
+                  title={t("tone.email.title")}
+                  apps={getVisibleBuiltinRouteIds("email", assignments)}
+                  value={emailTone}
+                  options={EMAIL_OPTIONS}
+                  onChange={saveEmailTone}
+                  assignments={assignments.filter(
+                    (a) => a.destination === "email",
+                  )}
+                  allAssignments={assignments}
+                  onAddAssignment={addAssignment}
+                  onRemoveAssignment={removeAssignment}
+                />
+              </TabsContent>
 
-          <TabsContent value="everythingElse" className="mt-0">
-            <SubsetTonePanel
-              destination="overall"
-              title={t("tone.everythingElse.title")}
-              desc={t("tone.everythingElse.desc")}
-              apps={[]}
-              value={overallTone}
-              options={OVERALL_OPTIONS}
-              onChange={saveOverallTone}
-              assignments={assignments.filter(
-                (a) => a.destination === "overall",
-              )}
-              allAssignments={assignments}
-              onAddAssignment={addAssignment}
-              onRemoveAssignment={removeAssignment}
-            />
-          </TabsContent>
+              <TabsContent value="everythingElse" className="mt-0">
+                <SubsetTonePanel
+                  destination="overall"
+                  title={t("tone.everythingElse.title")}
+                  desc={t("tone.everythingElse.desc")}
+                  apps={[]}
+                  value={overallTone}
+                  options={OVERALL_OPTIONS}
+                  onChange={saveOverallTone}
+                  assignments={assignments.filter(
+                    (a) => a.destination === "overall",
+                  )}
+                  allAssignments={assignments}
+                  onAddAssignment={addAssignment}
+                  onRemoveAssignment={removeAssignment}
+                />
+              </TabsContent>
+            </>
+          ) : null}
         </Tabs>
       </div>
     </PageShell>
   );
 }
 
-// Shown across every Tone tab while post-processing is off. Cleanup enablement
-// lives on the Models page, so this points users there.
-function CleanupDisabledBanner(): React.JSX.Element {
+// The cleanup on/off switch. It lives on this page so the user can turn
+// cleanup on or off without Advanced mode. The Models page has the same switch.
+function CleanupSwitchRow({
+  checked,
+  onChange,
+}: {
+  checked: boolean;
+  onChange: (next: boolean) => void;
+}): React.JSX.Element {
   const { t } = useTranslation();
   return (
-    <div className="border-border/70 bg-card mt-6 flex flex-wrap items-center justify-between gap-3 rounded-lg border border-dashed px-4 py-3.5">
+    <div className="border-border/70 bg-card mt-6 flex items-center justify-between gap-4 rounded-lg border px-4 py-3.5">
       <div className="min-w-0">
-        <p className="text-foreground text-[13px] font-medium">
-          {t("tone.disabledBanner.title")}
+        <p
+          id="cleanup-switch-label"
+          className="text-foreground text-[13px] font-medium"
+        >
+          {t("tone.switch.label")}
         </p>
         <p className="text-muted-foreground mt-0.5 text-[12px] leading-[1.5]">
-          {t("tone.disabledBanner.desc")}
+          {checked ? t("tone.switch.descOn") : t("tone.switch.descOff")}
         </p>
       </div>
-      <div className="flex items-center gap-2">
-        <Button asChild variant="outline" size="sm">
-          <Link to="/settings/models">
-            {t("tone.disabledBanner.goToModels")}
-          </Link>
-        </Button>
-      </div>
+      <Switch
+        checked={checked}
+        onCheckedChange={onChange}
+        aria-labelledby="cleanup-switch-label"
+      />
     </div>
   );
 }
 
 // Cleanup is enabled but no LLM model is configured, so nothing actually runs.
-// Shown across every Tone tab (not just the Cleanup tab) since the tone
-// selectors have no effect until a model is picked.
+// Shown above every tab, since the settings have no effect until a model is
+// picked.
 function CleanupNoModelBanner(): React.JSX.Element {
   const { t } = useTranslation();
   return (

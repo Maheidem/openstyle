@@ -37,6 +37,7 @@
 - The default dictation hotkey on macOS is now Control+Alt in hold mode (it was Fn). A hotkey that you saved stays as it is. An install with no saved hotkey now uses Control+Alt. You can change it in Settings, Shortcuts.
 - The ASR prompt names the owner and the attendees first. It uses first names by default.
 - The Eval Lab runs grids of ASR settings and records each run. New gold keys and a span metric measure the quality of names and terms.
+- Shortcuts (say X, write Y) is removed. The words that you saved move to Vocabulary as terms; the "say X" part is dropped. Tone is now Cleanup. The strength cards and the cleanup on/off switch are on the Cleanup page. The tones for Personal, Work, Email and Everything else show only when Advanced mode is on.
 
 ### Bug Fixes 🐛
 

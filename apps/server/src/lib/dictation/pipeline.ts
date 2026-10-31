@@ -7,8 +7,8 @@
 //   -> S6 polish LLM (high) -> S7 tone LLM (tone on)
 //   -> S8 list markers (high) -> S9 fragments (code)
 //
-// The dictionary runs after this, in post-process.ts. A stage never throws: on
-// a fault it gives back its input (the cleanup stage gives the light format).
+// A stage never throws: on a fault it gives back its input (the cleanup stage
+// gives the light format).
 
 import { lostTokens } from "./guard.js";
 import { type DictationLang, resolveDictationLanguage } from "./language.js";

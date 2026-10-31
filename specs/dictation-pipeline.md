@@ -15,7 +15,7 @@ Writing rules: Simplified Technical English. Fictional test data only.
 
 | # | Owner decision | Build |
 |---|---|---|
-| 1 | Order: code stages first on the raw text, then ONE short cleanup LLM call with the dictation language, then polish (high only), then tone (tone on only), then the dictionary last. | `runDictationPipeline` (`apps/server/src/lib/dictation/pipeline.ts`): S1 line commands, S2 counted lists, S3 contact info, S4 numbers, S5 cleanup, S6 polish, S7 tone, S8 list markers, S9 fragments. `postProcess` applies the dictionary after the pipeline. "One call" is one call per line part, lead-in or list item, as in the measured prototype. |
+| 1 | Order: code stages first on the raw text, then ONE short cleanup LLM call with the dictation language, then polish (high only), then tone (tone on only). | `runDictationPipeline` (`apps/server/src/lib/dictation/pipeline.ts`): S1 line commands, S2 counted lists, S3 contact info, S4 numbers, S5 cleanup, S6 polish, S7 tone, S8 list markers, S9 fragments. The Shortcuts dictionary stage is removed (2026-10-31, schema 53); the pipeline ends at S9. "One call" is one call per line part, lead-in or list item, as in the measured prototype. |
 | 2 | Low = code stages only, no LLM call at all. | Low runs S1 to S4, then the light format in code (filler sounds out, capitals, English "I", a final period), S9. Low also skips the tone stage (no LLM call at all). The model is not started for low. |
 | 3 | Medium = code stages + the cleanup LLM call. | As decided. |
 | 4 | High: keep the polish stage as it is; the owner accepts its extra edits. | The research polish prompt, unchanged. |
@@ -101,7 +101,6 @@ raw transcript (after stripVocabLeak, sanitize)
   -> S7 LLM: tone                only when the destination tone is not "off"
   -> S8 code: list markers       high only: numbered -> "- " when nothing was counted
   -> S9 code: fragments          no final period on a raw text of 3 words or less (6 CJK characters)
-  -> S10 code: dictionary        applyDictionaryReplacements (unchanged, last)
 ```
 
 ### 4.2 Stage contracts
@@ -119,7 +118,6 @@ Every stage is a function `(text, ctx) -> text`. `ctx` holds `raw`, `language`, 
 | S7 tone LLM | the existing destination tone block (+ email structure block for email) with a short frame prompt | facts, numbers | all | input text (guard) |
 | S8 list markers | high only: "1." -> "- " when the raw text has fewer than 2 counting cues | | en, es, zh | unchanged |
 | S9 fragments | strip one final "." or "。" from a single-line answer of a very short raw text | | all with spaces; zh by characters | unchanged |
-| S10 dictionary | user replacements | | all | unchanged |
 
 Guard for S6 and S7: after the call, the text must still contain every protected token of its input (emails, URLs, paths, numbers). If one is missing, or the answer is empty, the stage returns its input. Measured: 4 of 28 polish answers fell back on E4B, 0 on E2B.
 
@@ -134,7 +132,7 @@ Guard for S6 and S7: after the call, the text must still contain every protected
 
 | Setting | Stages | LLM calls (E2B p50 / p95, measured) |
 |---|---|---|
-| low | S1-S5, S9, S10 | 1 (93 / 155 ms) |
+| low | S1-S5, S9 | 1 (93 / 155 ms) |
 | medium (default) | same as low | 1 (125 / 232 ms) |
 | high | + S6 polish, S8 | 2 (396 / 494 ms) |
 | any + tone | + S7 tone | +1 (medium + tone 207 / 419 ms) |
@@ -143,10 +141,10 @@ Extra parts from S1 and items from S2 add one cleanup call each (about 60 to 100
 
 Low and medium give the same output on E2B in this design. The cleanup call fixes grammar also at low (all arms, including today's prompt, failed both "low keeps the grammar error" cases). A separate grammar stage for medium gave no gain (section 6.2). This is an open decision (section 9).
 
-### 4.5 Custom vocabulary and dictionary
+### 4.5 Custom vocabulary
 
 - Vocabulary stays an ASR bias prompt, as today. It does not go into the cleanup prompt, so the system prefix stays fixed and the prefix cache keeps working.
-- The dictionary stays the last stage (S10), as today, so no LLM stage can undo a replacement.
+- The dictionary stage S10 ("Shortcuts": say X, write Y) is removed (owner decision 2026-10-31). Schema step 53 copies each entry value into the vocabulary as a term and drops the `dictionary` table. No replacement runs after the pipeline any more.
 - Follow-up (not built): add vocabulary terms to the S6/S7 guard tokens, so that polish or tone cannot change a vocabulary spelling.
 
 ### 4.6 Runtime shape and Enhance reuse
@@ -159,7 +157,7 @@ Low and medium give the same output on E2B in this design. The cleanup call fixe
 
 | Part | Budget | Measured |
 |---|---|---|
-| Code stages S1-S4, S8-S10 | 5 ms | 0 to 1 ms |
+| Code stages S1-S4, S8-S9 | 5 ms | 0 to 1 ms |
 | S5 cleanup, one part | 250 ms | 217 ms |
 | low / medium total | 1,000 ms (gate) | 155 / 232 ms |
 | high total | 1,500 ms (proposal) | 494 ms |

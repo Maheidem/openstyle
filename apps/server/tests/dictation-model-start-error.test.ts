@@ -1,5 +1,5 @@
 // A cleanup model that does not start is an engine problem: the person gets
-// the raw text with the dictionary applied, never an error. Fictional text.
+// the raw text, never an error. Fictional text.
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 const warn = vi.fn();
@@ -46,21 +46,15 @@ beforeEach(() => {
     `INSERT INTO model_configs (provider, model_id, model_name, type, is_default)
      VALUES ('local-mlx-llm', 'local-mlx-llm/gemma-4-e2b-qat-4bit', 'Gemma 4 E2B', 'llm', 1)`,
   ).run();
-  db.exec("DELETE FROM dictionary");
-  db.prepare("INSERT INTO dictionary (key, value) VALUES (?, ?)").run(
-    "tacoma depot",
-    "Tacoma Depot",
-  );
 });
 
 afterEach(() => {
   startError.mockReset();
   startError.mockImplementation(() => null);
-  getDb().exec("DELETE FROM dictionary");
 });
 
 describe("cleanup when the model does not start", () => {
-  it("gives the raw text with the dictionary applied and logs one warn line", async () => {
+  it("gives the raw text and logs one warn line", async () => {
     startError.mockImplementation(
       () =>
         new MlxRuntimeUpdatePendingError(
@@ -76,7 +70,7 @@ describe("cleanup when the model does not start", () => {
 
     expect(r).toMatchObject({
       cleaned:
-        "the riverside team ships the beta adapter to the Tacoma Depot on friday",
+        "the riverside team ships the beta adapter to the tacoma depot on friday",
       llmProvider: null,
       llmModel: null,
       inputTokens: 0,

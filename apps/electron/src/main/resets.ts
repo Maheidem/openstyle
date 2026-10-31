@@ -74,7 +74,7 @@ export async function factoryReset(): Promise<void> {
     title: "Hard Reset (Dev)",
     message: "Delete all Openstyle settings & data and restart?",
     detail:
-      "Removes settings, API keys, history, and dictionary/vocabulary, then " +
+      "Removes settings, API keys, history, and vocabulary, then " +
       "relaunches into onboarding. Downloaded voice models are kept. macOS " +
       "Microphone/Accessibility permissions are not affected.",
   });

@@ -421,32 +421,6 @@
     "subtitle": "Everything you've dictated, in one searchable place.",
     "selectDate": "Select"
   },
-  "dictionary": {
-    "title": "Shortcuts",
-    "subtitle": "Shortcuts that expand as you speak. Say the key, get the value.",
-    "loading": "Loading shortcuts…",
-    "searchPlaceholder": "Search shortcuts…",
-    "exportLabel": "Export",
-    "importLabel": "Import",
-    "exportTitle": "Export as JSON",
-    "importTitle": "Import from JSON",
-    "addEntry": "Add entry",
-    "addFirstEntry": "Add your first entry",
-    "editEntry": "Edit entry",
-    "newEntry": "New entry",
-    "keyLabel": "Key · phrase to detect",
-    "valueLabel": "Value · replacement text",
-    "cancel": "Cancel",
-    "update": "Update",
-    "entrySingular": "entry",
-    "entryPlural": "entries",
-    "emptyTitle": "No shortcuts yet.",
-    "emptyDesc": "Add a phrase you say often, like <example>my address</example> — and Openstyle expands it inline.",
-    "noResults": "nothing matches \"{{search}}\".",
-    "noEntries": "no entries — add one to start.",
-    "failedToSave": "Failed to save entry.",
-    "usedCount": "{{count}}× used"
-  },
   "vocabulary": {
     "title": "Vocabulary",
     "loading": "Loading vocabulary…",
@@ -483,13 +457,13 @@
     "biasNote": "Multi-word phrases work on Nova 3, OpenAI, and Groq. Nova 2 boosts single words. Scribe v1 does not use vocabulary bias."
   },
   "tone": {
-    "title": "Tone",
-    "subtitle": "How much Openstyle cleans up — and how it sounds in each app.",
-    "loading": "Loading tone…",
-    "disabledBanner": {
-      "title": "Cleanup is off.",
-      "desc": "These strength and tone settings apply once you turn on AI cleanup in Models. Your choices are saved until then.",
-      "goToModels": "Go to Models"
+    "title": "Cleanup",
+    "subtitle": "How much Openstyle cleans up what you say.",
+    "loading": "Loading cleanup…",
+    "switch": {
+      "label": "AI cleanup",
+      "descOn": "Openstyle cleans up your dictation with the model you chose.",
+      "descOff": "Cleanup is off. Your dictation keeps the raw transcript. Your strength choice is saved."
     },
     "routesFrom": "Routes from",
     "previewLabel": "Preview",
@@ -504,9 +478,6 @@
       "eyebrow": "Cleanup",
       "title": "Tidy up as I talk.",
       "desc": "How much to fix before your words land.",
-      "currentMode": "Current mode",
-      "toggleLabel": "Cleanup",
-      "strengthLabel": "Strength",
       "noModelTitle": "No cleanup model selected.",
       "noModelDesc": "Choose one in Models. These settings apply as soon as a model is configured.",
       "noModelCta": "Open Models",
@@ -979,9 +950,8 @@
   "shell": {
     "nav": {
       "today": "Transcriptions",
-      "dictionary": "Shortcuts",
       "vocabulary": "Vocabulary",
-      "tone": "Tone",
+      "tone": "Cleanup",
       "models": "Models",
       "settings": "Settings",
       "help": "Help",

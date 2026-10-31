@@ -375,32 +375,6 @@
     "dismissHero": "Schließen",
     "selectDate": "Auswählen"
   },
-  "dictionary": {
-    "title": "Kurzbefehle",
-    "subtitle": "Abkürzungen, die sich beim Sprechen erweitern. Sagen Sie den Schlüssel, erhalten Sie den Wert.",
-    "loading": "Kurzbefehle werden geladen…",
-    "searchPlaceholder": "Kurzbefehle durchsuchen…",
-    "exportLabel": "Exportieren",
-    "importLabel": "Importieren",
-    "exportTitle": "Als JSON exportieren",
-    "importTitle": "Aus JSON importieren",
-    "addEntry": "Eintrag hinzufügen",
-    "addFirstEntry": "Ersten Eintrag hinzufügen",
-    "editEntry": "Eintrag bearbeiten",
-    "newEntry": "Neuer Eintrag",
-    "keyLabel": "Schlüssel · zu erkennende Phrase",
-    "valueLabel": "Wert · Ersatztext",
-    "cancel": "Abbrechen",
-    "update": "Aktualisieren",
-    "entrySingular": "Eintrag",
-    "entryPlural": "Einträge",
-    "emptyTitle": "Noch keine Kurzbefehle.",
-    "emptyDesc": "Fügen Sie eine häufig verwendete Phrase hinzu, wie <example>meine Adresse</example> — und Openstyle erweitert sie inline.",
-    "noResults": "nichts entspricht \"{{search}}\".",
-    "noEntries": "keine Einträge — fügen Sie einen hinzu.",
-    "failedToSave": "Eintrag konnte nicht gespeichert werden.",
-    "usedCount": "{{count}}× verwendet"
-  },
   "vocabulary": {
     "title": "Vokabular",
     "loading": "Vokabular wird geladen…",
@@ -431,13 +405,13 @@
     "biasNote": "Mehrwortphrasen funktionieren mit Nova 3, OpenAI und Groq. Nova 2 verstärkt einzelne Wörter. Scribe v1 nutzt keine Vokabular-Gewichtung."
   },
   "tone": {
-    "title": "Ton",
-    "subtitle": "Wie stark Openstyle aufräumt – und wie es in jeder App klingt.",
-    "loading": "Ton wird geladen…",
-    "disabledBanner": {
-      "title": "Bereinigung ist aus.",
-      "desc": "Diese Stärke- und Ton-Einstellungen greifen, sobald du die KI-Bereinigung in Modelle aktivierst. Deine Auswahl bleibt bis dahin gespeichert.",
-      "goToModels": "Zu Modelle"
+    "title": "Bereinigung",
+    "subtitle": "Wie stark Openstyle aufräumt, was du sagst.",
+    "loading": "Bereinigung wird geladen…",
+    "switch": {
+      "label": "KI-Bereinigung",
+      "descOn": "Openstyle bereinigt dein Diktat mit dem gewählten Modell.",
+      "descOff": "Die Bereinigung ist aus. Dein Diktat bleibt das rohe Transkript. Deine Stärke-Auswahl bleibt gespeichert."
     },
     "routesFrom": "Weitergeleitet von",
     "previewLabel": "Vorschau",
@@ -452,9 +426,6 @@
       "eyebrow": "Bereinigung",
       "title": "Aufräumen, während ich spreche.",
       "desc": "Wie viel korrigiert wird, bevor deine Worte ankommen.",
-      "currentMode": "Aktueller Modus",
-      "toggleLabel": "Bereinigung",
-      "strengthLabel": "Stärke",
       "noModelTitle": "Kein Bereinigungsmodell ausgewählt.",
       "noModelDesc": "Wähle eines unter Modelle. Diese Einstellungen greifen, sobald ein Modell konfiguriert ist.",
       "noModelCta": "Modelle öffnen",
@@ -800,9 +771,8 @@
   "shell": {
     "nav": {
       "today": "Transkriptionen",
-      "dictionary": "Kurzbefehle",
       "vocabulary": "Vokabular",
-      "tone": "Ton",
+      "tone": "Bereinigung",
       "models": "Modelle",
       "settings": "Einstellungen",
       "help": "Hilfe",

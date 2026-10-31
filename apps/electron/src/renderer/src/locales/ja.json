@@ -375,32 +375,6 @@
     "dismissHero": "閉じる",
     "selectDate": "選択"
   },
-  "dictionary": {
-    "title": "ショートカット",
-    "subtitle": "話すと展開されるショートカット。キーワードを話すと、指定したテキストに置き換わります。",
-    "loading": "ショートカットを読み込み中…",
-    "searchPlaceholder": "ショートカットを検索…",
-    "exportLabel": "エクスポート",
-    "importLabel": "インポート",
-    "exportTitle": "JSONとしてエクスポート",
-    "importTitle": "JSONからインポート",
-    "addEntry": "エントリーを追加",
-    "addFirstEntry": "最初のエントリーを追加",
-    "editEntry": "エントリーを編集",
-    "newEntry": "新規エントリー",
-    "keyLabel": "キーワード · 検出するフレーズ",
-    "valueLabel": "置換テキスト · 置き換える文章",
-    "cancel": "キャンセル",
-    "update": "更新",
-    "entrySingular": "エントリー",
-    "entryPlural": "エントリー",
-    "emptyTitle": "ショートカットはまだありません。",
-    "emptyDesc": "よく使うフレーズ（例：<example>自分の住所</example>）を追加すると、Openstyle が入力時にそれを展開します。",
-    "noResults": "「{{search}}」に一致するものはありません。",
-    "noEntries": "エントリーがありません — 追加して開始してください。",
-    "failedToSave": "エントリーの保存に失敗しました。",
-    "usedCount": "{{count}}回使用"
-  },
   "vocabulary": {
     "title": "ボキャブラリー",
     "loading": "ボキャブラリーを読み込み中...",
@@ -431,13 +405,13 @@
     "biasNote": "複数の単語からなるフレーズは、Nova 3、OpenAI、Groq で使えます。Nova 2 は単語単位で強調されます。Scribe v1 では語彙バイアスは使われません。"
   },
   "tone": {
-    "title": "トーン",
-    "subtitle": "Openstyle がどれだけ整えるか、そして各アプリでどう聞こえるか。",
-    "loading": "トーンを読み込み中…",
-    "disabledBanner": {
-      "title": "クリーンアップはオフです。",
-      "desc": "これらの強さとトーンの設定は、モデルで AI クリーンアップをオンにすると適用されます。それまで選択内容は保存されます。",
-      "goToModels": "モデルへ"
+    "title": "クリーンアップ",
+    "subtitle": "話した内容を Openstyle がどれだけ整えるか。",
+    "loading": "クリーンアップを読み込み中…",
+    "switch": {
+      "label": "AI クリーンアップ",
+      "descOn": "選んだモデルで、Openstyle が音声入力を整えます。",
+      "descOff": "クリーンアップはオフです。音声入力は元の文字起こしのままです。強さの選択は保存されます。"
     },
     "routesFrom": "ルート元",
     "previewLabel": "プレビュー",
@@ -452,9 +426,6 @@
       "eyebrow": "クリーンアップ",
       "title": "話しながら整える。",
       "desc": "言葉が届く前にどれだけ直すか。",
-      "currentMode": "現在のモード",
-      "toggleLabel": "クリーンアップ",
-      "strengthLabel": "強さ",
       "noModelTitle": "クリーンアップモデルが選択されていません。",
       "noModelDesc": "モデルで選択してください。モデルを設定するとすぐにこれらの設定が適用されます。",
       "noModelCta": "モデルを開く",
@@ -800,9 +771,8 @@
   "shell": {
     "nav": {
       "today": "文字起こし",
-      "dictionary": "ショートカット",
       "vocabulary": "ボキャブラリー",
-      "tone": "トーン",
+      "tone": "クリーンアップ",
       "models": "モデル",
       "settings": "設定",
       "help": "ヘルプ",
