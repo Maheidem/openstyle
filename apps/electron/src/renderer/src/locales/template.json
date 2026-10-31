@@ -1599,7 +1599,10 @@
       "citePast": "{{title}}, {{time}}",
       "citeFolder": "Folder description",
       "you": "You",
-      "answer": "Answer"
+      "answer": "Answer",
+      "fromLive": "From live",
+      "fromLiveHint": "This transcript comes from the live view. Use Re-transcribe to run the full pass.",
+      "chatHistoryTitle": "Live chat"
     }
   },
   "help": {

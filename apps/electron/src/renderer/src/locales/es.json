@@ -1281,7 +1281,10 @@
       "citePast": "{{title}}, {{time}}",
       "citeFolder": "Descripción de la carpeta",
       "you": "Tú",
-      "answer": "Respuesta"
+      "answer": "Respuesta",
+      "fromLive": "Del directo",
+      "fromLiveHint": "Esta transcripción viene de la vista en directo. Usa Volver a transcribir para hacer el paso completo.",
+      "chatHistoryTitle": "Chat en directo"
     }
   },
   "help": {

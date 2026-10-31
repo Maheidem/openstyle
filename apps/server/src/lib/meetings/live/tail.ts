@@ -24,10 +24,14 @@ export const MIN_CUT_MS = 12_000;
 const FRAME_MS = 20;
 
 /**
- * Read the PCM of a growing WAV from `fromMs` to the end of the file. Return
- * null when the file does not exist yet.
+ * Read the PCM of a growing WAV from `fromMs` to `toMs`, or to the end of the
+ * file. Return null when the file does not exist yet.
  */
-export function readPcmFrom(path: string, fromMs: number): Int16Array | null {
+export function readPcmFrom(
+  path: string,
+  fromMs: number,
+  toMs?: number,
+): Int16Array | null {
   let fd: number;
   try {
     fd = openSync(path, "r");
@@ -38,7 +42,16 @@ export function readPcmFrom(path: string, fromMs: number): Int16Array | null {
     const start =
       WAV_HEADER_BYTES +
       Math.floor((fromMs * LIVE_SAMPLE_RATE) / 1000) * BYTES_PER_SAMPLE;
-    const length = Math.max(0, fstatSync(fd).size - start);
+    const available = Math.max(0, fstatSync(fd).size - start);
+    const wanted =
+      toMs === undefined
+        ? available
+        : Math.max(
+            0,
+            Math.floor(((toMs - fromMs) * LIVE_SAMPLE_RATE) / 1000) *
+              BYTES_PER_SAMPLE,
+          );
+    const length = Math.min(available, wanted);
     const evenLength = length - (length % BYTES_PER_SAMPLE);
     const buf = Buffer.alloc(evenLength);
     let read = 0;
@@ -62,6 +75,8 @@ export interface TailPlan {
   closed: Segment[];
   /** The segment that still grows, or null. */
   open: Segment | null;
+  /** Length of the PCM in ms. */
+  totalMs: number;
 }
 
 /** Index of the quietest 20 ms frame that starts in [fromMs, toMs). */
@@ -85,11 +100,16 @@ function quietestFrameMs(pcm: Int16Array, fromMs: number, toMs: number) {
 
 /**
  * Split the PCM (which starts at `fromMs` of the channel) into closed
- * segments and one open tail. A segment that ended at least CLOSE_AFTER_MS
- * before the end of the PCM is closed. An open tail that is longer than
+ * segments and one open tail. A segment that ended at least `closeAfterMs`
+ * (default CLOSE_AFTER_MS) before the end of the PCM is closed. At Stop the
+ * loop passes 0, so the open tail closes too. An open tail that is longer than
  * MAX_OPEN_MS is cut at the quietest frame between MIN_CUT_MS and MAX_OPEN_MS.
  */
-export function planTail(pcm: Int16Array, fromMs: number): TailPlan {
+export function planTail(
+  pcm: Int16Array,
+  fromMs: number,
+  closeAfterMs: number = CLOSE_AFTER_MS,
+): TailPlan {
   const totalMs = (pcm.length / LIVE_SAMPLE_RATE) * 1000;
   const segments = annotateSpeechEvidence(
     pcm,
@@ -99,7 +119,7 @@ export function planTail(pcm: Int16Array, fromMs: number): TailPlan {
   const closed: Segment[] = [];
   let open: Segment | null = null;
   for (const seg of segments) {
-    if (seg.endMs <= totalMs - CLOSE_AFTER_MS) closed.push(seg);
+    if (seg.endMs <= totalMs - closeAfterMs) closed.push(seg);
     else open = seg;
   }
   while (open && open.endMs - open.startMs > MAX_OPEN_MS) {
@@ -116,7 +136,11 @@ export function planTail(pcm: Int16Array, fromMs: number): TailPlan {
     startMs: s.startMs + fromMs,
     endMs: s.endMs + fromMs,
   });
-  return { closed: closed.map(shift), open: open ? shift(open) : null };
+  return {
+    closed: closed.map(shift),
+    open: open ? shift(open) : null,
+    totalMs,
+  };
 }
 
 /** Cut the PCM of one segment. Times are from the start of the channel. */

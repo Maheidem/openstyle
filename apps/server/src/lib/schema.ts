@@ -11,7 +11,7 @@ const DEFAULT_CLOUD_URL = "https://service.freestylevoice.com";
 // reports 26). Migrations only run while currentVersion < SCHEMA_VERSION, so a
 // fork migration numbered below that is silently skipped for anyone arriving
 // from upstream. Keep this above the highest upstream version we have seen.
-const SCHEMA_VERSION = 51;
+const SCHEMA_VERSION = 52;
 
 // Legacy default format-rule patterns (used only by pre-v12 migrations below):
 // domain/phrase entries match as substrings of url+title+app; bare words match
@@ -1318,6 +1318,30 @@ function applyMigrations(db: DatabaseSync, currentVersion: number): void {
     // this mark to know that the stage is done. A new transcript clears it.
     if (!hasColumn(db, "meetings", "enhanced_at")) {
       db.exec(`ALTER TABLE meetings ADD COLUMN enhanced_at INTEGER`);
+    }
+  }
+
+  if (currentVersion < 52 && tableExists(db, "meetings")) {
+    // Live mode fixes (issue #375). The chat of a live recording is saved with
+    // the meeting, so the user can read it after Stop and after a page change.
+    // `transcript_source` is "live" while the transcript comes from the live
+    // loop. A full transcription clears it.
+    db.exec(`
+      CREATE TABLE IF NOT EXISTS meeting_chat_messages (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        meeting_id TEXT NOT NULL REFERENCES meetings(id) ON DELETE CASCADE,
+        role TEXT NOT NULL CHECK(role IN ('user','assistant')),
+        content TEXT NOT NULL,
+        cites_json TEXT,
+        ms INTEGER,
+        created_at INTEGER NOT NULL
+      )
+    `);
+    db.exec(
+      "CREATE INDEX IF NOT EXISTS idx_meeting_chat_messages_meeting ON meeting_chat_messages(meeting_id, id)",
+    );
+    if (!hasColumn(db, "meetings", "transcript_source")) {
+      db.exec(`ALTER TABLE meetings ADD COLUMN transcript_source TEXT`);
     }
   }
 

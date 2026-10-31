@@ -9,6 +9,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
   isLiveRunning,
   type LiveDeps,
+  type LiveModel,
   pickLiveAsrModel,
   startLive,
   stopLive,
@@ -206,24 +207,142 @@ describe("pickLiveAsrModel", () => {
   });
 });
 
+/** Mic audio with 11 phrases of 2.5 s speech and 3.5 s pause: 27.5 s speech. */
+function phrases(count = 11): Int16Array {
+  const parts: Int16Array[] = [silence(300)];
+  for (let i = 0; i < count; i++) {
+    parts.push(speech(2500, i + 1), silence(3500));
+  }
+  return concat(...parts);
+}
+
+describe("live language lock", () => {
+  let dir = "";
+  const calls: { language: string | undefined; ms: number }[] = [];
+  let dictation = false;
+
+  function deps(model: LiveModel): LiveDeps {
+    return {
+      isEnabled: () => true,
+      resolveModel: async () => model,
+      transcribe: vi.fn(async ({ pcm, language }) => {
+        calls.push({ language, ms: pcm.byteLength / 32 });
+        return `${language ?? "auto"} words ${calls.length}`;
+      }),
+      detectSpeech: vi.fn(async () => null),
+      detectLanguage: vi.fn(async () => "pt"),
+      persistLanguage: vi.fn(),
+      isDictationActive: () => dictation,
+      tickMs: 20,
+    };
+  }
+
+  beforeEach(() => {
+    vi.useRealTimers();
+    dir = mkdtempSync(join(tmpdir(), "openstyle-live-lang-"));
+    calls.length = 0;
+    dictation = false;
+    growingWav(join(dir, MIC_WAV), phrases());
+    growingWav(join(dir, SYSTEM_WAV), silence(70_000));
+  });
+  afterEach(async () => {
+    await stopLive("m-lang");
+    rmSync(dir, { recursive: true, force: true });
+  });
+
+  it("locks the language after the first speech and reads the early lines again", async () => {
+    const d = deps({ modelId: "qwen3-test", declared: [] });
+    await startLive("m-lang", dir, d);
+    await vi.waitFor(() => expect(d.detectLanguage).toHaveBeenCalledTimes(1), {
+      timeout: 4000,
+    });
+    // Every line ends with the locked language, also the early ones.
+    await vi.waitFor(
+      () => {
+        const finals = getLive("m-lang")?.lines.filter((l) => l.final) ?? [];
+        expect(finals.length).toBeGreaterThanOrEqual(8);
+        expect(finals.every((l) => l.text.startsWith("pt "))).toBe(true);
+      },
+      { timeout: 4000 },
+    );
+    // The first reads ran with auto language. All later reads are locked.
+    const firstLocked = calls.findIndex((c) => c.language === "pt");
+    expect(firstLocked).toBeGreaterThan(0);
+    expect(
+      calls.slice(0, firstLocked).every((c) => c.language === undefined),
+    ).toBe(true);
+    expect(calls.slice(firstLocked).every((c) => c.language === "pt")).toBe(
+      true,
+    );
+    // Auto language is not saved with the meeting.
+    expect(d.persistLanguage).not.toHaveBeenCalled();
+    expect(d.detectLanguage).toHaveBeenCalledTimes(1);
+  });
+
+  it("uses the known language from the first read and does not detect", async () => {
+    const d = deps({ modelId: "qwen3-test", declared: ["en"], language: "en" });
+    await startLive("m-lang", dir, d);
+    await vi.waitFor(() => expect(calls.length).toBeGreaterThan(3));
+    expect(calls.every((c) => c.language === "en")).toBe(true);
+    expect(d.detectLanguage).not.toHaveBeenCalled();
+  });
+
+  it("saves the locked language when the setting lists more than one", async () => {
+    const d = deps({ modelId: "qwen3-test", declared: ["en", "pt"] });
+    await startLive("m-lang", dir, d);
+    await vi.waitFor(() =>
+      expect(d.persistLanguage).toHaveBeenCalledWith("m-lang", "pt"),
+    );
+    expect(d.detectLanguage).toHaveBeenCalledWith(
+      expect.objectContaining({ declared: ["en", "pt"] }),
+    );
+  });
+
+  it("falls back to the first declared language when the text does not decide", async () => {
+    const d = deps({ modelId: "qwen3-test", declared: ["en", "pt"] });
+    d.detectLanguage = vi.fn(async () => null);
+    await startLive("m-lang", dir, d);
+    await vi.waitFor(() =>
+      expect(d.persistLanguage).toHaveBeenCalledWith("m-lang", "en"),
+    );
+  });
+
+  it("waits for more speech when auto language is not decided", async () => {
+    const d = deps({ modelId: "qwen3-test", declared: [] });
+    d.detectLanguage = vi.fn(async () => null);
+    await startLive("m-lang", dir, d);
+    await vi.waitFor(() =>
+      expect(vi.mocked(d.detectLanguage).mock.calls.length).toBeGreaterThan(1),
+    );
+    expect(calls.every((c) => c.language === undefined)).toBe(true);
+  });
+});
+
 describe("live loop", () => {
   let dir = "";
   const texts: string[] = [];
   let dictation = false;
   let enabled = true;
+  const languages: (string | undefined)[] = [];
   let model: Awaited<ReturnType<LiveDeps["resolveModel"]>> = {
     modelId: "qwen3-test",
+    declared: [],
   };
 
   function deps(): LiveDeps {
     return {
       isEnabled: () => enabled,
       resolveModel: async () => model,
-      transcribe: vi.fn(async ({ pcm }) => {
+      transcribe: vi.fn(async ({ pcm, language }) => {
         const text = `words ${texts.length + 1} (${pcm.byteLength} bytes)`;
         texts.push(text);
+        languages.push(language);
         return text;
       }),
+      // No VAD data: the loop uses the voiced gate only.
+      detectSpeech: vi.fn(async () => null),
+      detectLanguage: vi.fn(async () => "pt"),
+      persistLanguage: vi.fn(),
       isDictationActive: () => dictation,
       tickMs: 20,
     };
@@ -234,9 +353,10 @@ describe("live loop", () => {
     vi.useRealTimers();
     dir = mkdtempSync(join(tmpdir(), "openstyle-live-loop-"));
     texts.length = 0;
+    languages.length = 0;
     dictation = false;
     enabled = true;
-    model = { modelId: "qwen3-test" };
+    model = { modelId: "qwen3-test", declared: [] };
   });
   afterEach(async () => {
     await stopLive("m-loop");
@@ -322,6 +442,49 @@ describe("live loop", () => {
     expect(getLive("m-loop")?.lines.filter((l) => l.final)).toHaveLength(0);
   });
 
+  it("does not read a segment that the VAD says has no speech", async () => {
+    // Loud noise on both channels, but Silero finds no speech span.
+    growingWav(
+      join(dir, MIC_WAV),
+      concat(silence(300), speech(1500), silence(3000)),
+    );
+    growingWav(
+      join(dir, SYSTEM_WAV),
+      concat(silence(300), speech(1500), silence(3000)),
+    );
+    const d = deps();
+    d.detectSpeech = vi.fn(async () => []);
+    await startLive("m-loop", dir, d);
+    await vi.waitFor(() => expect(d.detectSpeech).toHaveBeenCalled());
+    await new Promise((r) => setTimeout(r, 150));
+    expect(d.transcribe).not.toHaveBeenCalled();
+    expect(getLive("m-loop")?.lines).toHaveLength(0);
+  });
+
+  it("reads a segment that the VAD says has speech", async () => {
+    growingWav(
+      join(dir, MIC_WAV),
+      concat(silence(300), speech(1500), silence(3000)),
+    );
+    growingWav(join(dir, SYSTEM_WAV), silence(4000));
+    const d = deps();
+    d.detectSpeech = vi.fn(async () => [{ startMs: 300, endMs: 1800 }]);
+    await startLive("m-loop", dir, d);
+    await vi.waitFor(() =>
+      expect(getLive("m-loop")?.lines.filter((l) => l.final)).toHaveLength(1),
+    );
+  });
+
+  it("does not run the VAD on a window with no segment", async () => {
+    growingWav(join(dir, MIC_WAV), silence(30_000));
+    growingWav(join(dir, SYSTEM_WAV), silence(30_000));
+    const d = deps();
+    await startLive("m-loop", dir, d);
+    await new Promise((r) => setTimeout(r, 150));
+    expect(d.detectSpeech).not.toHaveBeenCalled();
+    expect(d.transcribe).not.toHaveBeenCalled();
+  });
+
   it("is unavailable when the model cannot be used", async () => {
     model = { unavailable: "provider_not_local" };
     await startLive("m-loop", dir, deps());
@@ -330,6 +493,30 @@ describe("live loop", () => {
       status: "unavailable",
       reason: "provider_not_local",
     });
+  });
+
+  it("reads the open tail at Stop and gives the lines to the caller", async () => {
+    // The speech runs to the end of the file, so it is still an open tail.
+    growingWav(join(dir, MIC_WAV), concat(silence(300), speech(2000)));
+    growingWav(join(dir, SYSTEM_WAV), silence(2300));
+    const d = deps();
+    d.tickMs = 60_000; // no tick before Stop
+    await startLive("m-loop", dir, d);
+    const stopped = await stopLive("m-loop", { flush: true });
+    expect(stopped.modelId).toBe("qwen3-test");
+    expect(stopped.lines).toHaveLength(1);
+    expect(stopped.lines[0]).toMatchObject({ source: "mic", final: true });
+    expect(getLive("m-loop")).toBeNull();
+  });
+
+  it("gives no lines at Stop without flush when no tick ran", async () => {
+    growingWav(join(dir, MIC_WAV), concat(silence(300), speech(2000)));
+    growingWav(join(dir, SYSTEM_WAV), silence(2300));
+    const d = deps();
+    d.tickMs = 60_000;
+    await startLive("m-loop", dir, d);
+    const stopped = await stopLive("m-loop");
+    expect(stopped.lines).toEqual([]);
   });
 
   it("waits for a running tick on stop and drops the entry", async () => {

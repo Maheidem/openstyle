@@ -88,6 +88,7 @@ import {
 /** While a run waits for the on-device engine, the meeting refetches this often. */
 const ENGINE_WAIT_POLL_MS = 5000;
 
+import { ChatMessageList, useChatMessages } from "./live-chat-panel";
 import { SummaryInstructionsPopover } from "./settings-popovers";
 import {
   CopyButton,
@@ -217,6 +218,9 @@ export function MeetingDetailView({
 
   const hasTranscript =
     meeting?.status === "transcribed" || meeting?.status === "summarized";
+  // The chat of the live view, saved with the meeting (issue #375). It has a
+  // tab only when the meeting has messages.
+  const { data: savedChat = [] } = useChatMessages(id);
 
   const { data: transcript, isFetching: isTranscriptFetching } = useQuery({
     queryKey: queryKeys.meetings.transcript(id),
@@ -882,6 +886,15 @@ export function MeetingDetailView({
           onChanged={invalidate}
         />
         <StatusBadge status={meeting.display_status ?? meeting.status} />
+        {meeting.transcript_source === "live" && (
+          <span
+            className="border-border text-muted-foreground mono inline-flex h-4 shrink-0 items-center rounded-md border px-1.5 text-[9px] uppercase tracking-[0.12em]"
+            title={t("meetings.liveChat.fromLiveHint")}
+            data-testid="meeting-from-live"
+          >
+            {t("meetings.liveChat.fromLive")}
+          </span>
+        )}
       </div>
       <div
         className={cn(
@@ -1212,6 +1225,11 @@ export function MeetingDetailView({
             <TabsTrigger value="summary">
               {t("meetings.tabSummary")}
             </TabsTrigger>
+            {savedChat.length > 0 && (
+              <TabsTrigger value="chat" data-testid="meeting-chat-tab">
+                {t("meetings.liveChat.chatHistoryTitle")}
+              </TabsTrigger>
+            )}
           </TabsList>
           <div className="flex-1" />
           {tab === "transcript" && transcript && transcript.length > 0 && (
@@ -1416,6 +1434,15 @@ export function MeetingDetailView({
                 current={meeting.summary?.created_at ?? null}
               />
             )}
+          </TabsContent>
+
+          <TabsContent value="chat" className="mt-2">
+            <div
+              className="flex flex-col gap-2 text-[12.5px] leading-snug"
+              data-testid="meeting-chat-history"
+            >
+              <ChatMessageList messages={savedChat} />
+            </div>
           </TabsContent>
         </div>
       </Tabs>

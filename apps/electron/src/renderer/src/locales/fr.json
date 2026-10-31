@@ -1281,7 +1281,10 @@
       "citePast": "{{title}}, {{time}}",
       "citeFolder": "Description du dossier",
       "you": "Vous",
-      "answer": "Réponse"
+      "answer": "Réponse",
+      "fromLive": "Issu du direct",
+      "fromLiveHint": "Cette transcription vient de la vue en direct. Utilisez Retranscrire pour lancer le passage complet.",
+      "chatHistoryTitle": "Chat en direct"
     }
   },
   "help": {

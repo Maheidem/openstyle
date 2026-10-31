@@ -2,8 +2,11 @@
  * `POST /api/meetings/:id/chat` — live chat during a recording (issue #375,
  * specs/live-chat.md section 4). Experimental, off by default.
  *
- * One question gives one JSON answer. There is no token streaming and no
- * stored chat. Code builds the context (`lib/meetings/live/chat-context.ts`).
+ * One question gives one JSON answer. There is no token streaming. The route
+ * saves each answered question with the meeting (`chat-store.ts`) and builds
+ * the model history from the saved messages. `GET /:id/chat` returns them, so
+ * the chat survives a page change and can be read after Stop. Code builds the
+ * context (`lib/meetings/live/chat-context.ts`).
  * The route follows the light pattern of dictation cleanup:
  * resolveTaskCall, createChatModel, withLlmLane.
  *
@@ -34,6 +37,11 @@ import {
   CHAT_SYSTEM_PROMPT,
   parseChatReply,
 } from "../lib/meetings/live/chat-prompt.js";
+import {
+  appendChatPair,
+  listChatMessages,
+  recentChatHistory,
+} from "../lib/meetings/live/chat-store.js";
 import { getLive } from "../lib/meetings/live/store.js";
 import { createChatModel } from "../lib/providers.js";
 
@@ -41,7 +49,8 @@ const log = createAppLogger("meeting-live-chat");
 
 /** The first call loads the model. It gets a longer limit than a warm call. */
 const COLD_TIMEOUT_MS = 120_000;
-const HISTORY_TURNS_MAX = 4;
+/** The model sees the last messages of the saved chat. */
+const HISTORY_MESSAGES = 4;
 const PROMPT_BUDGET_TOKENS = 6000;
 /** Tokens kept for the system rules and the question. */
 const FIXED_TOKENS = 700;
@@ -50,15 +59,6 @@ let chatsAnswered = 0;
 
 const chatSchema = z.object({
   question: z.string().trim().min(1).max(1000),
-  history: z
-    .array(
-      z.object({
-        role: z.enum(["user", "assistant"]),
-        content: z.string().max(2000),
-      }),
-    )
-    .max(HISTORY_TURNS_MAX)
-    .optional(),
 });
 
 interface CiteOut {
@@ -69,16 +69,25 @@ interface CiteOut {
   timeMs?: number | null;
 }
 
-const meetingsChat = new Hono().post(
-  "/:id/chat",
-  zValidator("json", chatSchema),
-  async (c) => {
+const meetingsChat = new Hono()
+  // The saved chat of a meeting, oldest first. No setting check: the user can
+  // read the chat after Stop, also when the setting is off again.
+  .get("/:id/chat", (c) => {
     const id = c.req.param("id");
-    const { question, history = [] } = c.req.valid("json");
     const db = getDb();
     if (!db.prepare("SELECT 1 FROM meetings WHERE id = ?").get(id)) {
       return c.json({ error: "Not found" }, 404);
     }
+    return c.json({ messages: listChatMessages(db, id) });
+  })
+  .post("/:id/chat", zValidator("json", chatSchema), async (c) => {
+    const id = c.req.param("id");
+    const { question } = c.req.valid("json");
+    const db = getDb();
+    if (!db.prepare("SELECT 1 FROM meetings WHERE id = ?").get(id)) {
+      return c.json({ error: "Not found" }, 404);
+    }
+    const history = recentChatHistory(db, id, HISTORY_MESSAGES);
     if (readSetting(SETTINGS_KEYS.liveChatEnabled) !== "true") {
       return c.json({ error: "Live chat is off", reason: "off" }, 409);
     }
@@ -162,6 +171,17 @@ const meetingsChat = new Hono().post(
       log.info(
         `Live chat answered in ${ms} ms (${context.tokens} source tokens, ${cites.length} cites${cold ? ", cold" : ""})`,
       );
+      // Save the pair. A failed write does not lose the answer.
+      try {
+        appendChatPair(db, id, {
+          question,
+          answer: reply.answer,
+          cites,
+          ms,
+        });
+      } catch (err) {
+        log.warn(`Live chat not saved: ${errorMessage(err)}`);
+      }
       return c.json({
         answer: reply.answer,
         cites,
@@ -176,7 +196,6 @@ const meetingsChat = new Hono().post(
       log.warn(`Live chat failed: ${errorMessage(err)}`);
       return c.json({ error: errorMessage(err), reason: "failed" }, 502);
     }
-  },
-);
+  });
 
 export default meetingsChat;

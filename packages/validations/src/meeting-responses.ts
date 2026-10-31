@@ -11,6 +11,8 @@ const meetingRecordSchema = z.object({
   duration_ms: z.number().nullable(),
   status: z.string(),
   display_status: z.string().optional(),
+  /** "live" while the transcript comes from the live loop (issue #375). */
+  transcript_source: z.string().nullable().optional(),
   language: z.string().nullable(),
   error: z.string().nullable(),
   created_at: z.number().nullable(),

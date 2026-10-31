@@ -1281,7 +1281,10 @@
       "citePast": "{{title}}, {{time}}",
       "citeFolder": "Ordnerbeschreibung",
       "you": "Du",
-      "answer": "Antwort"
+      "answer": "Antwort",
+      "fromLive": "Aus Live",
+      "fromLiveHint": "Dieses Transkript stammt aus der Live-Ansicht. Mit Neu transkribieren startet der vollständige Durchlauf.",
+      "chatHistoryTitle": "Live-Chat"
     }
   },
   "help": {

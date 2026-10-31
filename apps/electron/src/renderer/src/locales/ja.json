@@ -1281,7 +1281,10 @@
       "citePast": "{{title}}、{{time}}",
       "citeFolder": "フォルダの説明",
       "you": "あなた",
-      "answer": "回答"
+      "answer": "回答",
+      "fromLive": "ライブ由来",
+      "fromLiveHint": "この文字起こしはライブ表示から作られました。「再度文字起こし」で完全な処理を実行できます。",
+      "chatHistoryTitle": "ライブチャット"
     }
   },
   "help": {

@@ -1280,7 +1280,10 @@
       "citePast": "{{title}}, {{time}}",
       "citeFolder": "Descrizione della cartella",
       "you": "Tu",
-      "answer": "Risposta"
+      "answer": "Risposta",
+      "fromLive": "Dal vivo",
+      "fromLiveHint": "Questa trascrizione viene dalla vista dal vivo. Usa Trascrivi di nuovo per eseguire il passaggio completo.",
+      "chatHistoryTitle": "Chat dal vivo"
     }
   },
   "help": {
