@@ -375,6 +375,83 @@ describe.skipIf(!VEC_PATH)("search index, ON mode", () => {
     expect(unknown).toEqual({ status: "ok", hits: [] });
   });
 
+  it("retrieve: meeting scope and date range (chat agent P0, spec 7.1)", async () => {
+    const day = 86_400_000;
+    const t0 = Date.UTC(2026, 8, 1);
+    meeting("d1", "f-aurora", [
+      "The Aurora launch moves to Friday because the vendor is late.",
+    ]);
+    meeting("d2", "f-aurora", [
+      "The Aurora launch moves to Friday again, said Ana.",
+    ]);
+    meeting("d3", "f-atlas", ["The Atlas launch moves to Friday too."]);
+    meeting("d4", null, ["An unfiled call about the launch on Friday."]);
+    const setStart = getDb().prepare(
+      "UPDATE meetings SET started_at = ? WHERE id = ?",
+    );
+    setStart.run(t0, "d1");
+    setStart.run(t0 + 10 * day, "d2");
+    setStart.run(t0 + 20 * day, "d3");
+    // No start time: the creation time counts.
+    getDb()
+      .prepare(
+        "UPDATE meetings SET started_at = NULL, created_at = ? WHERE id = 'd4'",
+      )
+      .run(t0 + 30 * day);
+    for (const id of ["d1", "d2", "d3", "d4"]) await indexMeeting(id);
+
+    const run = async (extra: Partial<Parameters<typeof retrieve>[0]>) => {
+      const res = await retrieve({
+        query: { kind: "text", text: "launch moves to Friday" },
+        scope: { kind: "all" },
+        k: 20,
+        ...extra,
+      });
+      expect(res.status).toBe("ok");
+      return res.status === "ok"
+        ? [...new Set(res.hits.map((h) => h.meetingId))].sort()
+        : [];
+    };
+
+    // Default: nothing changes without the new fields.
+    expect(await run({})).toEqual(["d1", "d2", "d3", "d4"]);
+    // One meeting.
+    expect(await run({ scope: { kind: "meeting", meetingId: "d2" } })).toEqual([
+      "d2",
+    ]);
+    expect(
+      await run({ scope: { kind: "meeting", meetingId: "nope" } }),
+    ).toEqual([]);
+    // A date range is [from, to).
+    expect(
+      await run({ dateRange: { fromMs: t0, toMs: t0 + 11 * day } }),
+    ).toEqual(["d1", "d2"]);
+    expect(
+      await run({ dateRange: { fromMs: t0 + 10 * day, toMs: t0 + 20 * day } }),
+    ).toEqual(["d2"]);
+    expect(
+      await run({ dateRange: { fromMs: t0 + 25 * day, toMs: t0 + 40 * day } }),
+    ).toEqual(["d4"]);
+    expect(
+      await run({
+        dateRange: { fromMs: t0 + 100 * day, toMs: t0 + 101 * day },
+      }),
+    ).toEqual([]);
+    // The filters AND with the folder scope and with the meeting scope.
+    expect(
+      await run({
+        scope: { kind: "folder", folderId: "f-aurora" },
+        dateRange: { fromMs: t0, toMs: t0 + 5 * day },
+      }),
+    ).toEqual(["d1"]);
+    expect(
+      await run({
+        scope: { kind: "meeting", meetingId: "d1" },
+        dateRange: { fromMs: t0 + 5 * day, toMs: t0 + 15 * day },
+      }),
+    ).toEqual([]);
+  });
+
   it("deletes vectors through the gc table after a meeting delete", async () => {
     meeting("m1", "f-aurora", filler("office", 10));
     await indexMeeting("m1");
