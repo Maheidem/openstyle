@@ -1,6 +1,7 @@
 # Meeting chat agent (engineering spec)
 
 Status: DRAFT for owner review. Date: 2026-10-31. Base: `main` at `a7083674`.
+Revision 2 (2026-10-31, 09:49): owner answers applied. Section 12.1 lists them as decisions D1 to D4.
 Scope of this document: design only. No product code is part of this change.
 Language: ASD-STE100 Simplified Technical English.
 
@@ -46,7 +47,8 @@ I re-read the lines of the code that this spec cites most (retrieve, vector stor
 2. Code sets the scope. A small router call picks the intent. Code runs 1 to 3 typed tools. One answer call writes the text from numbered sources. Code validates the cites.
 3. The model never writes data. It can only fill the slots of a proposal. The user confirms. Every apply is logged and can be undone.
 4. The design targets Gemma 4 E2B. A bigger model or a cloud model gets the same pipeline and must only do better.
-5. The work has 6 phases. Each phase ships behind a setting. Each phase needs an isolated-app E2E proof and gold-eval numbers.
+5. Owner decisions D1 to D4 (section 12.1): cloud is allowed like any provider, but local is first. The mic channel needs diarization. A person merge rewrites everything, with full undo. Retrieval gets a full measured workstream in P0.
+6. The work has 7 phases (P0 to P5 plus the mic workstream PM). Each phase ships behind a setting. Each phase needs an isolated-app E2E proof and gold-eval numbers.
 
 ## 1. Goals, non-goals and user stories
 
@@ -66,11 +68,11 @@ I re-read the lines of the code that this spec cites most (retrieve, vector stor
 2. No free ReAct loop. Reason: the owner ethos "one narrow job per LLM stage, code does rule-like work" (`AGENTS.md`, section "LLM design ethos").
 3. No delete by the agent. Not for meetings, folders, items or people (Discovery C section 3, risk tiers).
 4. No edit of transcript text by the agent. No edit of key points or the overview. (Reason: no user edit path exists for them today, Discovery A section 3 last paragraph.)
-5. No new embedding model, no reranker in v1. (FTS5 hybrid is an option, section 7.)
+5. No new embedding model is assumed. FTS5 hybrid search, a reranker and a multimodal embedding are measured in the P0 retrieval workstream (section 7.4) and built only if the bars are met.
 6. No streaming of tokens. The worker does not stream (`W:734-735`).
 7. No voice input, no speech output.
 8. No chat over dictation history. (Non-goal D17 of the search spec, Discovery B section 1.2.)
-9. No cloud model for chat over private data by default. This is an OPEN question (section 12, Q1).
+9. No special "cloud blocked" rule. Cloud follows the normal provider choice (decision D1, section 12.1).
 
 ### 1.3 User stories and tool mapping
 
@@ -154,7 +156,7 @@ Typical cost on E2B (ASSUMPTION, arithmetic from numbers in the repo): the live 
 
 1. The setting `meeting_chat_enabled` is `"true"`. DECISION: a new setting, default off, experimental. The live chat keeps `live_chat_enabled` (`V/settings-keys.ts:66`).
 2. `resolveTaskCall("meetingChat")` returns a model. DECISION: one new task id `meetingChat` for all stages. A new task id needs a profile, a settings key and a route branch (`S/lib/llm/task-profiles.ts:158-161`).
-3. Provider policy (OPEN Q1). Default: local only, like the live chat (`S/routes/meetings-chat.ts:98-103`).
+3. Provider (decision D1). The chat uses the model that the user assigned to the task `meetingChat`, local or cloud, through the normal provider and key flow. The gate fails only when no model or no key is set. Today the live chat blocks non-local providers (`S/routes/meetings-chat.ts:98-103`). The new route has no such block. The old live route changes in P5 (section 10). Local stays the first target of the design and of the eval. Rules: the app sends only the sources of the turn (up to 6000 estimated tokens, section 2.2) to the chosen provider, never to another one. The thread shows the name of the provider and model that answered.
 4. The scope exists (meeting or folder id found).
 5. Search state is read. `off` does not stop the turn. Only retrieval tools degrade (section 2.5).
 
@@ -264,8 +266,8 @@ The 8 s retrieval wait is the live chat value (`S/lib/meetings/live/chat-context
 flowchart TD
   T["Turn starts"] --> A{"model resolved?"}
   A -->|no| E1["409 no_model<br/>block: choose a model"]
-  A -->|yes| B{"provider allowed?"}
-  B -->|"no (not local)"| E2["409 not_local<br/>as live chat"]
+  A -->|yes| B{"provider ready?<br/>key set, model present"}
+  B -->|no| E2["409 provider_not_ready<br/>block: set key or model"]
   B -->|yes| C{"search state"}
   C -->|"off"| D1["retrieval tools return status off<br/>structured tools still run<br/>answer notes: search is off"]
   C -->|on| D2["all tools available"]
@@ -462,7 +464,7 @@ CREATE UNIQUE INDEX IF NOT EXISTS uq_person_alias ON person_aliases(person_id, a
 CREATE INDEX IF NOT EXISTS idx_person_alias_norm ON person_aliases(alias_norm);
 ```
 
-The label "Me" and the labels "Them N" are not names. The resolver skips them. "Me" links to the person with `is_account_owner = 1` after the user confirms who that is (OPEN Q4). Source: the mic channel is "Me" and has no `meeting_speakers` row (`S/lib/meetings/merge.ts:15`, `:412`; Discovery A section 1.1). The prompt tells the summary model to write "Me", "Them 2" or a confirmed name as owner (`S/lib/meetings/workflow/prompts.ts:185-186`).
+The labels "Me" and "Them N" are not names. The resolver skips them. Decision D2 changes what "Me" means: it is not "every mic segment". Section 4.5 describes the mic workstream. The person with `is_account_owner = 1` is created after one user confirmation. It links only to the mic speaker clusters that the user confirms as themselves. Today the mic channel is always "Me" and has no `meeting_speakers` row (`S/lib/meetings/merge.ts:15`, `:412`; Discovery A section 1.1). The prompt tells the summary model to write "Me", "Them 2" or a confirmed name as owner (`S/lib/meetings/workflow/prompts.ts:184-186`).
 
 Entity resolution (DECISION: code first, human confirms):
 
@@ -516,6 +518,27 @@ CREATE INDEX IF NOT EXISTS idx_agent_changes_thread ON agent_changes(thread_id, 
 ALTER TABLE meeting_summary_versions ADD COLUMN change_id TEXT;   -- nullable
 ```
 
+Prose and field changes need a before and after text for each place. DECISION: one more table in the same migration.
+
+```sql
+-- schema v57, same migration
+CREATE TABLE IF NOT EXISTS agent_change_places (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  change_id TEXT NOT NULL REFERENCES agent_changes(id) ON DELETE CASCADE,
+  table_name TEXT NOT NULL,          -- meeting_summaries, meeting_speakers, meetings, folder_standing, ...
+  row_key TEXT NOT NULL,             -- primary key of the row, as text
+  field TEXT NOT NULL,               -- column or JSON path, e.g. summary_json.keyPoints[2]
+  before_text TEXT NOT NULL,
+  after_text TEXT NOT NULL,
+  before_hash TEXT NOT NULL,         -- hash of the full field value before
+  after_hash TEXT NOT NULL,          -- hash of the full field value right after apply
+  patches_json TEXT NOT NULL,        -- [{start, before, after}] spans inside the field, for prose
+  status TEXT NOT NULL DEFAULT 'applied' CHECK(status IN ('applied','undone','conflict','superseded','skipped'))
+);
+CREATE INDEX IF NOT EXISTS idx_agent_change_places_change ON agent_change_places(change_id);
+CREATE INDEX IF NOT EXISTS idx_agent_change_places_row ON agent_change_places(table_name, row_key, field);
+```
+
 DECISION: a new table and not `llm_call_links`. Reason: `llm_call_links` records what an LLM wrote (`target_type`, `applied_text`, `outcome`, `S/lib/schema.ts:1082-1093`). Here the user writes, and the LLM only proposes. The table links to the run through `run_id`, so the inspector can show the proposal call.
 
 Migration plan for v54 to v57:
@@ -525,6 +548,43 @@ Migration plan for v54 to v57:
 3. Rollback of the feature: set `meeting_chat_enabled` off. No data loss. Applied changes stay applied. The user can undo them before the rollback; after it, undo is not available.
 4. Data written by P3 apply (done marks, tags, folder, summary versions) is normal app data. It stays valid without the new tables, except `meeting_items.status` of unfiled meetings (section 4.1 point 4).
 5. Each migration needs a unit test with a seeded v53 database. The test checks counts and the dual write.
+
+### 4.5 Workstream PM: diarize the mic channel (decision D2)
+
+Owner decision D2: the mic channel can hold more than one person (a team in one room on one mic). So "Me" must not mean "every mic segment". Diarization is needed on all channels, the mic included.
+
+What exists today:
+
+1. Diarization is opt-in and runs on the system channel only. It spawns `fluidaudio-diarize` on `system.wav` and writes `speaker_label` ("1", "2", ...) on segments (`S/lib/meetings/diarize.ts:3-12`, `:590-597`).
+2. The merged transcript labels every mic segment "Me" and every system segment "Them" (`S/lib/meetings/merge.ts:15`, `:412`). The mic channel has no row in `meeting_speakers` (Discovery A section 1.1). `meeting_speakers` holds a mapping over the diarizer label index (`S/lib/schema.ts:848-856`).
+3. The live loop has no diarization during the recording. The speaker pass runs after Stop (`specs/live-chat.md` section 7).
+4. Raw diarizer turns are stored in `meeting_diarizer_turns` with primary key `(meeting_id, idx)` and no channel column (`S/lib/schema.ts:948`; Discovery A section 1.1).
+
+What PM changes (DECISIONS):
+
+| Item | Change |
+|---|---|
+| Diarizer input | Run the helper on `mic.wav` too, after the system pass. ASSUMPTION: the helper accepts a mic file as it accepts `system.wav`. A spike in PM step 1 proves or disproves it. |
+| Labels | Mic labels use a prefix: `m1`, `m2`, ... System labels stay "1", "2", .... Reason: `meeting_speakers` has primary key `(meeting_id, speaker_label)` (`S/lib/schema.ts:856`), and both channels would collide on "1". No schema change is needed for the labels: the column `meeting_segments.speaker_label` already exists (`S/lib/schema.ts:824`). |
+| Diarizer turns | Add a `source` column (`'system'` default, `'mic'`). The primary key must include it. SQLite cannot change a primary key in place, so the migration rebuilds the table (create new, copy, drop, rename). The table holds derived data and can be rebuilt from audio. |
+| Merge output | `mergeTranscript` stops hard-coding "Me" for mic rows (`S/lib/meetings/merge.ts:15`, `:412`). A mic row gets its label. The `Speaker` type widens. A mic row with no label (diarization off or failed) keeps "Me" as today. |
+| Display name for a mic cluster | If the cluster is linked to the account-owner person: "Me". Else the confirmed name. Else "Mic 1", "Mic 2" in the UI. If a meeting has exactly one mic cluster and no confirmation yet: "Me" (today's behavior). |
+| Owner link | The person with `is_account_owner = 1` links through `person_aliases` rows with `source = 'speaker_display'`, `meeting_id` and `speaker_label = 'm1'` (section 4.3). Only clusters that the user confirmed as themselves link to the owner. Other mic clusters become their own speakers and people. |
+| Confirmation flow | One confirmation creates the owner person. Per meeting: if the meeting has one mic cluster, code links it to the owner and shows this in the change preview. If it has more than one, the UI asks "which voice is you?" and plays a short audio snippet for each cluster. The answer is a normal speaker update (`S/routes/meetings.ts:2286`). |
+| Carry over | The carry rule after a re-transcribe (`S/lib/meetings/speaker-carry.ts`) must work with mic labels. It keys on time overlap. PM step 2 adds a test with mic labels. |
+| Summary owner strings | The summary prompt tells the model to write the transcript label as owner (`S/lib/meetings/workflow/prompts.ts:184-186`). A mic cluster label (a name or "Mic 2") flows through that rule with no prompt change. ASSUMPTION; the eval checks owner accuracy on multi-voice meetings. |
+| Cannot-link rule | Two mic clusters in one meeting are two people unless the user merged them (section 4.3, point 3). |
+| Cross-meeting voice identity | Not in scope. The user confirms clusters per meeting. A "same voice as last meeting" suggestion needs speaker embeddings from the helper. Whether the helper exposes them is UNKNOWN (OPEN Q12). |
+| Live recording | The live view shows "Me" and "Them" until Stop (`specs/live-chat.md` section 7). The live chat answers with those two. |
+
+Risks specific to PM:
+
+1. Echo: the mic can pick up remote voices from the speakers. The code already repairs some mic tracks (`system.original.wav` repair, `S/lib/meetings/retention.ts:15-17`) and removes echo rows before chunking (Discovery B section 1.2). The diarizer could then make mic clusters for remote people. Code must compare each mic cluster with the system channel in time (overlap of speech with the same audio content) and mark likely echo clusters "echo" so they are not offered as people. ASSUMPTION; the eval has an echo case.
+2. A single speaker can be split into two clusters (false split). The user can merge two labels of one meeting with the existing `merged_into` path (`S/routes/meetings.ts:2286`).
+3. Time: a second diarizer run adds time to the post-recording job. PM measures it (system pass today: Discovery has no number; GAP).
+4. The summary of old meetings keeps "Me" as owner string for every mic voice. The merge preview of section 5.6 shows these places, and the user decides.
+
+Eval (also section 8.8): fictional multi-voice mic audio.
 
 ## 5. Write safety
 
@@ -629,23 +689,52 @@ Rules:
 4. The index sees the summary change through its source hash and re-embeds the summary chunk (`S/lib/search/source.ts:146-154`).
 5. No summary restore route exists today (Discovery A section 1.2). Undo uses `inverse_json`. DECISION: P3 does not add a restore UI for versions.
 
-### 5.6 Person merge: what text changes
+### 5.6 Person merge: rewrite everything (decision D3)
 
-Discovery A section 2.1 lists where one person's strings live. The merge decides for each place:
+Owner decision D3: a merge rewrites every place where the names appear, including prose. The default in the preview is on for every place. Every rewrite is a versioned copy. Every rewrite can be undone.
 
-| Place | What a merge does | How |
+Discovery A section 2.1 lists where one person's strings live. The merge treats each place like this:
+
+| Place | What a merge does | Version kept in |
 |---|---|---|
-| `people`, `person_aliases` | Soft merge: `merged_into` points to the canonical person. Aliases move. | Always. Undo clears the pointer and moves aliases back (ids in `inverse_json`). |
-| `meeting_speakers.display_name` | Optional rewrite to the canonical name, per meeting row | Through the existing speaker update path (`S/routes/meetings.ts:2286`), which also rewrites `transcript.md` (Discovery A section 3). User ticks it in the preview. |
-| `summary_json.actionItems[].owner` | Optional rewrite of the owner string when it equals an alias | Versioned summary copy as in 5.5, markdown re-rendered. Owners "Me" and "Them N" are never rewritten. |
-| `summary_json` free text (overview, key points, decisions, questions) | Not rewritten in v1 | DECISION. Whole-text replacement of a name is unsafe. The preview shows the count of mentions left unchanged. |
-| `folder_standing.bullets_json` | Not rewritten. Marked stale. | The standing has an `input_hash` of its inputs (`S/lib/meetings/folder-standing.ts`; Discovery A section 1.3). An owner change alters the input, so the next view shows it stale. |
-| `meeting_chunks` and vectors | Re-embedded by the indexer | A summary change changes the source hash (`S/lib/search/source.ts:146-154`). |
-| `meeting_chat_messages`, `chat_messages` | Not rewritten | History is a record of what was said. |
-| `meetings.calendar_attendees` | Not rewritten | Calendar data. The email stays the key. |
-| `vocabulary.term` | Not changed | Global list. |
+| `people`, `person_aliases` | Soft merge: `merged_into` points to the canonical person. Aliases move. | `inverse_json` of the change |
+| `meeting_speakers.display_name` | Set to the canonical name | `agent_change_places`. Through the existing speaker update path (`S/routes/meetings.ts:2286`), which also rewrites `transcript.md` (Discovery A section 3). |
+| `summary_json.actionItems[].owner` | Replace the alias with the canonical name. Labels "Me" and "Them N" are never replaced (they are labels, not aliases). | `meeting_summary_versions` (copy of the old row, as `S/lib/meetings/workflow/nodes/save.ts:231-242`) and `agent_change_places` |
+| `summary_json` prose: overview, key points, decisions, open questions, action item text | Replace aliases by the canonical name (rules below) | same |
+| `meeting_summaries.markdown` | Re-rendered from the new `summary_json` with `renderSummaryMarkdown` (`S/lib/meetings/workflow/summary-pure.ts:44`) | same |
+| `folder_standing.bullets_json` | Replace aliases in the bullets by the same rules. The row has no versions today (Discovery A section 1.3). | `agent_change_places` |
+| `meetings.title`, `meetings.context` | Replace aliases by the same rules | `agent_change_places` |
+| `meeting_chunks` and vectors | Re-embedded by the indexer after the summary and title change | The source hash changes (`S/lib/search/source.ts:146-154`). Undo changes it back and the indexer re-embeds. |
+| Chat history (`meeting_chat_messages`, `chat_messages`) | Display only: the renderer maps aliases of merged people to the canonical name when it shows a message. Stored text is not changed. | Nothing to version. Undo of the merge restores the old display at once. |
+| `meetings.calendar_attendees` | Not rewritten. It is calendar data and the email is the key. | n/a |
+| Transcript text (`meeting_segments.text`, `enhanced_text`) | Not rewritten. It is the record of the audio. A wrong spelling there is an ASR error, and the Enhance path owns it. | n/a |
+| `vocabulary.term` | Not changed. It is a global list and not a project record. | n/a |
 
-The user sees the count of rows for each place in the preview before Apply. The default for both optional rewrites is on. Reason: "dedup the names" with no visible change in the summary fails the user's intent (ASSUMPTION; OPEN Q5 asks the owner).
+The two "not rewritten" rows for stored records are a DECISION, with a reason each. They are OPEN Q14 for the owner.
+
+Replacement rules (DECISION):
+
+1. Only aliases of the merged people are replaced. The alias list comes from `person_aliases` of the cluster that the user confirmed.
+2. A latin-script alias matches at word boundaries, ignoring case and accents. The replacement keeps the case pattern of the match (all lower, Capitalized, ALL CAPS).
+3. For Japanese and other scripts with no word spaces, an alias matches as an exact substring of 2 or more characters.
+4. Ambiguous-alias guard: if an alias is also an alias of another person in the same folder (two people called "Ana"), code does not replace that alias in free text. The preview lists those places as "left, ambiguous" with a tick box that is off.
+5. A match inside a longer name that belongs to another person ("Ana Souza" when merging "Ana" into "Ana Silva") is skipped by the same guard.
+6. A grammar effect is possible (a language with name inflections). Code does not repair it. The preview shows each changed place so the user can untick it.
+
+Preview content: every changed place is a row. A row shows table, meeting title, field, the text before and after with 40 characters of context around each change, and a tick box. A summary line shows counts for each place type. The row count shown equals the rows in `agent_change_places` after Apply (a test checks this).
+
+### 5.7 Conflict and undo rules for prose
+
+1. Apply writes one `agent_change_places` row per changed field. The row holds the full before and after hash and the list of patches (position, before span, after span).
+2. Undo goes place by place. For each place, code reads the current field value and compares its hash with `after_hash`.
+3. Same hash: restore `before_text`. Status `undone`.
+4. Different hash (the user or another process edited the text after the merge): try a patch-level undo. For each patch, if the `after` span is still at the expected place (same 40 characters of context), put back the `before` span. If all patches fit, status `undone`. If some do not fit, status `conflict` for those patches. Code leaves them as they are and lists them. The user can edit the text by hand.
+5. A summary replaced by a new Summarize run since the merge: the place is `superseded`. Undo skips it. The merge copy stays in `meeting_summary_versions`. The new summary is a fresh LLM output and has its own names.
+6. Order rule: if a later applied change touched the same place, undo of the earlier change is blocked for that place until the later change is undone. The check uses `agent_change_places` for the same `(table_name, row_key, field)` with a newer `applied` row.
+7. Undo of the entity merge (`merged_into`) happens last and only when no place is in `conflict`. Otherwise the merge stays soft-merged and the UI says which places need manual work. DECISION: partial undo is allowed, and it is logged in the audit table with the per-place status.
+8. Undo re-reads and compares inside one transaction, like apply (section 5.4 rule 4).
+9. After apply and after undo, `folder_standing` and the index need no extra step: the standing input hash changes (stale mark), and the indexer re-embeds changed chunks.
+10. A re-transcribe or a re-diarize after the merge rewrites segments and `meeting_speakers` (Discovery A section 3). The carry rule (`S/lib/meetings/speaker-carry.ts`) keeps names by overlap. The alias rows stay linked to `(meeting_id, speaker_label)`. If the label changes, the link is marked `stale` and the user sees it in the next merge preview. ASSUMPTION; P4 tests it.
 
 ## 6. Grounding and citations
 
@@ -722,22 +811,119 @@ Each step lists a measurement. All numbers come from the gold eval in section 8 
 3. DECISION: the fix lives in the tool first, so the agent does not wait for the UI issues. The two issues stay open for the search UI. A shared helper can fix both later.
 4. Measure: cite time error (ms between `best_ms` and the gold line start) and duplicate meeting rate per answer.
 
-### 7.4 R4 Optional keyword channel with FTS5
+### 7.4 Retrieval workstream R4 (in P0, decision D4)
 
-Gap: vectors only. The spike measured recall@10 of 0.613 (PT) and 0.703 (EN) on a hard set (`specs/local-semantic-search.md:105-111`; Discovery B section 1.4). Names and exact numbers are the weak case.
+Owner decision D4: "if we add anything, we do it right." The workstream compares four things on one gold set, then keeps only what the numbers support.
 
-Option (DECISION: build only if the eval shows the need):
+Why this reverses decision D8 of the search spec. D8 says: "Vectors only, no plain-RRF hybrid" (`specs/local-semantic-search.md:71`). The same spec lists hybrid search, a reranker and an "ask" answer as non-goals (`specs/local-semantic-search.md:49`; Discovery B section 1.4). Reasons to reverse now:
 
-1. A virtual table `meeting_segments_fts` over `meeting_segments` text and `enhanced_text`, external content, with triggers. The repo has the same pattern for dictation history, with the `trigram` tokenizer (`S/lib/schema.ts:960-975`). The trigram tokenizer matches any substring of 3 or more characters, so it also works for Japanese (same code comment).
-2. `search_chunks` runs the vector channel and the FTS channel. Code merges them with reciprocal rank fusion, k=60 (https://www.elastic.co/search-labs/blog/improving-information-retrieval-elastic-stack-hybrid; Discovery C section 2.2).
-3. External evidence for the gain: BM25 plus embeddings cut failed top-20 retrievals by 49% (5.7% to 2.9%) on Anthropic data sets (https://www.anthropic.com/news/contextual-retrieval). Their data differ from ours. Treat this as a hint.
-4. Cost: index size and write cost. ASSUMPTION; the build measures both.
-5. Measure: recall@8 on the "names and exact numbers" slice of the gold set. Build the channel only if vector recall on that slice is below the pass bar (section 8.5) and the hybrid gain is at least 10 points. These numbers are initial targets.
-6. This reverses decision D8 "vectors only, no plain-RRF hybrid" of the search spec (`specs/local-semantic-search.md:71`). The owner must approve (OPEN Q6).
+1. The agent asks questions that hold exact names and numbers. The spike measured recall@10 of 0.613 (PT) and 0.703 (EN) for the current int8 vectors on a hard set (`specs/local-semantic-search.md:105-111`). About 3 of 10 hard queries miss in the top 10.
+2. The agent cannot repair a miss. It answers "not found" or a wrong fact, and the cite check cannot see what the search missed.
+3. Outside evidence says BM25 plus embeddings cut failed top-20 retrievals by 49% (5.7% to 2.9%), and a reranker cut them by 67% (to 1.9%) (https://www.anthropic.com/news/contextual-retrieval). Their data sets differ from ours. This is a hint, not a promise.
+4. The spec's own reason for D8 is in an issue comment that the spec links. This spec does not restate it. The P0 PR must quote it and answer it with the measured numbers. The search spec is edited in the P0 PR (D8 and the non-goal line change status to "reversed by `specs/meeting-chat-agent.md` section 7.4, with numbers").
+
+Arms (all use the same gold set, section 8.2, plus the #233 hard set for continuity):
+
+| Arm | Retrieval | Notes |
+|---|---|---|
+| V0 | Dense vectors only (today): EmbeddingGemma 2 text tower, int8, cosine | baseline, `S/lib/mlx-embed/constants.ts:44-62`, `S/lib/search/vec-store.ts:18-25` |
+| H1 | V0 plus BM25 from SQLite FTS5, fused with RRF (k=60) | fusion: https://www.elastic.co/search-labs/blog/improving-information-retrieval-elastic-stack-hybrid |
+| H2 | H1 with a second FTS5 tokenizer (see below) | picks the tokenizer |
+| R1 | H1 or V0 candidates, then a cross-encoder reranker | picks the model |
+| M1 | V0 plus audio vectors from the multimodal model | spike only (section 7.4.4) |
+
+##### 7.4.1 BM25 with FTS5
+
+1. The unit is the chunk, the same unit as the vectors. Chunk text is not stored today. The indexer rebuilds it from segments and summaries (`S/lib/search/retrieve.ts:243-295`, Discovery B section 1.1). So the FTS table stores its own copy of the chunk text. DECISION: `meeting_chunks_fts(text, title)` with `rowid = meeting_chunks.id`, filled by the indexer in the same transaction as the vectors (`S/lib/search/indexer.ts:299-302` area). The cost is the text size on disk. P0 measures it.
+2. Two tokenizers are compared. The repo already has an FTS5 table with the `trigram` tokenizer for dictation history, which matches any substring of 3 or more characters (`S/lib/schema.ts:960-975`). The other candidate is a word tokenizer with accent folding. ASSUMPTION: the word tokenizer gives better BM25 ranking for PT and EN, and trigram is needed for Japanese. The eval decides. The names of the SQLite tokenizers are from the repo comment above. P0 must read the SQLite FTS5 documentation and quote it before the build (the discovery files do not contain it: GAP).
+3. Filters: the folder filter is a `JOIN` on `meetings.folder_id`. The meeting and date filters are `meeting_id IN (...)`, the same list that the vector channel uses (section 7.1).
+4. Query building: code, not the model. Code removes stop words per language and quotes terms, to avoid FTS syntax errors. A name list (people aliases, section 4.3) gets a boost. ASSUMPTION; the eval measures it.
+
+##### 7.4.2 Fusion
+
+1. Each channel returns its top 50 chunk ids. RRF with k=60 gives a fused list. Elastic reports that RRF raised average NDCG@10 by 1.4% over its learned sparse model alone, and by 18% over BM25 alone, with no tuning (https://www.elastic.co/search-labs/blog/improving-information-retrieval-elastic-stack-hybrid).
+2. The eval also tests a weighted RRF (weights per channel) and a plain score-normalized sum. The simple RRF wins ties.
+3. The fused top 30 go to the reranker when it exists. Else the top 8 go to the tool output.
+
+##### 7.4.3 Reranker
+
+Rule: a reranker is built only if it passes the bars in 7.4.6. Candidates:
+
+| Candidate | Facts | Source |
+|---|---|---|
+| Qwen3-Reranker-0.6B | Text reranker, 0.6B parameters, 100+ languages, 32k context, Apache-2.0. Scores on reranking subsets: MTEB-R 65.80, CMTEB-R 71.31, MMTEB-R 66.36, MLDR 67.28 (reranking the top 100 of Qwen3-Embedding-0.6B). Scoring is the probability of "yes" against "no". | https://huggingface.co/Qwen/Qwen3-Reranker-0.6B |
+| Qwen3-Reranker-4B | Same family, larger. Used as the default in the MLX service below. | https://github.com/aperepel/mlx-rerank |
+| MLX builds of the Qwen reranker | A community MLX service uses `mlx-community/Qwen3-Reranker-4B-mxfp8` by default and shows `mlx-community/Qwen3-Reranker-0.6B-mxfp8` in its example. It needs Apple Silicon and `mlx-lm`. It states no license, no latency and no memory numbers. | https://github.com/aperepel/mlx-rerank |
+| Sentence-Transformers cross-encoders `ms-marco-MiniLM-L6-v2` / `L12-v2` | NDCG@10 on TREC DL 19: 74.30 and 74.31. Speed on the page: 1800 and 960 docs/s (the hardware is not stated). Trained on MS MARCO. ASSUMPTION: English-only, so weak on PT. | https://sbert.net/docs/cross_encoder/pretrained_models.html |
+| `BAAI/bge-reranker-v2-m3` | Listed on the same page as a community model, with no metrics there. ASSUMPTION: multilingual (the name says "m3"). | https://sbert.net/docs/cross_encoder/pretrained_models.html |
+
+Runtime options on a Mac (what is known):
+
+1. MLX: the Qwen3 reranker runs through `mlx-lm`, with one forward pass per (query, document) pair (https://github.com/aperepel/mlx-rerank). The app already bundles an MLX LLM worker (Discovery B section 3.2: mlx-lm 0.32.2, `S/lib/mlx-asr/families.ts:24`). A reranker needs its own worker process, like the embed worker, with idle unload (`S/lib/mlx-embed/server.ts:17-32`). One worker for the embed model and the reranker is an option. The eval measures RAM.
+2. ONNX Runtime or CoreML for small cross-encoders (MiniLM, bge): GAP. The discovery files do not confirm backend support. P0 spikes it with a time box and reports.
+3. The Sentence-Transformers page links a "Speeding up Inference" page with ONNX and OpenVINO sections. This spec did not read it (GAP).
+4. The chat LLM itself as a listwise reranker is not a candidate. It holds the lane (`S/lib/llm/lane.ts:106`) and breaks the one-job ethos.
+
+##### 7.4.4 Multimodal embedding: does it exist, and is it viable locally?
+
+Findings:
+
+1. The app already uses EmbeddingGemma 2, not the first EmbeddingGemma. The id is `embeddinggemma-2-bf16-text`: the text tower only, 413 tensors, from a community MLX mirror (`S/lib/mlx-embed/constants.ts:44-62`).
+2. A multimodal EmbeddingGemma exists. Google released EmbeddingGemma 2 on 2026-10-06 (https://vpsranking.com/news/ai/ai-2026-10-06-google-embeddinggemma-2/; secondary source). The primary model card is at https://huggingface.co/google/embeddinggemma-2. It says: one shared 768-dimension space for text, code, images, video and audio; 740M parameters in total; 270M text, 170M vision, 300M audio; 8,192 tokens of context shared across modalities; audio at 25 tokens per second, up to about 327 seconds, mono 16 kHz; Apache-2.0.
+3. The card lets you load only some towers: text only (270M), text and image (440M), text and audio (570M), all (740M), by setting `vision_config` or `audio_config` to `None` in `config_kwargs` for Sentence-Transformers. The card says this varies by library (https://huggingface.co/google/embeddinggemma-2).
+4. Scores on the card (768 dimensions): MAEB (audio, mean over tasks) 49.87; MSEB (audio retrieval, MRR@10) 69.54; MTEB multilingual v2 61.36; MTEB code 78.68. What the MSEB tasks contain is not stated on the page I read (GAP).
+5. The first EmbeddingGemma was text-only: 0.3B, 768 dimensions, MTEB multilingual v2 61.15, input up to 2048 tokens (https://huggingface.co/google/embeddinggemma-300m). So the text score is about the same (61.36 against 61.15 on the card numbers).
+6. Frameworks on the card: Transformers, Sentence-Transformers, Safetensors. The article says Google lists MediaPipe and LiteRT for devices, and does not mention MLX or ONNX. Whether the audio tower runs under `mlx-vlm` (the runtime of the embed worker, Discovery B section 1.1) is UNKNOWN. Whether the text tower of the full model gives the same vectors as the current text-only mirror is UNKNOWN (ASSUMPTION: yes; a cosine test on 1000 chunks checks it before any mixing).
+7. A cloud multimodal model also exists: Gemini Embedding 2 (text, image, video, audio) (https://www.mayhemcode.com/2026/03/google-gemini-embedding-2-review-first.html, a blog review; not verified). It is not local. Under D1 it could be a user-chosen provider. It is not in the plan.
+8. I found no other verified local multimodal embedding candidates. GAP.
+
+Viability limits (INFERRED from the facts above and the repo):
+
+1. Audio is deleted by the retention sweep after `meeting_retention_days` (`S/lib/meetings/retention.ts:15-21`). Audio vectors must be built before the sweep. After it they cannot be rebuilt.
+2. An audio window is at most about 327 s. The chunk unit of the text index is about 300 tokens (`S/lib/search/chunker.ts:9-13`). ASSUMPTION: 30 s windows give a comparable unit, at 750 tokens each.
+3. Cost: 300M more parameters, and every minute of audio becomes vectors. P0 measures index time per audio hour, RAM and size.
+4. Benefit case: search that survives ASR errors on names (query text against audio vectors), and a voice query. ASSUMPTION; the eval slice "ASR-error names" measures it.
+
+DECISION: M1 is a time-boxed spike in P0, not a shipping feature. Steps: load the 570M text and audio setup in a Python environment, embed 30 s windows of the fictional audio (section 8.2 spoken meetings), run text queries, and report recall@8 on the ASR-error slice against V0 and H1. It becomes a build item only if it beats H1 by a margin set in 7.4.6 and runs under MLX or another runtime that the app can bundle. Else the report names the blocker.
+
+##### 7.4.5 Index and cost
+
+1. The vector index stays as is. Dimensions stay 768, int8.
+2. New: FTS table, optional reranker worker, optional audio vectors.
+3. A full rebuild of the FTS table from existing segments runs as a background job at the first start of the new version, one meeting per tick, like the slow scan (`S/lib/search/indexer.ts:426-447`).
+
+##### 7.4.6 Metrics and initial pass bars (P0)
+
+Metrics, per language (PT and EN) and per slice (names and exact numbers, concept questions, ASR-error names, date-bounded):
+
+| Metric | Definition |
+|---|---|
+| recall@k | gold chunk range found in the top k, for k = 1, 5, 10 |
+| nDCG@10 | on graded gold ranges (2 = exact line, 1 = same chunk window) |
+| MRR@10 | continuity with the #233 spike table (`specs/local-semantic-search.md:105-111`) |
+| Latency | p50 and p95 of the retrieval call: embed query, KNN, FTS, fusion, rerank. Warm and cold (embed worker load) separate. |
+| RAM | peak RSS of the embed worker and of the reranker worker, sampled every 5 s |
+| Index size | bytes of FTS table and of audio vectors per hour of meeting; time to index one hour |
+
+Pass bars (ASSUMPTION: initial targets. P0 measures V0 first; the owner confirms the bars; "every default needs a measured number"):
+
+| Item | Bar |
+|---|---|
+| Hybrid H1 against V0 | nDCG@10 not lower than V0 in any language. At least +5 points on the names and exact numbers slice. |
+| Hybrid recall@10 on the #233 hard set | at least 0.75 PT and 0.80 EN (V0 is 0.613 and 0.703, `specs/local-semantic-search.md:111`) |
+| Reranker R1 adopted | at least +3 points nDCG@10 overall over the best of V0 or H1, no language below V0, added p95 latency at most 400 ms for 30 candidates on an M-class Mac, added RAM at most 1.5 GB |
+| Multimodal M1 adopted | at least +5 points recall@8 on the ASR-error slice over H1, runs in a bundled runtime, audio indexing at most 0.2x real time |
+| Index size | FTS table at most 1.0x of the transcript text size |
+| Query latency p95 warm, hybrid without reranker | at most 150 ms (V0 query is dominated by about 80 ms embed and 1.2 ms KNN, Discovery B section 1.6) |
+| No regression | the existing search UI results for the #233 set do not drop in nDCG@10 |
+
+##### 7.4.7 Output of P0
+
+A table of arms against metrics in the PR, a decision per candidate (adopt, drop, later), and the changes to the search spec. The agent tools use the winning arm behind the same `search_chunks` interface, so a later change needs no tool change.
 
 ### 7.5 R5 Chunk context by code
 
-Idea from Anthropic's contextual retrieval: prepend context to each chunk (https://www.anthropic.com/news/contextual-retrieval). Their method calls an LLM for each chunk. A code-only version prepends title, date and folder. ASSUMPTION. It needs a re-embed of every chunk, so it is out of v1. The `meta` chunk already holds title and tags (`S/lib/search/source.ts:84-92`).
+Idea from Anthropic's contextual retrieval: prepend context to each chunk (https://www.anthropic.com/news/contextual-retrieval). Their method calls an LLM for each chunk. A code-only version prepends title, date and folder. ASSUMPTION. It needs a re-embed of every chunk. It is one more arm for the P0 workstream if time allows (arm C1). The `meta` chunk already holds title and tags (`S/lib/search/source.ts:84-92`).
 
 ### 7.6 Order
 
@@ -745,9 +931,9 @@ Idea from Anthropic's contextual retrieval: prepend context to each chunk (https
 |---|---|---|
 | R1 meeting scope and date filter | P0 | recall@8 not lower than the current search eval |
 | R3 `best_ms` and grouping (in the tool) | P0 | cite time error measured |
+| R4 FTS5 + RRF, reranker, multimodal spike | P0 | bars in 7.4.6 |
 | R2 transcript window | P2 | who-said accuracy measured |
-| R4 FTS5 channel | P2 or later, only if needed | slice recall gain |
-| R5 contextual chunk text | not planned | |
+| R5 contextual chunk text | P0 if time allows | slice recall gain |
 
 ## 8. Evaluation plan
 
@@ -825,7 +1011,7 @@ Arms (each on E2B first):
 | A4 | A1 plus the FTS channel (when built) |
 | A5 | No slot fill (default slots) to measure the value of the slot call |
 
-An arm wins by the key metrics. A cloud model arm runs only if the owner allows cloud (OPEN Q1) and only on the fictional corpus.
+An arm wins by the key metrics. Per decision D1, cloud models are normal providers. Local models are the focus and set the bars. Cloud reference runs (one or two models, chosen with the owner) use the fictional corpus only, so no private data leaves the Mac. The eval reports them as a ceiling. They never replace a local pass.
 
 ### 8.6 Name-dedup set
 
@@ -858,6 +1044,29 @@ No measured baseline exists for any of these numbers. The values below are initi
 
 E4B, Nemotron and Qwen must meet the same bars or better. A bar missed by E2B but met by bigger models is a finding for the owner. It does not change the E2B target silently.
 
+### 8.8 Retrieval eval (P0) and mic diarization eval (PM)
+
+Retrieval eval: metrics, arms and bars are in section 7.4. The gold ranges come from the corpus of 8.2. Add to the corpus: 40 queries with exact names, 40 with exact numbers, 30 concept queries, 20 with an ASR-style misspelling of a name in the transcript, 20 date-bounded queries. Half are in Portuguese and half in English, so nDCG@10 is per language.
+
+Mic diarization eval (fictional multi-voice mic audio):
+
+1. Audio: scripted meetings spoken with 2 to 4 different macOS voices on one mic track, with room noise and a typing track, 2 to 5 minutes each. Also: one voice on the mic (false-split check), one mic voice plus remote voices on the system track, and one case where the system audio leaks into the mic (echo). The method follows the live chat proof (fictional scripts, macOS voices, `specs/live-chat.md` section 6).
+2. Key: a script file that says which voice speaks each sentence and when.
+3. Metrics, scored by code:
+
+| Metric | Definition |
+|---|---|
+| Speaker count accuracy | detected mic clusters equal the true voice count |
+| Label purity | share of mic sentences whose cluster maps (best one-to-one match) to the true voice |
+| False split rate | single-voice mic meetings that produce 2 or more clusters |
+| Owner link accuracy | the cluster that the user confirms as owner is the true owner voice, and no other voice links to the owner |
+| Echo rejection | echo clusters not offered as people |
+| Summary owner accuracy | action items spoken by a non-owner mic voice do not get the owner as owner |
+| Time | diarizer time per audio minute for the mic pass |
+| No regression | system-channel labels and ASR text are unchanged on the existing fixtures |
+
+4. Initial bars (ASSUMPTION): speaker count accuracy at least 80% on 2 to 3 voices; label purity at least 0.85; false split rate at most 15%; owner link accuracy 100% on cases with one confirmation; echo rejection at least 90%; no regression. PM step 1 measures the helper on the mic first, then the owner confirms the bars.
+
 ## 9. Phased plan
 
 ### 9.1 Phases
@@ -866,20 +1075,23 @@ Every phase is a vertical slice behind a setting. Every phase has a draft PR at 
 
 ```mermaid
 flowchart LR
-  P0["P0 Retrieval fixes<br/>+ eval harness + baseline"] --> P1["P1 Read-only chat<br/>meeting + folder, 4 tools"]
+  P0["P0 Retrieval workstream R1 to R4<br/>+ eval harness + baseline"] --> P1["P1 Read-only chat<br/>meeting + folder, 4 tools"]
   P1 --> P2["P2 Everything scope<br/>+ people entity read<br/>+ who-said + 4 more read tools"]
   P2 --> P3["P3 Write proposals<br/>action items, retag, move<br/>apply + undo + audit"]
-  P3 --> P4["P4 Person merge<br/>resolver + confirm UI"]
+  P1 --> PM["PM Mic diarization<br/>(parallel from P1)"]
+  P3 --> P4["P4 Person merge, rewrite all<br/>resolver + confirm UI"]
+  PM --> P4
   P4 --> P5["P5 Live variant unify<br/>replace live chat route"]
 ```
 
 | Phase | Content | Schema | Setting | DoD (all needed) |
 |---|---|---|---|---|
-| P0 | R1 meeting scope and date filter; R3 `best_ms` and grouping helper; the eval corpus builder and harness (`scripts/chat-eval/`); baseline runs of A0 on E2B, E4B, Nemotron, Qwen; a skill `.claude/skills/chat-eval/SKILL.md` | none (FTS5 later, if needed) | none (no user feature) | Baseline numbers table in the PR. Unit tests of the new filters. The existing search eval does not regress. The harness runs against an isolated app. |
+| P0 | R1 meeting scope and date filter; R3 `best_ms` and grouping helper; the retrieval workstream R4 of section 7.4 (FTS5 BM25, RRF fusion, reranker candidates, multimodal spike) with its own eval and bars; reversal of D8 in the search spec; the chat eval corpus builder and harness (`scripts/chat-eval/`); baseline runs of A0 on E2B, E4B, Nemotron, Qwen; a skill `.claude/skills/chat-eval/SKILL.md` | FTS table (version at build time) only if H1 passes its bar | none (no user feature) | Arms table (V0, H1, H2, R1, M1) with recall@k, nDCG@10 per language, latency, RAM, index size, in the PR. Unit tests of the new filters. The existing search eval does not regress. The harness runs against an isolated app. Bars of 7.4.6 met or the PR says which arm was dropped. |
 | P1 | Router, plan table, slot fill, answer, cite validation. Tools: `search_chunks`, `get_meeting_summary`, `list_action_items` (read only, derived key), `folder_status`. Threads and messages. Scope M and F. A basic UI in the placement chosen in section 11. | v54 (items), v55 (threads) | `meeting_chat_enabled` (default off) | E2E in the isolated app: a real question per story R1, R2, R5, R6, R9 with screenshots in light and dark. Gold eval numbers for E2B meet the P1 bars. Failure paths 2.5 each tested. |
 | P2 | Scope A. Tools: `list_meetings`, `list_decisions_questions`, `list_people` (certain matches only), `get_transcript_window`. Resolver for certain matches. Optional FTS5 channel by the R4 gate. | v56 (people) | same | E2E for R3, R4, R7. Gold numbers meet the P2 bars. Resolver run on the fictional corpus. |
 | P3 | `propose_action_item_change`, `propose_retag`, `propose_move`. Proposal cards. Apply, undo, audit log. Extract the move and tag logic to lib functions. Item sync after summarize. | v57 (changes) | same | E2E: propose, apply, check in the screen, undo, check again, for each kind. The undo round trip hash test. Write bars met. No path writes without Apply (a test posts a write-intent question and checks the tables did not change). |
-| P4 | `propose_merge_people`, resolver clusters (likely, unsure), confirm UI, rewrite options and versioned summary copy. | none | same | E2E on a fictional folder with 3 name variants. Dedup precision bar. Merge then undo round trip. |
+| PM | Workstream of section 4.5: spike of the helper on `mic.wav`, mic labels `m1..`, `source` column in diarizer turns, merge output without the hard-coded "Me", owner confirmation flow, echo check, carry rule with mic labels. Starts after P1 (one PR open at a time with the main line, WIP limit 2). | rebuild of `meeting_diarizer_turns` (version at build time) | extends the diarization setting | Multi-voice mic eval of 8.8 meets its bars. E2E in the isolated app: a fictional 3-voice mic meeting shows 3 speakers, the user confirms one as owner, light and dark screenshots. No regression on single-voice meetings. |
+| P4 | `propose_merge_people`, resolver clusters (likely, unsure), confirm UI, full rewrite of D3 with the preview of every changed place, `agent_change_places`, conflict rules of 5.7. Needs PM for the owner link. | none beyond v57 | same | E2E on a fictional folder with 3 name variants and a mic with 2 voices: merge, check every place in the screen, edit one summary line by hand, undo, see the conflict report. Dedup precision bar. Round trip hash test for tables without a conflict. |
 | P5 | Live variant on the pipeline, `get_live_tail`, thread migration from `meeting_chat_messages`, the old route becomes an adapter. | none (data copy) | `live_chat_enabled` keeps gating the live view | The 9 proofs of `specs/live-chat.md` section 6 still pass. Latency and RSS no worse than today (246 ms warm chat, 231 to 247 MB app RSS, 9.0 GB peak all processes). Gold live questions pass. |
 
 Rule for all phases: an E2E result on the screen is needed. A 200 response alone does not count (user-wide `CLAUDE.md`, "A 200 is not evidence"). Evidence is the command and its real output, plus screenshots in light and dark (project memory "UI proof: both themes").
@@ -890,25 +1102,25 @@ Rule for all phases: an E2E result on the screen is needed. A 200 response alone
 |---|---|---|---|
 | 1 | E2B is too weak for the router, the slots or the answer | Tau2 24.5% for E2B (https://huggingface.co/google/gemma-4-E2B-it/raw/main/README.md); a 4k multi-job prompt lost to a focused prompt on E2B (`AGENTS.md` ethos section) | Small closed choices. Code renders lists. P0 baseline before any build. Arms A1 to A5. Bars confirmed by the owner. |
 | 2 | Hard schema lowers answer quality | https://arxiv.org/abs/2605.26128 | Strict only on small closed outputs. Arm A2 compares lenient parse. |
-| 3 | A wrong person merge corrupts data in many meetings | Names appear in 7 places (Discovery A section 2.1) | Link-only entity merge. Rewrite only structured fields. Cannot-link rule. User confirms every cluster. Versioned copy. Undo with conflict check. Precision first. |
+| 3 | A wrong person merge corrupts data in many meetings | Names appear in 7 places (Discovery A section 2.1) | Entity merge is soft (`merged_into`). The full rewrite (D3) is shown place by place in the preview. Cannot-link rule. Ambiguous-alias guard. User confirms every cluster. Versioned copy of every place. Patch-level undo with a conflict report. Precision first. |
 | 4 | Vector-only recall misses names and numbers | recall@10 0.613 PT, 0.703 EN (`specs/local-semantic-search.md:105-111`) | Structured tools for counts and owners. Optional FTS5 channel by a measured gate. |
 | 5 | Item ids drift on re-summarize or re-transcribe | Key hash changes with text (`S/lib/meetings/folder-overview.ts:40-42`); segment ids rewritten (Discovery A, gap 10) | `sameOverviewItem` sync, `text_hash` drift check, cites by `meeting_id` plus `start_ms`. |
 | 6 | The lane or RAM hurts dictation or small Macs | One request at a time per local model (`S/lib/llm/lane.ts:106`); peak 9.0 GB with ASR and chat models, 16 GB Macs untested (`specs/live-chat.md` section 7); the prefix cache of cleanup is one entry (`W:905-925`) | Measure dictation latency during a chat turn (bar in 8.7). Measure the cleanup prefix cache after a chat turn. Chat uses the interactive class. The turn deadline is 60 s. |
-| 7 | Privacy: chat over many meetings with a cloud model | Live chat is local only (`S/routes/meetings-chat.ts:98-103`) | Local only by default. OPEN Q1. |
+| 7 | Data goes to a cloud provider that the user chose, in a chat over many meetings | Decision D1 lifts the local-only rule of the live chat (`S/routes/meetings-chat.ts:98-103`) | The app sends only the sources of the turn (up to 6000 estimated tokens) to the provider that the user set for the task. The thread shows provider and model. The LLM inspector keeps the sent messages (`llm_calls.messages_json`, `S/lib/schema.ts:1070`). No fallback to another provider. |
 | 8 | Eval corpus does not match real use | Fictional corpus (8.2) | Owner-labelled private set for dedup. Owner spot check of 20 answers per model. The three spoken meetings. |
 | 9 | Scope creep from the UI placement | Placement is open (section 11) | The API is placement-agnostic. P1 builds one thin UI only. |
 
-Top five by impact: 1, 3, 4, 5, 6.
+Two more risks come from the owner decisions. Risk 10: a mic diarizer that splits one voice, or makes clusters from echo (section 4.5). Risk 11: a prose rewrite that changes the wrong word (section 5.6 rules 4 to 6). Mitigation for 11: ambiguous-alias guard, per-place preview, patch-level undo. Top five by impact: 1, 3, 4, 5, 6.
 
 ### 9.3 Open questions for the owner
 
-See section 12.
+See section 12.2. Decisions D1 to D4 are in section 12.1.
 
 ## 10. Effect on existing features
 
 | Feature | Effect | What is reused |
 |---|---|---|
-| Live chat (`S/routes/meetings-chat.ts`, `S/lib/meetings/live/*`) | Replaced in P5. Until then it is untouched. The routes `GET/POST /api/meetings/:id/chat` stay as an adapter in P5 so the live panel keeps working. The 9 proofs must pass again. | Context builder blocks F and L, prompt style, cite drop, live store, panel (`R/pages/meetings/live-chat-panel.tsx`), cite chips |
+| Live chat (`S/routes/meetings-chat.ts`, `S/lib/meetings/live/*`) | Replaced in P5. In P5 the local-only block (`S/routes/meetings-chat.ts:98-103`) goes away, by decision D1. The text of `specs/live-chat.md` section 3 ("only a local model answers") is updated in the same PR. Until then it is untouched. The routes `GET/POST /api/meetings/:id/chat` stay as an adapter in P5 so the live panel keeps working. The 9 proofs must pass again. | Context builder blocks F and L, prompt style, cite drop, live store, panel (`R/pages/meetings/live-chat-panel.tsx`), cite chips |
 | `meeting_chat_messages` | Copied to threads in P5. Kept one release. | Table rows |
 | Folder standing and overview | Read only through `folder_status`. Overview unchanged. After a merge the standing shows stale through its input hash. | `buildFolderOverview`, `folder_standing`, `folderActionGroups` |
 | Folder action item done marks | P3 adds a dual write with `meeting_items.status`. The overview stays unchanged. | `setActionItemDone` |
@@ -916,7 +1128,9 @@ See section 12.
 | Search index | A summary edit by Apply re-embeds the summary chunk. A move re-partitions vectors. | indexer, vec store |
 | Cleanup (dictation cleanup, renamed from "Tone" in #398) | It shares the default LLM worker and the lane with the chat (`specs/live-chat.md` section 3). A chat turn of several calls can delay a dictation by up to one call. Chat does not send the prefix-cache header, so a chat call can evict the one-entry cleanup cache (`W:905-925`; `S/lib/llm/registry.ts:529-534`). Measured in P1. | `resolveTaskCall`, `withLlmLane`, the lane |
 | Summarize and Enhance | P3 item sync runs after the save step. A new summary keeps ids by `sameOverviewItem`. | `save.ts` pipeline |
-| Speaker naming | P4 uses the existing speaker update path. | `PATCH /:id/speakers/:label` |
+| Speaker naming and diarization | P4 uses the existing speaker update path. PM adds the mic channel to diarization and changes `merge.ts` (section 4.5). | `PATCH /:id/speakers/:label`, `fluidaudio-diarize` helper |
+| Search spec | D8 and the hybrid and reranker non-goals are reversed with numbers (section 7.4). | `specs/local-semantic-search.md` |
+| Audio retention | Audio vectors (if M1 ships) depend on audio that the sweep deletes (`S/lib/meetings/retention.ts:15-21`). | |
 | LLM inspector | Shows chat stages through `llm_runs` with `scope = "chat"`. | recorder, inspector UI |
 | Settings, Models page | New switch `meeting_chat_enabled`. New row for the task `meetingChat` on the Models page (as `models.taskProfiles.liveChat`, `specs/live-chat.md` section 5). 7 locales plus template. | task profile UI |
 | Knip | New files must be imported or listed in `knip.jsonc` (`AGENTS.md`, development gotchas). | |
@@ -948,21 +1162,32 @@ What each placement changes in the plan:
 
 P1 waits for this choice. P0 does not.
 
-## 12. Open questions for the owner
+## 12. Owner decisions and open questions
+
+### 12.1 Decisions (owner answers, 2026-10-31 09:49)
+
+| ID | Decision | Where it applies |
+|---|---|---|
+| D1 (was Q1) | Cloud models are allowed like every other provider and model the app supports. It is the user's choice. Local is always first and is the focus of the design and the eval. There is no special "cloud blocked" rule. The usual provider and key flow stays. Data goes only where the user chose. | 1.2, 2.3 stage 0, 2.5, 8.5, 9.2 risk 7, 10 |
+| D2 (was Q4) | The app creates the account-owner person after one confirmation. The mic channel can hold more than one person, so diarization is needed on all channels. "Me" is not "every mic segment". The owner person links only to the mic clusters that the user confirms. Other mic voices are their own speakers. | 4.3, 4.5, 8.8, 9.1 (PM) |
+| D3 (was Q5) | A person merge rewrites everything by default, prose included: speaker names, action item owners, summary prose, standing bullets, search chunks (re-index) and chat history display. Always a versioned copy, with full undo. The preview shows every changed place. | 5.6, 5.7, 4.4 |
+| D4 (was Q6) | Retrieval gets a full workstream in P0: FTS5 BM25 plus dense vectors with RRF, a reranker if it helps, and research on a multimodal embedding. Decision D8 of the search spec is reversed, with the reason in 7.4. Own metrics and initial bars. | 7.4, 8.8, 9.1 (P0) |
+
+### 12.2 Open questions
 
 | # | Question | Default in this spec |
 |---|---|---|
-| Q1 | May chat over private meeting data use a cloud model? Live chat is local only. Summarize and Enhance may use cloud (Discovery B section 3.4). Options: (a) local only; (b) cloud allowed per scope, with a warning; (c) cloud only for questions that use structured tools and send no transcript text. | (a) local only |
 | Q2 | UI placement: drawer, Ask page, or embedded tab with Cmd+K. | open (section 11) |
-| Q3 | Approve the pass bars of section 8.7 after the P0 baseline? | wait for P0 numbers |
-| Q4 | Who is "Me"? May the app create the account-owner person after one confirmation? | yes, one confirmation |
-| Q5 | Person merge: should the rewrite of speaker names and action item owners be on by default in the preview? | on |
-| Q6 | May we reverse decision D8 of the search spec (no hybrid search) and build the FTS5 channel if the eval shows the need? | yes, gated by measurement |
+| Q3 | Approve the pass bars of sections 7.4.6, 8.7 and 8.8 after the P0 and PM measurements? | wait for the numbers |
 | Q7 | Is an unfiled meeting allowed to hold its own done marks (section 4.1)? | yes |
 | Q8 | Which bigger models count as the target set for "must do better": E4B, Nemotron Bolt, Qwen 27B, 26B-A4B? | E4B, Nemotron, Qwen |
 | Q9 | Keep chat history forever, or prune? Threads cascade with their meeting or folder. | keep, no prune |
 | Q10 | Owner-labelled dedup pairs: 100 to 200 pairs needed before P4. Who labels, and when? | owner, before P4 |
-| Q11 | Should the first release of the agent include a "search wider" button, or widen the scope on its own when nothing is found? | button, no auto widen |
+| Q11 | First release: a "search wider" button, or widen the scope on its own when nothing is found? | button, no auto widen |
+| Q12 | Same voice across meetings: may the app suggest "this is the same voice as in the last meeting" if the diarizer helper can give speaker embeddings? Needs a check of the helper first. | not in scope |
+| Q13 | If the multimodal spike (7.4.4) succeeds, may the app keep audio vectors, given that the audio file is deleted after the retention period? | spike only |
+| Q14 | Person merge: should it also rewrite stored transcript text and the calendar attendee names? This spec leaves them out (5.6). | not rewritten |
+| Q15 | Which cloud model or models serve as the reference ceiling in the eval (8.5)? | none until the owner names them |
 
 ## 13. Sources
 
