@@ -107,6 +107,10 @@ export interface Fact {
   lang: Lang;
   /** True when the transcript line holds the ASR spelling of a name. */
   asrNameLine: boolean;
+  /** The raw slot values the line was made from (gold.mts reads them). */
+  slots: Record<string, unknown>;
+  /** 0 for a first version; 1 for a later version (an update of the first). */
+  version: 0 | 1;
 }
 
 export interface Corpus {
