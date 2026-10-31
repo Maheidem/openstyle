@@ -562,6 +562,10 @@ function defineScenario(): void {
       await expect(
         page.getByTestId("meeting-ask-assistant").nth(3),
       ).toBeVisible();
+      // The first answer (text with a cite chip) is the picture.
+      await page.getByTestId("meeting-ask-messages").evaluate((el) => {
+        el.scrollTop = 0;
+      });
       await page.screenshot({
         path: join(dir, `ask-${theme.toLowerCase()}${REAL ? "-real" : ""}.png`),
       });
