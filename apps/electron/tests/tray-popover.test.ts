@@ -196,7 +196,7 @@ test("a toggle shows the popover with the header, the hotkey and Start", async (
 
   await expect(popover.getByText("Openstyle", { exact: true })).toBeVisible();
   const hotkey = popover.getByTestId("tray-popover-hotkey");
-  if (MAC) await expect(hotkey).toHaveText("Hold Fn to dictate");
+  if (MAC) await expect(hotkey).toHaveText("Hold \u2303\u2325 to dictate");
   else await expect(hotkey).toHaveText(/^Hold \S+ to dictate$/);
   await expect(popover.getByTestId("tray-popover-status")).toHaveText("Ready");
   await expect(

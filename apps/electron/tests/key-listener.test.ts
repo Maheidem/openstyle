@@ -114,6 +114,24 @@ test("macOS KEY_UP line releases a compound hotkey", () => {
   expect(events).toEqual(["down", "up"]);
 });
 
+test("macOS default Control+Alt chord holds while both modifiers are down", () => {
+  const events: string[] = [];
+  const listener = new NativeKeyListener({
+    hotkey: "Control+Alt",
+    onKeyDown: () => events.push("down"),
+    onKeyUp: () => events.push("up"),
+  }) as unknown as LineHandler;
+
+  listener.handleLine("FLAGS:control");
+  expect(events).toEqual([]);
+
+  listener.handleLine("FLAGS:control,option");
+  expect(events).toEqual(["down"]);
+
+  listener.handleLine("MODIFIER_UP:option");
+  expect(events).toEqual(["down", "up"]);
+});
+
 test("hotkey recorder preserves modifiers emitted with Fn chord lines", () => {
   const modifiers: string[][] = [];
   const recorder = new HotkeyRecorder({

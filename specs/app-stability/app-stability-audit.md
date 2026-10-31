@@ -48,7 +48,7 @@ Status legend: **STILL-PRESENT** (from 2026-06-10 audit), **NEW**, **FIXED** (ve
 
 ### 3.1 Global hotkey & key listening (priority 1)
 
-**Fixed since last audit (verified):** platform-aware default hotkey centralized in `apps/electron/src/shared/hotkey-defaults.ts:11` (darwin=`Fn`, win32=`Control+Super`, linux=`Alt+Super`); push-to-talk→toggle degradation now notifies the user (`index.ts:2145-2164`); Fn/Globe rejected on non-mac (`index.ts:2038-2045`); `macFnDown` reset fixed; real mic-permission checks on mac/win, renderer `getUserMedia` probe on Linux; onboarding blocks Wayland users lacking `/dev/input` access (`onboarding.tsx:917`). Commits #358 (solo-Fn grace window) and #346 (exact suppression matching) verified correct.
+**Fixed since last audit (verified):** platform-aware default hotkey centralized in `apps/electron/src/shared/hotkey-defaults.ts:11` (darwin=`Fn` at the time of this audit; `Control+Alt` since 2.25.0, win32=`Control+Super`, linux=`Alt+Super`); push-to-talk→toggle degradation now notifies the user (`index.ts:2145-2164`); Fn/Globe rejected on non-mac (`index.ts:2038-2045`); `macFnDown` reset fixed; real mic-permission checks on mac/win, renderer `getUserMedia` probe on Linux; onboarding blocks Wayland users lacking `/dev/input` access (`onboarding.tsx:917`). Commits #358 (solo-Fn grace window) and #346 (exact suppression matching) verified correct.
 
 | Status | Sev | Finding |
 |---|---|---|

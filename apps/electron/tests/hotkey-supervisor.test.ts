@@ -92,9 +92,9 @@ test("dictation helper is retried after a permanent failure and hold mode return
     // 1. The helper starts. (The "ready" line is a debug line and the built
     // app does not print debug lines, so the process is the proof here.)
     await expect
-      .poll(() => helperPids(appPid, "Fn").length, { timeout: 20_000 })
+      .poll(() => helperPids(appPid, "Control+Alt").length, { timeout: 20_000 })
       .toBe(1);
-    const [firstPid] = helperPids(appPid, "Fn");
+    const [firstPid] = helperPids(appPid, "Control+Alt");
     expect(firstPid).toBeGreaterThan(0);
 
     // 2. A restart that reaches READY resets the restart counter, so killing
@@ -118,7 +118,7 @@ test("dictation helper is retried after a permanent failure and hold mode return
         { timeout: 5_000 },
       )
       .toBe(1);
-    expect(helperPids(appPid, "Fn")).toEqual([]);
+    expect(helperPids(appPid, "Control+Alt")).toEqual([]);
 
     // 3. While the helper cannot start, each retry fails and the fallback
     // stays. A failed retry logs at debug level only, so the log gets no new
@@ -127,7 +127,7 @@ test("dictation helper is retried after a permanent failure and hold mode return
     await new Promise((done) => setTimeout(done, RETRY_MS * 2 + 1_000));
     expect(count("Key listener process error")).toBe(errorsBefore);
     expect(count("Dictation key listener recovered")).toBe(0);
-    expect(helperPids(appPid, "Fn")).toEqual([]);
+    expect(helperPids(appPid, "Control+Alt")).toEqual([]);
 
     // 4. The helper works again. The next retry restores hold mode.
     chmodSync(HELPER, helperMode & 0o777);
@@ -139,14 +139,14 @@ test("dictation helper is retried after a permanent failure and hold mode return
         },
       )
       .toBe(1);
-    const recoveredPids = helperPids(appPid, "Fn");
+    const recoveredPids = helperPids(appPid, "Control+Alt");
     expect(recoveredPids).toHaveLength(1);
     expect(recoveredPids[0]).not.toBe(firstPid);
 
     // 5. After recovery no further retry runs (one recovery line only).
     await new Promise((done) => setTimeout(done, RETRY_MS * 2));
     expect(count("Dictation key listener recovered")).toBe(1);
-    expect(helperPids(appPid, "Fn")).toEqual(recoveredPids);
+    expect(helperPids(appPid, "Control+Alt")).toEqual(recoveredPids);
 
     // 6. The hotkey IPC path still delivers down and up to the windows.
     await dashboard.evaluate(() => {
