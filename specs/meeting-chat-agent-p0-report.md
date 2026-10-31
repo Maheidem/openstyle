@@ -21,7 +21,7 @@ Scope: measurement only. The product code changes are the minimum that the harne
 |---|---|
 | Machine | Apple M5 Max, 128 GB, macOS 27.0.1 |
 | Code | branch `feat/chat-agent-p0` (head at the time of the final runs: see the MLflow tag `chat.git_sha`) |
-| Embed model | `embeddinggemma-2-bf16-text`, text tower, int8 vectors in sqlite-vec 0.1.9 (`apps/server/src/lib/mlx-embed/constants.ts:44`) |
+| Embed model | `embeddinggemma-2-bf16-text`, text tower, int8 vectors in sqlite-vec 0.1.9 (`apps/server/src/lib/mlx-embed/constants.ts:46`) |
 | LLM | `gemma-4-e2b-qat-4bit`, shipped worker build 2.25.0-alpha.1 (mlx-lm 0.32.2, llguidance 1.9.1), temperature 0, thinking off |
 | Corpus | seed 20261031, hash `d43381b7d69e90fd`; gold hash `a02e9c4f5953ae6e` |
 | MLflow | experiment `openstyle-lab-chat-agent-p0`. The spec names no experiment, so this follows the eval-lab pattern `openstyle-lab-<stage>`. The server address comes from the environment. Every run was read back (`READ BACK OK` in the logs). |
@@ -63,9 +63,9 @@ SQLite FTS5 documentation, https://www.sqlite.org/fts5.html (read 2026-10-31):
 
 1. On `bm25()`: "The better the match, the numerically smaller the value returned." Appending `ORDER BY bm25(ft)` or `ORDER BY rank` gives the best match first. The constants are k1 = 1.2 and b = 0.75.
 2. "FTS5 features four built-in tokenizer modules": `unicode61` (the default), `ascii`, `porter` and `trigram`.
-3. `unicode61` "removes diacritics" with the option `remove_diacritics`. The values are 0, 1 and 2. This run uses 2.
-4. `trigram` "treats each contiguous sequence of three characters as a token, allowing FTS5 to support more general substring matching". "Substrings consisting of fewer than 3 unicode characters do not match any rows."
-5. The repo already uses a `trigram` table for dictation history (`apps/server/src/lib/schema.ts:960`).
+3. `unicode61` folds diacritics of Latin letters with the option `remove_diacritics` (values 0, 1 and 2). This run uses 2.
+4. `trigram` "treats each contiguous sequence of three characters as a token, allowing FTS5 to support more general substring matching". "Substrings consisting of fewer than 3 unicode characters do not match any rows when used with a full-text query."
+5. The repo already uses a `trigram` table for dictation history (`apps/server/src/lib/schema.ts:965 to 972`).
 
 Issue #233, comment 6299816580 (the reason of SD8): "Search: vectors only. No plain-RRF hybrid (it lowered EN recall@10 from 0.716 to 0.608)." The numbers comment 6299161833 says the set was a hard paraphrase set (75 PT and 74 EN queries) where "BM25 alone" scored recall@10 0.333 (PT) and 0.324 (EN). On such a set BM25 adds noise. The agent asks questions with exact names and numbers. Section 3.9 answers SD8 with numbers.
 
