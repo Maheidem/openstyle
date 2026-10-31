@@ -13,6 +13,7 @@ import {
   rng,
 } from "./corpus.mts";
 import { normalize } from "./keys.mts";
+import { relabelIntent } from "./router-data.mts";
 import type {
   AnswerKey,
   Corpus,
@@ -97,23 +98,10 @@ export function buildGold(c: Corpus): GoldSet {
   let n = 0;
   const questions: Question[] = [];
   const langAt = (i: number): Lang => (i % 2 === 0 ? "en" : "pt");
-  /**
-   * Intent labels follow what E2B says (owner decision 2026-10-31, P0 report
-   * section 9 point 6): "When is X?" is temporal and "Who will do X?" is
-   * who_said. Only a question that the builders labelled lookup is relabelled.
-   * The plan tools do not change: a temporal question without a date range
-   * and a who_said question both start with search_chunks (P1 plan table).
-   */
-  const labelIntent = (text: string, intent: Intent): Intent => {
-    if (intent !== "lookup") return intent;
-    if (/\b(who will|quem vai)\b/i.test(text)) return "who_said";
-    if (/\b(when|quando|para quando)\b/i.test(text)) return "temporal";
-    return intent;
-  };
   const add = (q: Omit<Question, "id">) => {
     questions.push({
       ...q,
-      intent: labelIntent(q.text, q.intent),
+      intent: relabelIntent(q.text, q.intent),
       id: `q${String(++n).padStart(3, "0")}`,
     });
   };

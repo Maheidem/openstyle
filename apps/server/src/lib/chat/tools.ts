@@ -1035,12 +1035,13 @@ const listMeetings: ToolDef<z.infer<typeof listMeetingsArgs>> = {
       tag: a.tag,
     }).reverse(); // newest first
     const labels: string[] = [];
+    const items: ChatListItem[] = [];
     for (const m of all.slice(0, a.limit ?? 20)) {
       const overview =
         parseSummary(m.summary_json)?.overview ||
         gistOf(parseSummary(m.summary_json), m.markdown) ||
         "";
-      addSource(
+      const label = addSource(
         ctx,
         {
           kind: "summary",
@@ -1054,9 +1055,26 @@ const listMeetings: ToolDef<z.infer<typeof listMeetingsArgs>> = {
         },
         labels,
       );
+      items.push({
+        text: `${m.title ?? "Untitled"} (${isoDay(m.at)})`,
+        meeting_id: m.id,
+        meeting_title: m.title,
+        item_id: null,
+        done: null,
+        owner: null,
+        due: null,
+        label,
+      });
     }
     // `rows` is the full count, so the pipeline can answer "how many".
-    return { rows: all.length, labels, blocks: [] };
+    return {
+      rows: all.length,
+      labels,
+      blocks:
+        all.length > 0
+          ? [{ kind: "list", list: "meetings", total: all.length, items }]
+          : [],
+    };
   },
 };
 

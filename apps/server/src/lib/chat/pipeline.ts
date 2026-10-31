@@ -376,6 +376,25 @@ export async function runChatTurn(input: ChatTurnInput): Promise<TurnResult> {
   }
   intent ??= TOOL_INTENT[first.tool] ?? "lookup";
 
+  // A follow-up has no topic of its own ("and when is that due?"). The search
+  // query holds the first and the last earlier question too (spec 2.8 point 4;
+  // in P1 code does the rewrite, the eval measures it on the follow-up slice).
+  if (turns.length > 0) {
+    const widen = (c: Call): Call => {
+      if (c.tool !== "search_chunks") return c;
+      const a = c.args as { query?: string };
+      const parts = [
+        turns[0]?.question,
+        turns.at(-1)?.question,
+        a.query ?? question,
+      ].filter((x): x is string => !!x);
+      const query = [...new Set(parts)].join(" ").slice(0, 200);
+      return { ...c, args: { ...a, query } };
+    };
+    first = widen(first);
+    fallbackCalls = fallbackCalls.map(widen);
+  }
+
   // ---- Write questions: read only in P1. The eval may read the proposal. ----
   if (intent === "write" || first.tool.startsWith("propose_")) {
     intent = "write";
@@ -543,10 +562,7 @@ export async function runChatTurn(input: ChatTurnInput): Promise<TurnResult> {
     historyDropped = assembled.historyTurnsDropped;
     sourceTokens = assembled.parts.sources;
     const started = Date.now();
-    let parsed: {
-      found: boolean;
-      sentences: { text: string; cites: string[] }[];
-    };
+    let parsed: { sentences: { text: string; cites: string[] }[] };
     try {
       const r = await llm.structured({
         step: "chatAnswer",
@@ -585,7 +601,7 @@ export async function runChatTurn(input: ChatTurnInput): Promise<TurnResult> {
       }
       throw e;
     }
-    if (!parsed.found || parsed.sentences.length === 0) {
+    if (parsed.sentences.length === 0) {
       return notFound("no_sources");
     }
     const started5 = Date.now();

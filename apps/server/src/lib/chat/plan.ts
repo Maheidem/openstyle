@@ -186,7 +186,8 @@ export function slotZod(
 }
 
 const FIELD_HELP: Record<string, string> = {
-  query: "query: short standalone search text, in the language of the question",
+  query:
+    "query: the search words for the question (the topic, names and numbers, from the question itself)",
   person: "person: one id from the list, or none",
   item: "item: one label from the list, or none",
   meeting: "meeting: one label from the list, or none",

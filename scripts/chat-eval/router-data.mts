@@ -15,6 +15,19 @@ export interface RouterItem {
   intent: Intent;
 }
 
+/**
+ * Intent labels follow what E2B says (owner decision 2026-10-31, P0 report
+ * section 9 point 6): "When is X?" is temporal and "Who will do X?" is
+ * who_said. Only a question labelled lookup is relabelled. Gold questions and
+ * the blind set use this one rule.
+ */
+export function relabelIntent(text: string, intent: Intent): Intent {
+  if (intent !== "lookup") return intent;
+  if (/\b(who will|quem vai)\b/i.test(text)) return "who_said";
+  if (/\b(when|quando|para quando)\b/i.test(text)) return "temporal";
+  return intent;
+}
+
 const X: Record<string, string[]> = {
   // lookup, who_said, aggregate, temporal, review, status, write, other
   de: [
@@ -93,7 +106,7 @@ export function heldoutRouterItems(): RouterItem[] {
     id: `h-${r.id}`,
     lang: r.lang,
     text: r.text,
-    intent: r.intent,
+    intent: relabelIntent(r.text, r.intent),
   }));
 }
 

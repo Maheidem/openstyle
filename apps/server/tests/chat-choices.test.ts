@@ -89,12 +89,15 @@ describe("buildChoices", () => {
     ]);
   });
 
-  it("lists open items only, ranked, with the item key as id", () => {
+  it("lists open items first, then done items marked [done], with the item key as id", () => {
     const c = choicesFor("close the rollback plan");
-    expect(c.items.map((i) => i.label)).toEqual(["A1", "A2", "A3"]);
+    expect(c.items.map((i) => i.label)).toEqual(["A1", "A2", "A3", "A4"]);
     expect(c.items[0]?.text).toBe("Write the rollback plan");
     expect(c.items[0]?.id).toBe(actionItemKey("m1", "Write the rollback plan"));
-    expect(c.items.some((i) => i.text === "Send the pilot report")).toBe(false);
+    // A done item stays in the list for "reopen X" and carries the mark.
+    expect(
+      c.items.find((i) => i.text.startsWith("Send the pilot report"))?.text,
+    ).toBe("Send the pilot report [done]");
   });
 
   it("an unfiled meeting has open items in scope all", () => {

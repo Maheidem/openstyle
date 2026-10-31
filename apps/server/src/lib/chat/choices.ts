@@ -163,8 +163,14 @@ function openItems(
     if (!summary) continue;
     for (const a of summary.actionItems) {
       const id = actionItemKey(m.id, a.task);
-      if (m.folder_id && done.has(`${m.folder_id}\n${id}`)) continue;
-      found.push({ id, text: a.task, score: overlap(qw, wordSet(a.task)) });
+      const isDone = !!m.folder_id && done.has(`${m.folder_id}\n${id}`);
+      // A done item stays in the list: "reopen X" needs its label. It ranks
+      // below an open item with the same overlap.
+      found.push({
+        id,
+        text: isDone ? `${a.task} [done]` : a.task,
+        score: overlap(qw, wordSet(a.task)) * 2 + (isDone ? 0 : 1),
+      });
     }
   }
   return found
@@ -261,6 +267,9 @@ export function queryFor(
   question: string,
 ): string {
   const q = (candidate ?? "").trim();
+  // A small model can echo the help line of the field: not a query.
+  if (/^short standalone search text|^search words/i.test(q))
+    return cut(question.trim(), QUERY_MAX_CHARS) || "meeting";
   if (q && q.length <= QUERY_MAX_CHARS) return q;
   return cut(question.trim(), QUERY_MAX_CHARS) || "meeting";
 }
@@ -384,8 +393,11 @@ function allDefs(ch: Choices): Partial<Record<ToolName, NativeTool>> {
       "search_chunks",
       "Search the meeting text by meaning",
       {
-        query: { type: "string", description: "short standalone search text" },
-        ...(meeting ? { meeting } : {}),
+        query: {
+          type: "string",
+          description:
+            "search words: the topic of the question, with the names and numbers, in the language of the meeting",
+        },
       },
       ["query"],
     ),
@@ -589,10 +601,10 @@ function toIdArgs(
   const meetingId = idOfMeeting(ch, text(a.meeting));
   switch (tool) {
     case "search_chunks":
-      return {
-        query: text(a.query),
-        meeting_ids: meetingId ? [meetingId] : undefined,
-      };
+      // The model never narrows a search to one meeting: in the P0 and P1
+      // evals it picked a wrong meeting in 35 of 38 searches (spec 2.3, the
+      // scope is set by code).
+      return { query: text(a.query) };
     case "get_meeting_summary":
       return { meeting_id: meetingId };
     case "get_transcript_window":

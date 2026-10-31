@@ -33,13 +33,11 @@ export const ROUTER_SCHEMA: StepSchema<{ intent: Intent }> = {
 
 /** Stage 4: the answer. Sentences with their own cites (the cite check works per sentence). */
 export const ANSWER_SCHEMA: StepSchema<{
-  found: boolean;
   sentences: { text: string; cites: string[] }[];
 }> = {
   name: "chat_answer",
-  version: 1,
+  version: 2,
   zod: z.object({
-    found: z.boolean(),
     sentences: z
       .array(
         z.object({
@@ -52,10 +50,10 @@ export const ANSWER_SCHEMA: StepSchema<{
 };
 
 export const ANSWER_SYSTEM = `You answer a question about meeting notes. Use ONLY the numbered sources.
-Write 1 to 4 short sentences in the language of the question.
+Write 1 to 3 short sentences in the language of the question. State the answer first.
 One sentence states one fact. Put the labels of the sources that show the fact in "cites", for example ["S2"].
 Copy names, numbers and dates exactly as the sources write them.
-If the sources do not answer the question, set "found" to false and "sentences" to [].
+Return an empty "sentences" list ONLY when no source speaks about the topic of the question.
 Never use knowledge from outside the sources.`;
 
 /** The user text of the answer call. */
