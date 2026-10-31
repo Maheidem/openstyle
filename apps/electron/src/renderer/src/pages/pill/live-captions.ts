@@ -1,6 +1,6 @@
 import { getClient } from "@renderer/lib/api";
-import { SETTINGS_KEYS } from "@shared/settings-keys";
 import { useEffect, useRef, useState } from "react";
+import { SETTINGS_KEYS } from "../../../../shared/settings-keys";
 
 /** The pill asks the server for new live text once each second. */
 export const CAPTION_POLL_MS = 1000;
