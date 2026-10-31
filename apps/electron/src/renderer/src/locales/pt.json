@@ -247,7 +247,9 @@
       "liveChat": "Transcrição e chat ao vivo (experimental)",
       "liveChatDesc": "Mostra a transcrição enquanto você grava e deixa você fazer perguntas sobre a reunião. Precisa de um modelo local de transcrição baixado. Usa mais memória durante uma gravação.",
       "liveKeep": "Manter a transcrição ao vivo ao parar (experimental)",
-      "liveKeepDesc": "Ao parar a gravação, o texto ao vivo vira a transcrição da reunião na hora, marcada como \"Do ao vivo\". Os rótulos de falantes vêm depois. Você pode usar Transcrever novamente. Só funciona com a transcrição ao vivo ligada."
+      "liveKeepDesc": "Ao parar a gravação, o texto ao vivo vira a transcrição da reunião na hora, marcada como \"Do ao vivo\". Os rótulos de falantes vêm depois. Você pode usar Transcrever novamente. Só funciona com a transcrição ao vivo ligada.",
+      "liveCaptions": "Mostrar legendas ao vivo na pílula de gravação",
+      "liveCaptionsDesc": "Enquanto uma reunião é gravada, a pílula mostra as últimas linhas do texto ao vivo, como legendas. Só funciona com a transcrição ao vivo ligada."
     },
     "data": {
       "pauseHistory": "Pausar histórico",

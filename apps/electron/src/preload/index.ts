@@ -60,6 +60,9 @@ const api = {
   // expanded status card has somewhere to render.
   setPillExpanded: (expanded: boolean): void =>
     ipcRenderer.send("pill:set-expanded", expanded),
+  // Ask the pill window to grow for the live captions (or shrink back).
+  setPillCaptions: (on: boolean): void =>
+    ipcRenderer.send("pill:set-captions", on),
   // --- Meeting Mode ---
   /** Mic PCM16 chunk from the hidden capture window's AudioWorklet. */
   meetingSendMicChunk: (chunk: ArrayBuffer): void =>

@@ -212,6 +212,7 @@ export default function SettingsPage(): React.JSX.Element {
   const [projectMemory, setProjectMemory] = useState(true);
   const [liveChat, setLiveChat] = useState(false);
   const [liveKeep, setLiveKeep] = useState(false);
+  const [liveCaptions, setLiveCaptions] = useState(false);
   // The owner name: the first term of the meeting ASR bias. Saved on blur
   // and on Enter; the ref holds the last saved value.
   const [ownerName, setOwnerName] = useState("");
@@ -510,6 +511,7 @@ export default function SettingsPage(): React.JSX.Element {
     }
     if (s[SETTINGS_KEYS.liveChatEnabled] === "true") setLiveChat(true);
     if (s[SETTINGS_KEYS.liveKeepTranscriptAtStop] === "true") setLiveKeep(true);
+    if (s[SETTINGS_KEYS.liveCaptionsPill] === "true") setLiveCaptions(true);
     savedOwnerName.current = s[SETTINGS_KEYS.ownerName] ?? "";
     setOwnerName(savedOwnerName.current);
     if (s[SETTINGS_KEYS.calendarEnabled] === "true") {
@@ -806,6 +808,11 @@ export default function SettingsPage(): React.JSX.Element {
   const handleLiveKeepToggle = useCallback((enabled: boolean) => {
     setLiveKeep(enabled);
     void putSetting(SETTINGS_KEYS.liveKeepTranscriptAtStop, String(enabled));
+  }, []);
+
+  const handleLiveCaptionsToggle = useCallback((enabled: boolean) => {
+    setLiveCaptions(enabled);
+    void putSetting(SETTINGS_KEYS.liveCaptionsPill, String(enabled));
   }, []);
 
   const commitOwnerName = useCallback(async (raw: string) => {
@@ -1448,6 +1455,18 @@ export default function SettingsPage(): React.JSX.Element {
                   checked={liveKeep}
                   onCheckedChange={handleLiveKeepToggle}
                   aria-label={t("settings.meetings.liveKeep")}
+                />
+              </Row>
+              <Row
+                label={t("settings.meetings.liveCaptions")}
+                desc={t("settings.meetings.liveCaptionsDesc")}
+              >
+                <Switch
+                  id="settings-live-captions"
+                  checked={liveCaptions}
+                  disabled={!liveChat}
+                  onCheckedChange={handleLiveCaptionsToggle}
+                  aria-label={t("settings.meetings.liveCaptions")}
                 />
               </Row>
               <Row

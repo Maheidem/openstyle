@@ -63,6 +63,7 @@ import {
   getPillAlignmentForCustom,
   hidePill,
   resolveAppWindowPosition,
+  setPillCaptions,
   setPillExpanded,
   setPillMeetingRecording,
   setProgrammaticPosition,
@@ -231,6 +232,11 @@ export function registerCoreIpc({ logsDir }: { logsDir: string }): void {
   // IPC: the renderer needs (or no longer needs) room for the status card.
   ipcMain.on("pill:set-expanded", (_event, expanded: boolean) => {
     setPillExpanded(expanded === true);
+  });
+
+  // IPC: the pill shows (or hides) live captions and needs room for them.
+  ipcMain.on("pill:set-captions", (_event, on: boolean) => {
+    setPillCaptions(on === true);
   });
 
   // IPC: fan out per-frame audio levels from the pill to other windows

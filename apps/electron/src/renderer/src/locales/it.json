@@ -247,7 +247,9 @@
       "liveChat": "Trascrizione e chat dal vivo (sperimentale)",
       "liveChatDesc": "Mostra la trascrizione durante la registrazione e permette di fare domande sulla riunione. Serve un modello di trascrizione locale scaricato. Usa più memoria durante una registrazione.",
       "liveKeep": "Mantieni la trascrizione dal vivo allo stop (sperimentale)",
-      "liveKeepDesc": "Quando fermi la registrazione, il testo dal vivo diventa subito la trascrizione della riunione, con l'indicazione \"Dal vivo\". Le etichette dei relatori vengono aggiunte dopo. Puoi usare Trascrivi di nuovo. Funziona solo con la trascrizione dal vivo attiva."
+      "liveKeepDesc": "Quando fermi la registrazione, il testo dal vivo diventa subito la trascrizione della riunione, con l'indicazione \"Dal vivo\". Le etichette dei relatori vengono aggiunte dopo. Puoi usare Trascrivi di nuovo. Funziona solo con la trascrizione dal vivo attiva.",
+      "liveCaptions": "Mostra i sottotitoli dal vivo nella pillola di registrazione",
+      "liveCaptionsDesc": "Mentre una riunione viene registrata, la pillola mostra le ultime righe del testo dal vivo, come sottotitoli. Funziona solo con la trascrizione dal vivo attiva."
     },
     "data": {
       "pauseHistory": "Metti in pausa la cronologia",

@@ -71,6 +71,12 @@ export const SETTINGS_KEYS = {
    */
   liveKeepTranscriptAtStop: "live_keep_transcript_at_stop",
   /**
+   * Show the last live lines as captions in the recording pill (issue #375).
+   * OFF by default: only the value `"true"` turns it on. It has an effect
+   * only while `live_chat_enabled` is on.
+   */
+  liveCaptionsPill: "live_captions_pill",
+  /**
    * I2 (specs/meeting-transcription-v2.md §3.2): the one-time auto-Enhance
    * prompt (or the onboarding step for new users) has been shown. Only
    * `"true"` counts as shown; a missing row means not shown yet. Written

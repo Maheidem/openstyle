@@ -247,7 +247,9 @@
       "liveChat": "Transcription et chat en direct (expérimental)",
       "liveChatDesc": "Affiche la transcription pendant l'enregistrement et permet de poser des questions sur la réunion. Il faut un modèle de transcription local téléchargé. Cela utilise plus de mémoire pendant un enregistrement.",
       "liveKeep": "Garder la transcription en direct à l'arrêt (expérimental)",
-      "liveKeepDesc": "À l'arrêt de l'enregistrement, le texte en direct devient aussitôt la transcription de la réunion, marquée \"Issu du direct\". Les étiquettes de locuteurs sont ajoutées ensuite. Vous pouvez utiliser Retranscrire. Fonctionne seulement avec la transcription en direct activée."
+      "liveKeepDesc": "À l'arrêt de l'enregistrement, le texte en direct devient aussitôt la transcription de la réunion, marquée \"Issu du direct\". Les étiquettes de locuteurs sont ajoutées ensuite. Vous pouvez utiliser Retranscrire. Fonctionne seulement avec la transcription en direct activée.",
+      "liveCaptions": "Afficher les sous-titres en direct dans la pilule d'enregistrement",
+      "liveCaptionsDesc": "Pendant l'enregistrement d'une réunion, la pilule affiche les dernières lignes du texte en direct, comme des sous-titres. Fonctionne seulement avec la transcription en direct activée."
     },
     "data": {
       "pauseHistory": "Suspendre l'historique",

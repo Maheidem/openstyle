@@ -247,7 +247,9 @@
       "liveChat": "Transcripción y chat en vivo (experimental)",
       "liveChatDesc": "Muestra la transcripción mientras grabas y te deja hacer preguntas sobre la reunión. Necesita un modelo local de transcripción descargado. Usa más memoria durante una grabación.",
       "liveKeep": "Conservar la transcripción en directo al parar (experimental)",
-      "liveKeepDesc": "Al parar la grabación, el texto en directo pasa a ser la transcripción de la reunión al instante, marcada como \"Del directo\". Después se añaden las etiquetas de hablantes. Puedes usar Volver a transcribir. Solo funciona con la transcripción en directo activada."
+      "liveKeepDesc": "Al parar la grabación, el texto en directo pasa a ser la transcripción de la reunión al instante, marcada como \"Del directo\". Después se añaden las etiquetas de hablantes. Puedes usar Volver a transcribir. Solo funciona con la transcripción en directo activada.",
+      "liveCaptions": "Mostrar subtítulos en directo en la píldora de grabación",
+      "liveCaptionsDesc": "Mientras se graba una reunión, la píldora muestra las últimas líneas del texto en directo, como subtítulos. Solo funciona con la transcripción en directo activada."
     },
     "data": {
       "pauseHistory": "Pausar historial",
