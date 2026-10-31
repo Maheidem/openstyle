@@ -436,3 +436,74 @@ describe("assignMissingCites (grounding guard)", () => {
     expect(check.ok).toBe(false);
   });
 });
+
+describe("known names in window sources", () => {
+  const sourcesWith = (windowText: string): SourceMap => {
+    const m = new SourceMap();
+    m.add({
+      kind: "transcript",
+      meetingId: "m1",
+      title: "Atlas sync",
+      startedAt: 1,
+      startMs: 418000,
+      endMs: 440000,
+      itemId: null,
+      text: "Eu proponho uma página de status para a empresa toda.",
+    });
+    m.add({
+      kind: "window",
+      meetingId: "m1",
+      title: "Atlas sync",
+      startedAt: 1,
+      startMs: 402000,
+      endMs: 460000,
+      itemId: null,
+      text: windowText,
+    });
+    return m;
+  };
+  const check = (sources: SourceMap) =>
+    checkAnswer({
+      sentences: [
+        {
+          text: "Tomasz Wieczorek propôs uma página de status para a empresa toda.",
+          cites: ["S1"],
+        },
+      ],
+      sources,
+      question: "Quem propôs uma página de status para a empresa toda?",
+      allowedMeetingIds: new Set(["m1"]),
+      knownNames: ["Tomasz Wieczorek"],
+    });
+
+  it("a name that a window source holds (the name is followed by a colon) is attached", () => {
+    const r = check(
+      sourcesWith(
+        "[6:58] Tomasz Wieczorek: Eu proponho uma página de status para a empresa toda.\n[7:04] Me: Devemos testar",
+      ),
+    );
+    expect(r.ok).toBe(true);
+    expect(r.unsupportedTokens).toEqual([]);
+    expect(r.repairedCites).toBe(1);
+    expect(r.sentences[0]?.cites).toEqual(["S1", "S2"]);
+  });
+
+  it("a name that no source holds stays unsupported and is not attached", () => {
+    const r = check(
+      sourcesWith(
+        "[6:58] Priya Nandakumar: Eu proponho uma página de status para a empresa toda.",
+      ),
+    );
+    expect(r.ok).toBe(false);
+    expect(r.unsupportedTokens).toEqual(["Tomasz Wieczorek"]);
+    expect(r.repairedCites).toBe(0);
+    expect(r.sentences[0]?.cites).toEqual(["S1"]);
+  });
+});
+
+describe("numbers inside words", () => {
+  it("p95 is one word, not the number 95", () => {
+    const facts = extractFacts("The current p95 latency is 381 ms.", []);
+    expect(facts.map((f) => f.norm)).toEqual(["381"]);
+  });
+});

@@ -145,6 +145,9 @@ export function normalizeText(text: string, numberWords = false): string {
   let t = numberForms(dateTokens(fold(text)));
   t = t.replace(/[^a-z0-9:.\-\s]/g, " ");
   t = t.replace(/(?<!\d)[.-]|[.-](?!\d)/g, " ");
+  // A colon is a separator unless a digit follows it (a time "6:58" or a date
+  // token "d:12-04"). "Tomasz Wieczorek: Eu proponho" must hold the name.
+  t = t.replace(/:(?!\d)/g, " ");
   const words = t.split(/\s+/).filter(Boolean);
   return (
     numberWords
@@ -228,7 +231,10 @@ export function extractFacts(
   dates(new RegExp(RE_DAY_MONTH.source, "g"), 2, 1);
 
   // Numbers.
-  for (const m of rest.matchAll(/\d[\d.,:]*\d|\d/g)) {
+  // A number inside a word ("p95", "v2", "Q3") is part of that word.
+  for (const m of rest.matchAll(
+    /(?<![\p{L}\d])\d[\d.,:]*\d|(?<![\p{L}\d])\d/gu,
+  )) {
     push({ kind: "number", norm: normalizeText(m[0]), shown: m[0] });
   }
   return out;
