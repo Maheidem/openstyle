@@ -9,8 +9,8 @@
  *
  * Two rules keep the text steady:
  * - The language is locked. The loop uses the language of the meeting when it
- *   is set. Else it detects the language once, on the first voiced audio, and
- *   passes it to every later read (`lockLanguage`).
+ *   is set. Else it detects the language once, on the first 10 s of speech,
+ *   and passes it to every later read (`lockLanguage`).
  * - A segment with no speech is not read. The loop applies the same two gates
  *   as the full pass (`transcriber.ts`, `transcribeChunk`): the Silero speech
  *   spans, and the voiced time of the mic.
@@ -65,12 +65,21 @@ const TICK_MS = 2000;
 const STOP_WAIT_MS = 20_000;
 /** At Stop the loop reads the rest of the audio. It stops after this time. */
 const STOP_FLUSH_MS = 15_000;
-/** The language lock waits for this much speech (the same as the full pass:
- * a probe of the early speech). */
-export const LOCK_AFTER_SPEECH_MS = 20_000;
-/** A window with no segment keeps this much audio, so a word that starts at
- * the end of the window is not cut. The rest is skipped. */
-const KEEP_IDLE_MS = 2000;
+/** The language lock waits for this much speech (final lines and the open
+ * tail). About 30 words are enough for a text detector. A shorter wait leaves
+ * fewer lines with auto language. */
+export const LOCK_AFTER_SPEECH_MS = 10_000;
+/**
+ * A window with no segment is skipped when it is longer than IDLE_SKIP_MS. The
+ * loop keeps the last KEEP_IDLE_MS, so a word that starts at the end of the
+ * window is not cut, and the noise floor of the next window comes from enough
+ * quiet audio. The skip keeps a long silence from growing the window.
+ */
+const IDLE_SKIP_MS = 30_000;
+/** A segment longer than this must hold at least MIN_SPEECH_SHARE of speech. */
+const MIN_SHARE_CHECK_MS = 3000;
+const MIN_SPEECH_SHARE = 0.1;
+const KEEP_IDLE_MS = 10_000;
 const SOURCES: readonly LiveSource[] = ["mic", "system"];
 
 /** What the live loop knows about the model and the language. */
@@ -263,6 +272,9 @@ interface LoopState {
   /** Speech ms and lines that were read before the lock. */
   early: EarlyLine[];
   earlySpeechMs: number;
+  /** The text and speech time of the open tail of each channel, read before
+   * the lock. The lock uses it, so it does not wait for the tail to close. */
+  openProbe: Partial<Record<LiveSource, { text: string; speechMs: number }>>;
   committedMs: Record<LiveSource, number>;
   stopped: boolean;
   /** The loop must stop reading new segments after this time (ms epoch). */
@@ -290,8 +302,18 @@ function wavPath(state: LoopState, source: LiveSource): string {
  * voiced time is the noise floor and clicks.
  */
 function isSilent(source: LiveSource, seg: Segment): boolean {
-  if (seg.speechSpans !== undefined && seg.speechSpans.length === 0) {
-    return true;
+  if (seg.speechSpans !== undefined) {
+    if (seg.speechSpans.length === 0) return true;
+    // A long segment with only a blip of speech is noise (typing, a chair,
+    // a breath) that the energy gate joined into one segment. The full pass
+    // reads it too, but there the text is not shown while it grows.
+    const length = seg.endMs - seg.startMs;
+    if (
+      length > MIN_SHARE_CHECK_MS &&
+      totalSpeechMs(seg.speechSpans) < length * MIN_SPEECH_SHARE
+    ) {
+      return true;
+    }
   }
   return (
     source === "mic" &&
@@ -341,8 +363,11 @@ async function tickChannel(
   const candidates = [...plan.closed, ...(plan.open ? [plan.open] : [])];
   if (candidates.length === 0) {
     // Nothing to read. Skip the idle audio, so the next window stays short.
-    const idleUntil = fromMs + plan.totalMs - KEEP_IDLE_MS;
-    if (idleUntil > fromMs) state.committedMs[source] = Math.floor(idleUntil);
+    if (plan.totalMs > IDLE_SKIP_MS) {
+      state.committedMs[source] = Math.floor(
+        fromMs + plan.totalMs - KEEP_IDLE_MS,
+      );
+    }
     setPartialLine(state.meetingId, source, null);
     return;
   }
@@ -385,10 +410,16 @@ async function tickChannel(
   const open = plan.open ? withSpans([plan.open])[0] : null;
   if (!open || isSilent(source, open)) {
     setPartialLine(state.meetingId, source, null);
+    delete state.openProbe[source];
     return;
   }
   const text = await readText(state, pcm, fromMs, open);
   if (state.stopped) return;
+  if (state.lockPending && text) {
+    state.openProbe[source] = { text, speechMs: speechMsOf(open) };
+  } else {
+    delete state.openProbe[source];
+  }
   setPartialLine(
     state.meetingId,
     source,
@@ -403,10 +434,15 @@ async function tickChannel(
  * Returns when the language is locked or the loop must wait for more speech.
  */
 async function lockLanguage(state: LoopState): Promise<void> {
-  if (!state.lockPending || state.earlySpeechMs < LOCK_AFTER_SPEECH_MS) return;
-  const text = getFinalLines(state.meetingId)
-    .map((l) => l.text)
-    .join(" ");
+  if (!state.lockPending) return;
+  const probes = Object.values(state.openProbe);
+  const speechMs =
+    state.earlySpeechMs + probes.reduce((n, p) => n + p.speechMs, 0);
+  if (speechMs < LOCK_AFTER_SPEECH_MS) return;
+  const text = [
+    ...getFinalLines(state.meetingId).map((l) => l.text),
+    ...probes.map((p) => p.text),
+  ].join(" ");
   const picked = await state.deps
     .detectLanguage({
       text,
@@ -420,6 +456,7 @@ async function lockLanguage(state: LoopState): Promise<void> {
   if (!language) return; // Auto, and no language yet: wait for more speech.
   state.language = language;
   state.lockPending = false;
+  state.openProbe = {};
   if (state.model.declared.length > 0) {
     // The full pass reuses it (meetings.language, sticky until the user edits).
     try {
@@ -507,6 +544,7 @@ export async function startLive(
     lockPending: model.language === undefined,
     early: [],
     earlySpeechMs: 0,
+    openProbe: {},
     committedMs: { mic: 0, system: 0 },
     stopped: false,
     deadline: null,

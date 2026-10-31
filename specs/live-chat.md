@@ -30,14 +30,30 @@ Every 2 s, for each channel, the loop:
 4. Reads the **open tail** (the last, still growing segment) again at each tick. The text is the **partial** line of the channel. A new partial replaces the old one. The cursor does not move.
 5. Cuts an open tail that is longer than 20 s at the quietest 20 ms frame between 12 s and 20 s.
 
-Filters: `isHallucination` (known silence phrases) and, for the mic channel, `voicedMs < MIN_MIC_VOICED_MS`. There is no vocabulary prompt in this slice. The language is the first language of the language setting.
+Filters before the ASR model reads a segment (the same two gates as the full pass, `transcriber.ts` `transcribeChunk`):
+
+- The Silero speech spans (`vad.ts`, `fluidaudio-diarize --vad`). The loop writes the new window of a channel to a temp WAV and runs the helper once for each tick (about 70 ms). A segment with no speech span is silence or noise. It is not read. This holds for both channels. When the helper or its model is missing, the loop uses only the next gate, as the full pass does.
+- For the mic channel, `voicedMs < MIN_MIC_VOICED_MS`.
+
+After the read, `isHallucination` (known silence phrases) drops the text. A window with no segment at all is not read, and the cursor moves to 2 s before the end of the window, so the window does not grow in a long silence.
+
+There is no vocabulary prompt and no context prompt in the live loop. So a prompt echo on a quiet chunk cannot happen here.
+
+**Language lock (owner decision 2026-10-30).** A short chunk with auto language can switch the language of the model (Portuguese speech came out in English). The loop locks the language:
+
+1. The loop uses `meetings.language` when it is set, else the only language of the language setting.
+2. Else (auto, or more than one language) the loop reads the first speech with auto language. After 20 s of speech it detects the language from the text of the lines (`tinyld`): one of the declared languages (`pickDeclaredLanguage`, the same choice as the full pass, `meetings/language.ts`), or, for auto, the best language that the model supports. With more than one declared language and no clear text, the first declared language wins, like the full pass.
+3. From then on every read gets that language. The lines read before the lock are read again once with the locked language.
+4. For more than one declared language, the locked language is saved to `meetings.language`. So the full pass reuses it. For auto it is not saved: the full pass keeps its own per-chunk auto choice.
+
+A meeting with less than 20 s of speech stays on auto language.
 
 Rules for the single ASR worker:
 
 - A tick is skipped while a dictation runs (`isDictationActive()`). The loop counts skipped ticks (`skippedTicks` in the live response).
 - One tick runs at a time. If a tick takes longer than 2 s, the next tick reads the newest audio ("latest wins").
 
-The live store (`live/store.ts`) is in memory only. It holds final lines and one partial for each channel. The entry is dropped when the recording stops. The final transcript of the meeting then replaces it. The live text is never merged into the final transcript. So there are no duplicate lines.
+The live store (`live/store.ts`) is in memory only. It holds final lines and one partial for each channel. At Stop the loop first reads the rest of the audio (the open tail too, at most 15 s). The route then saves the final lines as the transcript of the meeting and drops the entry (section 8). A full transcription replaces the live segments. Live lines and full segments are never merged. So there are no duplicate lines.
 
 ## 2. Model
 
@@ -59,7 +75,9 @@ The chat answers only from a local model (the audio text stays on the Mac). A no
 
 The chat call follows the light pattern of dictation cleanup: `resolveTaskCall`, `createChatModel`, `withLlmLane` (class `interactive`). The reply is one JSON object `{ "answer", "cites" }`. There is no token streaming. A reply that is not JSON becomes a plain answer with no cites.
 
-The chat has no stored history. The panel sends the last 4 turns with each question. Closing the recording view drops the chat.
+The server saves the chat with the meeting (table `meeting_chat_messages`, schema 52, rows go with the meeting). Each answered question is saved as two rows, the question and the answer with its cites. The model sees the last 4 saved messages. The panel does not send a history. The chat so survives a click on another meeting, a page change and a restart of the page, and it can be read after Stop (a "Live chat" tab in the meeting detail).
+
+Cause of the old loss: the messages were `useState` in `LiveChatPanel`, and the panel is mounted only while the right pane shows the live view (`pages/meetings/index.tsx`, `showLive`). Any click on another meeting or folder, and any page change, unmounted it. The restore of the selection (#383) brought the live view back, with an empty chat.
 
 Memory numbers: see `specs/llm-runtime-tuning.md` for the LLM worker. Measured values for this feature are in section 6.
 
@@ -86,7 +104,8 @@ Code builds the context. The model does not choose it. The budget is about 6000 
 | Route | Result |
 |---|---|
 | `GET /api/meetings/:id/live` | `{ status, reason?, lines[], skippedTicks }`. `status` is `off`, `starting`, `warming`, `ready` or `unavailable`. `off` means the setting is off, the meeting is not recording, or the id is unknown. Poll it every second. |
-| `POST /api/meetings/:id/chat` | Body `{ question, history? }` (at most 4 turns). Result `{ answer, cites[], ms, cold, sourceTokens }`. Each cite has `label`, `kind` (`live`, `past`, `folder`), and `title`, `meetingId`, `timeMs` when known. Errors: 404 unknown meeting, 409 setting off or model not local, 413 question too long, 502 failure. |
+| `GET /api/meetings/:id/chat` | `{ messages[] }`, oldest first. Each message has `id`, `role`, `content`, `cites[]`, `ms`, `createdAt`. It works also when the setting is off. 404 for an unknown meeting. |
+| `POST /api/meetings/:id/chat` | Body `{ question }`. Result `{ answer, cites[], ms, cold, sourceTokens }`. The route saves the pair. Each cite has `label`, `kind` (`live`, `past`, `folder`), and `title`, `meetingId`, `timeMs` when known. Errors: 404 unknown meeting, 409 setting off or model not local, 413 question too long, 502 failure. |
 
 UI (hidden while the setting is off). The live view fills the right pane (the meeting detail column). It is not in the small recording card:
 
@@ -96,6 +115,7 @@ UI (hidden while the setting is off). The live view fills the right pane (the me
 - `LiveChatPanel`: input, messages, cite chips (live time, or past meeting title and time). A first answer that takes more than 3 s shows the "warming" text. A non-local model shows "unavailable".
 - The recording card keeps the timer, the mic and system levels and Stop. With the setting on it also has the "Open live view" link.
 - Settings, Meetings section: a switch "Live transcript and chat (experimental)".
+- After Stop: the meeting detail shows the status "Transcribed" and the mark "From live" next to it, and a "Live chat" tab when the meeting has chat messages.
 - Strings: `meetings.liveChat.*` and `settings.meetings.liveChat*` in the 7 locales and the template. Models page row: `models.taskProfiles.liveChat`.
 
 E2E seam: `OPENSTYLE_E2E_FAKE_MEETING_AUDIO=<16 kHz mono s16 WAV>`, with `OPENSTYLE_E2E=1` and `OPENSTYLE_E2E_FAKE_MEETING_CAPTURE=1`, streams the file in real time into the mic track. The system track stays silent.
@@ -131,6 +151,21 @@ The proofs are:
 - Experimental. Off by default. The owner decides if it stays.
 - One ASR worker. While a dictation runs, live text pauses.
 - If the dictation model differs from the meeting model, a dictation reloads the worker. Live text then pauses until the meeting model loads again.
-- Live text is less exact than the final pass. It is not saved.
-- No token streaming. No chat storage. No second ASR worker. No live diarization. No chat in the detail view of a finished meeting.
+- Live text can differ from the full pass (section 8 has the measured word error). Stop saves it as the transcript. "Re-transcribe" replaces it with the full pass.
+- The language lock needs 10 s of speech. The first lines have auto language until then, and are read again once. A meeting that mixes two languages gets the language of its first 10 s for every later read, like the full pass does for a meeting with more than one declared language.
+- The speech gate uses the Silero model of the app. A breath or a click that Silero marks as speech can still give a short word. The full pass has the same gap.
+- No token streaming. No second ASR worker. No live diarization during the recording (the speaker pass runs after Stop).
 - The claim "30 minutes on a 16 GB Mac without memory pressure" is **not verified**. The test Mac has 128 GB. Section 6 gives the memory of a 10-minute run on this Mac only. The peak of 9.0 GB with the 1.7B ASR model and the chat model loaded together is a warning for a 16 GB Mac. A test on a 16 GB Mac is still open. Only English and one voice for each channel were tested.
+
+## 8. Keep the live transcript at Stop
+
+Owner decision 2026-10-30: the live text is not lost at Stop.
+
+1. `POST /api/meetings/:id/stop` with `status: "recorded"` first stops the loop with `flush`: the loop reads the rest of the audio (the open tail too), for at most 15 s. Then the route saves the final lines as `meeting_segments` (`live/finish.ts`, one row for each line, `idx` for each channel in time order, `status` `ok`) and sets the meeting to `transcribed` with `transcript_source = 'live'` (schema 52). A stop with `status: "failed"`, or a meeting with no live line, saves nothing. The meeting stays `recorded`, as before.
+2. The meeting detail shows the status "Transcribed" and the mark "From live". The mark goes away when a full transcription replaces the segments (`startTranscribe` clears `transcript_source`).
+3. "Re-transcribe" stays available. It runs the full pass and replaces the live segments, as for any transcript.
+4. The steps that the live loop does not do run next, as a job of kind `diarize` that holds the job slot (`runLiveFinishJob`, `routes/meetings.ts`): the speaker pass on the system channel (`runDiarizer`, when the setting is on and `system.wav` exists), then the word-timing split of mixed chunks (`decideAlignPlan`, `runAlignPass`, the same code as the full pass) when the meeting has a declared language, else the speaker labels from the overlap (`applyDiarization`). Then the markdown export, and the auto-run Enhance and Summarize when that setting is on (`startAutoRun`, shared with the full pass). A failure keeps the live transcript as it is.
+
+### Measured, live text against the full pass (2026-10-30)
+
+See the pull request for the table. The rule of the owner: when the live text is clearly worse than the full pass after the language lock and the speech gate, Stop keeps it only as an option (default off). The numbers decide.

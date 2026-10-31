@@ -279,6 +279,23 @@ describe("live language lock", () => {
     expect(d.detectLanguage).toHaveBeenCalledTimes(1);
   });
 
+  it("locks from the open tail without waiting for it to close", async () => {
+    // One long phrase that is still open: 12 s of speech to the end of the file.
+    growingWav(join(dir, MIC_WAV), concat(silence(300), speech(12_000)));
+    growingWav(join(dir, SYSTEM_WAV), silence(12_300));
+    const d = deps({ modelId: "qwen3-test", declared: [] });
+    await startLive("m-lang", dir, d);
+    await vi.waitFor(() => expect(d.detectLanguage).toHaveBeenCalledTimes(1), {
+      timeout: 4000,
+    });
+    expect(vi.mocked(d.detectLanguage).mock.calls[0][0].text).toContain(
+      "words",
+    );
+    await vi.waitFor(() =>
+      expect(calls.some((c) => c.language === "pt")).toBe(true),
+    );
+  });
+
   it("uses the known language from the first read and does not detect", async () => {
     const d = deps({ modelId: "qwen3-test", declared: ["en"], language: "en" });
     await startLive("m-lang", dir, d);
@@ -459,6 +476,21 @@ describe("live loop", () => {
     await new Promise((r) => setTimeout(r, 150));
     expect(d.transcribe).not.toHaveBeenCalled();
     expect(getLive("m-loop")?.lines).toHaveLength(0);
+  });
+
+  it("does not read a long segment that holds only a blip of speech", async () => {
+    // 10 s of loud noise with 400 ms of speech span (4 percent).
+    growingWav(
+      join(dir, MIC_WAV),
+      concat(silence(300), speech(10_000), silence(3000)),
+    );
+    growingWav(join(dir, SYSTEM_WAV), silence(13_300));
+    const d = deps();
+    d.detectSpeech = vi.fn(async () => [{ startMs: 5000, endMs: 5400 }]);
+    await startLive("m-loop", dir, d);
+    await vi.waitFor(() => expect(d.detectSpeech).toHaveBeenCalled());
+    await new Promise((r) => setTimeout(r, 150));
+    expect(d.transcribe).not.toHaveBeenCalled();
   });
 
   it("reads a segment that the VAD says has speech", async () => {

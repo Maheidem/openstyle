@@ -232,6 +232,14 @@ A throwaway Playwright spec proved the Speakers dialog with fictional data in 18
 11. Never stub `permissions:check-mic` (or any permission check) to return "granted". With "granted", the Settings Transcription section calls `getUserMedia` (`settings.tsx:515-529`), and macOS shows a microphone dialog for the Test Runner. This happened on 2026-10-22 (PR #303). If a shot needs a "granted" state, restore the real handler in the same step, before any navigation.
 12. Open `/settings` only with a visible section hash, for example `#data`. A hidden hash such as `#network` falls back to the Transcription section, which can probe the mic.
 
+13. Wait 8 s after the launch before you start a recording. The boot sweep of orphans runs 3 s after the app starts (`main/index.ts`, `sweepOrphans`). A recording that starts earlier is marked `interrupted` and the live loop stops after 2 s (found 2026-10-30, live mode fixes).
+
+## Live mode proof (2026-10-30, PR #394)
+
+- Fictional audio: the macOS speech tool with the voices Luciana (Portuguese) and Samantha (English), always with `-o <file>`, then `afconvert -f WAVE -d LEI16@16000 -c 1`. Join the sentences with gaps and add room noise (about -52 dBFS) and, in the long silences, clicks, breaths and typing. Clean synthetic voices do not make the model switch language. A far-field copy (reverb, quiet voice, noise) did: it gave Chinese and Hindi lines. Keep that kind of fixture.
+- Server-level run: a node script writes the WAV into `<scratch>/meetings/<id>/mic.wav` in real time (header with 0 bytes, patched at the end like the recorder), calls `POST /api/meetings/start`, polls `GET /api/meetings/:id/live`, calls `POST /stop`, then `POST /transcribe`. It scores the lines against the script (word error, lines in the wrong language, lines in silence).
+- App-level run: `OPENSTYLE_E2E_FAKE_MEETING_AUDIO=<wav>` with `OPENSTYLE_E2E_FAKE_MEETING_CAPTURE=1`. Set `OPENSTYLE_MLX_ASR_WORKER` and `OPENSTYLE_MLX_LLM_WORKER` to the dev worker, `HUGGINGFACE_HUB_CACHE` to the eval cache and `HF_HUB_OFFLINE=1`. Pass `env HOME=<scratch>` after the `--` of `run.sh`.
+
 ## For pi children
 
 pi children start without skills or context files (`--no-skills --no-context-files`). The coordinating agent must write this line in every pi brief that runs the app, the server or an E2E spec: "Read `.claude/skills/live-testing/SKILL.md` first and follow it." On 2026-10-15 a brief left the line out. The pi child launched the app without the recipe, failed twice, and the owner saw privacy pop-ups. For a UI proof, also paste the recipe steps above into the brief.
