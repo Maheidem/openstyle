@@ -1,5 +1,15 @@
 # Changelog
 
+## 2.25.0-alpha.12
+
+### New Features ✨
+
+#### Pill
+
+- New option, off by default: Show live captions in the recording pill (Settings, Meetings). While a meeting records, the pill shows the last two lines of the live text, like subtitles. It works only with the live transcript on. by @Maheidem in [#395](https://github.com/Maheidem/openstyle/pull/395)
+- 🤖 Generated with [Claude Code](https://claude.com/claude-code) by @Maheidem in [#395](https://github.com/Maheidem/openstyle/pull/395)
+- https://claude.ai/code/session_01GvDDGT4vkdAZbUZMXdZgFz by @Maheidem in [#395](https://github.com/Maheidem/openstyle/pull/395)
+
 ## 2.25.0-alpha.11
 
 ### Bug Fixes 🐛
