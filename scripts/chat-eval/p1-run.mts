@@ -87,6 +87,14 @@ export interface P1Result {
 // Any built-in catalog id (apps/server/src/lib/mlx-llm/constants.ts). E2B is the floor.
 const MODEL_ID = process.env.CHAT_EVAL_MODEL ?? "gemma-4-e2b-qat-4bit";
 const LLM_STORED_ID = `local-mlx-llm/${MODEL_ID}`;
+// An OpenAI-compatible server (llama.cpp, oMLX, ...) for the chat LLM instead
+// of the built-in MLX worker. The app's own-server provider carries the call:
+// CHAT_EVAL_BASE_URL is the server address, CHAT_EVAL_MODEL the model name the
+// server lists. The address is read from the environment only (never logged).
+const BASE_URL = process.env.CHAT_EVAL_BASE_URL?.trim() || null;
+const BACKEND =
+  process.env.CHAT_EVAL_BACKEND?.trim() ||
+  (BASE_URL ? "remote-openai" : "mac-mlx");
 const DAY = 86_400_000;
 const f3 = (x: number) => x.toFixed(3);
 const pct = (x: number) => `${(x * 100).toFixed(1)}`;
@@ -141,6 +149,8 @@ function baseTags(env: Env, arm: string): Record<string, string> {
     "chat.corpus_hash": env.hashes.corpus,
     "chat.gold_hash": env.hashes.gold,
     "chat.model": MODEL_ID,
+    backend: BACKEND,
+    model: MODEL_ID,
     "chat.embed_model": EMBED_MODEL_ID,
     "chat.arm": arm,
   };
@@ -1331,13 +1341,26 @@ export async function runP1(
   stack.db
     .prepare("UPDATE model_configs SET is_default = 0 WHERE type = 'llm'")
     .run();
+  let defaultProvider = "local-mlx-llm";
+  let defaultModelId = LLM_STORED_ID;
+  if (BASE_URL) {
+    // The scratch DB gets one own-server row, as the Models page would add it.
+    const servers = await import("../../apps/server/src/lib/own-servers.ts");
+    const row = servers.insertOwnServer({
+      baseUrl: BASE_URL.replace(/\/v1\/?$/, ""),
+      apiKey: null,
+      flavor: "openai",
+    });
+    defaultProvider = "server";
+    defaultModelId = `server/${row.id}/${MODEL_ID}`; // serverModelId() of the app
+  }
   stack.db
     .prepare(
       `INSERT INTO model_configs (provider, model_id, model_name, type, is_default)
-       VALUES ('local-mlx-llm', ?, ?, 'llm', 1)
+       VALUES (?, ?, ?, 'llm', 1)
        ON CONFLICT(provider, model_id, type) DO UPDATE SET is_default = 1`,
     )
-    .run(LLM_STORED_ID, MODEL_ID);
+    .run(defaultProvider, defaultModelId, MODEL_ID);
   const maps = buildIdMaps(corpus, stack.mod.actionItemKey);
   const env: Env = {
     stack,

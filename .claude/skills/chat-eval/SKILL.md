@@ -70,6 +70,8 @@ pnpm chat-eval p1 [--no-mlflow] [--only a,b,c] [--limit N] [--scale N]
 
 `OPENSTYLE_MLX_RERANK_WORKER` defaults to the same launcher. The command takes the GPU lock itself. The MLflow server comes from the environment (rule 6); the experiment is `openstyle-lab-chat-agent-p1`. The result JSON goes to `~/.openstyle-eval/chat-p1/p1-<time>.json` (saved after every part).
 
+A remote chat LLM (llama.cpp, oMLX or any OpenAI-compatible server): set `CHAT_EVAL_BASE_URL` (server address, from the environment only), `CHAT_EVAL_MODEL` (the name `GET /v1/models` lists) and optionally `CHAT_EVAL_BACKEND` (MLflow tag `backend`, default `remote-openai`). The harness adds one row to the scratch `own_servers` table and sets `server/<id>/<model>` as the default LLM, so the app's own-server provider, the Auto sampling (temperature 0) and `enable_thinking: false` apply as in the app. Embed and rerank stay on the Mac workers, so the Mac GPU lock still applies. MLflow runs carry the tags `backend` and `model`. Latency of a remote GPU does not represent a Mac.
+
 | Part (run `p1-<part>`) | What it measures |
 |---|---|
 | `retrieval` | 147 queries through the production `retrieve()`, k=10, arms dense, hybrid, hybrid + rerank 15, hybrid + rerank 30: recall@1/5/10, r@10 any, nDCG@10 per language and slice, warm p50/p95, reranker added time, embed and rerank worker RSS |
