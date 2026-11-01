@@ -5,11 +5,16 @@ import type { Choices } from "../src/lib/chat/choices.js";
 import {
   asksForCount,
   defaultSlots,
+  followUpQuery,
+  mentionPhrase,
   planFor,
   plannedCalls,
+  refineIntent,
+  reviewKind,
   slotSystem,
   slotZod,
 } from "../src/lib/chat/plan.js";
+import { asksForStatus } from "../src/lib/chat/prompts.js";
 import type { TurnScope } from "../src/lib/chat/types.js";
 
 const TODAY = Date.UTC(2026, 9, 26);
@@ -312,5 +317,134 @@ describe("slots", () => {
 
   it("defaultSlots uses the question as the query", () => {
     expect(defaultSlots("who owns it?").query).toBe("who owns it?");
+  });
+});
+
+describe("follow-up query (P1.1)", () => {
+  const turns = [
+    { question: "Who will write the rollback plan?", answer: "Ana Silvestre" },
+  ];
+  it("holds the earlier question, its answer and the new question", () => {
+    expect(followUpQuery("And when is that due?", turns)).toBe(
+      "Who will write the rollback plan? Ana Silvestre And when is that due?",
+    );
+  });
+  it("uses the base query of the model instead of the question", () => {
+    expect(followUpQuery("and when?", turns, "rollback plan due")).toBe(
+      "Who will write the rollback plan? Ana Silvestre rollback plan due",
+    );
+  });
+  it("my first question points to the first turn", () => {
+    const many = [
+      { question: "First topic?", answer: "alpha" },
+      { question: "Second topic?", answer: "beta" },
+    ];
+    expect(
+      followUpQuery("Back to my first question: when is it?", many),
+    ).toContain("First topic? alpha");
+    expect(followUpQuery("And when is it?", many)).toContain("Second topic?");
+  });
+  it("leaves out an answer that names no topic and cuts at 200 characters", () => {
+    expect(
+      followUpQuery("when?", [{ question: "Q1?", answer: "found nothing" }]),
+    ).toBe("Q1? when?");
+    expect(
+      followUpQuery("x".repeat(300), [{ question: "Q1?", answer: "a" }]).length,
+    ).toBeLessThanOrEqual(200);
+  });
+  it("defaultSlots builds the same query from the turns", () => {
+    expect(defaultSlots("and when?", turns).query).toContain(
+      "rollback plan? Ana Silvestre",
+    );
+    expect(defaultSlots("who owns it?").query).toBe("who owns it?");
+  });
+});
+
+describe("review kind by code (P1.1)", () => {
+  it("reads decisions and open questions from the words", () => {
+    expect(reviewKind("Show all decisions in Atlas Migration.")).toBe(
+      "decision",
+    );
+    expect(reviewKind("Which questions are still open in Atlas?")).toBe(
+      "open_question",
+    );
+    expect(reviewKind("Quais perguntas ainda estão em aberto?")).toBe(
+      "open_question",
+    );
+    expect(defaultSlots("Show all decisions", [], "review").kind).toBe(
+      "decision",
+    );
+    expect(defaultSlots("Show all decisions", [], "lookup").kind).toBeNull();
+    // No model field: the slot call is skipped for a review.
+    expect(slotZod("review", CH)).toBeNull();
+  });
+});
+
+describe("mention count question (P1.1)", () => {
+  it("returns the name of a count of meetings that name something", () => {
+    expect(
+      mentionPhrase("In how many meetings was Kestrel Hosting named?"),
+    ).toBe("Kestrel Hosting");
+    expect(
+      mentionPhrase("Em quantas reuniões a Marlin Analytics foi citada?"),
+    ).toBe("Marlin Analytics");
+  });
+  it("ignores a count of meetings of a project and other questions", () => {
+    expect(
+      mentionPhrase("How many meetings do we have in Atlas Migration?"),
+    ).toBe(null);
+    expect(mentionPhrase("Who named the Atlas Migration plan?")).toBeNull();
+    expect(
+      mentionPhrase("How many meetings mentioned the rollback?"),
+    ).toBeNull();
+  });
+});
+
+describe("status words", () => {
+  it("find a status question in several languages", () => {
+    expect(asksForStatus("Where do we stand on Atlas Migration?")).toBe(true);
+    expect(asksForStatus("Em que pé estamos com Harbor Pricing?")).toBe(true);
+    expect(asksForStatus("When is the code freeze?")).toBe(false);
+  });
+});
+
+describe("refineIntent (P1.1)", () => {
+  const T = Date.UTC(2026, 9, 26);
+  it("a lookup that names a day with a number is temporal", () => {
+    expect(
+      refineIntent(
+        "What did we decide on the database in the meeting on August 25?",
+        "lookup",
+        T,
+      ),
+    ).toBe("temporal");
+    expect(
+      refineIntent("What did we decide on the database?", "lookup", T),
+    ).toBe("lookup");
+    // A relative day alone does not move a lookup.
+    expect(
+      refineIntent("What did Brightline quote yesterday?", "lookup", T),
+    ).toBe("lookup");
+  });
+  it("a temporal with no date, no when word and no meeting word is a lookup", () => {
+    expect(
+      refineIntent("What is the current date for the launch?", "temporal", T),
+    ).toBe("lookup");
+    expect(refineIntent("When is the launch?", "temporal", T)).toBe("temporal");
+    expect(refineIntent("Quais reuniões tivemos?", "temporal", T)).toBe(
+      "temporal",
+    );
+  });
+  it("who_said needs a who word or a verb of speech", () => {
+    expect(
+      refineIntent("And which company confirmed that?", "who_said", T),
+    ).toBe("lookup");
+    expect(refineIntent("Who proposed a pilot?", "who_said", T)).toBe(
+      "who_said",
+    );
+    expect(refineIntent("What did Sofia say about it?", "who_said", T)).toBe(
+      "who_said",
+    );
+    expect(refineIntent("Show all decisions", "review", T)).toBe("review");
   });
 });

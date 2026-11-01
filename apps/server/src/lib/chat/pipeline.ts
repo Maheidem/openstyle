@@ -8,6 +8,7 @@ import type {
   ChatTraceStep,
 } from "@openstyle/validations";
 import { estimatePromptTokens } from "../llm/token-budget.js";
+import { rerankPairs } from "../mlx-rerank/client.js";
 import {
   buildChoices,
   type Choices,
@@ -20,6 +21,7 @@ import {
   checkAnswer,
   citeFromSentences,
   failureNote,
+  pickCiteTimes,
   refineCiteTimes,
   tidyCites,
 } from "./cites.js";
@@ -34,8 +36,11 @@ import type { ChatLlm } from "./llm.js";
 import {
   asksForCount,
   defaultSlots,
+  followUpQuery,
+  mentionPhrase,
   planFor,
   plannedCalls,
+  refineIntent,
   slotSystem,
   slotZod,
 } from "./plan.js";
@@ -45,11 +50,15 @@ import {
   ANSWER_SYSTEM,
   answerUser,
   asksForList,
+  asksForStatus,
   asksWho,
   isoDay,
   looksLikeWrite,
   NATIVE_MAX_TOKENS,
   nativeSystem,
+  QUERY_SCHEMA,
+  QUERY_SYSTEM,
+  queryUser,
   ROUTER_MAX_TOKENS,
   ROUTER_SCHEMA,
   ROUTER_SYSTEM,
@@ -57,7 +66,7 @@ import {
 } from "./prompts.js";
 import { proposalFor } from "./proposals.js";
 import type { ChatSettings } from "./settings.js";
-import { runTool } from "./tools.js";
+import { countMentions, runTool } from "./tools.js";
 import {
   type Intent,
   SourceMap,
@@ -86,6 +95,13 @@ const THIN_ROWS = 3;
  * (one 0.13). 0.5 sits in the gap. 0 turns the floor off.
  */
 export const SCORE_FLOOR = 0.5;
+/**
+ * A rewritten search replaces a weak first search only when its best hit
+ * scores at least this. A small model writes loose words, and a hit just over
+ * the floor (0.55 in the E2B eval) is another topic. A true cross-language
+ * hit scored 0.98 (P1.1).
+ */
+export const REWRITE_SCORE = 0.8;
 /** Nearest sources shown in a not_found block. */
 const NEAREST = 3;
 /** Cites kept for a block answer (list, count, status). */
@@ -173,6 +189,10 @@ export async function runChatTurn(input: ChatTurnInput): Promise<TurnResult> {
     })),
   );
   const priorQuestions = turns.map((t) => t.question);
+  const priorTurns = turns.map((t) => ({
+    question: t.question,
+    answer: t.answer,
+  }));
   let router: ChatTrace["router"] = "skipped";
   let intent: Intent | null = null;
   let proposal: TurnResult["proposal"] = null;
@@ -260,8 +280,18 @@ export async function runChatTurn(input: ChatTurnInput): Promise<TurnResult> {
 
   // ---- Stage 1+2: the first tool call (native), or the fallback router. ----
   const write = looksLikeWrite(question);
+  const plain =
+    !write &&
+    !asksForList(question) &&
+    !asksForCount(question) &&
+    !asksForStatus(question);
   let first: Call | null = null;
-  if (settings.nativeTools) {
+  // A plain follow-up ("and when is that due?") gets no tool call from the
+  // native turn: all 10 follow-ups of the eval and 13 of 20 follow-ups and
+  // long-thread turns on E4B and E2B returned text, after 650 to 850 ms on
+  // the Mac. Code makes the search call, with the earlier turn in the query.
+  const skipNative = plain && turns.length > 0;
+  if (settings.nativeTools && !skipNative) {
     const started = Date.now();
     const names = visibleToolNames(turnScope.kind, write);
     try {
@@ -311,6 +341,19 @@ export async function runChatTurn(input: ChatTurnInput): Promise<TurnResult> {
   }
 
   let fallbackCalls: Call[] = [];
+  if (!first && plain) {
+    // The cheap route (P1.1): a question that asks for no list, no count, no
+    // status and no change reads text. Code makes the search call. No router
+    // call and no slot call run (two model calls less on the slow path).
+    const started = Date.now();
+    router = "default";
+    intent = "lookup";
+    first = {
+      tool: "search_chunks",
+      args: { query: question.slice(0, 200) },
+    };
+    step("route", "rules:lookup", started);
+  }
   if (!first) {
     const started = Date.now();
     router = "structured";
@@ -332,7 +375,11 @@ export async function runChatTurn(input: ChatTurnInput): Promise<TurnResult> {
         ],
         maxOutputTokens: ROUTER_MAX_TOKENS,
       });
-      routed = r.object.intent === "other" ? "lookup" : r.object.intent;
+      routed = refineIntent(
+        question,
+        r.object.intent === "other" ? "lookup" : r.object.intent,
+        todayMs,
+      );
       step("route", `intent:${r.object.intent}`, started);
     } catch (e) {
       if (signal.aborted) {
@@ -345,7 +392,7 @@ export async function runChatTurn(input: ChatTurnInput): Promise<TurnResult> {
     intent = routed;
     // Dates: a temporal question with no date range reads text, like a lookup.
     const slotsStarted = Date.now();
-    let slots = defaultSlots(question);
+    let slots = defaultSlots(question, [], routed);
     const zod = slotZod(routed, choices);
     if (zod && !(await stopOrNull())) {
       try {
@@ -421,13 +468,10 @@ export async function runChatTurn(input: ChatTurnInput): Promise<TurnResult> {
     const widen = (c: Call): Call => {
       if (c.tool !== "search_chunks") return c;
       const a = c.args as { query?: string };
-      const parts = [
-        turns[0]?.question,
-        turns.at(-1)?.question,
-        a.query ?? question,
-      ].filter((x): x is string => !!x);
-      const query = [...new Set(parts)].join(" ").slice(0, 200);
-      return { ...c, args: { ...a, query } };
+      return {
+        ...c,
+        args: { ...a, query: followUpQuery(question, priorTurns, a.query) },
+      };
     };
     first = widen(first);
     fallbackCalls = fallbackCalls.map(widen);
@@ -440,6 +484,25 @@ export async function runChatTurn(input: ChatTurnInput): Promise<TurnResult> {
       proposal = proposalFor(db, turnScope, first.tool, first.args);
     }
     return finish([{ kind: "read_only" }], [], "");
+  }
+
+  // ---- Count of meetings that name something: a code count (P1.1). ----
+  if (!write) {
+    const phrase = mentionPhrase(question);
+    if (phrase) {
+      const started = Date.now();
+      const r = countMentions(ctx, phrase);
+      toolCalls.push({
+        tool: "count_mentions",
+        args: { query: phrase },
+        rows: r.rows,
+      });
+      step("tool", "count_mentions", started, r.rows);
+      const cites = r.labels
+        .map((l) => sources.toCite(l))
+        .filter((c): c is ChatCite => c !== null);
+      return finish(r.blocks, cites, "");
+    }
   }
 
   // ---- Stage 3: tools, in rounds. ----
@@ -483,7 +546,7 @@ export async function runChatTurn(input: ChatTurnInput): Promise<TurnResult> {
         : plannedCalls(
             intent,
             turnScope,
-            defaultSlots(question),
+            defaultSlots(question, priorTurns, intent),
             choices,
             question,
             todayMs,
@@ -571,7 +634,58 @@ export async function runChatTurn(input: ChatTurnInput): Promise<TurnResult> {
 
   // ---- The not-found floor: the best hit is too weak for an answer. ----
   const floor = input.scoreFloor ?? SCORE_FLOOR;
-  const searched = results.find((r) => r.tool === "search_chunks");
+  let searched = results.find((r) => r.tool === "search_chunks");
+
+  // Cross-language step (P1.1): a weak first search may come from a question
+  // in another language than the meetings. One model call writes the search
+  // words in the language of the weak hit. A better second search replaces
+  // the first one. Else the floor below ends the turn as before.
+  if (
+    floor > 0 &&
+    searched &&
+    searched.topScore !== null &&
+    searched.topScore < floor &&
+    !(await stopOrNull())
+  ) {
+    const firstSearch = toolCalls.find((c) => c.tool === "search_chunks");
+    if (firstSearch) {
+      const started = Date.now();
+      try {
+        const r = await llm.structured({
+          step: "chatSlots",
+          unitKey: "route/query",
+          schema: QUERY_SCHEMA,
+          system: QUERY_SYSTEM,
+          messages: [{ role: "user", content: queryUser(question) }],
+          maxOutputTokens: SLOT_MAX_TOKENS,
+        });
+        const query = r.object.query.trim();
+        step("tool", "query rewrite", started, null, query.slice(0, 80));
+        if (query !== "") {
+          const before = searched;
+          const second = await run({
+            tool: "search_chunks",
+            args: { ...(firstSearch.args as object), query },
+          });
+          if (
+            second &&
+            second.topScore !== null &&
+            second.topScore >= REWRITE_SCORE &&
+            second.topScore > (before.topScore ?? 0)
+          ) {
+            const keep = new Set(second.labels);
+            sources.remove(before.labels.filter((l) => !keep.has(l)));
+            searched = second;
+          } else if (second) {
+            const keep = new Set(before.labels);
+            sources.remove(second.labels.filter((l) => !keep.has(l)));
+          }
+        }
+      } catch (e) {
+        step("tool", "query rewrite", started, null, gatewayKind(e) || "error");
+      }
+    }
+  }
   if (
     floor > 0 &&
     searched &&
@@ -680,6 +794,28 @@ export async function runChatTurn(input: ChatTurnInput): Promise<TurnResult> {
     if (check.ok) {
       tidyCites(check.sentences, sources);
       refineCiteTimes(check.sentences, sources);
+      try {
+        await pickCiteTimes(
+          check.sentences,
+          sources,
+          followUpQuery(question, priorTurns),
+          async (q, texts) => {
+            try {
+              return await rerankPairs(q, texts, signal);
+            } catch (e) {
+              if (signal.aborted) throw e;
+              return null;
+            }
+          },
+        );
+      } catch (e) {
+        // A client abort or the deadline during the pick ends the turn as before.
+        if (signal.aborted) {
+          const why = stopReason();
+          if (why) return notFound(why);
+        }
+        throw e;
+      }
       const cites = citeFromSentences(check.sentences, sources);
       const blocks: ChatBlock[] = check.sentences.map((s) => ({
         kind: "text",

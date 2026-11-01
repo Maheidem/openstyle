@@ -13,6 +13,7 @@ import {
 } from "../meetings/folder-overview.js";
 import { readStanding } from "../meetings/folder-standing.js";
 import { formatClock } from "../meetings/live/chat-context.js";
+import { rerankPairs } from "../mlx-rerank/client.js";
 import {
   hitText,
   type RetrievalHit,
@@ -415,17 +416,23 @@ interface Snippet {
   segments: { startMs: number; text: string }[];
 }
 
+interface Piece {
+  start: number;
+  text: string;
+  offset: number;
+  /** Query words in the piece. After `rankPieces` a reranker score for a piece with no word. */
+  score: number;
+}
+
 /**
- * The text of a transcript chunk and `best_ms` (spec 7.3 point 1): the start
- * of the segment with the most query words. A tie goes to the earlier
- * segment. The text is cut to `HIT_CHARS` and starts at the best segment, so
- * the cited line is inside the text.
+ * The pieces (segments) of a transcript chunk, cut like `spanText` in the
+ * chunker. The score of a piece is the count of query words it holds.
  */
-function transcriptSnippet(
+function chunkPieces(
   db: DatabaseSync,
   hit: RetrievalHit,
   query: string,
-): Snippet | null {
+): Piece[] | null {
   const chunk = db
     .prepare(
       "SELECT segment_ids, char_start, char_end FROM meeting_chunks WHERE id = ?",
@@ -444,12 +451,7 @@ function transcriptSnippet(
     "SELECT start_ms, COALESCE(NULLIF(enhanced_text, ''), text, '') AS t FROM meeting_segments WHERE id = ?",
   );
   const q = new Set(wordsOf(query));
-  const pieces: {
-    start: number;
-    text: string;
-    offset: number;
-    score: number;
-  }[] = [];
+  const pieces: Piece[] = [];
   let total = 0;
   ids.forEach((id, i) => {
     const row = stmt.get(id) as
@@ -475,8 +477,54 @@ function transcriptSnippet(
     });
     total += text.length;
   });
-  if (pieces.length === 0) return null;
-  let best = pieces[0] as (typeof pieces)[number];
+  return pieces.length > 0 ? pieces : null;
+}
+
+/**
+ * A question in another language than the transcript shares no word with any
+ * segment, so the word count cannot pick the cited line (P1.1, #402). The
+ * reranker scores the segments of those chunks in one call instead. On an
+ * error the word counts stay (all zero: the first segment).
+ */
+/** The most segments that one reranker call scores (the worker limit is 64). */
+const RERANK_SEGMENT_DOCS = 60;
+
+async function rankPieces(
+  lists: Piece[][],
+  query: string,
+  signal: AbortSignal | undefined,
+): Promise<void> {
+  // The worker takes at most 64 documents. The best hits come first.
+  const weak: Piece[][] = [];
+  let docs = 0;
+  for (const l of lists) {
+    if (!l.every((p) => p.score === 0)) continue;
+    if (docs + l.length > RERANK_SEGMENT_DOCS) break;
+    weak.push(l);
+    docs += l.length;
+  }
+  if (weak.length === 0) return;
+  try {
+    const scores = await rerankPairs(
+      query,
+      weak.flatMap((l) => l.map((p) => p.text)),
+      signal,
+    );
+    let i = 0;
+    for (const l of weak) for (const p of l) p.score = scores[i++] as number;
+  } catch (e) {
+    if (signal?.aborted) throw e;
+  }
+}
+
+/**
+ * The text of a transcript chunk and `best_ms` (spec 7.3 point 1): the start
+ * of the segment with the best score. A tie goes to the earlier segment. The
+ * text is cut to `HIT_CHARS` and starts at the best segment, so the cited
+ * line is inside the text.
+ */
+function snippetOf(pieces: Piece[]): Snippet {
+  let best = pieces[0] as Piece;
   for (const p of pieces) if (p.score > best.score) best = p;
   const full = pieces.map((p) => p.text).join(" ");
   const segments = pieces.map((p) => ({ startMs: p.start, text: p.text }));
@@ -572,10 +620,19 @@ const searchChunks: ToolDef<z.infer<typeof searchChunksArgs>> = {
       selected.push(...metaOnly.values());
     }
 
-    for (const h of selected.slice(0, Math.max(k, groups.size))) {
+    const shown = selected.slice(0, Math.max(k, groups.size));
+    const pieces = new Map<RetrievalHit, Piece[]>();
+    for (const h of shown) {
+      if (h.kind !== "transcript") continue;
+      const p = chunkPieces(ctx.db, h, a.query);
+      if (p) pieces.set(h, p);
+    }
+    await rankPieces([...pieces.values()], a.query, ctx.signal);
+    for (const h of shown) {
       const info = meetingInfo(ctx.db, h.meetingId);
       if (h.kind === "transcript") {
-        const snip = transcriptSnippet(ctx.db, h, a.query);
+        const ps = pieces.get(h);
+        const snip = ps ? snippetOf(ps) : null;
         const text = snip?.text ?? hitText(h, HIT_CHARS);
         if (text === "") continue;
         const label = addSource(
@@ -1101,6 +1158,57 @@ const listMeetings: ToolDef<z.infer<typeof listMeetingsArgs>> = {
     };
   },
 };
+
+// ---------------------------------------------------------------------------
+// count_mentions (code step, not a model tool)
+// ---------------------------------------------------------------------------
+
+/**
+ * "In how many meetings was X named?": the meetings of the scope whose
+ * transcript holds `phrase`. The number comes from the database, so no model
+ * writes it. The cites are the summaries of those meetings (P1.1, #402).
+ */
+export function countMentions(ctx: ToolContext, phrase: string): ToolResult {
+  const started = Date.now();
+  const { where, params } = scopeSql(ctx.scope);
+  const needle = phrase.trim().toLowerCase();
+  const rows = ctx.db
+    .prepare(
+      `SELECT DISTINCT s.meeting_id AS id
+         FROM meeting_segments s JOIN meetings m ON m.id = s.meeting_id
+        WHERE ${where}
+          AND instr(lower(COALESCE(NULLIF(s.enhanced_text, ''), s.text, '')), ?) > 0`,
+    )
+    .all(...params, needle) as { id: string }[];
+  const ids = new Set(rows.map((r) => r.id));
+  const labels: string[] = [];
+  for (const m of loadMeetings(ctx.db, ctx.scope)) {
+    if (!ids.has(m.id)) continue;
+    addSource(
+      ctx,
+      {
+        kind: "summary",
+        meetingId: m.id,
+        title: m.title,
+        startedAt: m.at,
+        startMs: null,
+        endMs: null,
+        itemId: null,
+        text: `${m.title ?? "Untitled"} (${isoDay(m.at)})`,
+      },
+      labels,
+    );
+  }
+  return {
+    tool: "count_mentions",
+    rows: ids.size,
+    labels,
+    blocks: [{ kind: "count", n: ids.size, what: "meetings" }],
+    topScore: null,
+    degraded: null,
+    ms: Date.now() - started,
+  };
+}
 
 // ---------------------------------------------------------------------------
 // Registry

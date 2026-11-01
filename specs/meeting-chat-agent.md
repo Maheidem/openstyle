@@ -1146,6 +1146,22 @@ No measured baseline exists for any of these numbers. The values below are initi
 
 E4B, Nemotron and Qwen must meet the same bars or better. A bar missed by E2B but met by bigger models is a finding for the owner. It does not change the E2B target silently.
 
+#### 8.7a P1.1 changes (issue #402, PR #404)
+
+The P1 eval on E4B missed five bars. P1.1 changes the pipeline as follows. Each change is code, and each has a unit test (`apps/server/tests/chat-pipeline.test.ts`, `chat-plan.test.ts`).
+
+1. **Cited line by the reranker.** A question in another language than the meeting shares no word with any segment of a chunk. The word count then picked the first segment, so the 640-character snippet and the cite start missed the fact. When no segment holds a query word, one reranker call scores the segments of the shown chunks (at most 60 documents, the worker limit is 64) and the best one starts the snippet and the cite (`rankPieces`, `tools.ts`).
+2. **Follow-up query.** The search query of a follow-up holds the earlier question, the earlier answer and the new question. "My first question" points to the first turn (`followUpQuery`, `plan.ts`). The slot scorer of the eval builds the query with the same function.
+3. **Review kind by code.** `reviewKind` reads "decision" or "open question" from the words of the question. The review slot call is gone.
+4. **Intent corrections by code** (`refineIntent`): a lookup with a numbered day is temporal, a temporal with no date, no "when" word and no meeting word is a lookup, a who_said with no who word and no verb of speech is a lookup.
+5. **Cheap route.** When the native call gives no valid tool and the question asks for no list, count, status or change, code makes the search call. The structured router and the slot call do not run. A plain follow-up (a question with earlier turns) skips the native turn: on E4B all 10 follow-ups and 7 of 10 long-thread turns got text and no tool call after 650 to 850 ms.
+6. **Cross-language rewrite.** A first search with a best score under the floor (0.5) gets one model call that writes English search words. The second search replaces the first only when its best score is at least 0.8 (`REWRITE_SCORE`). A hit just over the floor is another topic: a rewrite at the floor turned two not-answerable questions into false answers on E2B.
+7. **Count of mentions.** "In how many meetings was X named?" is counted in SQL over the transcripts of the scope (`countMentions`). The count block cites the meetings. No model writes the number.
+8. **Cite start by the reranker.** After the cite check, one reranker call scores the segments of the cited transcript sources against the question (with the earlier turn for a follow-up). The best segment gives the start of the cite (`pickCiteTimes`, `cites.ts`). The word count of `refineCiteTimes` stays as the fallback.
+9. **Answer rule.** The answer prompt asks for the full name of a person when the sources have it (surname keys).
+
+Tried and removed: an empty-answer retry at a best score of 0.9. After change 1 it fixed no question, and it turned the not-answerable question q130 (best score 0.98) into a false answer in both variants (with and without a prompt that forbids an empty list). Also tried and removed: the question text as the search query. It raised the best score of unanswerable questions (0.06 to 0.56 on E2B) and broke the not-found floor.
+
 ### 8.8 Retrieval eval (P0) and mic diarization eval (PM)
 
 Retrieval eval: metrics, arms and bars are in section 7.4. The gold ranges come from the corpus of 8.2. Add to the corpus: 40 queries with exact names, 40 with exact numbers, 30 concept queries, 20 with an ASR-style misspelling of a name in the transcript, 20 date-bounded queries. Half are in Portuguese and half in English, so nDCG@10 is per language.

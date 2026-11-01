@@ -4,11 +4,13 @@ import {
   datesFromQuestion,
   hasDateArgs,
   parseToolArgs,
+  QUERY_MAX_CHARS,
   queryFor,
   type ToolCall,
   type ToolName,
 } from "./choices.js";
 import { normalizeText } from "./cites.js";
+import { asksForList } from "./prompts.js";
 import type { Intent, TurnScope } from "./types.js";
 
 // Stage 2 (plan) and the structured fallback of stage 2b (specs/
@@ -93,10 +95,80 @@ export function asksForCount(question: string): boolean {
   return COUNT_WORDS.some((w) => t.includes(` ${w} `));
 }
 
+const HOW_MANY_MEETINGS =
+  /\b(how many|quantas?|quantos|cuantas?|cuantos|wie viele|combien de|quant[ei]) (\w+ )?(meetings?|reunioes|reuniones|besprechungen|reunions|riunioni)\b/;
+const MENTION_VERB =
+  /\b(named|mentioned|cited|citad[ao]s?|mencionad[ao]s?|nombrad[ao]s?|erwahnt|cite[es]?|nomm[eé]e?s?|menzionat[ae]|nominat[ae])\b/;
+
+/**
+ * "In how many meetings was Kestrel Hosting named?" gives the name. Else null.
+ * Only a count of meetings with a mention verb counts: "How many meetings do
+ * we have in Atlas?" names a project, not a mention.
+ */
+export function mentionPhrase(question: string): string | null {
+  const t = normalizeText(question);
+  if (!HOW_MANY_MEETINGS.test(t) || !MENTION_VERB.test(t)) return null;
+  const toks = question.match(/[\p{L}\p{N}][\p{L}\p{N}.&'-]*/gu) ?? [];
+  let best: string[] = [];
+  let run: string[] = [];
+  toks.forEach((w, i) => {
+    if (i > 0 && /^\p{Lu}/u.test(w)) run.push(w);
+    else {
+      if (run.length > best.length) best = run;
+      run = [];
+    }
+  });
+  if (run.length > best.length) best = run;
+  const phrase = best.join(" ");
+  return phrase.length >= 3 ? phrase : null;
+}
+
+/** "when" in the 7 UI languages. */
+const WHEN_RE = /\b(when|quando|cuando|wann|quand)\b|いつ/u;
+/** A question about the speaker: "who" or a verb of speech, in the 7 UI languages. */
+const WHO_RE =
+  /\b(who|whom|quem|qui|wer|wen|quien|chi|say|said|says|disse|dijo|dito|gesagt|sagt|dit|detto|diceva|von wem)\b|誰|だれ|言って|言った/u;
+
+/**
+ * Code corrects three habits of a small router (P1.1, #402; the gold labels
+ * follow the same rules):
+ * - a lookup that names a day is temporal ("What did we decide in the
+ *   meeting on August 25?"),
+ * - a temporal with no date and no "when" is a lookup ("What is the current
+ *   date for the launch?"),
+ * - who_said with no "who" word is a lookup ("And which company confirmed
+ *   that?").
+ */
+export function refineIntent(
+  question: string,
+  intent: Intent,
+  todayMs: number,
+): Intent {
+  const q = fold(question);
+  switch (intent) {
+    case "lookup":
+      // A day with a number ("on August 25"); "yesterday" alone stays a lookup.
+      return /\d/.test(question) &&
+        datesFromQuestion(question, todayMs).date_from
+        ? "temporal"
+        : intent;
+    case "temporal":
+      return !datesFromQuestion(question, todayMs).date_from &&
+        !WHEN_RE.test(q) &&
+        !MEETING_WORDS.test(q)
+        ? "lookup"
+        : intent;
+    case "who_said":
+      return WHO_RE.test(q) ? intent : "lookup";
+    default:
+      return intent;
+  }
+}
+
 const MEETING_WORDS =
   /\b(meetings?|reunioes|reuniao|reuniones?|besprechung\w*|reunions?|riunion[ei])\b/;
 const QUESTION_WORDS =
-  /\b(questions?|perguntas?|preguntas?|fragen?|domand[ae])\b/;
+  /\b(questions?|perguntas?|preguntas?|fragen?|domand[ae])\b|質問|疑問|未解決/u;
 const DONE_WORDS =
   /\b(done|completed|closed|concluidas?|concluidos?|feitas?|terminad[ao]s?|hechas?|erledigt\w*|terminees?|completat[ae])\b/;
 const REOPEN_WORDS =
@@ -127,15 +199,66 @@ export interface SlotValues {
   tag?: string | null;
 }
 
-/** The slots of arm A5: the query is the question, nothing else. */
-export function defaultSlots(question: string): SlotValues {
+/** An earlier turn, as far as the slots need it. */
+export interface PriorTurn {
+  question: string;
+  answer: string;
+}
+
+const FIRST_RE =
+  /\b(first|primeira|primeiro|primera|primero|erste[nr]?|premi[eè]re|premier|prima|primo)\b|最初/iu;
+/** Short answers that describe no topic. */
+const EMPTY_ANSWER = /^(gave no answer|found nothing)$/i;
+
+/**
+ * The search query of a follow-up (spec 2.8 point 4). A follow-up has no topic
+ * of its own ("and when is that due?"). The topic is in the earlier question,
+ * and the earlier answer names the person or thing. Code builds the query from
+ * both. "my first question" points to the first turn, else the last turn.
+ */
+export function followUpQuery(
+  question: string,
+  turns: readonly PriorTurn[],
+  base?: string | null,
+): string {
+  const now = (base ?? "").trim() || question.trim();
+  const ref = FIRST_RE.test(question) ? turns[0] : turns.at(-1);
+  if (!ref) return queryFor(now, question);
+  const answer = EMPTY_ANSWER.test(ref.answer.trim()) ? "" : ref.answer;
+  const parts = [ref.question, answer, now].filter(
+    (x): x is string => !!x && x.trim() !== "",
+  );
+  return [...new Set(parts)].join(" ").slice(0, QUERY_MAX_CHARS).trim();
+}
+
+/**
+ * "decision" or "open_question" from the words of the question. Code decides:
+ * a small model got it wrong for "Show all decisions" (P1.1 eval).
+ */
+export function reviewKind(question: string): "decision" | "open_question" {
+  return QUESTION_WORDS.test(fold(question)) ? "open_question" : "decision";
+}
+
+/**
+ * The slots that code fills with no model call: the query (the question, plus
+ * the earlier turn of a follow-up) and the kind of a review. The model only
+ * fills what a closed list holds (person, item, meeting, folder).
+ */
+export function defaultSlots(
+  question: string,
+  turns: readonly PriorTurn[] = [],
+  intent?: Intent,
+): SlotValues {
   return {
-    query: queryFor(null, question),
+    query:
+      turns.length > 0
+        ? followUpQuery(question, turns)
+        : queryFor(null, question),
     person: "none",
     item: "none",
     meeting: "none",
     folder: "none",
-    kind: null,
+    kind: intent === "review" ? reviewKind(question) : null,
     change: null,
     tag: null,
   };
@@ -164,8 +287,8 @@ export function slotZod(
     case "temporal":
       return null;
     case "review":
-      shape = { kind: z.enum(["decision", "open_question"]) };
-      break;
+      // The kind comes from the words of the question (`reviewKind`).
+      return null;
     case "write":
       shape = {
         change: z.enum(["action_item", "retag", "move", "merge_people"]),
@@ -193,7 +316,6 @@ const FIELD_HELP: Record<string, string> = {
   item: "item: one label from the list, or none",
   meeting: "meeting: one label from the list, or none",
   folder: "folder: one id from the list, or none",
-  kind: "kind: decision or open_question",
   change: "change: action_item (done or reopen), retag, move or merge_people",
   tag: "tag: the tag name to add, or null",
 };
@@ -307,7 +429,13 @@ export function plannedCalls(
       search();
       break;
     case "temporal":
-      if (scope.kind !== "meeting" && dates?.date_from) {
+      // A list of meetings in a range. A question about one topic on a date reads text.
+      if (
+        scope.kind !== "meeting" &&
+        dates?.date_from &&
+        asksForList(question) &&
+        MEETING_WORDS.test(q)
+      ) {
         calls.push({ tool: "list_meetings", args: { limit: 50 } });
       } else search();
       break;
@@ -336,9 +464,7 @@ export function plannedCalls(
       calls.push({
         tool: "list_decisions_questions",
         args: {
-          kind:
-            slots.kind ??
-            (QUESTION_WORDS.test(q) ? "open_question" : "decision"),
+          kind: slots.kind ?? reviewKind(question),
           ...(meetingId ? { meeting_id: meetingId } : {}),
           limit: 50,
         },
