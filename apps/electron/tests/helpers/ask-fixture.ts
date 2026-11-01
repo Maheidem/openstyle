@@ -493,9 +493,10 @@ function questionOf(user: string): string {
 /**
  * The fake model. It looks at each request and answers by rule, so a run is
  * deterministic:
- * - native tool turn: search_chunks for most questions, get_meeting_summary
- *   when the question holds "owns" or "owner", a propose tool for a write
- *   question;
+ * - native tool turn: search_chunks for most questions, list_action_items for
+ *   "action items", list_decisions_questions for "decisions",
+ *   get_meeting_summary when the question holds "owns" or "owner", a propose
+ *   tool for a write question;
  * - chat_router: lookup, or write for "Mark ...";
  * - chat_slots: valid empty slots;
  * - chat_answer: one sentence, copied from the source that shares most words
@@ -658,6 +659,19 @@ export class FakeAskLlm {
           item: "A1",
           done: true,
         });
+      } else if (
+        /\baction items?\b/i.test(q) &&
+        tools.includes("list_action_items")
+      ) {
+        // A list question (P2): the open action items of the scope.
+        record.answered = "list_action_items";
+        this.toolCall(res, "list_action_items", { status: "open" });
+      } else if (
+        /\bdecisions\b/i.test(q) &&
+        tools.includes("list_decisions_questions")
+      ) {
+        record.answered = "list_decisions_questions";
+        this.toolCall(res, "list_decisions_questions", { kind: "decision" });
       } else if (
         /\bowns?\b|\bowner\b/i.test(q) &&
         tools.includes("get_meeting_summary")

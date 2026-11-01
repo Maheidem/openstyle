@@ -28,6 +28,14 @@ const TOP_SHARE = 0.16;
 
 let contentHeight = INITIAL_HEIGHT;
 let openCount = 0;
+/**
+ * The last open. A page that mounts after the message (the first open loads
+ * the page, and React mounts after the load event) asks for it.
+ */
+let lastShown: ChatBubbleShown | null = null;
+/** When the bubble was shown last. A blur right after that is the activation, not a click away. */
+let shownAt = 0;
+const BLUR_GRACE_MS = 400;
 /** Show the bubble when its page ends loading (a show before the load). */
 let showAfterLoad: ChatBubbleShown | null = null;
 /** The Openstyle window that had the focus when the bubble opened, if any. */
@@ -71,6 +79,9 @@ function createChatBubbleWindow(): BrowserWindow {
     win.setVisibleOnAllWorkspaces(true, { visibleOnFullScreen: true });
   }
 
+  // The bubble opens no other window. A link goes through main (IPC).
+  win.webContents.setWindowOpenHandler(() => ({ action: "deny" }));
+
   win.webContents.on("did-finish-load", () => {
     const pending = showAfterLoad;
     showAfterLoad = null;
@@ -80,6 +91,7 @@ function createChatBubbleWindow(): BrowserWindow {
   // Losing the focus to another window closes the bubble, like a spotlight.
   win.on("blur", () => {
     if (state.quietE2E) return;
+    if (Date.now() - shownAt < BLUR_GRACE_MS) return;
     if (win.isVisible() && !win.webContents.isDevToolsOpened()) {
       hideChatBubble("blur", { restoreFocus: false });
     }
@@ -128,6 +140,7 @@ export function openChatBubble(reason: string): void {
 
 function revealBubble(win: BrowserWindow, shown: ChatBubbleShown): void {
   if (win.isDestroyed()) return;
+  shownAt = Date.now();
   placeBubble(win);
   if (state.quietE2E) {
     // No focus, no app activation: the window stays quiet.
@@ -137,6 +150,7 @@ function revealBubble(win: BrowserWindow, shown: ChatBubbleShown): void {
     win.show();
     win.focus();
   }
+  lastShown = shown;
   win.webContents.send("chat-bubble:shown", shown);
 }
 
@@ -191,6 +205,12 @@ export function registerChatBubbleIpc(): void {
   ipcMain.on("chat:selection", (_event, value: unknown) => {
     state.chatSelection = value === null ? null : parseBubbleScope(value);
   });
+
+  ipcMain.handle("chat-bubble:state", (event): ChatBubbleShown | null =>
+    event.sender === state.chatBubble?.webContents && isChatBubbleVisible()
+      ? lastShown
+      : null,
+  );
 
   ipcMain.on("chat-bubble:hide", (event) => {
     if (fromBubble(event)) hideChatBubble("escape");

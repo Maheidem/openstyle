@@ -80,6 +80,7 @@ export function FolderPanel({
   // Selection mode of the meeting list: the checked ids, the last clicked
   // id (the start of a shift-click range) and the stage of the bulk bar.
   const [tab, setTab] = useState("overview");
+  const tabsRef = useRef<HTMLDivElement>(null);
   // The Ask tab (meeting chat agent, scope F) shows with the setting on and at
   // least one meeting in the folder.
   const { data: appSettings } = useQuery(settingsQueryOptions());
@@ -393,8 +394,21 @@ export function FolderPanel({
           setConfirm({ stage, folder_id: folder.id, count })
         }
       />
-      <Tabs value={tab} onValueChange={setTab}>
+      <Tabs
+        value={tab}
+        onValueChange={(next) => {
+          setTab(next);
+          // The folder header is tall. The Ask tab brings its tab row to the
+          // top of the column, so the conversation is in view.
+          if (next === "ask") {
+            requestAnimationFrame(() =>
+              tabsRef.current?.scrollIntoView({ block: "start" }),
+            );
+          }
+        }}
+      >
         <TabsList
+          ref={tabsRef}
           variant="line"
           className="border-border w-full justify-start border-b"
         >

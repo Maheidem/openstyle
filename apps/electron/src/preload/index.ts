@@ -326,6 +326,9 @@ const api = {
   refreshChatHotkey: (): void => ipcRenderer.send("chat-hotkey:refresh"),
   /** The bubble opened (or opened again). Main gives the scope. */
   onChatBubbleShown: listen<[shown: ChatBubbleShown]>("chat-bubble:shown"),
+  /** The open that happened before the page mounted, or null. */
+  getChatBubbleState: (): Promise<ChatBubbleShown | null> =>
+    ipcRenderer.invoke("chat-bubble:state"),
   onChatBubbleHidden: listen("chat-bubble:hidden"),
   hideChatBubble: (): void => ipcRenderer.send("chat-bubble:hide"),
   setChatBubbleHeight: (height: number): void =>

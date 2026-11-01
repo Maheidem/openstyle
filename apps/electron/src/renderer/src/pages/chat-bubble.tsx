@@ -6,6 +6,7 @@ import type {
 import { Button } from "@renderer/components/ui/button";
 import { Textarea } from "@renderer/components/ui/textarea";
 import { cn } from "@renderer/lib/utils";
+import type { ChatBubbleShown } from "@shared/chat-bubble";
 import { MessageSquareText, X } from "lucide-react";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
@@ -64,8 +65,14 @@ export default function ChatBubblePage(): React.JSX.Element {
   const { data: folders = [] } = useMeetingFolders(true);
   const { data: meetings = [] } = useMeetingsList();
 
+  // Main opens the bubble with the scope of the Meetings selection. The first
+  // open loads this page, and the message comes before React mounts, so the
+  // page also asks main for the last open. Each open counts once.
+  const appliedOpen = useRef(0);
   useEffect(() => {
-    const off = window.api.onChatBubbleShown((shown) => {
+    const apply = (shown: ChatBubbleShown): void => {
+      if (shown.openCount <= appliedOpen.current) return;
+      appliedOpen.current = shown.openCount;
       setScope(shown.scope);
       setThreadScope(shown.scope);
       setThreadId(EMPTY.thread);
@@ -75,6 +82,10 @@ export default function ChatBubblePage(): React.JSX.Element {
       setBusy(false);
       setErrorKey(null);
       requestAnimationFrame(() => inputRef.current?.focus());
+    };
+    const off = window.api.onChatBubbleShown(apply);
+    void window.api.getChatBubbleState().then((shown) => {
+      if (shown) apply(shown);
     });
     return off;
   }, []);
@@ -89,6 +100,18 @@ export default function ChatBubblePage(): React.JSX.Element {
     };
     document.addEventListener("keydown", onKey);
     return () => document.removeEventListener("keydown", onKey);
+  }, []);
+
+  // The window has no page scroll: main sizes it to the card.
+  useEffect(() => {
+    const { documentElement: html, body } = document;
+    const before = [html.style.overflow, body.style.overflow];
+    html.style.overflow = "hidden";
+    body.style.overflow = "hidden";
+    return () => {
+      html.style.overflow = before[0] ?? "";
+      body.style.overflow = before[1] ?? "";
+    };
   }, []);
 
   // Main sizes the window to the content.

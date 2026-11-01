@@ -100,7 +100,8 @@ export function AskPanel({
   const { t, i18n } = useTranslation();
   const queryClient = useQueryClient();
   const navigate = useNavigate();
-  const endRef = useRef<HTMLDivElement>(null);
+  const listRef = useRef<HTMLDivElement>(null);
+  const lastAnswerRef = useRef<HTMLDivElement>(null);
   const key = scopeKey(scope);
 
   // null: the newest thread. "new": an empty chat. Else: a thread id. The
@@ -163,9 +164,19 @@ export function AskPanel({
   }, [working]);
 
   const lastKey = `${messages.length}:${pending ?? ""}:${widening ? 1 : 0}:${failure ? 1 : 0}:${serverPending ? 1 : 0}`;
+  // A new answer scrolls to its first line, so a long list reads from the top.
+  // While a turn runs, the list shows its end. The page itself does not scroll.
   // biome-ignore lint/correctness/useExhaustiveDependencies: scroll on a new message
   useEffect(() => {
-    endRef.current?.scrollIntoView?.({ block: "nearest" });
+    const list = listRef.current;
+    const answer = lastAnswerRef.current;
+    const lastIsAnswer = messages.at(-1)?.role === "assistant";
+    if (list && answer && lastIsAnswer && !working) {
+      list.scrollTop +=
+        answer.getBoundingClientRect().top - list.getBoundingClientRect().top;
+    } else if (list) {
+      list.scrollTop = list.scrollHeight;
+    }
   }, [lastKey]);
 
   /** Put a reply into the thread cache, once each message. */
@@ -288,7 +299,14 @@ export function AskPanel({
   const conversation = (
     <div className="flex min-w-0 flex-1 flex-col gap-3">
       <div
-        className="flex max-h-[min(60vh,34rem)] min-h-24 flex-col gap-3 overflow-y-auto pr-1 text-[12.5px] leading-snug"
+        ref={listRef}
+        className={cn(
+          "flex min-h-24 flex-col gap-3 overflow-y-auto pr-1 text-[12.5px] leading-snug",
+          // The Ask page keeps the composer in the window: the height follows it.
+          threadsMode === "list"
+            ? "max-h-[max(10rem,calc(100vh-27rem))]"
+            : "max-h-[min(60vh,34rem)]",
+        )}
         data-testid="meeting-ask-messages"
       >
         {empty && (
@@ -311,7 +329,11 @@ export function AskPanel({
           </div>
         )}
         {messages.map((m) => (
-          <div key={m.id} data-testid={`meeting-ask-${m.role}`}>
+          <div
+            key={m.id}
+            ref={m.id === lastAssistantId ? lastAnswerRef : undefined}
+            data-testid={`meeting-ask-${m.role}`}
+          >
             {m.role === "user" ? (
               <UserBubble text={m.content} />
             ) : (
@@ -359,7 +381,6 @@ export function AskPanel({
             />
           </>
         )}
-        <div ref={endRef} />
       </div>
 
       {/* The status text is a polite live region. It is always in the page, so
@@ -466,12 +487,15 @@ export function AskPanel({
             className="flex shrink-0 flex-col gap-1 min-[820px]:w-56"
             data-testid="ask-thread-list"
           >
+            <span className="text-muted-foreground mono text-[9px] uppercase tracking-[0.14em]">
+              {strings.threads}
+            </span>
             {threads.length === 0 ? (
               <p className="text-muted-foreground m-0 text-[12px]">
                 {t("meetings.ask.noThreads")}
               </p>
             ) : (
-              <ul className="m-0 flex max-h-[min(60vh,34rem)] list-none flex-col gap-1 overflow-y-auto p-0">
+              <ul className="m-0 flex max-h-[max(10rem,calc(100vh-27rem))] list-none flex-col gap-1 overflow-y-auto p-0">
                 {threads.map((th) => (
                   <li key={th.id}>
                     <button
