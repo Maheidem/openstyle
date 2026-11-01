@@ -819,7 +819,12 @@ async function partE2e(env: Env, M: Record<string, number>): Promise<PartOut> {
         stepNames,
         res.proposal?.kind ?? null,
       );
-      const toolOk = tool !== null && q.tools.includes(tool);
+      // count_mentions (P1.1) is the code count of a mention question. It stands
+      // in for the search that the gold plan lists.
+      const toolOk =
+        tool !== null &&
+        (q.tools.includes(tool) ||
+          (tool === "count_mentions" && q.tools.includes("search_chunks")));
       const sa = scoreToolArgs(
         q,
         res.toolCalls[0] ?? null,

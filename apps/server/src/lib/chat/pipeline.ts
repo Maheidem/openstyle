@@ -491,7 +491,7 @@ export async function runChatTurn(input: ChatTurnInput): Promise<TurnResult> {
       const r = countMentions(ctx, phrase);
       toolCalls.push({
         tool: "count_mentions",
-        args: { phrase },
+        args: { query: phrase },
         rows: r.rows,
       });
       step("tool", "count_mentions", started, r.rows);
