@@ -1187,6 +1187,56 @@ Measured 2026-11-01 (temperature 0, thinking off; MLflow experiment `openstyle-l
 
 After change 6 (20 threads, 90 turns): thread turn accuracy base to new is 70.0 to 95.6 on Mac E4B and 52.2 to 91.1 on Mac E2B (gold); decisions turns 0 to 75 and next-steps turns 0 to 100 on both. The bars of the table above did not move. The E2B lookup + follow-up bar still fails, as before P1.2 (issue #402). The desktop E4B run (llama.cpp) matches: lookup + follow-up 94.3 / 94.3 both ways, threads 98.6 / 93.1 new against 75.0 (held-out) base.
 
+#### 8.7c P2 results (branch feat/chat-ask-p2, 2026-11-01)
+
+Measured at temperature 0, thinking off. Each cell is "corpus seed / held-out seed" (seed 20271105). Desktop is the llama.cpp server (Gemma 4 E4B and E2B, GGUF). Mac is the MLX worker (`gemma-4-e4b-qat-4bit`, `gemma-4-e2b-qat-4bit`), run under the GPU lock. Every run is in MLflow experiment `openstyle-lab-chat-agent-p1` (id 100), tags `chat.set` (`gold` or `p2`), `backend` and `model`, and each run was read back (`READ BACK OK`). The gold hash is `1e41bd5cea578222`. The P2 set is `buildP2` in `scripts/chat-eval/gold.mts` (`pnpm chat-eval p1 --set p2`, section 11.6.6).
+
+**No regression.** A control on the Mac E4B, corpus seed: `origin/main` (f1791df1) and this branch give the same pass or fail on all 190 gold questions, and the same numbers (lookup + follow-up 91.4, cite precision 0.854, not-found 95.0, list F1 0.979). The Mac E4B held-out threads give the same 88 turns, 93.2% and 1 repeat on both. The repeat is an older P1.2 case (PT "Why?"), not a P2 change.
+
+### P0 gold set (P1 bars, no regression). Values are corpus seed / held-out seed.
+
+| Metric | Desktop E4B | Desktop E2B | Mac E4B | Mac E2B |
+|---|---|---|---|---|
+| Lookup + follow-up, bar 85 | 94.3 / 91.4 | 85.7 / 88.6 | 91.4 / 91.4 | 77.1 / 82.9 |
+| A0 22, bar 74 | 95.5 / 90.9 | 86.4 / 86.4 | 90.9 / 90.9 | 81.8 / 81.8 |
+| Cite precision, bar 0.80 | 0.851 / 0.886 | 0.774 / 0.807 | 0.854 / 0.870 | 0.805 / 0.821 |
+| Not-found acc, bar 90 | 95.0 / 95.0 | 95.0 / 95.0 | 95.0 / 95.0 | 92.5 / 92.5 |
+| False not-found, bar max 15 | 1.4 / 1.4 | 1.4 / 1.4 | 0.7 / 0.7 | 1.4 / 0.7 |
+| List F1, bar 0.85 | 0.979 / 1.000 | 0.979 / 1.000 | 0.979 / 1.000 | 0.979 / 1.000 |
+| Who said, P2 bar 70 | 100.0 / 100.0 | 95.0 / 100.0 | 100.0 / 100.0 | 100.0 / 100.0 |
+| Tool+args, bar 85 | 94.2 / 94.2 | 93.7 / 93.2 | 94.2 / 94.2 | 92.6 / 92.6 |
+| Write, bar 90 | 92.0 / 92.0 | 92.0 / 92.0 | 92.0 / 92.0 | 92.0 / 92.0 |
+| Route gold, bar 90 | 94.2 / 94.2 | 85.3 / 84.7 | 94.7 / 94.7 | 95.8 / 95.8 |
+| Cite valid, bar 100 | 100.0 / 100.0 | 100.0 / 100.0 | 100.0 / 100.0 | 100.0 / 100.0 |
+| Invalid cites shown, bar 0 | 0 / 0 | 0 / 0 | 0 / 0 | 0 / 0 |
+| Turn p95 ms, bar 6000 | 1063 / 1151 | 884 / 902 | 2141 / 1989 | 1229 / 1232 |
+| Threads turn acc | 95.6 / 88.6 | 90.0 / 93.2 | 95.6 / 93.2 | 91.1 / 92.0 |
+| Thread repeats | 0 / 0 | 0 / 0 | 0 / 1 | 0 / 1 |
+
+### P2 set (folder and Everything). Values are corpus seed / held-out seed.
+
+| Metric | Desktop E4B | Desktop E2B | Mac E4B | Mac E2B |
+|---|---|---|---|---|
+| Lookup (P2 bar 70) | 90.5 / 90.5 | 90.5 / 85.7 | 90.5 / 90.5 | 85.7 / 90.5 |
+| Who said, bar 70 | 100.0 / 100.0 | 100.0 / 100.0 | 100.0 / 100.0 | 100.0 / 100.0 |
+| Cite precision, bar 0.80 | 0.947 / 0.947 | 0.919 / 0.971 | 0.947 / 0.947 | 0.886 / 0.972 |
+| List F1, bar 0.85 | 1.000 / 0.900 | 1.000 / 0.900 | 1.000 / 0.900 | 1.000 / 0.900 |
+| Cite valid, bar 100 | 100.0 / 100.0 | 100.0 / 100.0 | 100.0 / 100.0 | 100.0 / 100.0 |
+| Invalid cites shown | 0 / 0 | 0 / 0 | 0 / 0 | 0 / 0 |
+| Widen: offer, bar 90 | 95.8 / 95.8 | 91.7 / 87.5 | 91.7 / 95.8 | 87.5 / 87.5 |
+| Widen: answer, bar 70 | 87.5 / 87.5 | 75.0 / 70.8 | 79.2 / 83.3 | 66.7 / 62.5 |
+| Threads A and F turn acc | 100.0 / 94.9 | 94.6 / 89.7 | 97.3 / 89.7 | 89.2 / 87.2 |
+| Thread repeats | 0 / 0 | 0 / 0 | 0 / 0 | 0 / 0 |
+| False not-found | 1.9 / 1.9 | 1.9 / 3.7 | 1.9 / 1.9 | 3.8 / 1.9 |
+| Turn p95 ms | 1047 / 998 | 1718 / 1996 | 2234 / 1965 | 1124 / 1211 |
+
+Findings:
+
+1. E4B meets every P1 and P2 bar on both backends and both seeds (the Mac E4B P2 set: lookup 90.5, who said 100, widen offer 91.7 / 95.8, widen answer 79.2 / 83.3).
+2. E2B misses these bars (the floor, D9): lookup + follow-up on the gold set (Mac 77.1 / 82.9, the open issue #402; the desktop passes), the widen offer on the held-out P2 set (87.5) and the widen answer on the Mac (66.7 / 62.5). The cases that fail are scope traps where the model answers from a near topic at the narrow scope, and lookups that the model calls not found at the wide scope. Cite validity is 100% and no invalid cite was shown in any of the 16 runs.
+3. Dictation latency while a chat turn runs was not measured in P2. The 150 ms guard adds a fixed 150 ms to a dictation start only while the chat hotkey is on.
+4. The retrieval bars of P1 were run again once on the final head (Mac, `--only retrieval`): nDCG@10 0.651, recall@10 any 86.4%, rerank 30 passes both slices (100.0 / 92.5), rerank 15 fails both slices (73.0 / 80.0), as in P1. The 46,000-row latency bar was not run again (`retrieve()` has no change).
+
 ### 8.8 Retrieval eval (P0) and mic diarization eval (PM)
 
 Retrieval eval: metrics, arms and bars are in section 7.4. The gold ranges come from the corpus of 8.2. Add to the corpus: 40 queries with exact names, 40 with exact numbers, 30 concept queries, 20 with an ASR-style misspelling of a name in the transcript, 20 date-bounded queries. Half are in Portuguese and half in English, so nDCG@10 is per language.
