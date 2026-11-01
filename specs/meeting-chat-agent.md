@@ -2,7 +2,7 @@
 
 Status: DRAFT for owner review. Date: 2026-10-31. Base: `main` at `a7083674`.
 Revision 2 (2026-10-31, 09:49): owner answers applied. Section 12.1 lists them as decisions D1 to D4. Revision 3 (10:45): placement decided, D5 (section 11).
-Revision 4 (2026-10-31, 11:10): owner review applied, decisions D6 to D18 (section 12.1). Name note: `SD8` is decision D8 of `specs/local-semantic-search.md`. `D1` to `D18` are decisions of this spec.
+Revision 4 (2026-10-31, 11:10): owner review applied, decisions D6 to D18 (section 12.1). Revision 5 (2026-11-01): decision D19, the P2 surfaces (section 11.6). Name note: `SD8` is decision D8 of `specs/local-semantic-search.md`. `D1` to `D18` are decisions of this spec.
 Scope of this document: design only. No product code is part of this change.
 Language: ASD-STE100 Simplified Technical English.
 Diagrams follow the rule "Diagram conventions" in `AGENTS.md`. The pipeline diagram (2.2), the live-variant diagram (2.4) and the failure diagrams (2.5a, 2.5b) are written to it. The other diagrams are small single-concern sketches.
@@ -1347,7 +1347,7 @@ The owner said the Cmd+K quick ask and the Ask tab have "an awesome synergy". Th
 | Phase | UI scope |
 |---|---|
 | P1 | One thin UI: the Ask tab on the meeting page (scope M). The API and the eval already cover scope F. The folder questions (R2 at folder level, R5, R6) are proven by the gold eval and by command against the real server in P1, and this is stated in the PR. Their screen proof comes in P2. |
-| P2 | The Ask tab on the folder Overview (scope F), and Cmd+K with widening to Everything (scope A) and "continue in the tab". Screen proofs for R3, R4, R6, R7. |
+| P2 | Replaced by D19 (section 11.6): the Ask tab on the folder Overview (scope F), the Ask page, the global bubble and the Everything scope (A). Cmd+K is dropped. Screen proofs for R3, R4, R6, R7. |
 | P3 and P4 | Proposal cards and the activity log in the same tab (and in the Cmd+K result when a proposal comes from there). |
 | P5 | The live view chat panel switches to the Ask pipeline at scope "this meeting, live". |
 | Later | Ask page for the Everything scope and old-thread search. |
@@ -1356,6 +1356,88 @@ The owner said the Cmd+K quick ask and the Ask tab have "an awesome synergy". Th
 
 1. Power user: wants an optional drawer later, so the chat stays open while the user moves between pages. Not in the plan. Reopen after P2 if Cmd+K plus the tab is not enough.
 2. Product manager: wants the source-text panel of concept B (the cited text next to the answer) inside the tab. Plan: a cite chip opens the cited lines in a side panel of the tab (transcript lines around `start_ms`, from `get_transcript_window`, section 3.2), in addition to opening the meeting. DECISION: P2 builds it, because it needs the window tool.
+
+### 11.6 P2 placement: Ask page, global bubble, folder tab (D19)
+
+Status: DECIDED by the owner on 2026-11-01 (decision D19, section 12.1). D19 replaces D5 for P2. D5 stays for the Ask tab of one meeting (P1). The in-app Cmd+K palette of D5 is dropped. The API of section 5.3 stays placement-agnostic: any surface gives a scope and a thread.
+
+#### 11.6.1 The surfaces
+
+| Surface | What it is | Scope |
+|---|---|---|
+| Ask tab on the meeting page | Unchanged from P1. | M |
+| Ask tab on the folder Overview | A tab next to the Overview in the folder panel. The scope is fixed by the page. | F |
+| Ask page | A page in the left sidebar, next to Meetings. It has a scope picker (Everything, one folder, one meeting), the thread list of the picked scope (newest first), a new-chat button, and the same answer, cite chip and "How I found this" UI as the meeting tab. | A, F or M |
+| Bubble | A small floating window. A global hotkey opens it from any app. It has the scope in words, one action to widen the scope, an input, a short answer with cite chips, and "Open in Ask". | the selection in the Meetings page, else A |
+
+One thread model serves all four surfaces (section 4.2). A thread made on any surface shows in the thread list of its scope on every surface. A thread with no meeting and no folder has the scope A (the table already allows it: both columns NULL).
+
+```mermaid
+flowchart TD
+  U1(["Meeting tab: scope M"]) --> TH
+  U2(["Folder tab: scope F"]) --> TH
+  U3(["Ask page: scope picker M, F or A"]) --> TH
+  U4(["Bubble: scope from the Meetings selection, else A"]) --> TH
+  TH["1 THREAD [CODE]<br/>in: scope, thread id or new<br/>out: thread row (meeting_id, folder_id, or both NULL)"]
+  TH --> TURN["2 TURN [LLM calls: stages 1, 2b, 4, 4r of 2.2]<br/>in: question, scope, history<br/>out: answer blocks + cites, or not_found block"]
+  TURN -->|"answer with valid cites"| X1(["EXIT answer in the thread list of the scope"])
+  TURN -->|"not_found, scope is M or F, Search wider is on"| W["3 OFFER [CODE]<br/>out: not_found block with the next wider scope<br/>M to F (A if unfiled), F to A"]
+  TURN -->|"not_found, scope is A, or Search wider is off"| X2(["EXIT not_found block, no offer"])
+  W -->|"user does not click"| X3(["EXIT thread stays at the narrow scope"])
+  W -->|"user clicks once"| TURN2["4 WIDEN TURN [LLM calls: same stages]<br/>in: the same question, the wider scope<br/>out: answer or not_found; the cites show the scope<br/>bound: one step per click"]
+  TURN2 -->|"answer"| X1
+  TURN2 -->|"not_found"| W
+```
+
+Counting from the diagram: a turn has the LLM calls of section 2.2 (at most `R + 3`). A widen turn is a normal turn at a wider scope. It adds no extra call. The exits are X1, X2 and X3.
+
+#### 11.6.2 The global hotkey and the guard
+
+The owner holds Control+Option for dictation (the default hotkey of macOS is `Control+Alt`, `apps/electron/src/shared/hotkey-defaults.ts`). The chat hotkey is `Control+Option+K` by default. It is a setting (`chat_hotkey`) with a recorder in Settings. Control+Space and Control+Option+Space are taken by macOS input sources on the owner's Mac, so they are not used.
+
+Rules (DECISION):
+
+1. OS-level hotkeys go through the main process (`AGENTS.md`, section "IPC"). The main process starts one native key listener for the chat hotkey, as it does for each language hotkey. The listener swallows the key, so the foreground app does not get a "k".
+2. The hotkey is registered only when `meeting_chat_enabled` is `"true"`. A change of the switch or the hotkey registers or removes it at once.
+3. The guard. When the chat hotkey is on and the dictation hotkey is a prefix of it (all modifiers of the dictation hotkey are modifiers of the chat hotkey), a dictation start waits 150 ms. If the chat key goes down in this window, the start is cancelled and the bubble opens. If the window ends first, dictation starts. If the user releases the dictation hotkey inside the window, dictation starts at once and stops at once (the same as before the guard). If the chat key goes down while a dictation runs, the chat key is ignored. The cost: every dictation start is 150 ms later while the chat is on. A dictation hotkey that is not a prefix of the chat hotkey has no delay.
+4. The same guard applies to the per-language dictation hotkeys.
+
+```mermaid
+flowchart TD
+  D0(["Dictation hotkey down"]) --> C1{"chat hotkey on and the dictation hotkey is a prefix of it?"}
+  C1 -->|no| S1["START dictation now [CODE]"]
+  C1 -->|yes| T["WAIT 150 ms [CODE]<br/>bound: 150 ms, one timer"]
+  T -->|"chat key down inside the window"| B["CANCEL start, OPEN bubble [CODE]"]
+  T -->|"dictation hotkey up inside the window"| S2["START now, then STOP [CODE]<br/>same as before the guard"]
+  T -->|"window ends"| S3["START dictation [CODE]"]
+  S3 -->|"chat key down while dictation runs"| I(["EXIT chat key ignored"])
+  B --> X1(["EXIT bubble open, no dictation"])
+  S1 --> X2(["EXIT dictation running"])
+  S2 --> X3(["EXIT dictation started and stopped"])
+```
+
+The bubble closes with Escape and returns focus to the app that had it. When the bubble was opened from the background, Openstyle hides itself on close, so macOS gives focus back.
+
+#### 11.6.3 The bubble scope
+
+The Meetings page tells the main process which meeting or folder is selected (IPC `chat:selection`). The main process keeps the last value. The hotkey reads it at press time. A meeting that is selected gives scope M. A folder gives scope F. Nothing selected, or the Meetings page was never open, gives scope A. The bubble shows the scope in words ("Asking in: Weekly sync") and one action "Search everything" that widens the scope of the next question one step (M to F, F to A, an unfiled meeting to A). "Open in Ask" opens the main window on the Ask page with the same thread selected, so the thread continues there.
+
+#### 11.6.4 Search wider (D16) in P2
+
+1. A `not_found` block at scope M or F carries `wider`: the next scope (kind, id, name), or none when Search wider is off or the scope is A. Code computes it. The model does not.
+2. The user clicks "Search the whole folder" or "Search everything". The client sends `POST /api/chat/threads/:id/messages` with `{"widen": true}`. The server reads the last message of the thread. It must be an assistant message with a `not_found` block that has `wider`. The server takes the question of the user message before it and runs a normal turn at `wider`. It saves no second user message. A thread whose last message is not such a block gets 409 `widen_not_offered`.
+3. The answer message carries its scope in `trace.scope`. The UI shows "Searched in: Project Atlas" when the scope of the answer differs from the scope of the thread.
+4. Code never widens alone, also not in the last tool round (section 6.3).
+
+#### 11.6.5 What P2 does not build
+
+1. The Cmd+K palette (dropped by the owner). The API has no palette code.
+2. The source-text side panel of section 11.5 point 2. A cite chip opens the meeting on the Transcript tab at the time of the cite. The side panel moves to a later phase.
+3. Proposal cards (P3), person merge (P4), live variant (P5).
+
+#### 11.6.6 P2 evaluation
+
+The gold set and its hash stay as in P0. A new set file adds folder and Everything questions (section 8 of the chat-eval skill): lookup, who said, temporal and count at scope A, who said at scope F, and "search wider" cases (a question that is not found at M and found after one widen to F, and after one widen to A). Threads at scope A get their own turns. The bars of section 8.7 (P1 and P2 columns) are reported on E4B and E2B, gold and held-out.
 
 ## 12. Owner decisions and open questions
 
@@ -1382,6 +1464,7 @@ The owner said the Cmd+K quick ask and the Ask tab have "an awesome synergy". Th
 | D16 (was Q11) | Search wider: ask permission, one step per confirm (meeting, folder, everything; unfiled goes to everything). Code never widens alone. | 6.3 |
 | D17 (was Q10) | The owner labels name pairs by hand on a labelling page (same, different, unsure, skip), from resolver candidates on real meetings, between P2 and P4. Labels stay private. | 8.6 |
 | D18 (was Q9) | Keep chats for now. Later one global retention knob on the Ask page. Threads cascade with their meeting or folder. Context window handling is specified in 2.8. | 2.8, 4.2 |
+| D19 | UI for P2 (2026-11-01, replaces D5 for P2): a main-nav Ask page with a scope picker (Everything, folder, meeting) and a thread list; a global `Control+Option+K` hotkey (a setting) that opens a floating bubble from anywhere, with the scope taken from the Meetings selection and a guard so that dictation starts only when K does not follow within about 150 ms; a folder Ask tab on the folder Overview; the Everything scope with search wider. The in-app Cmd+K palette is dropped. | 11.6, 9.1 (P2) |
 
 ### 12.2 Open questions
 
