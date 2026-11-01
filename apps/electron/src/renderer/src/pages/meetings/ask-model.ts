@@ -180,6 +180,67 @@ export function threadTitle(thread: ChatThread): string | null {
     : flat;
 }
 
+/**
+ * Add messages to a thread, once each. The reply of a question and a reload of
+ * the thread can bring the same message (the tab may have left and come back
+ * while the turn ran), so the merge is by id and keeps the order of the ids.
+ */
+export function mergeMessages(
+  prev: readonly ChatMessage[],
+  add: readonly ChatMessage[],
+): ChatMessage[] {
+  const byId = new Map<number, ChatMessage>();
+  for (const m of [...prev, ...add]) byId.set(m.id, m);
+  return [...byId.values()].sort((a, b) => a.id - b.id);
+}
+
+/**
+ * A question to draw as its own bubble because the thread does not hold it
+ * yet. The server saves the question at once, so a reload can already have it
+ * as the last message. Then the bubble would show twice.
+ */
+export function unsavedQuestion(
+  messages: readonly ChatMessage[],
+  text: string | null,
+): string | null {
+  if (text === null) return null;
+  const last = messages.at(-1);
+  return last?.role === "user" && last.content.trim() === text.trim()
+    ? null
+    : text;
+}
+
+/**
+ * The question of a turn that ended with no answer while no turn runs: the
+ * turn failed while the tab was away, or the app closed during the turn.
+ */
+export function danglingQuestion(
+  messages: readonly ChatMessage[],
+  running: boolean,
+): string | null {
+  if (running) return null;
+  const last = messages.at(-1);
+  return last?.role === "user" ? last.content : null;
+}
+
+/**
+ * The thread that each meeting showed last. The Ask tab unmounts when the user
+ * leaves the meeting. This memory outlives the tab, so the same thread opens
+ * again ("new" is an empty chat, null is the newest thread).
+ */
+const rememberedThread = new Map<string, string | null>();
+
+export function readSelectedThread(meetingId: string): string | null {
+  return rememberedThread.get(meetingId) ?? null;
+}
+
+export function rememberSelectedThread(
+  meetingId: string,
+  selected: string | null,
+): void {
+  rememberedThread.set(meetingId, selected);
+}
+
 export interface QuestionCheck {
   /** The text to send: trimmed. */
   text: string;

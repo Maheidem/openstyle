@@ -375,3 +375,95 @@ describe("cited line for a question in another language", () => {
     expect(r.cites[0]?.start_ms).toBe(50_000);
   });
 });
+
+describe("decisions and next steps read the summary (P1.2)", () => {
+  const runMeeting = (question: string, llm: ChatLlm) =>
+    runChatTurn({
+      db: getDb(),
+      scope: { kind: "meeting", id: "m1" },
+      question,
+      history: [],
+      settings: SETTINGS,
+      llm,
+      signal: new AbortController().signal,
+      now: TODAY,
+    });
+  const addSummary = () =>
+    getDb()
+      .prepare(
+        "INSERT INTO meeting_summaries (meeting_id, markdown, summary_json, created_at) VALUES ('m1', NULL, ?, 1)",
+      )
+      .run(
+        JSON.stringify({
+          overview: "The team met for the security review.",
+          keyPoints: [],
+          decisions: ["Hold the security review on December 4."],
+          actionItems: [{ task: "Send the quote", owner: "Ana", due: null }],
+          openQuestions: [],
+        }),
+      );
+
+  it("What has been decided? calls the summary and cites the decision", async () => {
+    addSummary();
+    retrieveMock.mockResolvedValue(ok([hit(1, "m1", 0.2)]));
+    const { llm, log } = fakeLlm({
+      native: NO_CALL,
+      structured: {
+        chatAnswer: [
+          answer("The team will hold the security review on December 4.", [
+            "S3",
+          ]),
+        ],
+      },
+    });
+    const r = await runMeeting("What has been decided?", llm);
+    // No native call and no router call: code made the summary call.
+    expect(log.map((l) => l.step)).toEqual(["chatAnswer"]);
+    expect(r.toolCalls[0]?.tool).toBe("get_meeting_summary");
+    expect(r.trace.steps.some((s) => s.name === "rules:decisions")).toBe(true);
+    expect(r.blocks[0]?.kind).toBe("text");
+    // A weak score of the extra search does not end the turn as not found.
+    expect(r.content).toContain("December 4");
+  });
+
+  it("What are the next steps? uses the action items of the summary", async () => {
+    addSummary();
+    retrieveMock.mockResolvedValue(ok([]));
+    const { llm } = fakeLlm({
+      native: NO_CALL,
+      structured: { chatAnswer: [answer("Ana sends the quote.", ["S3"])] },
+    });
+    const r = await runMeeting("What are the next steps?", llm);
+    expect(r.toolCalls[0]?.tool).toBe("get_meeting_summary");
+    expect(r.trace.steps.some((s) => s.name === "rules:steps")).toBe(true);
+  });
+
+  it("a meeting with no summary falls back to the search", async () => {
+    retrieveMock.mockResolvedValue(ok([hit(1, "m1", 0.95)]));
+    const { llm } = fakeLlm({
+      native: NO_CALL,
+      structured: {
+        chatAnswer: [answer("The security review is on December 4.", ["S1"])],
+      },
+    });
+    const r = await runMeeting("What has been decided?", llm);
+    expect(r.toolCalls.map((c) => c.tool)).toContain("search_chunks");
+    expect(r.blocks[0]?.kind).toBe("text");
+  });
+
+  it("a decision about a topic stays a search", async () => {
+    addSummary();
+    retrieveMock.mockResolvedValue(ok([hit(1, "m1", 0.95)]));
+    const { llm } = fakeLlm({
+      native: NO_CALL,
+      structured: {
+        chatAnswer: [answer("The security review is on December 4.", ["S1"])],
+      },
+    });
+    const r = await runMeeting(
+      "What did we decide about the security review?",
+      llm,
+    );
+    expect(r.toolCalls[0]?.tool).toBe("search_chunks");
+  });
+});

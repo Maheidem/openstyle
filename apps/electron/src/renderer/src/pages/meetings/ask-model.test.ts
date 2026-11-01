@@ -12,9 +12,14 @@ import {
   citesForLabels,
   citeTarget,
   citeView,
+  danglingQuestion,
   formatTimestamp,
+  mergeMessages,
+  readSelectedThread,
+  rememberSelectedThread,
   summarizeTrace,
   threadTitle,
+  unsavedQuestion,
 } from "./ask-model";
 
 function cite(over: Partial<ChatCite> = {}): ChatCite {
@@ -269,5 +274,53 @@ describe("askErrorView", () => {
     expect(askErrorView(409, "other")).toEqual(failed);
     expect(askErrorView(500, null)).toEqual(failed);
     expect(askErrorView(null, null)).toEqual(failed);
+  });
+});
+
+describe("thread that outlives the tab (P1.2)", () => {
+  const msg = (id: number, role: "user" | "assistant", content: string) =>
+    ({
+      id,
+      thread_id: "t1",
+      role,
+      content,
+      blocks: [],
+      cites: [],
+      trace: null,
+      model_id: null,
+      provider: null,
+      ms: null,
+      created_at: id,
+    }) as ChatMessage;
+
+  it("merges messages once, in the order of the ids", () => {
+    const u = msg(1, "user", "q");
+    const a = msg(2, "assistant", "a");
+    expect(mergeMessages([u], [u, a]).map((m) => m.id)).toEqual([1, 2]);
+    expect(mergeMessages([a, u], []).map((m) => m.id)).toEqual([1, 2]);
+  });
+
+  it("draws the pending question only when the thread does not hold it", () => {
+    const u = msg(1, "user", "Why?");
+    expect(unsavedQuestion([u], "Why?")).toBeNull();
+    expect(unsavedQuestion([u], " Why? ")).toBeNull();
+    expect(unsavedQuestion([], "Why?")).toBe("Why?");
+    expect(unsavedQuestion([u, msg(2, "assistant", "a")], "Why?")).toBe("Why?");
+    expect(unsavedQuestion([u], null)).toBeNull();
+  });
+
+  it("finds a question that has no answer and no running turn", () => {
+    const u = msg(1, "user", "Why?");
+    expect(danglingQuestion([u], false)).toBe("Why?");
+    expect(danglingQuestion([u], true)).toBeNull();
+    expect(danglingQuestion([u, msg(2, "assistant", "a")], false)).toBeNull();
+    expect(danglingQuestion([], false)).toBeNull();
+  });
+
+  it("remembers the thread of each meeting", () => {
+    expect(readSelectedThread("m-x")).toBeNull();
+    rememberSelectedThread("m-x", "t9");
+    expect(readSelectedThread("m-x")).toBe("t9");
+    expect(readSelectedThread("m-y")).toBeNull();
   });
 });

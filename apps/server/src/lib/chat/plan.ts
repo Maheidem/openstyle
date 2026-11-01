@@ -209,12 +209,182 @@ const FIRST_RE =
   /\b(first|primeira|primeiro|primera|primero|erste[nr]?|premi[eè]re|premier|prima|primo)\b|最初/iu;
 /** Short answers that describe no topic. */
 const EMPTY_ANSWER = /^(gave no answer|found nothing)$/i;
+/** The most turns back that a follow-up leans on. */
+const MAX_CHAIN = 3;
+/** The part of the earlier answer that joins the query, in characters. */
+const ANSWER_HEAD_CHARS = 100;
 
 /**
- * The search query of a follow-up (spec 2.8 point 4). A follow-up has no topic
- * of its own ("and when is that due?"). The topic is in the earlier question,
- * and the earlier answer names the person or thing. Code builds the query from
- * both. "my first question" points to the first turn, else the last turn.
+ * Words that point back to an earlier turn, in the 7 UI languages: "that",
+ * "isso", "ele", "dies", "cela", "questo", "それ". A question that holds one of
+ * them and is short has no topic of its own.
+ */
+const REFERENCE_RE =
+  /\b(that|this|it|they|them|he|she|him|her|those|these|isso|isto|esse|essa|esses|essas|este|esta|aquilo|ele|ela|eles|elas|disso|dele|dela|eso|esto|ese|esa|ello|[eé]l|ella|ellos|das|dies|diese[rsnm]?|es|er|sie|ihn|ihm|ce|cela|[cç]a|ces|il|elle|ils|elles|questo|questa|quello|quella|lui|lei|loro)\b|それ|これ|その|この|あれ|彼/iu;
+/** Words that ask for a reason or a speaker. They need a topic from the turn before. */
+const DEPENDENT_WORD_RE =
+  /\b(why|por\s*qu[eê]|porque|pourquoi|warum|perch[eé]|who|quem|qui[eé]n|qui|wer|chi)\b|なぜ|どうして|誰/iu;
+/** A conjunction at the start of a question: "And when...", "But why...". */
+const CONJUNCTION_START_RE =
+  /^\s*(and|but|so|then|also|e|mas|ent[aã]o|y|pero|entonces|und|aber|dann|et|mais|alors|ma|quindi|e poi)\b/iu;
+/** "this meeting" names the meeting. It points to no earlier turn. */
+const THIS_MEETING_RE =
+  /\b(this|that|esta|essa|esse|este|deste|desta|dessa|diese[rsn]?|cette|questa|questo)\s+(meeting|call|reuni[aã]o|reunion|reuni[oó]n|besprechung|r[eé]union|riunione)\b|この会議/giu;
+
+const wordCount = (q: string) =>
+  q
+    .trim()
+    .split(/[\s,;:.?!]+/u)
+    .filter(Boolean).length;
+
+/**
+ * True when the question has no topic of its own and leans on the turn before
+ * ("Why?", "And when is that due?", "Who said that?", "my first question").
+ * Rules: 3 words or fewer; a conjunction first ("And when..."); a reference
+ * word ("that", "isso") in 8 words or fewer; "why" or "who" in 4 words or fewer.
+ * A question with its own topic ("What did we decide on the database
+ * engine?") is a new topic: it must NOT search with the earlier turn (P1.2:
+ * the old answer took over the query and the same chunk came back).
+ */
+export function isDependentFollowUp(question: string): boolean {
+  const q = question.replace(THIS_MEETING_RE, " ").trim();
+  if (FIRST_RE.test(q)) return true;
+  const n = wordCount(q);
+  const cjk = /[\u3040-\u30ff\u4e00-\u9fff]/u.test(q);
+  const short = cjk ? q.length <= 14 : n <= 3;
+  if (short) return true;
+  if (CONJUNCTION_START_RE.test(q) && n <= 9) return true;
+  const medium = cjk ? q.length <= 24 : n <= 8;
+  if (medium && REFERENCE_RE.test(q)) return true;
+  // "Why did we pick Postgres?" has a topic of its own. "Why is it so?" has not.
+  const small = cjk ? q.length <= 14 : n <= 4;
+  return small && DEPENDENT_WORD_RE.test(q);
+}
+
+/** "What was this meeting about?": the summary answers, not a search. */
+const OVERVIEW_RE = new RegExp(
+  [
+    // en
+    "what (?:was|is|were) (?:this|the|that) (?:meeting|call) (?:about|for)",
+    "what (?:was|is) (?:this|the) (?:meeting|call)",
+    "what did we (?:discuss|talk about|cover)",
+    "(?:summary|summarize|summarise|overview|recap) (?:of )?(?:this|the) (?:meeting|call)",
+    "(?:summary|summarize|summarise|overview|recap) (?:this|the) (?:meeting|call)",
+    "tell me about this (?:meeting|call)",
+    // pt (accents are folded)
+    "sobre o que (?:foi|e|era) (?:esta|essa|a) reuniao",
+    "(?:do|de) que (?:se )?(?:tratou|trata|foi|falou) (?:esta|essa|a) reuniao",
+    "qual (?:foi|e) o assunto (?:desta|dessa|da) reuniao",
+    "(?:resumo|resuma|resumir) (?:da|desta|dessa) reuniao",
+    "o que (?:discutimos|conversamos|falamos)",
+    // es
+    "de que (?:trato|trata|fue|va) (?:esta|la) reunion",
+    "(?:resumen|resume) (?:de )?(?:esta|la) reunion",
+    "que (?:discutimos|hablamos)",
+    // de
+    "worum (?:ging|geht) es in (?:dieser|der) besprechung",
+    "(?:zusammenfassung|uberblick) (?:von |der |dieser )?besprechung",
+    // fr
+    "de quoi (?:parlait|traitait|s'agissait) (?:cette|la) reunion",
+    "(?:resume|resumer) (?:de )?(?:cette|la) reunion",
+    // it
+    "di cosa (?:trattava|parlava|si e parlato) (?:questa|la) riunione",
+    "(?:riassunto|riassumi|sintesi) (?:di |della |questa )?riunione",
+  ].join("|"),
+  "u",
+);
+const OVERVIEW_JA_RE =
+  /この会議.*(何|なに|どんな|概要|要約)|会議の(概要|要約)/u;
+
+export function asksOverview(question: string): boolean {
+  return OVERVIEW_RE.test(fold(question)) || OVERVIEW_JA_RE.test(question);
+}
+
+/** Words that ask for the whole list: the review path (a list block) keeps those. */
+const LIST_ALL_RE =
+  /\b(show|list|display|all|every|each|mostre|mostrar|liste|listar|todas?|todos|muestra|muestre|alle|zeige|tous|toutes|montre|tutti|tutte|mostra|elenca)\b|一覧|すべて|全部/u;
+const TAIL =
+  "(?: (?:in|na|nesta|en|esta|in|dans|cette|nella|questa|di|von|der|dieser|bei) (?:this |the |a |la |die |der |das |den |dem |l')?(?:meeting|reuniao|reunion|besprechung|reunion|riunione|call))?(?: (?:so far|ate agora|hasta ahora|bisher|jusqu'ici|finora|today|hoje|hoy|heute|aujourd'hui|oggi|here|aqui))?";
+const DECISIONS_RE = new RegExp(
+  [
+    `^(?:(?:so|and|but|e|mas|y|pero|und|aber|et|mais|ma),? )?(?:what|which)(?: (?:has|have|was|were|is|are))?(?: been)? (?:decided|(?:the )?decisions?)${TAIL}$`,
+    `^(?:(?:so|and|but),? )?what (?:did|do|have) we (?:decide|decided)${TAIL}$`,
+    `^(?:the |any )?decisions?${TAIL}$`,
+    `^o que (?:foi|ficou|ja foi|foi que) decidido${TAIL}$`,
+    `^o que (?:decidimos|a gente decidiu|foi deliberado)${TAIL}$`,
+    `^(?:quais|que) (?:foram )?(?:as )?decisoes${TAIL}$`,
+    `^decisoes${TAIL}$`,
+    `^que (?:se )?(?:decidio|ha decidido|hemos decidido|decidimos)${TAIL}$`,
+    `^cuales (?:fueron )?(?:las )?decisiones${TAIL}$`,
+    `^decisiones${TAIL}$`,
+    `^was (?:wurde|ist|haben wir) (?:\\w+ )?(?:entschieden|beschlossen)${TAIL}$`,
+    `^(?:die )?entscheidungen${TAIL}$`,
+    `^(?:qu'est-ce qui a ete decide|qu'a-t-on decide|qu'avons-nous decide|quelles decisions(?: ont ete prises)?)${TAIL}$`,
+    `^(?:les )?decisions${TAIL}$`,
+    `^(?:cosa|che cosa) (?:e stato deciso|abbiamo deciso|si e deciso)${TAIL}$`,
+    `^(?:le )?decisioni${TAIL}$`,
+  ].join("|"),
+  "u",
+);
+const DECISIONS_JA_RE =
+  /^(?:何が決まりました|何を決めました|決定事項|決まったこと)[かは]?[?？]?$/u;
+
+const NEXT_STEPS_RE = new RegExp(
+  [
+    `^(?:(?:so|and|but),? )?what(?: are| is|'s)(?: the)? (?:next steps?|action items?|to-?dos?|follow-?ups?|what'?s next)${TAIL}$`,
+    `^(?:the )?(?:next steps?|action items?|follow-?ups?)${TAIL}$`,
+    `^what(?:'s| is) next${TAIL}$`,
+    `^(?:quais|o que) (?:sao )?(?:os )?(?:proximos passos|itens de acao|pendencias|tarefas)${TAIL}$`,
+    `^(?:os )?proximos passos${TAIL}$`,
+    `^(?:cuales|que) (?:son )?(?:los )?(?:proximos pasos|tareas pendientes|acciones)${TAIL}$`,
+    `^(?:los )?proximos pasos${TAIL}$`,
+    `^(?:was|welche) (?:sind )?(?:die )?(?:naechsten schritte|nachsten schritte|aufgaben)${TAIL}$`,
+    `^(?:die )?(?:naechsten|nachsten) schritte${TAIL}$`,
+    `^(?:quelles sont )?(?:les )?prochaines etapes${TAIL}$`,
+    `^(?:quali sono )?(?:i )?prossimi passi${TAIL}$`,
+  ].join("|"),
+  "u",
+);
+const NEXT_STEPS_JA_RE =
+  /^(?:次のステップ|今後の予定|アクションアイテム)[はを]?(?:何|なに)?[ですか]*[?？]?$/u;
+
+const tidyAsk = (q: string): string =>
+  fold(q)
+    .replace(/[?!.¿¡\s]+$/u, "")
+    .replace(/^[¿¡\s]+/u, "")
+    .replace(/\s+/g, " ");
+
+/**
+ * "What has been decided?", "o que foi decidido", "decisões": the question
+ * asks for the decisions of the meeting, with no topic. In a meeting scope the
+ * decisions of the summary answer it (P1.2). A question with a topic ("What
+ * did we decide on the database?") stays a search. A request for the whole
+ * list ("show all decisions") stays the list path.
+ */
+export function asksDecisions(question: string): boolean {
+  if (LIST_ALL_RE.test(fold(question))) return false;
+  return (
+    DECISIONS_RE.test(tidyAsk(question)) ||
+    DECISIONS_JA_RE.test(question.trim())
+  );
+}
+
+/** "What are the next steps?": the action items of the summary answer it. */
+export function asksNextSteps(question: string): boolean {
+  return (
+    NEXT_STEPS_RE.test(tidyAsk(question)) ||
+    NEXT_STEPS_JA_RE.test(question.trim())
+  );
+}
+
+/**
+ * The search query of a turn (spec 2.8 point 4). A dependent follow-up has no
+ * topic of its own, so the query holds the NEW question first, then the earlier
+ * question (the topic), then the start of the earlier answer (it names the
+ * person or thing). The earlier answer is cut short: a whole answer took over
+ * the query and every follow-up found the same chunk (P1.2). "My first
+ * question" points to the first turn, else the last turn. A question with a
+ * topic of its own searches with its own words only.
  */
 export function followUpQuery(
   question: string,
@@ -222,10 +392,25 @@ export function followUpQuery(
   base?: string | null,
 ): string {
   const now = (base ?? "").trim() || question.trim();
-  const ref = FIRST_RE.test(question) ? turns[0] : turns.at(-1);
-  if (!ref) return queryFor(now, question);
-  const answer = EMPTY_ANSWER.test(ref.answer.trim()) ? "" : ref.answer;
-  const parts = [ref.question, answer, now].filter(
+  if (!isDependentFollowUp(question)) return queryFor(now, question);
+  // The turns that the question leans on: the last turn, and the turns before
+  // it while the question of a turn is a follow-up itself ("Why?" leans on the
+  // fact before it). The last of them has a topic of its own.
+  const chain: PriorTurn[] = [];
+  if (FIRST_RE.test(question)) {
+    if (turns[0]) chain.push(turns[0]);
+  } else {
+    for (const t of [...turns].reverse().slice(0, MAX_CHAIN)) {
+      chain.push(t);
+      if (!isDependentFollowUp(t.question)) break;
+    }
+  }
+  const topic = chain.at(-1);
+  if (!topic) return queryFor(now, question);
+  const answer = EMPTY_ANSWER.test(topic.answer.trim())
+    ? ""
+    : topic.answer.trim().slice(0, ANSWER_HEAD_CHARS);
+  const parts = [now, ...chain.map((t) => t.question), answer].filter(
     (x): x is string => !!x && x.trim() !== "",
   );
   return [...new Set(parts)].join(" ").slice(0, QUERY_MAX_CHARS).trim();

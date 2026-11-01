@@ -16,6 +16,7 @@ import { existsSync, readdirSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import process from "node:process";
 import { buildCorpus } from "./corpus.mts";
+import { buildThreads } from "./gold.mts";
 import {
   mean,
   ndcgAt,
@@ -39,6 +40,7 @@ import {
   scoreProdSlots,
   scoreToolArgs,
 } from "./p1-score.mts";
+import { runThread, summarize as summarizeThreads } from "./p1-threads.mts";
 import { gradesFor, loadChunks } from "./retrieval.mts";
 import type { RunOut } from "./retrieval-run.mts";
 import { heldoutRouterItems } from "./router-data.mts";
@@ -64,6 +66,7 @@ export const PARTS = [
   "router",
   "slots",
   "e2e",
+  "threads",
   "a0",
   "scale",
   "bars",
@@ -1147,6 +1150,52 @@ async function partE2e(env: Env, M: Record<string, number>): Promise<PartOut> {
 }
 
 // ===================================================================================
+// D2. Multi-turn threads (P1.2)
+// ===================================================================================
+
+async function partThreads(
+  env: Env,
+  M: Record<string, number>,
+): Promise<PartOut> {
+  const threads = buildThreads(env.corpus);
+  const use = spread(threads, env.opts.limit);
+  const rows: Awaited<ReturnType<typeof runThread>> = [];
+  // At most 4 threads at once (owner rule); default 2: a desktop llama.cpp
+  // server with few slots queues the calls and a turn hits its deadline.
+  const par = Math.min(4, Number(process.env.CHAT_EVAL_THREADS_PAR ?? 2) || 2);
+  let next = 0;
+  const worker = async () => {
+    while (next < use.length) {
+      const th = use[next++] as (typeof use)[number];
+      const r = await runThread(env, th);
+      rows.push(...r);
+      env.log(
+        `threads ${th.id}: ${r.filter((x) => x.pass).length}/${r.length}`,
+      );
+    }
+  };
+  await Promise.all(Array.from({ length: Math.min(par, use.length) }, worker));
+  rows.sort((a, b) => a.thread.localeCompare(b.thread) || a.turn - b.turn);
+  const m = summarizeThreads(rows);
+  let text = `Threads: ${m.threads} threads, ${m.turns} turns (real answers fed back). Turn accuracy ${pct(m.acc as number)}%; decided ${pct(m["acc.decided"] ?? 0)}%, steps ${pct(m["acc.steps"] ?? 0)}%, fact ${pct(m["acc.fact"] ?? 0)}%, why ${pct(m["acc.why"] ?? 0)}%, switch ${pct(m["acc.switch"] ?? 0)}%, who ${pct(m["acc.who"] ?? 0)}%, overview ${pct(m["acc.overview"] ?? 0)}%. Repeated answers ${m.repeats}; cite marker leaks ${m.leaks}; errors ${m.errors}; threads all pass ${m.threads_all_pass} of ${m.threads}.\n`;
+  text += `\n| thread | turn | kind | pass | repeat | tool | cites | answer |\n|---|---|---|---|---|---|---|---|\n`;
+  for (const r of rows)
+    text += `| ${r.thread} | ${r.turn} | ${r.kind} | ${r.pass ? "ok" : "FAIL"} | ${r.repeat ? "REPEAT" : ""} | ${r.tool ?? ""} | ${r.cites.join(" ")} | ${r.answer.replace(/\s+/g, " ").slice(0, 80)} |\n`;
+  M["thr.acc"] = m.acc as number;
+  M["thr.repeats"] = m.repeats as number;
+  return {
+    text,
+    data: { rows, metrics: m },
+    run: {
+      name: "p1-threads",
+      params: { threads: m.threads, turns: m.turns, history: "real answers" },
+      tags: baseTags(env, "threads"),
+      metrics: m,
+    },
+  };
+}
+
+// ===================================================================================
 // E. A0 on the same questions
 // ===================================================================================
 
@@ -1405,7 +1454,7 @@ export async function runP1(
     opts,
     index: null,
   };
-  if (want("retrieval") || want("e2e") || want("scale")) {
+  if (want("retrieval") || want("e2e") || want("threads") || want("scale")) {
     const st = stack.mod.searchState();
     if (st.state !== "on") throw new Error(`search is off: ${st.reason}`);
     const t0 = performance.now();
@@ -1450,6 +1499,7 @@ export async function runP1(
     await done("router", () => partRouter(env, M));
     await done("slots", () => partSlots(env, M));
     await done("e2e", () => partE2e(env, M));
+    await done("threads", () => partThreads(env, M));
     await done("a0", () => partA0(env, M));
     await done("scale", () => partScale(env, M));
     llmRss.stop();

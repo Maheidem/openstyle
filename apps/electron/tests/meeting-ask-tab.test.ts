@@ -176,6 +176,37 @@ async function threadMessages(
   return detail.messages;
 }
 
+/** Waits until the server runs a turn for the meeting. Returns the thread id. */
+async function waitForRunningTurn(
+  b: Booted,
+  meetingId: string,
+): Promise<string> {
+  let id = "";
+  await expect
+    .poll(
+      async () => {
+        const list = (await (
+          await b.api("GET", `/chat/threads?meeting_id=${meetingId}`)
+        ).json()) as { threads: { id: string }[] };
+        for (const t of list.threads) {
+          const d = (await (
+            await b.api("GET", `/chat/threads/${t.id}`)
+          ).json()) as {
+            pending: boolean;
+          };
+          if (d.pending) {
+            id = t.id;
+            return true;
+          }
+        }
+        return false;
+      },
+      { timeout: 10_000, intervals: [100] },
+    )
+    .toBe(true);
+  return id;
+}
+
 function defineScenario(): void {
   test.describe.configure({ mode: "serial" });
 
@@ -620,6 +651,122 @@ function defineScenario(): void {
       });
     }
     await setTheme(page, "Light");
+  });
+
+  // P1.2: a turn runs on the server. The owner left the meeting while an
+  // answer was generating and the conversation was gone.
+  test("a turn goes on when the owner leaves the meeting and comes back", async () => {
+    test.skip(!fake, "Needs the fake LLM to hold the answer.");
+    test.setTimeout(90_000);
+    const slow = fake as FakeAskLlm;
+    slow.answerDelayMs = 6000;
+    const question = "What did we decide about the beta launch date, again?";
+    try {
+      await openSubject(page);
+      await page.getByRole("tab", { name: /Ask/ }).click();
+      await page.getByTestId("meeting-ask-new").click();
+      await page.getByTestId("meeting-ask-input").fill(question);
+      await page.getByTestId("meeting-ask-send").click();
+      // The question is on the screen and the turn runs.
+      await expect(page.getByTestId("meeting-ask-user")).toContainText(
+        question,
+      );
+      await expect(page.getByTestId("meeting-ask-status")).not.toBeEmpty();
+      // The server holds the turn as pending.
+      await waitForRunningTurn(b, SUBJECT.id);
+      const other = MEETINGS[1];
+      if (!other) throw new Error("The fixture has no second meeting.");
+      // Leave: open another meeting in the list (the Ask tab unmounts).
+      await page
+        .getByTestId("meetings-list-column")
+        .getByText(other.title, { exact: false })
+        .first()
+        .click();
+      await expect(page.getByTestId("meeting-ask")).toHaveCount(0);
+      // The turn is not lost: the server still says it runs.
+      const list = (await (
+        await b.api("GET", `/chat/threads?meeting_id=${SUBJECT.id}`)
+      ).json()) as { threads: { id: string; title: string | null }[] };
+      const thread = list.threads.find((t) =>
+        t.title?.startsWith(
+          "What did we decide about the beta launch date, again",
+        ),
+      );
+      expect(thread, "the new thread is saved").toBeTruthy();
+      const mid = (await (
+        await b.api("GET", `/chat/threads/${thread?.id}`)
+      ).json()) as {
+        pending: boolean;
+        messages: { role: string }[];
+      };
+      expect(mid.pending).toBe(true);
+      expect(mid.messages.map((m) => m.role)).toEqual(["user"]);
+      // Come back: the thread is there with the question and a running turn.
+      await page
+        .getByTestId("meetings-list-column")
+        .getByText(SUBJECT.title, { exact: false })
+        .first()
+        .click();
+      await page.getByRole("tab", { name: /Ask/ }).click();
+      await expect(page.getByTestId("meeting-ask-user")).toContainText(
+        question,
+      );
+      // The answer appears when the turn is done, without a new question.
+      await expect(page.getByTestId("meeting-ask-assistant")).toHaveCount(1, {
+        timeout: 30_000,
+      });
+      await expect(page.getByTestId("meeting-ask-user")).toHaveCount(1);
+      await expect(
+        page
+          .getByTestId("meeting-ask-assistant")
+          .getByTestId("meeting-ask-block-text"),
+      ).toContainText("Friday 14 November");
+      await expect(page.getByTestId("meeting-ask-status")).toBeEmpty();
+      const stored = (await (
+        await b.api("GET", `/chat/threads/${thread?.id}`)
+      ).json()) as { pending: boolean; messages: { role: string }[] };
+      expect(stored.pending).toBe(false);
+      expect(stored.messages.map((m) => m.role)).toEqual(["user", "assistant"]);
+    } finally {
+      slow.answerDelayMs = 0;
+    }
+  });
+
+  test("a full reload of the window during a turn keeps the thread and the answer", async () => {
+    test.skip(!fake, "Needs the fake LLM to hold the answer.");
+    test.setTimeout(90_000);
+    const slow = fake as FakeAskLlm;
+    slow.answerDelayMs = 6000;
+    const question =
+      "What did we decide about the beta launch date after the reload?";
+    try {
+      await openSubject(page);
+      await page.getByRole("tab", { name: /Ask/ }).click();
+      await page.getByTestId("meeting-ask-new").click();
+      await page.getByTestId("meeting-ask-input").fill(question);
+      await page.getByTestId("meeting-ask-send").click();
+      await expect(page.getByTestId("meeting-ask-user")).toContainText(
+        question,
+      );
+      // The turn is on the server. Then the page unloads: the request of the
+      // renderer is cut.
+      await waitForRunningTurn(b, SUBJECT.id);
+      await openSubject(page);
+      await page.getByRole("tab", { name: /Ask/ }).click();
+      await expect(page.getByTestId("meeting-ask-user")).toContainText(
+        question,
+      );
+      await expect(page.getByTestId("meeting-ask-assistant")).toHaveCount(1, {
+        timeout: 30_000,
+      });
+      await expect(
+        page
+          .getByTestId("meeting-ask-assistant")
+          .getByTestId("meeting-ask-block-text"),
+      ).toContainText("Friday 14 November");
+    } finally {
+      slow.answerDelayMs = 0;
+    }
   });
 }
 

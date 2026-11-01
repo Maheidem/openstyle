@@ -31,7 +31,12 @@ import {
   type CiteTarget,
   checkQuestion,
   citeTarget,
+  danglingQuestion,
+  mergeMessages,
+  readSelectedThread,
+  rememberSelectedThread,
   threadTitle,
+  unsavedQuestion,
 } from "./ask-model";
 
 /** The three example questions. Each one fills the composer. */
@@ -123,8 +128,15 @@ export function AskTab({
   const navigate = useNavigate();
   const endRef = useRef<HTMLDivElement>(null);
 
-  // null: the newest thread. "new": an empty chat. Else: a thread id.
-  const [selected, setSelected] = useState<string | null>(null);
+  // null: the newest thread. "new": an empty chat. Else: a thread id. The
+  // choice outlives the tab: the owner can leave the meeting and come back.
+  const [selected, setSelectedState] = useState<string | null>(() =>
+    readSelectedThread(meetingId),
+  );
+  const setSelected = (v: string | null): void => {
+    rememberSelectedThread(meetingId, v);
+    setSelectedState(v);
+  };
   const [input, setInput] = useState("");
   const [pending, setPending] = useState<string | null>(null);
   const [failure, setFailure] = useState<AskFailure | null>(null);
@@ -138,12 +150,27 @@ export function AskTab({
   const activeId =
     selected === "new" ? null : (selected ?? threads[0]?.id ?? null);
 
+  // A turn runs on the server and goes on when the tab is away. While the
+  // server says `pending`, the tab reloads the thread until the answer is in.
   const { data: detail } = useQuery({
     queryKey: queryKeys.chat.thread(activeId ?? ""),
     queryFn: () => fetchThread(activeId ?? ""),
     enabled: activeId !== null,
+    refetchInterval: (query) => (query.state.data?.pending ? 1500 : false),
   });
   const messages: ChatMessage[] = activeId ? (detail?.messages ?? []) : [];
+  const serverPending = activeId !== null && detail?.pending === true;
+
+  // A turn that ended while the tab ran: the thread list has a new title.
+  const wasPending = useRef(false);
+  useEffect(() => {
+    if (wasPending.current && !serverPending) {
+      void queryClient.invalidateQueries({
+        queryKey: queryKeys.chat.threads(meetingId),
+      });
+    }
+    wasPending.current = serverPending;
+  }, [serverPending, queryClient, meetingId]);
 
   // Meeting ids that exist. A cite of another meeting is "removed" when its
   // meeting is not in the list. Without the list the chip stays active.
@@ -174,7 +201,7 @@ export function AskTab({
     return () => clearTimeout(timer);
   }, [pending]);
 
-  const lastKey = `${messages.length}:${pending ?? ""}:${failure ? 1 : 0}`;
+  const lastKey = `${messages.length}:${pending ?? ""}:${failure ? 1 : 0}:${serverPending ? 1 : 0}`;
   // biome-ignore lint/correctness/useExhaustiveDependencies: scroll on a new message
   useEffect(() => {
     endRef.current?.scrollIntoView?.({ block: "nearest" });
@@ -182,7 +209,7 @@ export function AskTab({
 
   const send = async (raw: string): Promise<void> => {
     const check = checkQuestion(raw);
-    if (!check.ok || pending !== null) return;
+    if (!check.ok || pending !== null || serverPending) return;
     setFailure(null);
     setPending(check.text);
     setInput("");
@@ -194,7 +221,7 @@ export function AskTab({
         // Keep the thread, so a Retry after an error uses the same thread.
         queryClient.setQueryData<ChatThreadDetail>(
           queryKeys.chat.thread(thread.id),
-          { thread, messages: [] },
+          { thread, messages: [], pending: true, failure: null },
         );
         setSelected(thread.id);
       }
@@ -204,7 +231,12 @@ export function AskTab({
         (prev) =>
           prev && {
             ...prev,
-            messages: [...prev.messages, reply.user, reply.assistant],
+            messages: mergeMessages(prev.messages, [
+              reply.user,
+              reply.assistant,
+            ]),
+            pending: false,
+            failure: null,
           },
       );
       await queryClient.invalidateQueries({
@@ -223,7 +255,11 @@ export function AskTab({
   };
 
   const check = checkQuestion(input);
-  const busy = pending !== null;
+  const busy = pending !== null || serverPending;
+  const dangling =
+    pending === null && !failure
+      ? danglingQuestion(messages, serverPending)
+      : null;
   const empty = messages.length === 0 && !busy && !failure;
 
   const threadLabel = (thread: ChatThread): string =>
@@ -326,16 +362,26 @@ export function AskTab({
             )}
           </div>
         ))}
-        {busy && pending !== null && (
+        {busy && unsavedQuestion(messages, pending) !== null && (
           <div data-testid="meeting-ask-user">
-            <UserBubble text={pending} />
+            <UserBubble text={pending ?? ""} />
           </div>
+        )}
+        {dangling !== null && (
+          <AskError
+            view={askErrorView(null, null)}
+            onRetry={() => void send(dangling)}
+            onModels={() => navigate("/settings/models")}
+            onSettings={() => navigate("/settings#meetings")}
+          />
         )}
         {failure && (
           <>
-            <div data-testid="meeting-ask-user">
-              <UserBubble text={failure.question} />
-            </div>
+            {unsavedQuestion(messages, failure.question) !== null && (
+              <div data-testid="meeting-ask-user">
+                <UserBubble text={failure.question} />
+              </div>
+            )}
             <AskError
               view={failure.view}
               onRetry={() => void send(failure.question)}

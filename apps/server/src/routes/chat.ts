@@ -4,7 +4,13 @@
  * A thread belongs to one meeting or one folder. `POST /threads/:id/messages`
  * runs one turn: the gate, the pipeline (`lib/chat/pipeline.ts`) and the save
  * of the answer. The user message is saved first, so a failed turn keeps the
- * question. A failed or cancelled turn saves no answer (spec 2.5a, X5).
+ * question. A failed turn saves no answer (spec 2.5a, X5).
+ *
+ * A turn does NOT stop when the client disconnects (P1.2). The owner left the
+ * meeting screen while an answer was generating, and the turn was cancelled
+ * and lost. Now only the deadline ends a turn. `GET /threads/:id` says
+ * `pending: true` while the turn runs, so a client that comes back shows the
+ * thread and waits for the answer.
  */
 
 import { zValidator } from "@hono/zod-validator";
@@ -34,6 +40,13 @@ const log = createAppLogger("chat");
 
 /** Threads with a turn in flight. A turn is serial per thread. */
 const running = new Set<string>();
+
+/**
+ * The last failed turn of a thread, by reason. A turn runs on the server and
+ * does not stop when the client leaves (P1.2). A client that comes back reads
+ * the failure here, because no answer was saved. The next question clears it.
+ */
+const lastFailure = new Map<string, { reason: string }>();
 
 const listQuerySchema = z
   .object({
@@ -66,7 +79,12 @@ const chat = new Hono()
     const db = getDb();
     const thread = getThread(db, c.req.param("id"));
     if (!thread) return c.json({ error: "Not found" }, 404);
-    return c.json({ thread, messages: listMessages(db, thread.id) });
+    return c.json({
+      thread,
+      messages: listMessages(db, thread.id),
+      pending: running.has(thread.id),
+      failure: lastFailure.get(thread.id) ?? null,
+    });
   })
   .post(
     "/threads/:id/messages",
@@ -97,15 +115,14 @@ const chat = new Hono()
         );
       }
       running.add(thread.id);
+      lastFailure.delete(thread.id);
       try {
         const user = appendMessage(db, thread.id, {
           role: "user",
           content: question,
         });
-        const signal = AbortSignal.any([
-          c.req.raw.signal,
-          AbortSignal.timeout(settings.deadlineMs),
-        ]);
+        // The deadline only. A client that leaves does not cancel the turn.
+        const signal = AbortSignal.timeout(settings.deadlineMs);
         let llm: Awaited<ReturnType<typeof createChatLlm>>;
         try {
           llm = await createChatLlm(db, { threadId: thread.id, signal });
@@ -127,10 +144,6 @@ const chat = new Hono()
             llm,
             signal,
           });
-          if (c.req.raw.signal.aborted) {
-            llm.finish("cancelled");
-            return c.json({ error: "Cancelled", reason: "cancelled" }, 408);
-          }
           const assistant = appendMessage(db, thread.id, {
             role: "assistant",
             content: result.content,
@@ -145,15 +158,12 @@ const chat = new Hono()
           llm.finish("succeeded");
           return c.json({ user, assistant });
         } catch (err) {
-          if (c.req.raw.signal.aborted) {
-            llm.finish("cancelled");
-            return c.json({ error: "Cancelled", reason: "cancelled" }, 408);
-          }
           const kind =
             typeof (err as { kind?: unknown }).kind === "string"
               ? (err as { kind: string }).kind
               : "chat_failed";
           log.warn(`Chat turn failed: ${errorMessage(err)}`);
+          lastFailure.set(thread.id, { reason: "failed" });
           llm.finish("failed", {
             errorKind: kind,
             errorDetail: errorMessage(err),

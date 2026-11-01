@@ -23,6 +23,8 @@ import {
   failureNote,
   pickCiteTimes,
   refineCiteTimes,
+  repeatedEarlierAnswer,
+  stripCiteMarkers,
   tidyCites,
 } from "./cites.js";
 import {
@@ -34,9 +36,13 @@ import {
 } from "./context.js";
 import type { ChatLlm } from "./llm.js";
 import {
+  asksDecisions,
   asksForCount,
+  asksNextSteps,
+  asksOverview,
   defaultSlots,
   followUpQuery,
+  isDependentFollowUp,
   mentionPhrase,
   planFor,
   plannedCalls,
@@ -290,8 +296,32 @@ export async function runChatTurn(input: ChatTurnInput): Promise<TurnResult> {
   // native turn: all 10 follow-ups of the eval and 13 of 20 follow-ups and
   // long-thread turns on E4B and E2B returned text, after 650 to 850 ms on
   // the Mac. Code makes the search call, with the earlier turn in the query.
-  const skipNative = plain && turns.length > 0;
-  if (settings.nativeTools && !skipNative) {
+  const skipNative = plain && turns.length > 0 && isDependentFollowUp(question);
+  // "What was this meeting about?", "What has been decided?" and "What are the
+  // next steps?" read the summary (P1.2). Code makes the call: a search for
+  // them found chunks of one fact, or nothing. A meeting with no summary falls
+  // back to the search (the rounds below).
+  const summaryKind: "overview" | "decisions" | "steps" | null =
+    !write && turnScope.kind === "meeting" && turnScope.id
+      ? asksOverview(question)
+        ? "overview"
+        : asksNextSteps(question)
+          ? "steps"
+          : asksDecisions(question)
+            ? "decisions"
+            : null
+      : null;
+  if (summaryKind && turnScope.id) {
+    const started = Date.now();
+    router = "default";
+    intent = "lookup";
+    first = {
+      tool: "get_meeting_summary",
+      args: { meeting_id: turnScope.id },
+    };
+    step("route", `rules:${summaryKind}`, started);
+  }
+  if (settings.nativeTools && !skipNative && !first) {
     const started = Date.now();
     const names = visibleToolNames(turnScope.kind, write);
     try {
@@ -555,6 +585,25 @@ export async function runChatTurn(input: ChatTurnInput): Promise<TurnResult> {
     if (round > 1) wide = true;
     for (const call of calls) {
       const r = await run(call);
+      // Decisions and next steps: a search with the words of those lines gives
+      // transcript lines, so a cite can open the spoken segment (P1.2).
+      if (
+        r &&
+        r.rows > 0 &&
+        call.tool === "get_meeting_summary" &&
+        (summaryKind === "decisions" || summaryKind === "steps")
+      ) {
+        const prefix =
+          summaryKind === "decisions" ? "Decision: " : "Action item: ";
+        const words = sources
+          .all()
+          .filter((x) => x.text.startsWith(prefix))
+          .map((x) => x.text.slice(prefix.length).replace(/\s*\(.*\)$/, ""))
+          .join(" ")
+          .slice(0, 200)
+          .trim();
+        if (words) await run({ tool: "search_chunks", args: { query: words } });
+      }
       // A search that found little in a meeting also reads its summary.
       if (
         r &&
@@ -634,7 +683,14 @@ export async function runChatTurn(input: ChatTurnInput): Promise<TurnResult> {
 
   // ---- The not-found floor: the best hit is too weak for an answer. ----
   const floor = input.scoreFloor ?? SCORE_FLOOR;
-  let searched = results.find((r) => r.tool === "search_chunks");
+  // The summary answered a decisions or next steps question: the extra search
+  // only maps cites to the transcript. A weak score there is no reason to stop.
+  const summaryHit =
+    summaryKind !== null &&
+    results.some((r) => r.tool === "get_meeting_summary" && r.rows > 0);
+  let searched = summaryHit
+    ? undefined
+    : results.find((r) => r.tool === "search_chunks");
 
   // Cross-language step (P1.1): a weak first search may come from a question
   // in another language than the meetings. One model call writes the search
@@ -776,6 +832,9 @@ export async function runChatTurn(input: ChatTurnInput): Promise<TurnResult> {
       return notFound("no_sources");
     }
     const started5 = Date.now();
+    for (const sentence of parsed.sentences) {
+      sentence.text = stripCiteMarkers(sentence.text);
+    }
     assignMissingCites(parsed.sentences, sources);
     const check = checkAnswer({
       sentences: parsed.sentences,
@@ -792,6 +851,24 @@ export async function runChatTurn(input: ChatTurnInput): Promise<TurnResult> {
       check.ok ? null : failureNote(check),
     );
     if (check.ok) {
+      // A new question gets a new answer. The same text as an earlier answer to
+      // another question is a repeat (P1.2): one retry, then not found.
+      const repeated = repeatedEarlierAnswer(
+        question,
+        check.sentences.map((s) => s.text).join(" "),
+        turns,
+      );
+      if (repeated !== null) {
+        step(
+          "answer",
+          attempt === 1 ? "repeat: retry" : "repeat: not found",
+          started5,
+        );
+        if (attempt >= 2) return notFound("no_sources");
+        repair =
+          "Your answer repeats an earlier answer, but this question is new. Answer only the new question. If no source shows it, return an empty sentences list.";
+        continue;
+      }
       tidyCites(check.sentences, sources);
       refineCiteTimes(check.sentences, sources);
       try {

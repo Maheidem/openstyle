@@ -117,6 +117,12 @@ CHAT_EVAL_IDS=q008,q130 pnpm chat-eval p1 --only e2e --no-mlflow     # single qu
 | Question text as the search query (instead of the model words) | Removed. It raised the best score of unanswerable questions on E2B (0.06 to 0.56) and broke the not-found floor |
 | Empty-answer retry at a top score of 0.9 | Removed. It fixed nothing after the segment pick, and it broke q130 (not answerable, top score 0.98) in two variants |
 
+### Multi-turn threads (P1.2, `--only threads`)
+
+`pnpm chat-eval p1 --only threads --no-mlflow` runs 12 threads (`buildThreads` in `gold.mts`, `p1-threads.mts`) of 4 to 5 turns in one fictional meeting: a fact, "why?", "who said that?", a topic switch and "what was this meeting about?". The REAL answer of each turn is the history of the next turn (the gold set uses gold answers). The threads are not in the gold set, so the gold hash is unchanged. Keys: text keys for fact, switch, speaker and topic (the topic key accepts English and Portuguese words). "Why?" has no key (the corpus has no reasons): it passes when it is not a repeat. A repeat is an answer with a word overlap (Jaccard) of 0.8 or more with an earlier answer to another question. The row table lists tool, cites and answer for each turn. Use it to see a follow-up that searches with a stale query.
+
+Tips: run it with at most 4 threads at once (built in). The desktop llama.cpp server can stall for minutes when another job holds it: a first-turn fact with an empty answer and no tool call is a deadline, not a bug. Run the part again before you trust the numbers.
+
 The bars (`BARS` in `p1-score.mts`; thresholds are never changed in code):
 
 | Bar | Threshold | Source |

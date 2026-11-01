@@ -195,6 +195,20 @@ export interface Question {
   gold: { meetingId: string; segmentIdx: number }[];
 }
 
+/** One turn of a multi-turn thread (P1.2). A null key means: the answer must differ from the earlier ones. */
+export interface ThreadTurn {
+  kind: "decided" | "steps" | "fact" | "why" | "switch" | "who" | "overview";
+  text: string;
+  key: AnswerKey | null;
+}
+export interface ThreadQ {
+  id: string;
+  lang: Lang;
+  scope: Scope;
+  turns: ThreadTurn[];
+  facts: { meetingId: string; segmentIdx: number }[];
+}
+
 export type RetrievalSlice =
   | "names"
   | "numbers"
