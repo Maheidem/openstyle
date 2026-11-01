@@ -1,5 +1,11 @@
 # Changelog
 
+## 2.25.0-alpha.15
+
+### New Features ✨
+
+- (chat) Ask page, global bubble and folder scope (chat agent P2) by @Maheidem in [#407](https://github.com/Maheidem/openstyle/pull/407)
+
 ## 2.25.0-alpha.14
 
 ### Bug Fixes 🐛
