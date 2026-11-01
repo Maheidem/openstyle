@@ -1,5 +1,30 @@
 # Changelog
 
+## 2.25.0-alpha.13
+
+### New Features ✨
+
+#### Chat
+
+- P1.1 close remaining Ask bars (Refs #402) by @Maheidem in [#404](https://github.com/Maheidem/openstyle/pull/404)
+- Meeting Ask tab (chat agent P1) by @Maheidem in [#401](https://github.com/Maheidem/openstyle/pull/401)
+
+#### Other
+
+- (chat-eval) Chat agent P0 - corpus, harness, retrieval and router arms by @Maheidem in [#400](https://github.com/Maheidem/openstyle/pull/400)
+- The default dictation hotkey on macOS is now Control+Alt in hold mode (it was Fn). A hotkey that you saved stays as it is. An install with no saved hotkey now uses Control+Alt. You can change it in Settings, Shortcuts. by @Maheidem in [#397](https://github.com/Maheidem/openstyle/pull/397)
+
+### Documentation 📚
+
+- (spec) Meeting chat agent by @Maheidem in [#399](https://github.com/Maheidem/openstyle/pull/399)
+
+### Internal Changes 🔧
+
+- (chat-eval) Run the P1 eval on an OpenAI-compatible server by @Maheidem in [#403](https://github.com/Maheidem/openstyle/pull/403)
+- Shortcuts (say X, write Y) is removed. The words that you saved move to Vocabulary as terms; the "say X" part is dropped. Tone is now Cleanup. The strength cards and the cleanup on/off switch are on the Cleanup page. The tones for Personal, Work, Email and Everything else show only when Advanced mode is on. by @Maheidem in [#398](https://github.com/Maheidem/openstyle/pull/398)
+- 🤖 Generated with [Claude Code](https://claude.com/claude-code) by @Maheidem in [#398](https://github.com/Maheidem/openstyle/pull/398)
+- https://claude.ai/code/session_01GvDDGT4vkdAZbUZMXdZgFz by @Maheidem in [#398](https://github.com/Maheidem/openstyle/pull/398)
+
 ## 2.25.0-alpha.12
 
 ### New Features ✨
