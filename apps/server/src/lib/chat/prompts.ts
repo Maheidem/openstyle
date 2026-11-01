@@ -155,4 +155,8 @@ export const QUERY_SCHEMA: StepSchema<{ query: string }> = {
 };
 
 export const QUERY_SYSTEM =
-  "Translate a question about meeting notes into English search words. Write 3 to 8 key words. Keep names and numbers as they are. Do not answer the question. Do not add words that the question does not have.";
+  "You turn a question about meeting notes into English search words. Always write English words, even when the question is in another language. Write 3 to 8 words. Keep names and numbers as they are. Do not answer the question.";
+
+/** The user text of the rewrite call. A bare question made the model repeat it. */
+export const queryUser = (question: string): string =>
+  `Question: ${question}\nEnglish search words:`;

@@ -252,6 +252,21 @@ describe("cross-language step", () => {
     expect(log.filter((l) => l.step === "chatSlots")).toHaveLength(1);
   });
 
+  it("a second search that only just passes the floor does not replace the first", async () => {
+    retrieveMock
+      .mockResolvedValueOnce(ok([hit(2, "m2", 0.2)]))
+      .mockResolvedValueOnce(ok([hit(1, "m1", 0.56)]));
+    const { llm } = fakeLlm({
+      native: NO_CALL,
+      structured: { chatSlots: [{ query: "loose words" }] },
+    });
+    const r = await run("Quanto custa o teste de intrusão?", llm);
+    expect(r.blocks[0]).toMatchObject({
+      kind: "not_found",
+      reason: "no_sources",
+    });
+  });
+
   it("two weak searches end as not found", async () => {
     retrieveMock.mockResolvedValue(ok([hit(2, "m2", 0.2)]));
     const { llm } = fakeLlm({

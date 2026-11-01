@@ -84,6 +84,37 @@ A remote chat LLM (llama.cpp, oMLX or any OpenAI-compatible server): set `CHAT_E
 
 `--limit N` takes N items spread over each set (a smoke test). Do not log a smoke run to MLflow (`--no-mlflow`).
 
+### Fast loop on the desktop (P1.1, 2026-10-31)
+
+Heavy GPU work goes to the desktop llama.cpp server (owner rule). One run of `router,slots,e2e,a0,bars` takes about 3 minutes with E4B (the retrieval part is the slow one: skip it when `retrieve()` did not change).
+
+```bash
+export OPENSTYLE_EVAL_HF_HOME=/tmp/chatp1/hf OPENSTYLE_MLX_LLM_WORKER=<launcher script>
+export CHAT_EVAL_BASE_URL=<desktop address>/v1 CHAT_EVAL_MODEL=gemma4-e4b CHAT_EVAL_BACKEND=desktop-llamacpp   # gemma4-e2b also exists
+pnpm chat-eval p1 --only router,slots,e2e,a0,bars                    # gold
+pnpm chat-eval p1 --only router,slots,e2e,a0,bars --seed 20271105    # held-out corpus
+CHAT_EVAL_IDS=q008,q130 pnpm chat-eval p1 --only e2e --no-mlflow     # single questions
+```
+
+- The launcher must point at the `scripts/mlx_asr_server.py` of your own worktree (the launcher of an old worktree breaks when that worktree is removed).
+- The desktop model is not fully repeatable: the same code gave 31 to 33 of 35 on lookup + follow-up in three runs. Compare two runs question by question (the result JSON `parts.e2e.data.rows`), not by one number.
+- Do not wait on a run with `pgrep -f "chat-eval p1"` inside a command that holds that text: the wait matches itself and never ends. Wait for the result file or use `pgrep -f "[c]hat-eval p1"`.
+- `pnpm exec biome` can die with "Linter process terminated abnormally" under the output filter. Use `rtk proxy ./node_modules/.bin/biome check --write <paths>`.
+- `rerank` accepts at most 64 documents per call (`_RERANK_MAX_DOCS` in `scripts/mlx_asr_server.py`). A longer list is a 400.
+
+### What P1.1 changed and measured (issue #402)
+
+| Change | Effect on E4B (desktop, gold) |
+|---|---|
+| Segment pick by the reranker when the question shares no word with the chunk (`rankPieces` in `tools.ts`) | The big one. A PT question on EN meetings picked the first segment, so the snippet (640 characters) and the cite start missed the fact. Lookup + follow-up 31 to 32 of 35, cite precision 0.810 to 0.869 |
+| Follow-up query from the earlier question + earlier answer (`followUpQuery`) | q147, q149 fixed; slots 87.5 to 100 (the slot scorer now builds the query like the pipeline) |
+| Review kind by code (`reviewKind`) | 3 slot misses fixed, one model call less |
+| `refineIntent` (date with a number, "when", who words) | Route gold 85.3 to 94.2, blind set 96.0 unchanged |
+| Cheap route (no router and no slot call for a plain question) | Fewer model calls on the slow path |
+| Cross-language query rewrite on a weak first search | q103 fixed. q018 stays: the model writes "standard topic" for "tema padrão" |
+| Count of mentions by SQL (`countMentions`) | q070 to q072 fixed |
+| Empty-answer retry at a top score of 0.9 | Removed. It fixed nothing after the segment pick, and it broke q130 (not answerable, top score 0.98) in two variants |
+
 The bars (`BARS` in `p1-score.mts`; thresholds are never changed in code):
 
 | Bar | Threshold | Source |

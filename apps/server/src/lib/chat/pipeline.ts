@@ -56,6 +56,7 @@ import {
   nativeSystem,
   QUERY_SCHEMA,
   QUERY_SYSTEM,
+  queryUser,
   ROUTER_MAX_TOKENS,
   ROUTER_SCHEMA,
   ROUTER_SYSTEM,
@@ -92,6 +93,13 @@ const THIN_ROWS = 3;
  * (one 0.13). 0.5 sits in the gap. 0 turns the floor off.
  */
 export const SCORE_FLOOR = 0.5;
+/**
+ * A rewritten search replaces a weak first search only when its best hit
+ * scores at least this. A small model writes loose words, and a hit just over
+ * the floor (0.55 in the E2B eval) is another topic. A true cross-language
+ * hit scored 0.98 (P1.1).
+ */
+export const REWRITE_SCORE = 0.8;
 /** Nearest sources shown in a not_found block. */
 const NEAREST = 3;
 /** Cites kept for a block answer (list, count, status). */
@@ -298,18 +306,6 @@ export async function runChatTurn(input: ChatTurnInput): Promise<TurnResult> {
         });
         if (v.ok) {
           first = { tool: v.args.tool, args: v.args.args };
-          // The model writes the topic words of a search. They drop words that
-          // the reranker needs ("who proposed"). Code gives the question as
-          // the query and keeps the arguments of the model (P1.1).
-          if (first.tool === "search_chunks") {
-            first = {
-              ...first,
-              args: {
-                ...(first.args as object),
-                query: question.slice(0, 200),
-              },
-            };
-          }
           router = "native";
           step("route", `native:${v.args.tool}`, started);
         } else {
@@ -653,11 +649,11 @@ export async function runChatTurn(input: ChatTurnInput): Promise<TurnResult> {
           unitKey: "route/query",
           schema: QUERY_SCHEMA,
           system: QUERY_SYSTEM,
-          messages: [{ role: "user", content: question }],
+          messages: [{ role: "user", content: queryUser(question) }],
           maxOutputTokens: SLOT_MAX_TOKENS,
         });
         const query = r.object.query.trim();
-        step("slots", "query rewrite", started, null, query.slice(0, 80));
+        step("tool", "query rewrite", started, null, query.slice(0, 80));
         if (query !== "") {
           const before = searched;
           const second = await run({
@@ -667,6 +663,7 @@ export async function runChatTurn(input: ChatTurnInput): Promise<TurnResult> {
           if (
             second &&
             second.topScore !== null &&
+            second.topScore >= REWRITE_SCORE &&
             second.topScore > (before.topScore ?? 0)
           ) {
             const keep = new Set(second.labels);
@@ -678,13 +675,7 @@ export async function runChatTurn(input: ChatTurnInput): Promise<TurnResult> {
           }
         }
       } catch (e) {
-        step(
-          "slots",
-          "query rewrite",
-          started,
-          null,
-          gatewayKind(e) || "error",
-        );
+        step("tool", "query rewrite", started, null, gatewayKind(e) || "error");
       }
     }
   }
