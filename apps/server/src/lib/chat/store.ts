@@ -7,6 +7,7 @@ import {
   type ChatScope,
   type ChatThread,
   type ChatTrace,
+  type ChatWider,
   chatBlockSchema,
   chatCiteSchema,
   chatTraceSchema,
@@ -59,8 +60,9 @@ function toThread(r: ThreadRow): ChatThread {
   };
 }
 
-/** True when the meeting or the folder of the scope exists. */
+/** True when the meeting or the folder of the scope exists. Scope A always does. */
 function scopeExists(db: DatabaseSync, scope: ChatScope): boolean {
+  if (scope.kind === "all") return true;
   const table = scope.kind === "meeting" ? "meetings" : "meeting_folders";
   return (
     db.prepare(`SELECT 1 FROM ${table} WHERE id = ?`).get(scope.id) !==
@@ -89,16 +91,24 @@ export function createThread(
   return getThread(db, id);
 }
 
-/** The threads of one meeting or folder, newest activity first. */
+/**
+ * The threads of one meeting, one folder or scope A (a thread with no meeting
+ * and no folder), newest activity first.
+ */
 export function listThreads(db: DatabaseSync, scope: ChatScope): ChatThread[] {
-  const column = scope.kind === "meeting" ? "meeting_id" : "folder_id";
+  const where =
+    scope.kind === "all"
+      ? "meeting_id IS NULL AND folder_id IS NULL"
+      : scope.kind === "meeting"
+        ? "meeting_id = ?"
+        : "folder_id = ?";
   const rows = db
     .prepare(
       `SELECT id, meeting_id, folder_id, title, created_at, updated_at
-         FROM chat_threads WHERE ${column} = ?
+         FROM chat_threads WHERE ${where}
         ORDER BY updated_at DESC, created_at DESC, id DESC`,
     )
-    .all(scope.id) as unknown as ThreadRow[];
+    .all(...(scope.kind === "all" ? [] : [scope.id])) as unknown as ThreadRow[];
   return rows.map(toThread);
 }
 
@@ -112,10 +122,65 @@ export function getThread(db: DatabaseSync, id: string): ChatThread | null {
   return row ? toThread(row) : null;
 }
 
-/** The scope of a thread. */
-export function threadScope(thread: ChatThread): ChatScope | null {
+/** The scope of a thread. A thread with no meeting and no folder is scope A. */
+export function threadScope(thread: ChatThread): ChatScope {
   if (thread.meeting_id) return { kind: "meeting", id: thread.meeting_id };
   if (thread.folder_id) return { kind: "folder", id: thread.folder_id };
+  return { kind: "all" };
+}
+
+/**
+ * The one step wider than a scope (spec 6.3, D16): a meeting widens to its
+ * folder, an unfiled meeting and a folder widen to everything. Scope A has no
+ * wider scope. `enabled` is the setting "Search wider": off gives null.
+ */
+export function nextWider(
+  db: DatabaseSync,
+  scope: ChatScope,
+  enabled = true,
+): ChatWider | null {
+  if (!enabled || scope.kind === "all") return null;
+  if (scope.kind === "folder") return { kind: "all" };
+  const row = db
+    .prepare(
+      `SELECT f.id AS id, f.name AS name
+         FROM meetings m JOIN meeting_folders f ON f.id = m.folder_id
+        WHERE m.id = ?`,
+    )
+    .get(scope.id) as { id: string; name: string } | undefined;
+  return row ? { kind: "folder", id: row.id, name: row.name } : { kind: "all" };
+}
+
+/** A `wider` offer as a scope. */
+function widerScope(wider: ChatWider): ChatScope {
+  return wider.kind === "folder"
+    ? { kind: "folder", id: wider.id }
+    : { kind: "all" };
+}
+
+/**
+ * The widen turn that the thread allows now (spec 11.6.4): the last message
+ * is a not_found answer with a wider scope. The question is the nearest user
+ * message before it. The wider scope is computed again from the scope of the block, so
+ * a meeting that moved to another folder widens to its new folder. Returns
+ * null when the thread allows no widen turn.
+ */
+export function lastWidenOffer(
+  db: DatabaseSync,
+  threadId: string,
+  enabled: boolean,
+): { user: ChatMessage; scope: ChatScope } | null {
+  const messages = listMessages(db, threadId);
+  const last = messages.at(-1);
+  // The question of the turn: the nearest user message. After a widen turn the
+  // thread holds one question and two answers.
+  const user = messages.findLast((m) => m.role === "user");
+  if (last?.role !== "assistant" || !user) return null;
+  for (const block of last.blocks) {
+    if (block.kind !== "not_found" || !block.wider) continue;
+    const wider = nextWider(db, block.scope, enabled);
+    return wider ? { user, scope: widerScope(wider) } : null;
+  }
   return null;
 }
 

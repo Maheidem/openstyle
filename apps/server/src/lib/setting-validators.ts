@@ -256,6 +256,15 @@ const SETTING_VALIDATORS: ReadonlyMap<string, SettingCheck> = new Map([
   [SETTINGS_KEYS.meetingChatEnabled, checkBooleanFlag],
   [SETTINGS_KEYS.chatSearchWider, checkBooleanFlag],
   [SETTINGS_KEYS.chatNativeTools, checkBooleanFlag],
+  // The bubble hotkey (spec 11.6.2): an accelerator in printable ASCII, or
+  // empty for the default. The main process checks the chord itself.
+  [
+    SETTINGS_KEYS.chatHotkey,
+    (value) =>
+      value === "" || /^[\x20-\x7E]{1,64}$/.test(value)
+        ? null
+        : "Hotkey must be an accelerator such as Control+Alt+K",
+  ],
   [
     SETTINGS_KEYS.chatRounds,
     intRangeCheck(CHAT_SETTING_LIMITS.rounds, "Tool rounds"),

@@ -17,9 +17,14 @@ import {
   mergeMessages,
   readSelectedThread,
   rememberSelectedThread,
+  sameScope,
+  scopeKey,
+  scopeOfThread,
   summarizeTrace,
   threadTitle,
   unsavedQuestion,
+  widenedScope,
+  widerOffer,
 } from "./ask-model";
 
 function cite(over: Partial<ChatCite> = {}): ChatCite {
@@ -322,5 +327,101 @@ describe("thread that outlives the tab (P1.2)", () => {
     rememberSelectedThread("m-x", "t9");
     expect(readSelectedThread("m-x")).toBe("t9");
     expect(readSelectedThread("m-y")).toBeNull();
+  });
+});
+
+describe("scope (spec 11.6)", () => {
+  const thread = (over: Partial<ChatThread> = {}): ChatThread => ({
+    id: "t1",
+    meeting_id: null,
+    folder_id: null,
+    title: null,
+    created_at: 1,
+    updated_at: 1,
+    ...over,
+  });
+  const message = (over: Partial<ChatMessage> = {}): ChatMessage => ({
+    id: 2,
+    thread_id: "t1",
+    role: "assistant",
+    content: "",
+    blocks: [],
+    cites: [],
+    trace: null,
+    model_id: null,
+    provider: null,
+    ms: null,
+    created_at: 1,
+    ...over,
+  });
+
+  it("keys: one key for each scope", () => {
+    expect(scopeKey({ kind: "all" })).toBe("all");
+    expect(scopeKey({ kind: "meeting", id: "m1" })).toBe("meeting:m1");
+    expect(scopeKey({ kind: "folder", id: "f1" })).toBe("folder:f1");
+    expect(sameScope({ kind: "all" }, { kind: "all" })).toBe(true);
+    expect(
+      sameScope({ kind: "folder", id: "a" }, { kind: "meeting", id: "a" }),
+    ).toBe(false);
+  });
+
+  it("a thread with no meeting and no folder is scope A", () => {
+    expect(scopeOfThread(thread())).toEqual({ kind: "all" });
+    expect(scopeOfThread(thread({ meeting_id: "m1" }))).toEqual({
+      kind: "meeting",
+      id: "m1",
+    });
+    expect(scopeOfThread(thread({ folder_id: "f1" }))).toEqual({
+      kind: "folder",
+      id: "f1",
+    });
+  });
+
+  it("widerOffer reads the not_found block of the message", () => {
+    const wider = { kind: "folder" as const, id: "f1", name: "Atlas" };
+    const block = {
+      kind: "not_found" as const,
+      scope: { kind: "meeting" as const, id: "m1" },
+      reason: "no_sources" as const,
+      nearest: [],
+      wider,
+    };
+    expect(widerOffer(message({ blocks: [block] }))).toEqual(wider);
+    expect(
+      widerOffer(message({ blocks: [{ ...block, wider: null }] })),
+    ).toBeNull();
+    expect(widerOffer(message())).toBeNull();
+  });
+
+  it("widenedScope is set only when the answer came from another scope", () => {
+    const base = { kind: "meeting" as const, id: "m1" };
+    const t = (scope?: ChatTrace["scope"]) => ({
+      ...trace([]),
+      ...(scope ? { scope } : {}),
+    });
+    expect(widenedScope(message({ trace: t(base) }), base)).toBeNull();
+    expect(widenedScope(message({ trace: t() }), base)).toBeNull();
+    expect(widenedScope(message({ trace: null }), base)).toBeNull();
+    expect(widenedScope(message({ trace: t({ kind: "all" }) }), base)).toEqual({
+      kind: "all",
+    });
+  });
+
+  it("with no own meeting (folder tab, Ask page) every cite opens its meeting at the time", () => {
+    expect(citeTarget(cite(), null, null)).toEqual({
+      kind: "meeting",
+      meetingId: "m1",
+      startMs: 760_000,
+    });
+    expect(citeTarget(cite(), null, new Set(["other"]))).toEqual({
+      kind: "removed",
+    });
+  });
+
+  it("errors: widen_not_offered has its own text", () => {
+    expect(askErrorView(409, "widen_not_offered")).toEqual({
+      key: "errWiden",
+      action: "none",
+    });
   });
 });

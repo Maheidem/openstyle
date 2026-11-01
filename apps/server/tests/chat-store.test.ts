@@ -6,9 +6,11 @@ import {
   appendMessage,
   createThread,
   getThread,
+  lastWidenOffer,
   listMessages,
   listThreads,
   loadHistoryForPrompt,
+  nextWider,
   threadScope,
 } from "../src/lib/chat/store.js";
 import { getDb } from "../src/lib/db.js";
@@ -235,5 +237,71 @@ describe("messages", () => {
     expect(history[0]?.content).toBe("m10");
     expect(history.at(-1)?.content).toBe("m29");
     expect(history.some((m) => m.id >= current.id)).toBe(false);
+  });
+});
+
+describe("scope A and the wider scope (spec 11.6)", () => {
+  it("makes and lists threads of scope A apart from the other scopes", () => {
+    addMeeting("m1");
+    const a = createThread(db(), { kind: "all" }, 100);
+    createThread(db(), { kind: "meeting", id: "m1" }, 200);
+    expect(a?.meeting_id).toBeNull();
+    expect(a?.folder_id).toBeNull();
+    expect(threadScope(a as NonNullable<typeof a>)).toEqual({ kind: "all" });
+    expect(listThreads(db(), { kind: "all" }).map((t) => t.id)).toEqual([
+      a?.id,
+    ]);
+  });
+
+  it("nextWider: meeting to its folder, unfiled meeting and folder to everything, A to none", () => {
+    addFolder("f1");
+    addMeeting("m1", "f1");
+    addMeeting("m2");
+    expect(nextWider(db(), { kind: "meeting", id: "m1" })).toEqual({
+      kind: "folder",
+      id: "f1",
+      name: "Folder f1",
+    });
+    expect(nextWider(db(), { kind: "meeting", id: "m2" })).toEqual({
+      kind: "all",
+    });
+    expect(nextWider(db(), { kind: "folder", id: "f1" })).toEqual({
+      kind: "all",
+    });
+    expect(nextWider(db(), { kind: "all" })).toBeNull();
+    expect(nextWider(db(), { kind: "folder", id: "f1" }, false)).toBeNull();
+  });
+
+  it("lastWidenOffer needs a not_found answer with a wider scope as the last message", () => {
+    addFolder("f1");
+    addMeeting("m1", "f1");
+    const t = createThread(db(), { kind: "meeting", id: "m1" }) as NonNullable<
+      ReturnType<typeof createThread>
+    >;
+    expect(lastWidenOffer(db(), t.id, true)).toBeNull();
+    appendMessage(db(), t.id, { role: "user", content: "What is the budget?" });
+    const notFound = {
+      kind: "not_found" as const,
+      scope: { kind: "meeting" as const, id: "m1" },
+      reason: "no_sources" as const,
+      nearest: [],
+      wider: { kind: "folder" as const, id: "f1", name: "Folder f1" },
+    };
+    appendMessage(db(), t.id, {
+      role: "assistant",
+      content: "",
+      blocks: [notFound],
+    });
+    const offer = lastWidenOffer(db(), t.id, true);
+    expect(offer?.user.content).toBe("What is the budget?");
+    expect(offer?.scope).toEqual({ kind: "folder", id: "f1" });
+    // The setting off, or no wider scope in the block, gives no offer.
+    expect(lastWidenOffer(db(), t.id, false)).toBeNull();
+    appendMessage(db(), t.id, {
+      role: "assistant",
+      content: "",
+      blocks: [{ ...notFound, wider: null }],
+    });
+    expect(lastWidenOffer(db(), t.id, true)).toBeNull();
   });
 });

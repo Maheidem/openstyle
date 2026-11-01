@@ -1,4 +1,8 @@
-import type { MeetingListItem, MeetingStage } from "@openstyle/validations";
+import {
+  type MeetingListItem,
+  type MeetingStage,
+  SETTINGS_KEYS,
+} from "@openstyle/validations";
 import { Button } from "@renderer/components/ui/button";
 import {
   Tabs,
@@ -8,6 +12,8 @@ import {
 } from "@renderer/components/ui/tabs";
 import { Textarea } from "@renderer/components/ui/textarea";
 import { formatClockDuration } from "@renderer/lib/format";
+import { settingsQueryOptions } from "@renderer/lib/query";
+import { useQuery } from "@tanstack/react-query";
 import {
   CheckSquare,
   ChevronLeft,
@@ -18,6 +24,7 @@ import {
 } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
+import { FolderAskTab } from "./ask-tab";
 import {
   BatchConfirmDialog,
   type BatchRequest,
@@ -73,6 +80,12 @@ export function FolderPanel({
   // Selection mode of the meeting list: the checked ids, the last clicked
   // id (the start of a shift-click range) and the stage of the bulk bar.
   const [tab, setTab] = useState("overview");
+  // The Ask tab (meeting chat agent, scope F) shows with the setting on and at
+  // least one meeting in the folder.
+  const { data: appSettings } = useQuery(settingsQueryOptions());
+  const askEnabled =
+    appSettings?.[SETTINGS_KEYS.meetingChatEnabled] === "true" &&
+    folder.meeting_count > 0;
   const [selecting, setSelecting] = useState(false);
   const [checked, setChecked] = useState<Set<string>>(() => new Set());
   const [anchor, setAnchor] = useState<string | null>(null);
@@ -399,10 +412,24 @@ export function FolderPanel({
           >
             {t("meetings.folderOverview.tabMeetings")}
           </TabsTrigger>
+          {askEnabled && (
+            <TabsTrigger
+              value="ask"
+              data-testid="folder-tab-ask"
+              className="flex-none"
+            >
+              {t("meetings.ask.tab")}
+            </TabsTrigger>
+          )}
         </TabsList>
         <TabsContent value="overview">
           <FolderOverviewView folderId={folder.id} onOpen={onOpen} />
         </TabsContent>
+        {askEnabled && (
+          <TabsContent value="ask" className="pt-4">
+            <FolderAskTab folderId={folder.id} folderName={folder.name} />
+          </TabsContent>
+        )}
         <TabsContent value="meetings" className="pt-4">
           <div className="flex items-center justify-between gap-2">
             <h3 className="eyebrow">

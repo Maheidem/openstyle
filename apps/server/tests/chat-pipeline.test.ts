@@ -153,8 +153,7 @@ const run = (
 ) =>
   runChatTurn({
     db: getDb(),
-    // Scope "all" is for the eval harness; the routes take a meeting or a folder.
-    scope: { kind: "all", id: null } as unknown as ChatScope,
+    scope: { kind: "all" },
     question,
     history,
     settings: { ...SETTINGS, ...over },
@@ -249,6 +248,90 @@ describe("empty answer", () => {
       reason: "no_sources",
     });
     expect(log.filter((l) => l.step === "chatAnswer")).toHaveLength(1);
+  });
+});
+
+describe("scope A and the wider offer (P2)", () => {
+  const nf = (r: { blocks: { kind: string }[] }) =>
+    r.blocks[0] as unknown as {
+      kind: string;
+      scope: ChatScope;
+      wider?: unknown;
+    };
+
+  it("a not_found block at a meeting offers its folder, and the trace holds the scope", async () => {
+    getDb()
+      .prepare(
+        "INSERT OR REPLACE INTO meeting_folders (id, name, created_at, updated_at) VALUES ('f1', 'Project Atlas', 1, 1)",
+      )
+      .run();
+    getDb()
+      .prepare("UPDATE meetings SET folder_id = 'f1' WHERE id = 'm1'")
+      .run();
+    retrieveMock.mockResolvedValue(ok([]));
+    const { llm } = fakeLlm({
+      native: NO_CALL,
+      structured: { chatAnswer: [{ sentences: [] }] },
+    });
+    const r = await runChatTurn({
+      db: getDb(),
+      scope: { kind: "meeting", id: "m1" },
+      question: "What is the budget for the kiosk?",
+      history: [],
+      settings: SETTINGS,
+      llm,
+      signal: new AbortController().signal,
+      now: TODAY,
+    });
+    expect(nf(r)).toMatchObject({
+      kind: "not_found",
+      scope: { kind: "meeting", id: "m1" },
+      wider: { kind: "folder", id: "f1", name: "Project Atlas" },
+    });
+    expect(r.trace.scope).toEqual({ kind: "meeting", id: "m1" });
+  });
+
+  it("scope A runs, offers nothing wider, and the trace says all", async () => {
+    retrieveMock.mockResolvedValue(ok([]));
+    const { llm } = fakeLlm({
+      native: NO_CALL,
+      structured: { chatAnswer: [{ sentences: [] }] },
+    });
+    const r = await runChatTurn({
+      db: getDb(),
+      scope: { kind: "all" },
+      question: "What is the budget for the kiosk?",
+      history: [],
+      settings: SETTINGS,
+      llm,
+      signal: new AbortController().signal,
+      now: TODAY,
+    });
+    expect(nf(r)).toMatchObject({ kind: "not_found", scope: { kind: "all" } });
+    expect(nf(r).wider ?? null).toBeNull();
+    expect(r.trace.scope).toEqual({ kind: "all" });
+  });
+
+  it("the setting Search wider off gives no offer", async () => {
+    getDb()
+      .prepare("UPDATE meetings SET folder_id = NULL WHERE id = 'm1'")
+      .run();
+    retrieveMock.mockResolvedValue(ok([]));
+    const { llm } = fakeLlm({
+      native: NO_CALL,
+      structured: { chatAnswer: [{ sentences: [] }] },
+    });
+    const r = await runChatTurn({
+      db: getDb(),
+      scope: { kind: "meeting", id: "m1" },
+      question: "What is the budget for the kiosk?",
+      history: [],
+      settings: { ...SETTINGS, searchWider: false },
+      llm,
+      signal: new AbortController().signal,
+      now: TODAY,
+    });
+    expect(nf(r).wider ?? null).toBeNull();
   });
 });
 

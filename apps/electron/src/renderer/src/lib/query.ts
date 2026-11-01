@@ -113,8 +113,8 @@ export const queryKeys = {
 
   /** The meeting chat agent, Ask tab (specs/meeting-chat-agent.md section 11). */
   chat: {
-    /** `GET /api/chat/threads?meeting_id=`, newest first. */
-    threads: (meetingId: string) => ["chat", "threads", meetingId] as const,
+    /** `GET /api/chat/threads` of one scope, newest first. `key` is `scopeKey(scope)`. */
+    threads: (key: string) => ["chat", "threads", key] as const,
     /** `GET /api/chat/threads/:id`, the thread with its messages. */
     thread: (id: string) => ["chat", "thread", id] as const,
   },

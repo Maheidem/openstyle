@@ -15,11 +15,31 @@ export const CHAT_SETTING_LIMITS = {
   deadlineSeconds: { min: 20, max: 180, default: 60 },
 } as const;
 
-export const chatScopeSchema = z.object({
-  kind: z.enum(["meeting", "folder"]),
-  id: z.string().min(1),
-});
+/**
+ * What a turn searches (spec 3.1 rule 3): one meeting (M), one folder (F), or
+ * every meeting (A). Scope A has no id. A thread of scope A has no meeting
+ * and no folder (spec 4.2, 11.6).
+ */
+export const chatScopeSchema = z.discriminatedUnion("kind", [
+  z.object({ kind: z.literal("meeting"), id: z.string().min(1) }),
+  z.object({ kind: z.literal("folder"), id: z.string().min(1) }),
+  z.object({ kind: z.literal("all") }),
+]);
 export type ChatScope = z.infer<typeof chatScopeSchema>;
+
+/**
+ * The next wider scope that a `not_found` block offers (spec 6.3, 11.6.4):
+ * the folder of a meeting, or every meeting. `name` is the folder name.
+ */
+export const chatWiderSchema = z.discriminatedUnion("kind", [
+  z.object({
+    kind: z.literal("folder"),
+    id: z.string().min(1),
+    name: z.string(),
+  }),
+  z.object({ kind: z.literal("all") }),
+]);
+export type ChatWider = z.infer<typeof chatWiderSchema>;
 
 /** What a source holds (spec 6.1). */
 export const CHAT_CITE_KINDS = [
@@ -103,6 +123,11 @@ export const chatBlockSchema = z.discriminatedUnion("kind", [
     ]),
     /** The nearest sources, shown as links. */
     nearest: z.array(chatCiteSchema),
+    /**
+     * The one wider scope that the user may ask for (spec 6.3, D16). Code sets
+     * it. It is absent when the scope is A or the setting turns the offer off.
+     */
+    wider: chatWiderSchema.nullable().optional(),
   }),
 ]);
 export type ChatBlock = z.infer<typeof chatBlockSchema>;
@@ -128,6 +153,8 @@ export const chatTraceStepSchema = z.object({
 export type ChatTraceStep = z.infer<typeof chatTraceStepSchema>;
 
 export const chatTraceSchema = z.object({
+  /** The scope this turn searched (P2). Absent in a message of P1. */
+  scope: chatScopeSchema.optional(),
   intent: z.string().nullable(),
   router: z.enum(["native", "structured", "default", "skipped"]),
   steps: z.array(chatTraceStepSchema),
@@ -166,9 +193,19 @@ export const chatThreadSchema = z.object({
 export type ChatThread = z.infer<typeof chatThreadSchema>;
 
 export const chatCreateThreadSchema = z.object({ scope: chatScopeSchema });
-export const chatAskSchema = z.object({
-  question: z.string().trim().min(1).max(CHAT_QUESTION_MAX_CHARS),
-});
+/**
+ * One turn: a new question, or `widen: true` (spec 11.6.4). A widen turn asks
+ * the last question of the thread again, at the wider scope that the last
+ * `not_found` block offered. It saves no second user message.
+ */
+export const chatAskSchema = z
+  .object({
+    question: z.string().trim().min(1).max(CHAT_QUESTION_MAX_CHARS).optional(),
+    widen: z.literal(true).optional(),
+  })
+  .refine((v) => (v.question === undefined) !== (v.widen === undefined), {
+    message: "Pass exactly one of question and widen",
+  });
 
 /** Why the gate refused a turn (spec 2.5a). The HTTP status is 409. */
 export const CHAT_GATE_REASONS = [
@@ -176,6 +213,7 @@ export const CHAT_GATE_REASONS = [
   "no_model",
   "provider_not_ready",
   "scope_missing",
+  "widen_not_offered",
   "busy",
   "failed",
   "cancelled",

@@ -209,6 +209,31 @@ export interface ThreadQ {
   facts: { meetingId: string; segmentIdx: number }[];
 }
 
+/**
+ * A "search wider" case (spec 6.3, 11.6.4). The question is asked at `start`,
+ * where it must be not found with the offer `steps[0]`. Each click asks it
+ * again at the next scope of `steps`. The last scope must answer by `key`.
+ */
+export interface WidenQ {
+  id: string;
+  lang: Lang;
+  text: string;
+  start: Scope;
+  /** The scopes of the clicks, in order. */
+  steps: Scope[];
+  key: AnswerKey;
+  gold: { meetingId: string; segmentIdx: number }[];
+}
+
+/** The P2 set (chat agent P2): not part of the gold hash. */
+export interface P2Set {
+  /** Folder and Everything questions (lookup, who said). */
+  questions: Question[];
+  /** Threads at scope A and F. */
+  threads: ThreadQ[];
+  widen: WidenQ[];
+}
+
 export type RetrievalSlice =
   | "names"
   | "numbers"

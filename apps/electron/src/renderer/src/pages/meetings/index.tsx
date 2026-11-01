@@ -74,6 +74,17 @@ export default function MeetingsPage(): React.JSX.Element {
   useEffect(() => {
     rememberMeetingsSelection({ selectedId, selectedFolderId, expanded });
   }, [selectedId, selectedFolderId, expanded]);
+  // The Ask bubble takes its scope from this selection (spec 11.6.3). A folder
+  // wins over a meeting. Nothing selected gives scope A in the bubble.
+  useEffect(() => {
+    window.api?.setChatSelection(
+      selectedFolderId
+        ? { kind: "folder", id: selectedFolderId }
+        : selectedId
+          ? { kind: "meeting", id: selectedId }
+          : null,
+    );
+  }, [selectedId, selectedFolderId]);
   const [creating, setCreating] = useState(false);
   const [renamingId, setRenamingId] = useState<string | null>(null);
   const [panelAction, setPanelAction] = useState<{
@@ -257,13 +268,23 @@ export default function MeetingsPage(): React.JSX.Element {
     setPanelAction(null);
     setRenamingId(null);
   }, []);
-  // The tray popover opens a meeting with ?meeting=<id> (issue #317).
+  // The tray popover opens a meeting with ?meeting=<id> (issue #317). A cite
+  // chip of the Ask page adds &at=<ms>: the Transcript tab opens at that time.
   const linkedMeeting = searchParams.get("meeting");
+  const linkedAt = searchParams.get("at");
   useEffect(() => {
     if (!linkedMeeting) return;
     setSearchParams({}, { replace: true });
     open(linkedMeeting);
-  }, [linkedMeeting, setSearchParams, open]);
+    const at = linkedAt === null ? Number.NaN : Number(linkedAt);
+    if (Number.isFinite(at) && at >= 0) {
+      setSearchFocus({
+        meetingId: linkedMeeting,
+        kind: "transcript",
+        startMs: at,
+      });
+    }
+  }, [linkedMeeting, linkedAt, setSearchParams, open]);
   const openHit = useCallback(
     (hit: SearchHit) => {
       open(hit.meeting_id);

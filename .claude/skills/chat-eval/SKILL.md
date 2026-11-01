@@ -117,6 +117,18 @@ CHAT_EVAL_IDS=q008,q130 pnpm chat-eval p1 --only e2e --no-mlflow     # single qu
 | Question text as the search query (instead of the model words) | Removed. It raised the best score of unanswerable questions on E2B (0.06 to 0.56) and broke the not-found floor |
 | Empty-answer retry at a top score of 0.9 | Removed. It fixed nothing after the segment pick, and it broke q130 (not answerable, top score 0.98) in two variants |
 
+### The P2 set (chat agent P2, `--set p2`)
+
+Spec 11.6.6. `pnpm chat-eval p1 --set p2 --only router,e2e,threads,widen,bars` runs the P2 set instead of the 190 gold questions. The gold hash stays `1e41bd5cea578222` (a test pins it). `buildP2` in `gold.mts` builds the set from the same corpus; its ids are `p2-001` and up.
+
+| Part of the set | What it is |
+|---|---|
+| Questions (53) | Lookups at A (12) and F (9), who said at A (8) and F (8), open action items of a person at A (4), meetings of a month at A (6) and F (6). They run through the `e2e` part, so every P1 metric (cite validity, cite precision, list F1, who-said, latency) is reported for the set. A bar with no question of its kind shows NOT RUN, not FAIL. |
+| `widen` (24 cases) | The question is asked at the first scope. It must be not found, and the block must offer the next scope (`wider`, by id). Then the question is asked at the next scope, like a click on the button. M to F (8), M to F to A (6), F to A (6), unfiled M to A (4). Rows show offer, chain, answer. Bars: offer at the first scope at least 90%, final answer at least 70%. |
+| `threads` (10) | 6 threads at A and 4 at F: a fact, "why?", who said it, a switch to another fact. Real answers go back as history. |
+
+Run it on the desktop first (`CHAT_EVAL_BASE_URL`), then confirm on the Mac with the GPU lock. The default parts of `--set p2` include `widen`; `--only widen` runs it on the gold set too.
+
 ### Multi-turn threads (P1.2, `--only threads`)
 
 `pnpm chat-eval p1 --only threads --no-mlflow` runs 12 threads (`buildThreads` in `gold.mts`, `p1-threads.mts`) of 4 to 5 turns in one fictional meeting: a fact, "why?", "who said that?", a topic switch and "what was this meeting about?". The REAL answer of each turn is the history of the next turn (the gold set uses gold answers). The threads are not in the gold set, so the gold hash is unchanged. Keys: text keys for fact, switch, speaker and topic (the topic key accepts English and Portuguese words). "Why?" has no key (the corpus has no reasons): it passes when it is not a repeat. A repeat is an answer with a word overlap (Jaccard) of 0.8 or more with an earlier answer to another question. The row table lists tool, cites and answer for each turn. Use it to see a follow-up that searches with a stale query.

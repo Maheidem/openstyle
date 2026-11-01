@@ -651,8 +651,8 @@ test("barRow formats units", () => {
   assert.equal(r.measured, "1481 MB");
   assert.equal(r.threshold, "<= 1536 MB");
   assert.equal(r.status, "PASS");
-  assert.equal(
-    barRow(BARS.find((b) => b.id === "whosaid")!, 0.5).threshold,
-    "report",
-  );
+  // Who-said is a bar since P2 (spec 8.7): at least 70%.
+  const who = barRow(BARS.find((b) => b.id === "whosaid")!, 0.5);
+  assert.equal(who.threshold, ">= 70.0%");
+  assert.equal(who.status, "FAIL");
 });

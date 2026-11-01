@@ -22,6 +22,7 @@ import type {
   Intent,
   Lang,
   Meeting,
+  P2Set,
   Person,
   Question,
   QuestionType,
@@ -31,6 +32,7 @@ import type {
   ThreadQ,
   ThreadTurn,
   Turn,
+  WidenQ,
 } from "./types.mts";
 
 const MONTH_EN = [
@@ -77,7 +79,15 @@ export function buildThreads(c: Corpus): ThreadQ[] {
   return buildAll(c).threads;
 }
 
-function buildAll(c: Corpus): { gold: GoldSet; threads: ThreadQ[] } {
+/**
+ * The P2 set (spec 11.6.6): folder and Everything questions, search-wider
+ * cases and threads at scope A and F. Not part of the gold hash.
+ */
+export function buildP2(c: Corpus): P2Set {
+  return buildAll(c).p2;
+}
+
+function buildAll(c: Corpus): { gold: GoldSet; threads: ThreadQ[]; p2: P2Set } {
   const _r = rng(c.seed ^ 0x9e3779b9);
   const people = new Map(c.people.map((p) => [p.id, p]));
   const meetingById = new Map(c.meetings.map((m) => [m.id, m]));
@@ -1820,5 +1830,302 @@ function buildAll(c: Corpus): { gold: GoldSet; threads: ThreadQ[] } {
     });
   }
 
-  return { gold: { questions, retrieval }, threads };
+  // ---- P2 set (chat agent P2, spec 11.6.6). Not part of the gold hash. --------------
+  // Folder and Everything questions on facts that the P0 questions did not
+  // use, search-wider cases, and threads at scope A and F. Own ids (p2-...).
+  const p2: P2Set = { questions: [], threads: [], widen: [] };
+  {
+    let k = 0;
+    const add2 = (q: Omit<Question, "id">) => {
+      p2.questions.push({
+        ...q,
+        intent: relabelIntent(q.text, q.intent),
+        id: `p2-${String(++k).padStart(3, "0")}`,
+      });
+    };
+    const filed = (f: Fact) => mtg(f).folderId !== null;
+    const scopeAF = (f: Fact, i: number): Scope =>
+      i % 2 === 0 || !filed(f)
+        ? { kind: "all", id: null }
+        : scopeOf("folder", f);
+
+    // Lookups at A and F (24). Facts that the 25 P0 lookups did not use.
+    const lookupPool: Fact[] = [
+      ...factsOf("quote").filter(stable).slice(9, 15),
+      ...factsOf("date").filter(stable).slice(7, 13),
+      ...factsOf("metric").filter(stable).slice(4, 10),
+      ...factsOf("decision").slice(9, 15),
+    ];
+    lookupPool.slice(0, 24).forEach((f, i) => {
+      const lang = langAt(i);
+      add2(
+        base(
+          "lookup",
+          lang,
+          scopeAF(f, i),
+          ask(f, lang),
+          "lookup",
+          planTools.lookup as string[],
+          valueKey(f),
+          goldOf(f),
+          { query_any: queryAny(f, lang) },
+        ),
+      );
+    });
+
+    // Who said it, at A (8) and F (8). The same facts as the P0 questions,
+    // asked at the two wider scopes that the P0 set rotates through.
+    const whoPool = [
+      ...factsOf("propose"),
+      ...factsOf("approve").slice(0, 6),
+    ].filter(filed);
+    whoPool.slice(0, 16).forEach((f, i) => {
+      const lang = langAt(i + 1);
+      add2(
+        base(
+          "who_said",
+          lang,
+          i < 8 ? { kind: "all", id: null } : scopeOf("folder", f),
+          ask(f, lang),
+          "who_said",
+          planTools.who_said as string[],
+          personKey(f.value),
+          goldOf(f),
+          { query_any: queryAny(f, lang) },
+        ),
+      );
+    });
+
+    // Lists at A (6 aggregate) and by month at A and F (12 temporal).
+    {
+      const filedMeetings = c.meetings.filter((m) => m.folderId !== null);
+      const taken = new Set(
+        questions
+          .filter((q) => q.type === "aggregation" && q.scope.kind === "all")
+          .map((q) => q.args.person_id as string),
+      );
+      const people2 = c.people
+        .map((p) => ({
+          pid: p.id,
+          ids: openItems(filedMeetings, p.id).map((a) => a.id),
+        }))
+        .filter((x) => x.ids.length >= 1 && !taken.has(x.pid))
+        .slice(0, 6);
+      people2.forEach((x, i) => {
+        const lang = langAt(i);
+        const name = person(x.pid).full;
+        add2(
+          base(
+            "aggregation",
+            lang,
+            { kind: "all", id: null },
+            lang === "en"
+              ? `List all open action items for ${name}.`
+              : `Liste todos os itens de ação em aberto de ${name}.`,
+            "aggregate",
+            planTools.aggregate as string[],
+            { kind: "set", ids: x.ids },
+            [],
+            { person_id: x.pid, status: "open" },
+          ),
+        );
+      });
+      const monthOf = (m: Meeting) => new Date(m.startedAt).getUTCMonth() + 1;
+      const monthRange = (mo: number) => ({
+        from: `2026-${String(mo).padStart(2, "0")}-01`,
+        to: isoDay(Date.UTC(2026, mo, 0)),
+      });
+      let t = 0;
+      for (const mo of [8, 9, 10]) {
+        for (const lang of ["en", "pt"] as const) {
+          const ids = c.meetings
+            .filter((m) => monthOf(m) === mo)
+            .map((m) => m.id);
+          const r = monthRange(mo);
+          add2(
+            base(
+              "temporal",
+              lang,
+              { kind: "all", id: null },
+              lang === "en"
+                ? `Which meetings were in ${MONTH_EN[mo]}?`
+                : `Quais reuniões foram em ${MONTH_PT[mo]}?`,
+              "temporal",
+              planTools.list_meetings as string[],
+              { kind: "set", ids },
+              [],
+              { date_from: r.from, date_to: r.to },
+            ),
+          );
+        }
+      }
+      const combos: [string, number][] = [
+        ["fld-atlas", 10],
+        ["fld-harbor", 10],
+        ["fld-audit", 9],
+        ["fld-audit", 10],
+        ["fld-mobile", 8],
+        ["fld-atlas", 8],
+      ];
+      for (const [fid, mo] of combos) {
+        const ids = folderMeetings(fid)
+          .filter((m) => monthOf(m) === mo)
+          .map((m) => m.id);
+        if (ids.length === 0) continue;
+        const lang = langAt(t++);
+        const r = monthRange(mo);
+        add2(
+          base(
+            "temporal",
+            lang,
+            { kind: "folder", id: fid },
+            lang === "en"
+              ? `Which ${folderName(fid)} meetings were in ${MONTH_EN[mo]}?`
+              : `Quais reuniões de ${folderName(fid)} foram em ${MONTH_PT[mo]}?`,
+            "temporal",
+            planTools.list_meetings as string[],
+            { kind: "set", ids },
+            [],
+            { date_from: r.from, date_to: r.to },
+          ),
+        );
+      }
+    }
+
+    // Search wider (24). The fact is outside the first scope. Each click goes
+    // one step wider: meeting to folder (to everything), unfiled meeting or
+    // folder to everything.
+    const widenFams = [
+      factsOf("quote").filter(stable),
+      factsOf("date").filter(stable),
+      factsOf("decision"),
+    ];
+    const widenPool: Fact[] = [];
+    for (let j = 0; widenFams.some((fs) => j < fs.length); j++) {
+      for (const fs of widenFams) if (fs[j]) widenPool.push(fs[j] as Fact);
+    }
+    const filedFacts = widenPool.filter(filed);
+    const unfiledMeetings = c.meetings.filter((m) => m.folderId === null);
+    let w = 0;
+    const addWiden = (f: Fact, start: Scope, steps: Scope[], lang: Lang) =>
+      p2.widen.push({
+        id: `w${String(++w).padStart(2, "0")}`,
+        lang,
+        text: ask(f, lang),
+        start,
+        steps,
+        key: valueKey(f),
+        gold: goldOf(f),
+      });
+    const folderScope = (id: string | null): Scope => ({
+      kind: "folder",
+      id,
+    });
+    const ALL: Scope = { kind: "all", id: null };
+    // Meeting to its folder (8): another meeting of the same folder.
+    filedFacts.slice(0, 8).forEach((f, i) => {
+      const m = mtg(f);
+      const other = c.meetings.find(
+        (o) => o.folderId === m.folderId && o.id !== m.id,
+      );
+      if (!other) return;
+      addWiden(
+        f,
+        { kind: "meeting", id: other.id },
+        [folderScope(m.folderId)],
+        langAt(i),
+      );
+    });
+    // Meeting to folder to everything (6): a meeting of another folder.
+    filedFacts.slice(8, 14).forEach((f, i) => {
+      const m = mtg(f);
+      const other = c.meetings.find(
+        (o) => o.folderId !== null && o.folderId !== m.folderId,
+      );
+      if (!other) return;
+      addWiden(
+        f,
+        { kind: "meeting", id: other.id },
+        [folderScope(other.folderId), ALL],
+        langAt(i),
+      );
+    });
+    // Folder to everything (6): another folder.
+    filedFacts.slice(14, 20).forEach((f, i) => {
+      const m = mtg(f);
+      const other = c.folders.find((o) => o.id !== m.folderId);
+      if (!other) return;
+      addWiden(f, folderScope(other.id), [ALL], langAt(i));
+    });
+    // Unfiled meeting to everything (4): one step, as the spec says.
+    filedFacts.slice(20, 24).forEach((f, i) => {
+      const un = unfiledMeetings.find((u) => u.id !== f.meetingId);
+      if (!un) return;
+      addWiden(f, { kind: "meeting", id: un.id }, [ALL], langAt(i));
+    });
+
+    // Threads at A (6) and F (6): a fact, "why?", who said it, a switch to a
+    // fact of the same scope. The real answers go back as history.
+    const WHY2 = [
+      ["Why?", "Por quê?"],
+      ["And why is that?", "E por que isso?"],
+    ] as const;
+    const threadPool = ["quote", "date", "metric", "decision"].flatMap((fam) =>
+      factsOf(fam).filter(stable),
+    );
+    const mkThread = (
+      id: string,
+      scope: Scope,
+      a: Fact,
+      b: Fact,
+      i: number,
+    ) => {
+      const lang = langAt(i);
+      const T = (
+        kind: ThreadTurn["kind"],
+        text: string,
+        key: AnswerKey | null,
+      ): ThreadTurn => ({ kind, text, key });
+      const turns: ThreadTurn[] = [
+        T("fact", ask(a, lang), valueKey(a)),
+        T("why", WHY2[i % 2]?.[lang === "en" ? 0 : 1] as string, null),
+      ];
+      if (a.speakerPersonId) {
+        turns.push(
+          T(
+            "who",
+            lang === "en" ? "Who said that?" : "Quem disse isso?",
+            personKey(a.speakerPersonId),
+          ),
+        );
+      }
+      turns.push(T("switch", ask(b, lang), valueKey(b)));
+      p2.threads.push({ id, lang, scope, turns, facts: goldOf(a, b) });
+    };
+    const folders = [...c.folders].sort((x, y) => x.id.localeCompare(y.id));
+    folders.slice(0, 4).forEach((fo, i) => {
+      const inF = threadPool.filter((f) => mtg(f).folderId === fo.id);
+      const a = inF[0];
+      const b = inF.find((f) => f.meetingId !== a?.meetingId);
+      if (a && b) {
+        mkThread(
+          `a${String(i + 1).padStart(2, "0")}`,
+          folderScope(fo.id),
+          a,
+          b,
+          i,
+        );
+      }
+    });
+    for (let i = 0; i < 6; i++) {
+      const a = threadPool[(i * 5) % threadPool.length] as Fact;
+      const b = threadPool.find(
+        (f) =>
+          f.meetingId !== a.meetingId && mtg(f).folderId !== mtg(a).folderId,
+      ) as Fact;
+      mkThread(`b${String(i + 1).padStart(2, "0")}`, ALL, a, b, i + 4);
+    }
+  }
+
+  return { gold: { questions, retrieval }, threads, p2 };
 }

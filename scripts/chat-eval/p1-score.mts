@@ -878,12 +878,40 @@ export const BARS: readonly BarDef[] = [
   },
   {
     id: "whosaid",
-    bar: "Who-said accuracy (reported; P2 bar is 70%)",
-    threshold: null,
+    bar: "Who-said accuracy",
+    threshold: 0.7,
     dir: "min",
     unit: "pct",
     source: "p1-e2e",
-    origin: "spec 8.7",
+    origin: "spec 8.7 (P2)",
+  },
+  {
+    id: "p2.lookup",
+    bar: "Answer accuracy, lookup and follow-up (P2 column)",
+    threshold: 0.7,
+    dir: "min",
+    unit: "pct",
+    source: "p1-e2e",
+    origin: "spec 8.7 (P2)",
+  },
+  // --- P2 (spec 6.3, 11.6.4): search wider ---
+  {
+    id: "widen.offer",
+    bar: "Search wider: not found at the first scope, with the offer of the next scope",
+    threshold: 0.9,
+    dir: "min",
+    unit: "pct",
+    source: "p1-widen",
+    origin: "spec 8.7 (not-found accuracy) and 6.3",
+  },
+  {
+    id: "widen.answer",
+    bar: "Search wider: right answer after the clicks",
+    threshold: 0.7,
+    dir: "min",
+    unit: "pct",
+    source: "p1-widen",
+    origin: "spec 8.7 (P2 answer accuracy)",
   },
 ];
 

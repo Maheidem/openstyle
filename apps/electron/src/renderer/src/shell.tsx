@@ -14,6 +14,7 @@ import {
   CircleHelp,
   Cpu,
   FileText,
+  MessageSquareText,
   Settings,
   Upload,
 } from "lucide-react";
@@ -60,6 +61,12 @@ const STATIC_NAV: {
     icon: AudioLines,
     shortcut: "3",
     labelKey: "shell.nav.meetings",
+  },
+  {
+    to: "/ask",
+    icon: MessageSquareText,
+    shortcut: "4",
+    labelKey: "shell.nav.ask",
   },
   {
     to: "/import",
@@ -167,6 +174,9 @@ export default function AppShell(): React.JSX.Element {
   // Meeting Mode is behind the server-owned `meetings` feature flag.
   const { data: config } = useQuery(configQueryOptions());
   const meetingsEnabled = config?.flags?.meetings === true;
+  // The Ask page (meeting chat agent) is behind the setting meeting_chat_enabled.
+  const askEnabled =
+    meetingsEnabled && settings?.[SETTINGS_KEYS.meetingChatEnabled] === "true";
 
   // Filter the static nav (hide Models when advanced mode is off, Meetings
   // when its flag is off) and re-number the Cmd+N shortcuts sequentially so
@@ -177,9 +187,10 @@ export default function AppShell(): React.JSX.Element {
       STATIC_NAV.filter(
         (item) =>
           (item.to !== "/settings/models" || advancedMode) &&
-          (item.to !== "/meetings" || meetingsEnabled),
+          (item.to !== "/meetings" || meetingsEnabled) &&
+          (item.to !== "/ask" || askEnabled),
       ).map((item, idx) => ({ ...item, shortcut: String(idx + 1) })),
-    [advancedMode, meetingsEnabled],
+    [advancedMode, meetingsEnabled, askEnabled],
   );
 
   const navItems: NavItem[] = useMemo(

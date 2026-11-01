@@ -815,7 +815,11 @@ export default function SettingsPage(): React.JSX.Element {
     (enabled: boolean) => {
       setMeetingChat(enabled);
       void putSetting(SETTINGS_KEYS.meetingChatEnabled, String(enabled)).then(
-        () => queryClient.invalidateQueries({ queryKey: queryKeys.settings }),
+        async () => {
+          await queryClient.invalidateQueries({ queryKey: queryKeys.settings });
+          // The bubble hotkey is on only while the switch is on.
+          window.api?.refreshChatHotkey();
+        },
       );
     },
     [queryClient],

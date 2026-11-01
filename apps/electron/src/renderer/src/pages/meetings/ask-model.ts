@@ -7,8 +7,10 @@ import {
   type ChatBlock,
   type ChatCite,
   type ChatMessage,
+  type ChatScope,
   type ChatThread,
   type ChatTrace,
+  type ChatWider,
 } from "@openstyle/validations";
 
 /** The first answer that takes longer than this shows the "warming" text. */
@@ -105,6 +107,53 @@ export function citeView(cite: ChatCite): CiteView {
   };
 }
 
+// ---------------------------------------------------------------------------
+// Scope (spec 11.6)
+// ---------------------------------------------------------------------------
+
+/** A key for a scope: the query key of its thread list and its remembered thread. */
+export function scopeKey(scope: ChatScope): string {
+  return scope.kind === "all" ? "all" : `${scope.kind}:${scope.id}`;
+}
+
+/** The scope of a thread. A thread with no meeting and no folder is scope A. */
+export function scopeOfThread(thread: ChatThread): ChatScope {
+  if (thread.meeting_id) return { kind: "meeting", id: thread.meeting_id };
+  if (thread.folder_id) return { kind: "folder", id: thread.folder_id };
+  return { kind: "all" };
+}
+
+/** The scopes are the same scope. */
+export function sameScope(a: ChatScope, b: ChatScope): boolean {
+  return scopeKey(a) === scopeKey(b);
+}
+
+/**
+ * The wider scope that the last answer offers (spec 11.6.4): the not_found
+ * block of the message, when it has `wider`. Only the last answer of a thread
+ * can be widened, so the caller passes the last message.
+ */
+export function widerOffer(message: ChatMessage): ChatWider | null {
+  for (const block of message.blocks) {
+    if (block.kind === "not_found" && block.wider) return block.wider;
+  }
+  return null;
+}
+
+/**
+ * The scope an answer searched, when it is not the scope of its thread (an
+ * answer after a "search wider" click). null when the scope is the same, or
+ * the message has no scope (a message of P1).
+ */
+export function widenedScope(
+  message: ChatMessage,
+  threadScope: ChatScope,
+): ChatScope | null {
+  const used = message.trace?.scope;
+  if (!used || sameScope(used, threadScope)) return null;
+  return used;
+}
+
 /** Where a click on a cite chip goes. */
 export type CiteTarget =
   | { kind: "transcript"; startMs: number | null }
@@ -115,13 +164,14 @@ export type CiteTarget =
 /**
  * Decide the target of a cite.
  * - A cite of another meeting opens that meeting. If the list of meetings is
- *   known and lacks it, the meeting is removed.
+ *   known and lacks it, the meeting is removed. A folder, an Ask page or a
+ *   bubble has no "this meeting" (null): every cite opens its meeting.
  * - A summary or item cite of this meeting opens the Summary tab.
  * - Any other cite of this meeting opens the Transcript tab at `start_ms`.
  */
 export function citeTarget(
   cite: ChatCite,
-  thisMeetingId: string,
+  thisMeetingId: string | null,
   knownMeetingIds: ReadonlySet<string> | null,
 ): CiteTarget {
   if (cite.meeting_id !== thisMeetingId) {
@@ -230,15 +280,16 @@ export function danglingQuestion(
  */
 const rememberedThread = new Map<string, string | null>();
 
-export function readSelectedThread(meetingId: string): string | null {
-  return rememberedThread.get(meetingId) ?? null;
+/** `key` is `scopeKey(scope)`. */
+export function readSelectedThread(key: string): string | null {
+  return rememberedThread.get(key) ?? null;
 }
 
 export function rememberSelectedThread(
-  meetingId: string,
+  key: string,
   selected: string | null,
 ): void {
-  rememberedThread.set(meetingId, selected);
+  rememberedThread.set(key, selected);
 }
 
 export interface QuestionCheck {
@@ -267,6 +318,7 @@ export interface AskErrorView {
     | "errProviderNotReady"
     | "errBusy"
     | "errScope"
+    | "errWiden"
     | "errFailed";
   /** The button under the message. */
   action: "settings" | "models" | "retry" | "none";
@@ -292,6 +344,8 @@ export function askErrorView(
         return { key: "errBusy", action: "retry" };
       case "scope_missing":
         return { key: "errScope", action: "none" };
+      case "widen_not_offered":
+        return { key: "errWiden", action: "none" };
       default:
         break;
     }

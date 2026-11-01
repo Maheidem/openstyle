@@ -70,6 +70,7 @@
         "src/renderer/src/meeting-capture.ts",
         "src/renderer/src/components/pill.tsx",
         "src/renderer/src/components/tray-popover.tsx",
+        "src/renderer/src/components/chat-bubble.tsx",
         "tests/**/*.ts",
         "scripts/**/*.{js,mjs}"
       ],

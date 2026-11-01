@@ -60,9 +60,13 @@ export async function launchOpenstyle(options: {
   return app;
 }
 
-/** True for the windows that are not the dashboard: the pill and the tray popover. */
+/** True for the windows that are not the dashboard: the pill, the tray popover and the Ask bubble. */
 function isAuxiliaryWindow(url: string): boolean {
-  return url.includes("pill") || url.includes("tray-popover");
+  return (
+    url.includes("pill") ||
+    url.includes("tray-popover") ||
+    url.includes("chat-bubble")
+  );
 }
 
 /**
