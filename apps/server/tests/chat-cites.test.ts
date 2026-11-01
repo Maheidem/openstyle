@@ -9,6 +9,7 @@ import {
   failureNote,
   normalizeText,
   pickCiteTimes,
+  repeatedEarlierAnswer,
   stripCiteMarkers,
 } from "../src/lib/chat/cites.js";
 import { SourceMap } from "../src/lib/chat/types.js";
@@ -590,5 +591,38 @@ describe("cite marker strip (P1.2)", () => {
     expect(stripCiteMarkers("The S1 server costs 40.")).toBe(
       "The S1 server costs 40.",
     );
+  });
+});
+
+describe("repeated answer guard (P1.2)", () => {
+  const turns = [
+    {
+      question: "What did we decide on the database engine?",
+      answer: "The team decided on Postgres, not MySQL.",
+    },
+  ];
+  it("finds the same answer to a new question", () => {
+    expect(
+      repeatedEarlierAnswer(
+        "Why?",
+        "The team decided on Postgres, not MySQL. It was cheaper.",
+        turns,
+      ),
+    ).toBe("What did we decide on the database engine?");
+  });
+  it("allows the same answer to the same question", () => {
+    expect(
+      repeatedEarlierAnswer(
+        "what did we decide on the database engine",
+        "The team decided on Postgres, not MySQL.",
+        turns,
+      ),
+    ).toBeNull();
+  });
+  it("allows a different answer and a very short answer", () => {
+    expect(
+      repeatedEarlierAnswer("Why?", "Postgres has better JSON support.", turns),
+    ).toBeNull();
+    expect(repeatedEarlierAnswer("Why?", "Postgres.", turns)).toBeNull();
   });
 });

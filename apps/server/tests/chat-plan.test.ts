@@ -394,6 +394,9 @@ describe("follow-up or new topic (P1.2)", () => {
       "How much is the quote for the network gateway?",
       "Quando é o teste de rollback?",
       "What did this meeting decide about the budget for hosting?",
+      "Who proposed the pilot program?",
+      "Why did we pick Postgres for the database?",
+      "Quem vai escrever o plano de rollback?",
     ]) {
       expect(isDependentFollowUp(q), q).toBe(false);
     }
@@ -406,6 +409,17 @@ describe("follow-up or new topic (P1.2)", () => {
     const query = followUpQuery("Why?", long);
     expect(query.startsWith("Why? What has been decided?")).toBe(true);
     expect(query.length).toBeLessThan(150);
+  });
+  it("a follow-up of a follow-up keeps the topic of the first question", () => {
+    const turns = [
+      { question: "How much is the quote for the gateway?", answer: "49,600" },
+      { question: "Why?", answer: "found nothing" },
+    ];
+    const q = followUpQuery("Who said that?", turns);
+    expect(q.startsWith("Who said that? Why? How much is the quote")).toBe(
+      true,
+    );
+    expect(q).toContain("49,600");
   });
   it("detects an overview question in the UI languages", () => {
     for (const q of [

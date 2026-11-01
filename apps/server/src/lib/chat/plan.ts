@@ -209,6 +209,8 @@ const FIRST_RE =
   /\b(first|primeira|primeiro|primera|primero|erste[nr]?|premi[eè]re|premier|prima|primo)\b|最初/iu;
 /** Short answers that describe no topic. */
 const EMPTY_ANSWER = /^(gave no answer|found nothing)$/i;
+/** The most turns back that a follow-up leans on. */
+const MAX_CHAIN = 3;
 /** The part of the earlier answer that joins the query, in characters. */
 const ANSWER_HEAD_CHARS = 100;
 
@@ -238,6 +240,8 @@ const wordCount = (q: string) =>
 /**
  * True when the question has no topic of its own and leans on the turn before
  * ("Why?", "And when is that due?", "Who said that?", "my first question").
+ * Rules: 3 words or fewer; a conjunction first ("And when..."); a reference
+ * word ("that", "isso") in 8 words or fewer; "why" or "who" in 4 words or fewer.
  * A question with its own topic ("What did we decide on the database
  * engine?") is a new topic: it must NOT search with the earlier turn (P1.2:
  * the old answer took over the query and the same chunk came back).
@@ -251,7 +255,10 @@ export function isDependentFollowUp(question: string): boolean {
   if (short) return true;
   if (CONJUNCTION_START_RE.test(q) && n <= 9) return true;
   const medium = cjk ? q.length <= 24 : n <= 8;
-  return medium && (REFERENCE_RE.test(q) || DEPENDENT_WORD_RE.test(q));
+  if (medium && REFERENCE_RE.test(q)) return true;
+  // "Why did we pick Postgres?" has a topic of its own. "Why is it so?" has not.
+  const small = cjk ? q.length <= 14 : n <= 4;
+  return small && DEPENDENT_WORD_RE.test(q);
 }
 
 /** "What was this meeting about?": the summary answers, not a search. */
@@ -309,12 +316,24 @@ export function followUpQuery(
 ): string {
   const now = (base ?? "").trim() || question.trim();
   if (!isDependentFollowUp(question)) return queryFor(now, question);
-  const ref = FIRST_RE.test(question) ? turns[0] : turns.at(-1);
-  if (!ref) return queryFor(now, question);
-  const answer = EMPTY_ANSWER.test(ref.answer.trim())
+  // The turns that the question leans on: the last turn, and the turns before
+  // it while the question of a turn is a follow-up itself ("Why?" leans on the
+  // fact before it). The last of them has a topic of its own.
+  const chain: PriorTurn[] = [];
+  if (FIRST_RE.test(question)) {
+    if (turns[0]) chain.push(turns[0]);
+  } else {
+    for (const t of [...turns].reverse().slice(0, MAX_CHAIN)) {
+      chain.push(t);
+      if (!isDependentFollowUp(t.question)) break;
+    }
+  }
+  const topic = chain.at(-1);
+  if (!topic) return queryFor(now, question);
+  const answer = EMPTY_ANSWER.test(topic.answer.trim())
     ? ""
-    : ref.answer.trim().slice(0, ANSWER_HEAD_CHARS);
-  const parts = [now, ref.question, answer].filter(
+    : topic.answer.trim().slice(0, ANSWER_HEAD_CHARS);
+  const parts = [now, ...chain.map((t) => t.question), answer].filter(
     (x): x is string => !!x && x.trim() !== "",
   );
   return [...new Set(parts)].join(" ").slice(0, QUERY_MAX_CHARS).trim();

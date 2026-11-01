@@ -173,7 +173,14 @@ export function summarize(rows: ThreadRow[]): Record<string, number> {
   m.acc = mean(rows.map((r) => (r.pass ? 1 : 0)));
   m.repeats = rows.filter((r) => r.repeat).length;
   m.leaks = rows.filter((r) => r.leak).length;
-  for (const k of ["fact", "why", "switch", "who", "overview"] as const) {
+  for (const k of [
+    "decided",
+    "fact",
+    "why",
+    "switch",
+    "who",
+    "overview",
+  ] as const) {
     const rs = rows.filter((r) => r.kind === k);
     if (rs.length > 0) m[`acc.${k}`] = mean(rs.map((r) => (r.pass ? 1 : 0)));
     m[`n.${k}`] = rs.length;

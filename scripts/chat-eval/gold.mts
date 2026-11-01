@@ -1670,5 +1670,62 @@ function buildAll(c: Corpus): { gold: GoldSet; threads: ThreadQ[] } {
     });
   }
 
+  // The owner's thread of 2026-11-01: "What has been decided?", "Why?",
+  // "But why did we decide that?", "But, what WAS this meeting about?".
+  {
+    const decisionsBy = new Map<string, Fact[]>();
+    for (const f of factsOf("decision")) {
+      const arr = decisionsBy.get(f.meetingId) ?? [];
+      arr.push(f);
+      decisionsBy.set(f.meetingId, arr);
+    }
+    [...decisionsBy.entries()]
+      .sort(([x], [y]) => x.localeCompare(y))
+      .slice(0, 4)
+      .forEach(([mid, fs], i) => {
+        const lang = langAt(i);
+        const m = meetingById.get(mid) as Meeting;
+        const topic = normalize(
+          m.overview
+            .split(".")[0]
+            ?.replace(/^.*?(met for|se reuniu para)\s+/i, "") ?? "",
+        )
+          .split(" ")
+          .filter((w) => w.length > 3);
+        const t = (
+          kind: ThreadTurn["kind"],
+          en: string,
+          pt: string,
+          key: AnswerKey | null,
+        ): ThreadTurn => ({ kind, text: lang === "en" ? en : pt, key });
+        threads.push({
+          id: `o${String(i + 1).padStart(2, "0")}`,
+          lang,
+          scope: { kind: "meeting", id: mid },
+          turns: [
+            // No key: the search finds no decision text for this broad question.
+            // The next turns must still differ and the overview must be right.
+            t("decided", "What has been decided?", "O que foi decidido?", null),
+            t("why", "Why?", "Por quê?", null),
+            t(
+              "why",
+              "But why did we decide that?",
+              "Mas por que decidimos isso?",
+              null,
+            ),
+            t(
+              "overview",
+              "But, what WAS this meeting about?",
+              "Mas, sobre o que FOI esta reunião?",
+              topic.length > 0
+                ? { kind: "text", must: [topic], mustNot: [] }
+                : null,
+            ),
+          ],
+          facts: goldOf(...fs),
+        });
+      });
+  }
+
   return { gold: { questions, retrieval }, threads };
 }

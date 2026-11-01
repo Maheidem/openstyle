@@ -1160,7 +1160,9 @@ async function partThreads(
   const threads = buildThreads(env.corpus);
   const use = spread(threads, env.opts.limit);
   const rows: Awaited<ReturnType<typeof runThread>> = [];
-  // At most 4 threads at once (desktop llama.cpp rule). A thread is serial.
+  // At most 4 threads at once (owner rule); default 2: a desktop llama.cpp
+  // server with few slots queues the calls and a turn hits its deadline.
+  const par = Math.min(4, Number(process.env.CHAT_EVAL_THREADS_PAR ?? 2) || 2);
   let next = 0;
   const worker = async () => {
     while (next < use.length) {
@@ -1172,10 +1174,10 @@ async function partThreads(
       );
     }
   };
-  await Promise.all(Array.from({ length: Math.min(4, use.length) }, worker));
+  await Promise.all(Array.from({ length: Math.min(par, use.length) }, worker));
   rows.sort((a, b) => a.thread.localeCompare(b.thread) || a.turn - b.turn);
   const m = summarizeThreads(rows);
-  let text = `Threads: ${m.threads} threads, ${m.turns} turns (real answers fed back). Turn accuracy ${pct(m.acc as number)}%; fact ${pct(m["acc.fact"] ?? 0)}%, why ${pct(m["acc.why"] ?? 0)}%, switch ${pct(m["acc.switch"] ?? 0)}%, who ${pct(m["acc.who"] ?? 0)}%, overview ${pct(m["acc.overview"] ?? 0)}%. Repeated answers ${m.repeats}; cite marker leaks ${m.leaks}; errors ${m.errors}; threads all pass ${m.threads_all_pass} of ${m.threads}.\n`;
+  let text = `Threads: ${m.threads} threads, ${m.turns} turns (real answers fed back). Turn accuracy ${pct(m.acc as number)}%; decided ${pct(m["acc.decided"] ?? 0)}%, fact ${pct(m["acc.fact"] ?? 0)}%, why ${pct(m["acc.why"] ?? 0)}%, switch ${pct(m["acc.switch"] ?? 0)}%, who ${pct(m["acc.who"] ?? 0)}%, overview ${pct(m["acc.overview"] ?? 0)}%. Repeated answers ${m.repeats}; cite marker leaks ${m.leaks}; errors ${m.errors}; threads all pass ${m.threads_all_pass} of ${m.threads}.\n`;
   text += `\n| thread | turn | kind | pass | repeat | tool | cites | answer |\n|---|---|---|---|---|---|---|---|\n`;
   for (const r of rows)
     text += `| ${r.thread} | ${r.turn} | ${r.kind} | ${r.pass ? "ok" : "FAIL"} | ${r.repeat ? "REPEAT" : ""} | ${r.tool ?? ""} | ${r.cites.join(" ")} | ${r.answer.replace(/\s+/g, " ").slice(0, 80)} |\n`;

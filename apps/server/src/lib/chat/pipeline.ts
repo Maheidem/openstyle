@@ -23,6 +23,7 @@ import {
   failureNote,
   pickCiteTimes,
   refineCiteTimes,
+  repeatedEarlierAnswer,
   stripCiteMarkers,
   tidyCites,
 } from "./cites.js";
@@ -816,6 +817,20 @@ export async function runChatTurn(input: ChatTurnInput): Promise<TurnResult> {
       check.ok ? null : failureNote(check),
     );
     if (check.ok) {
+      // A new question gets a new answer. The same text as an earlier answer to
+      // another question is a repeat (P1.2): one retry, then not found.
+      const repeated = repeatedEarlierAnswer(
+        question,
+        check.sentences.map((s) => s.text).join(" "),
+        turns,
+      );
+      if (repeated !== null) {
+        step("repeat_guard", attempt === 1 ? "retry" : "not found", started5);
+        if (attempt >= 2) return notFound("no_sources");
+        repair =
+          "Your answer repeats an earlier answer, but this question is new. Answer only the new question. If no source shows it, return an empty sentences list.";
+        continue;
+      }
       tidyCites(check.sentences, sources);
       refineCiteTimes(check.sentences, sources);
       try {

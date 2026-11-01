@@ -418,6 +418,39 @@ const foldWords = (t: string): string[] =>
       .match(WORD) ?? []
   ).filter((w) => w.length > 2 || /\d/.test(w));
 
+/** Two answers with this share of the same words are the same answer. */
+const REPEAT_JACCARD = 0.8;
+
+/** The first sentence of a text. */
+const firstSentence = (t: string): string =>
+  t.trim().split(/(?<=[.!?])\s+/u)[0] ?? "";
+
+/**
+ * The earlier question whose answer the new answer repeats, or null. A new
+ * question must get a new answer: a small model gave the earlier answer again
+ * to "Why?" because the same chunk came back (P1.2). The same question asked
+ * again may get the same answer. Only the first sentence is compared.
+ */
+export function repeatedEarlierAnswer(
+  question: string,
+  answer: string,
+  turns: readonly { question: string; answer: string }[],
+): string | null {
+  const now = new Set(foldWords(firstSentence(answer)));
+  if (now.size < 3) return null;
+  const same = foldWords(question).join(" ");
+  for (const t of turns.slice(-4)) {
+    if (foldWords(t.question).join(" ") === same) continue;
+    const old = new Set(foldWords(firstSentence(t.answer)));
+    if (old.size < 3) continue;
+    let both = 0;
+    for (const w of now) if (old.has(w)) both++;
+    if (both / (now.size + old.size - both) >= REPEAT_JACCARD)
+      return t.question;
+  }
+  return null;
+}
+
 /**
  * The chip opens the meeting at the line that the sentence is about: for each
  * transcript source, the segment with the most words of the sentence (spec 7.3
