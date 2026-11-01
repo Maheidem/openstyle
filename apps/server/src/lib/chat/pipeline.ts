@@ -825,7 +825,11 @@ export async function runChatTurn(input: ChatTurnInput): Promise<TurnResult> {
         turns,
       );
       if (repeated !== null) {
-        step("repeat_guard", attempt === 1 ? "retry" : "not found", started5);
+        step(
+          "answer",
+          attempt === 1 ? "repeat: retry" : "repeat: not found",
+          started5,
+        );
         if (attempt >= 2) return notFound("no_sources");
         repair =
           "Your answer repeats an earlier answer, but this question is new. Answer only the new question. If no source shows it, return an empty sentences list.";
