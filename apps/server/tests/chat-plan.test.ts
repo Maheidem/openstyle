@@ -3,7 +3,9 @@
 import { describe, expect, it } from "vitest";
 import type { Choices } from "../src/lib/chat/choices.js";
 import {
+  asksDecisions,
   asksForCount,
+  asksNextSteps,
   asksOverview,
   defaultSlots,
   followUpQuery,
@@ -441,6 +443,76 @@ describe("follow-up or new topic (P1.2)", () => {
       "When is the launch?",
     ]) {
       expect(asksOverview(q), q).toBe(false);
+    }
+  });
+});
+
+describe("decisions and next steps read the summary (P1.2)", () => {
+  it("a broad decisions question is detected in the UI languages", () => {
+    for (const q of [
+      "What has been decided?",
+      "what did we decide",
+      "What did we decide in this meeting?",
+      "What was decided so far?",
+      "So, what have we decided?",
+      "Decisions",
+      "O que foi decidido?",
+      "o que decidimos nesta reunião?",
+      "Decisões",
+      "¿Qué se decidió?",
+      "¿Qué decidimos?",
+      "Decisiones",
+      "Was wurde entschieden?",
+      "Was haben wir beschlossen?",
+      "Entscheidungen",
+      "Qu'est-ce qui a été décidé ?",
+      "Qu'avons-nous décidé ?",
+      "Décisions",
+      "Cosa è stato deciso?",
+      "Cosa abbiamo deciso?",
+      "Decisioni",
+      "何が決まりましたか",
+      "決定事項",
+    ]) {
+      expect(asksDecisions(q), q).toBe(true);
+    }
+  });
+  it("a decision about a topic or a list request is not a broad question", () => {
+    for (const q of [
+      "What did we decide on the database engine?",
+      "What has been decided about the launch date?",
+      "O que decidimos sobre o motor do banco?",
+      "Show all decisions",
+      "List the decisions of this meeting",
+      "Mostre todas as decisões",
+      "Why did we decide that?",
+      "What was this meeting about?",
+    ]) {
+      expect(asksDecisions(q), q).toBe(false);
+    }
+  });
+  it("a next steps question is detected in the UI languages", () => {
+    for (const q of [
+      "What are the next steps?",
+      "next steps",
+      "What's next?",
+      "What are the action items?",
+      "Quais são os próximos passos?",
+      "Próximos passos",
+      "¿Cuáles son los próximos pasos?",
+      "Was sind die nächsten Schritte?",
+      "Quelles sont les prochaines étapes ?",
+      "Quali sono i prossimi passi?",
+      "次のステップは何ですか",
+    ]) {
+      expect(asksNextSteps(q), q).toBe(true);
+    }
+    for (const q of [
+      "Who will write the rollback plan?",
+      "What are the next steps for the migration budget?",
+      "What did we decide?",
+    ]) {
+      expect(asksNextSteps(q), q).toBe(false);
     }
   });
 });

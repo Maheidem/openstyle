@@ -1585,6 +1585,19 @@ function buildAll(c: Corpus): { gold: GoldSet; threads: ThreadQ[] } {
     }
   }
   void OWNER_ID;
+  /** A decision answered in other words: the full choice or a long word of it. */
+  const decisionAlts = (fs: Fact[]): string[] =>
+    fs.flatMap((f) => {
+      const d = f.slots.d as { choice: L };
+      return [
+        d.choice[0],
+        d.choice[1],
+        ...normalize(`${d.choice[0]} ${d.choice[1]}`)
+          .split(" ")
+          .filter((w) => w.length >= 6),
+      ];
+    });
+
   // ---- threads (P1.2): 4 to 5 turns in one meeting, real answers fed back ------------
   const threads: ThreadQ[] = [];
   {
@@ -1685,6 +1698,7 @@ function buildAll(c: Corpus): { gold: GoldSet; threads: ThreadQ[] } {
       .forEach(([mid, fs], i) => {
         const lang = langAt(i);
         const m = meetingById.get(mid) as Meeting;
+        const choices = decisionAlts(fs);
         const topic = normalize(
           m.overview
             .split(".")[0]
@@ -1703,9 +1717,12 @@ function buildAll(c: Corpus): { gold: GoldSet; threads: ThreadQ[] } {
           lang,
           scope: { kind: "meeting", id: mid },
           turns: [
-            // No key: the search finds no decision text for this broad question.
-            // The next turns must still differ and the overview must be right.
-            t("decided", "What has been decided?", "O que foi decidido?", null),
+            // The decisions of the summary answer it (P1.2).
+            t("decided", "What has been decided?", "O que foi decidido?", {
+              kind: "text",
+              must: [choices],
+              mustNot: [],
+            }),
             t("why", "Why?", "Por quê?", null),
             t(
               "why",
@@ -1725,6 +1742,82 @@ function buildAll(c: Corpus): { gold: GoldSet; threads: ThreadQ[] } {
           facts: goldOf(...fs),
         });
       });
+  }
+
+  // Next steps and decisions of a meeting with a summary (P1.2, coordinator item).
+  {
+    const withItems = c.meetings
+      .filter(
+        (m) =>
+          m.actionItems.some((a) => a.ownerPersonId) && m.decisions.length > 0,
+      )
+      .sort((x, y) => x.id.localeCompare(y.id));
+    withItems.slice(0, 4).forEach((m, i) => {
+      const lang = langAt(i + 1);
+      const owners = m.actionItems
+        .filter((a) => a.ownerPersonId)
+        .flatMap((a) => {
+          const p = person(a.ownerPersonId as string);
+          return [surname(p), asrSurname(p), p.first];
+        });
+      const decisionFacts = c.facts.filter(
+        (f) =>
+          f.family === "decision" && f.meetingId === m.id && f.version === 0,
+      );
+      const choices = decisionAlts(decisionFacts);
+      const topic = normalize(
+        m.overview
+          .split(".")[0]
+          ?.replace(/^.*?(met for|se reuniu para)\s+/i, "") ?? "",
+      )
+        .split(" ")
+        .filter((w) => w.length > 3);
+      const t = (
+        kind: ThreadTurn["kind"],
+        en: string,
+        pt: string,
+        key: AnswerKey | null,
+      ): ThreadTurn => ({ kind, text: lang === "en" ? en : pt, key });
+      const turns: ThreadTurn[] = [
+        t(
+          "steps",
+          "What are the next steps?",
+          "Quais são os próximos passos?",
+          { kind: "text", must: [owners], mustNot: [] },
+        ),
+        t("why", "Why?", "Por quê?", null),
+      ];
+      if (choices.length > 0)
+        turns.push(
+          t(
+            "decided",
+            "What did we decide in this meeting?",
+            "O que decidimos nesta reunião?",
+            {
+              kind: "text",
+              must: [choices],
+              mustNot: [],
+            },
+          ),
+        );
+      turns.push(
+        t(
+          "overview",
+          "But, what WAS this meeting about?",
+          "Mas, sobre o que FOI esta reunião?",
+          topic.length > 0
+            ? { kind: "text", must: [topic], mustNot: [] }
+            : null,
+        ),
+      );
+      threads.push({
+        id: `s${String(i + 1).padStart(2, "0")}`,
+        lang,
+        scope: { kind: "meeting", id: m.id },
+        turns,
+        facts: [],
+      });
+    });
   }
 
   return { gold: { questions, retrieval }, threads };

@@ -197,7 +197,7 @@ export interface Question {
 
 /** One turn of a multi-turn thread (P1.2). A null key means: the answer must differ from the earlier ones. */
 export interface ThreadTurn {
-  kind: "decided" | "fact" | "why" | "switch" | "who" | "overview";
+  kind: "decided" | "steps" | "fact" | "why" | "switch" | "who" | "overview";
   text: string;
   key: AnswerKey | null;
 }

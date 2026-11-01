@@ -175,6 +175,7 @@ export function summarize(rows: ThreadRow[]): Record<string, number> {
   m.leaks = rows.filter((r) => r.leak).length;
   for (const k of [
     "decided",
+    "steps",
     "fact",
     "why",
     "switch",

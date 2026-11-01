@@ -36,7 +36,9 @@ import {
 } from "./context.js";
 import type { ChatLlm } from "./llm.js";
 import {
+  asksDecisions,
   asksForCount,
+  asksNextSteps,
   asksOverview,
   defaultSlots,
   followUpQuery,
@@ -295,15 +297,21 @@ export async function runChatTurn(input: ChatTurnInput): Promise<TurnResult> {
   // long-thread turns on E4B and E2B returned text, after 650 to 850 ms on
   // the Mac. Code makes the search call, with the earlier turn in the query.
   const skipNative = plain && turns.length > 0 && isDependentFollowUp(question);
-  // "What was this meeting about?" reads the summary (P1.2). Code makes the
-  // call: a search for it found chunks of one fact and the model repeated the
-  // earlier answer.
-  if (
-    !write &&
-    turnScope.kind === "meeting" &&
-    turnScope.id &&
-    asksOverview(question)
-  ) {
+  // "What was this meeting about?", "What has been decided?" and "What are the
+  // next steps?" read the summary (P1.2). Code makes the call: a search for
+  // them found chunks of one fact, or nothing. A meeting with no summary falls
+  // back to the search (the rounds below).
+  const summaryKind: "overview" | "decisions" | "steps" | null =
+    !write && turnScope.kind === "meeting" && turnScope.id
+      ? asksOverview(question)
+        ? "overview"
+        : asksNextSteps(question)
+          ? "steps"
+          : asksDecisions(question)
+            ? "decisions"
+            : null
+      : null;
+  if (summaryKind && turnScope.id) {
     const started = Date.now();
     router = "default";
     intent = "lookup";
@@ -311,7 +319,7 @@ export async function runChatTurn(input: ChatTurnInput): Promise<TurnResult> {
       tool: "get_meeting_summary",
       args: { meeting_id: turnScope.id },
     };
-    step("route", "rules:overview", started);
+    step("route", `rules:${summaryKind}`, started);
   }
   if (settings.nativeTools && !skipNative && !first) {
     const started = Date.now();
@@ -577,6 +585,25 @@ export async function runChatTurn(input: ChatTurnInput): Promise<TurnResult> {
     if (round > 1) wide = true;
     for (const call of calls) {
       const r = await run(call);
+      // Decisions and next steps: a search with the words of those lines gives
+      // transcript lines, so a cite can open the spoken segment (P1.2).
+      if (
+        r &&
+        r.rows > 0 &&
+        call.tool === "get_meeting_summary" &&
+        (summaryKind === "decisions" || summaryKind === "steps")
+      ) {
+        const prefix =
+          summaryKind === "decisions" ? "Decision: " : "Action item: ";
+        const words = sources
+          .all()
+          .filter((x) => x.text.startsWith(prefix))
+          .map((x) => x.text.slice(prefix.length).replace(/\s*\(.*\)$/, ""))
+          .join(" ")
+          .slice(0, 200)
+          .trim();
+        if (words) await run({ tool: "search_chunks", args: { query: words } });
+      }
       // A search that found little in a meeting also reads its summary.
       if (
         r &&
@@ -656,7 +683,14 @@ export async function runChatTurn(input: ChatTurnInput): Promise<TurnResult> {
 
   // ---- The not-found floor: the best hit is too weak for an answer. ----
   const floor = input.scoreFloor ?? SCORE_FLOOR;
-  let searched = results.find((r) => r.tool === "search_chunks");
+  // The summary answered a decisions or next steps question: the extra search
+  // only maps cites to the transcript. A weak score there is no reason to stop.
+  const summaryHit =
+    summaryKind !== null &&
+    results.some((r) => r.tool === "get_meeting_summary" && r.rows > 0);
+  let searched = summaryHit
+    ? undefined
+    : results.find((r) => r.tool === "search_chunks");
 
   // Cross-language step (P1.1): a weak first search may come from a question
   // in another language than the meetings. One model call writes the search

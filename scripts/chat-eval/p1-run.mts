@@ -1177,7 +1177,7 @@ async function partThreads(
   await Promise.all(Array.from({ length: Math.min(par, use.length) }, worker));
   rows.sort((a, b) => a.thread.localeCompare(b.thread) || a.turn - b.turn);
   const m = summarizeThreads(rows);
-  let text = `Threads: ${m.threads} threads, ${m.turns} turns (real answers fed back). Turn accuracy ${pct(m.acc as number)}%; decided ${pct(m["acc.decided"] ?? 0)}%, fact ${pct(m["acc.fact"] ?? 0)}%, why ${pct(m["acc.why"] ?? 0)}%, switch ${pct(m["acc.switch"] ?? 0)}%, who ${pct(m["acc.who"] ?? 0)}%, overview ${pct(m["acc.overview"] ?? 0)}%. Repeated answers ${m.repeats}; cite marker leaks ${m.leaks}; errors ${m.errors}; threads all pass ${m.threads_all_pass} of ${m.threads}.\n`;
+  let text = `Threads: ${m.threads} threads, ${m.turns} turns (real answers fed back). Turn accuracy ${pct(m.acc as number)}%; decided ${pct(m["acc.decided"] ?? 0)}%, steps ${pct(m["acc.steps"] ?? 0)}%, fact ${pct(m["acc.fact"] ?? 0)}%, why ${pct(m["acc.why"] ?? 0)}%, switch ${pct(m["acc.switch"] ?? 0)}%, who ${pct(m["acc.who"] ?? 0)}%, overview ${pct(m["acc.overview"] ?? 0)}%. Repeated answers ${m.repeats}; cite marker leaks ${m.leaks}; errors ${m.errors}; threads all pass ${m.threads_all_pass} of ${m.threads}.\n`;
   text += `\n| thread | turn | kind | pass | repeat | tool | cites | answer |\n|---|---|---|---|---|---|---|---|\n`;
   for (const r of rows)
     text += `| ${r.thread} | ${r.turn} | ${r.kind} | ${r.pass ? "ok" : "FAIL"} | ${r.repeat ? "REPEAT" : ""} | ${r.tool ?? ""} | ${r.cites.join(" ")} | ${r.answer.replace(/\s+/g, " ").slice(0, 80)} |\n`;

@@ -300,6 +300,83 @@ export function asksOverview(question: string): boolean {
   return OVERVIEW_RE.test(fold(question)) || OVERVIEW_JA_RE.test(question);
 }
 
+/** Words that ask for the whole list: the review path (a list block) keeps those. */
+const LIST_ALL_RE =
+  /\b(show|list|display|all|every|each|mostre|mostrar|liste|listar|todas?|todos|muestra|muestre|alle|zeige|tous|toutes|montre|tutti|tutte|mostra|elenca)\b|一覧|すべて|全部/u;
+const TAIL =
+  "(?: (?:in|na|nesta|en|esta|in|dans|cette|nella|questa|di|von|der|dieser|bei) (?:this |the |a |la |die |der |das |den |dem |l')?(?:meeting|reuniao|reunion|besprechung|reunion|riunione|call))?(?: (?:so far|ate agora|hasta ahora|bisher|jusqu'ici|finora|today|hoje|hoy|heute|aujourd'hui|oggi|here|aqui))?";
+const DECISIONS_RE = new RegExp(
+  [
+    `^(?:(?:so|and|but|e|mas|y|pero|und|aber|et|mais|ma),? )?(?:what|which)(?: (?:has|have|was|were|is|are))?(?: been)? (?:decided|(?:the )?decisions?)${TAIL}$`,
+    `^(?:(?:so|and|but),? )?what (?:did|do|have) we (?:decide|decided)${TAIL}$`,
+    `^(?:the |any )?decisions?${TAIL}$`,
+    `^o que (?:foi|ficou|ja foi|foi que) decidido${TAIL}$`,
+    `^o que (?:decidimos|a gente decidiu|foi deliberado)${TAIL}$`,
+    `^(?:quais|que) (?:foram )?(?:as )?decisoes${TAIL}$`,
+    `^decisoes${TAIL}$`,
+    `^que (?:se )?(?:decidio|ha decidido|hemos decidido|decidimos)${TAIL}$`,
+    `^cuales (?:fueron )?(?:las )?decisiones${TAIL}$`,
+    `^decisiones${TAIL}$`,
+    `^was (?:wurde|ist|haben wir) (?:\\w+ )?(?:entschieden|beschlossen)${TAIL}$`,
+    `^(?:die )?entscheidungen${TAIL}$`,
+    `^(?:qu'est-ce qui a ete decide|qu'a-t-on decide|qu'avons-nous decide|quelles decisions(?: ont ete prises)?)${TAIL}$`,
+    `^(?:les )?decisions${TAIL}$`,
+    `^(?:cosa|che cosa) (?:e stato deciso|abbiamo deciso|si e deciso)${TAIL}$`,
+    `^(?:le )?decisioni${TAIL}$`,
+  ].join("|"),
+  "u",
+);
+const DECISIONS_JA_RE =
+  /^(?:何が決まりました|何を決めました|決定事項|決まったこと)[かは]?[?？]?$/u;
+
+const NEXT_STEPS_RE = new RegExp(
+  [
+    `^(?:(?:so|and|but),? )?what(?: are| is|'s)(?: the)? (?:next steps?|action items?|to-?dos?|follow-?ups?|what'?s next)${TAIL}$`,
+    `^(?:the )?(?:next steps?|action items?|follow-?ups?)${TAIL}$`,
+    `^what(?:'s| is) next${TAIL}$`,
+    `^(?:quais|o que) (?:sao )?(?:os )?(?:proximos passos|itens de acao|pendencias|tarefas)${TAIL}$`,
+    `^(?:os )?proximos passos${TAIL}$`,
+    `^(?:cuales|que) (?:son )?(?:los )?(?:proximos pasos|tareas pendientes|acciones)${TAIL}$`,
+    `^(?:los )?proximos pasos${TAIL}$`,
+    `^(?:was|welche) (?:sind )?(?:die )?(?:naechsten schritte|nachsten schritte|aufgaben)${TAIL}$`,
+    `^(?:die )?(?:naechsten|nachsten) schritte${TAIL}$`,
+    `^(?:quelles sont )?(?:les )?prochaines etapes${TAIL}$`,
+    `^(?:quali sono )?(?:i )?prossimi passi${TAIL}$`,
+  ].join("|"),
+  "u",
+);
+const NEXT_STEPS_JA_RE =
+  /^(?:次のステップ|今後の予定|アクションアイテム)[はを]?(?:何|なに)?[ですか]*[?？]?$/u;
+
+const tidyAsk = (q: string): string =>
+  fold(q)
+    .replace(/[?!.¿¡\s]+$/u, "")
+    .replace(/^[¿¡\s]+/u, "")
+    .replace(/\s+/g, " ");
+
+/**
+ * "What has been decided?", "o que foi decidido", "decisões": the question
+ * asks for the decisions of the meeting, with no topic. In a meeting scope the
+ * decisions of the summary answer it (P1.2). A question with a topic ("What
+ * did we decide on the database?") stays a search. A request for the whole
+ * list ("show all decisions") stays the list path.
+ */
+export function asksDecisions(question: string): boolean {
+  if (LIST_ALL_RE.test(fold(question))) return false;
+  return (
+    DECISIONS_RE.test(tidyAsk(question)) ||
+    DECISIONS_JA_RE.test(question.trim())
+  );
+}
+
+/** "What are the next steps?": the action items of the summary answer it. */
+export function asksNextSteps(question: string): boolean {
+  return (
+    NEXT_STEPS_RE.test(tidyAsk(question)) ||
+    NEXT_STEPS_JA_RE.test(question.trim())
+  );
+}
+
 /**
  * The search query of a turn (spec 2.8 point 4). A dependent follow-up has no
  * topic of its own, so the query holds the NEW question first, then the earlier
