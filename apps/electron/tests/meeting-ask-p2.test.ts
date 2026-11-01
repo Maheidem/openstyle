@@ -74,18 +74,18 @@ async function setTheme(page: Page, name: "Light" | "Dark"): Promise<void> {
 
 /**
  * Opens the Meetings page and selects a folder in the rail. The page opens the
- * newest meeting first and the rail re-draws while it loads, so the test waits
- * for that meeting before it clicks the folder.
+ * newest meeting first, so the test waits for it before it clicks the folder.
  */
 async function openFolderPanel(page: Page, folderName: string): Promise<void> {
   await page.goto("app://renderer/meetings");
   await expect(page.getByRole("tab", { name: "Transcript" })).toBeVisible({
     timeout: 20_000,
   });
+  // The folder row has a toggle ("Collapse <name>") and a select button
+  // (<name>). The label "Records into <name>" is not a button.
   await page
     .getByTestId("meetings-list-column")
-    .getByText(folderName, { exact: true })
-    .first()
+    .getByRole("button", { name: folderName, exact: true })
     .click();
   await expect(page.getByTestId("folder-tab-overview")).toBeVisible({
     timeout: 20_000,

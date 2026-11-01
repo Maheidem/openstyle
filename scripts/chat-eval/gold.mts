@@ -32,7 +32,6 @@ import type {
   ThreadQ,
   ThreadTurn,
   Turn,
-  WidenQ,
 } from "./types.mts";
 
 const MONTH_EN = [
