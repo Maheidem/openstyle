@@ -8,6 +8,7 @@ import {
   extractFacts,
   failureNote,
   normalizeText,
+  pickCiteTimes,
 } from "../src/lib/chat/cites.js";
 import { SourceMap } from "../src/lib/chat/types.js";
 
@@ -505,5 +506,61 @@ describe("numbers inside words", () => {
   it("p95 is one word, not the number 95", () => {
     const facts = extractFacts("The current p95 latency is 381 ms.", []);
     expect(facts.map((f) => f.norm)).toEqual(["381"]);
+  });
+});
+
+describe("pickCiteTimes (P1.1)", () => {
+  const withSegments = () => {
+    const map = new SourceMap();
+    const src = map.add({
+      kind: "window",
+      meetingId: "m1",
+      title: "Harbor Sync",
+      startedAt: D,
+      startMs: 10_000,
+      endMs: null,
+      itemId: null,
+      text: "filler. the fact. filler.",
+    });
+    map.segments.set(src.label, [
+      { startMs: 10_000, text: "filler" },
+      { startMs: 20_000, text: "the fact" },
+      { startMs: 30_000, text: "filler again" },
+    ]);
+    return { map, label: src.label };
+  };
+
+  it("the best scored segment starts the cite", async () => {
+    const { map, label } = withSegments();
+    await pickCiteTimes([{ cites: [label] }], map, "q", async (_q, texts) =>
+      texts.map((t) => (t === "the fact" ? 0.9 : 0.1)),
+    );
+    expect(map.get(label)?.startMs).toBe(20_000);
+  });
+
+  it("no ranker result leaves the start as it is", async () => {
+    const { map, label } = withSegments();
+    await pickCiteTimes([{ cites: [label] }], map, "q", async () => null);
+    expect(map.get(label)?.startMs).toBe(10_000);
+  });
+
+  it("a summary cite and a one-segment source are not ranked", async () => {
+    const map = new SourceMap();
+    const sum = map.add({
+      kind: "summary",
+      meetingId: "m1",
+      title: "T",
+      startedAt: D,
+      startMs: null,
+      endMs: null,
+      itemId: null,
+      text: "x",
+    });
+    let called = false;
+    await pickCiteTimes([{ cites: [sum.label] }], map, "q", async () => {
+      called = true;
+      return [];
+    });
+    expect(called).toBe(false);
   });
 });

@@ -8,6 +8,7 @@ import type {
   ChatTraceStep,
 } from "@openstyle/validations";
 import { estimatePromptTokens } from "../llm/token-budget.js";
+import { rerankPairs } from "../mlx-rerank/client.js";
 import {
   buildChoices,
   type Choices,
@@ -20,6 +21,7 @@ import {
   checkAnswer,
   citeFromSentences,
   failureNote,
+  pickCiteTimes,
   refineCiteTimes,
   tidyCites,
 } from "./cites.js";
@@ -787,6 +789,28 @@ export async function runChatTurn(input: ChatTurnInput): Promise<TurnResult> {
     if (check.ok) {
       tidyCites(check.sentences, sources);
       refineCiteTimes(check.sentences, sources);
+      try {
+        await pickCiteTimes(
+          check.sentences,
+          sources,
+          followUpQuery(question, priorTurns),
+          async (q, texts) => {
+            try {
+              return await rerankPairs(q, texts, signal);
+            } catch (e) {
+              if (signal.aborted) throw e;
+              return null;
+            }
+          },
+        );
+      } catch (e) {
+        // A client abort or the deadline during the pick ends the turn as before.
+        if (signal.aborted) {
+          const why = stopReason();
+          if (why) return notFound(why);
+        }
+        throw e;
+      }
       const cites = citeFromSentences(check.sentences, sources);
       const blocks: ChatBlock[] = check.sentences.map((s) => ({
         kind: "text",

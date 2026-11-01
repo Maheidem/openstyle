@@ -2,6 +2,8 @@
 // of an empty answer, the cross-language step and the count of mentions.
 // The database has the real schema. `retrieve` and the model are fakes.
 // All text is fictional.
+
+import type { ChatScope } from "@openstyle/validations";
 import { beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 import type { z } from "zod";
 import type { ChatLlm, NativeCallResult } from "../src/lib/chat/llm.js";
@@ -150,7 +152,8 @@ const run = (
 ) =>
   runChatTurn({
     db: getDb(),
-    scope: { kind: "all", id: null },
+    // Scope "all" is for the eval harness; the routes take a meeting or a folder.
+    scope: { kind: "all", id: null } as unknown as ChatScope,
     question,
     history: [],
     settings: { ...SETTINGS, ...over },

@@ -522,3 +522,66 @@ export function assignMissingCites(
     if (best && bestShare >= 0.5) sentence.cites = [best];
   }
 }
+
+/**
+ * Scores texts against a query. One score for each text, or null when no
+ * ranker is available. The pipeline passes the reranker.
+ */
+export type Ranker = (
+  query: string,
+  texts: string[],
+) => Promise<number[] | null>;
+
+/** The most segment texts that one ranker call gets (the reranker limit is 64). */
+const RANK_MAX_TEXTS = 60;
+
+/**
+ * The chip opens the meeting at the line that answers the question. The word
+ * count of `refineCiteTimes` follows the words of the answer sentence: it
+ * fails when the answer is in another language than the meeting, or when the
+ * line that states the fact shares few words with the sentence. The ranker
+ * scores the segments of each cited transcript source against the query in
+ * one call, and the best segment gives the start (P1.1, #402). No ranker
+ * result leaves the start of `refineCiteTimes`.
+ */
+export async function pickCiteTimes(
+  sentences: { cites: string[] }[],
+  sources: SourceMap,
+  query: string,
+  rank: Ranker,
+): Promise<void> {
+  const labels: string[] = [];
+  for (const s of sentences)
+    for (const l of s.cites) {
+      const src = sources.get(l);
+      if (
+        !labels.includes(l) &&
+        src &&
+        (src.kind === "transcript" || src.kind === "window") &&
+        (sources.segments.get(l)?.length ?? 0) > 1
+      )
+        labels.push(l);
+    }
+  const used: string[] = [];
+  const texts: string[] = [];
+  for (const l of labels) {
+    const segs = sources.segments.get(l) ?? [];
+    if (texts.length + segs.length > RANK_MAX_TEXTS) break;
+    used.push(l);
+    texts.push(...segs.map((g) => g.text));
+  }
+  if (texts.length === 0) return;
+  const scores = await rank(query, texts);
+  if (!scores || scores.length !== texts.length) return;
+  let i = 0;
+  for (const l of used) {
+    const segs = sources.segments.get(l) ?? [];
+    const src = sources.get(l);
+    let best = 0;
+    for (let k = 0; k < segs.length; k++)
+      if ((scores[i + k] as number) > (scores[i + best] as number)) best = k;
+    i += segs.length;
+    const seg = segs[best];
+    if (src && seg) src.startMs = seg.startMs;
+  }
+}
