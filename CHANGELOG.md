@@ -1,5 +1,11 @@
 # Changelog
 
+## 2.25.0-alpha.14
+
+### Bug Fixes 🐛
+
+- (chat) Ask tab follow-ups and thread persistence (P1.2) by @Maheidem in [#405](https://github.com/Maheidem/openstyle/pull/405)
+
 ## 2.25.0-alpha.13
 
 ### New Features ✨
