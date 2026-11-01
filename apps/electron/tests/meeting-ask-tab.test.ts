@@ -462,9 +462,11 @@ function defineScenario(): void {
       expect(last?.user).toContain(Q_FACT);
       // The first question had no earlier turn.
       expect(answers[0]?.user).not.toContain("EARLIER QUESTIONS");
+      // A plain follow-up makes no native turn (P1.1): code makes the search
+      // call, and the earlier question is in the search query and in the answer
+      // call above.
       const natives = fake.ofKind("native");
-      expect(natives.at(-1)?.answered).toBe("get_meeting_summary");
-      expect(natives.at(-1)?.system).toContain("Earlier questions");
+      expect(natives.some((n) => n.user.includes(Q_FOLLOW_UP))).toBe(false);
     }
   });
 
