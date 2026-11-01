@@ -110,9 +110,11 @@ CHAT_EVAL_IDS=q008,q130 pnpm chat-eval p1 --only e2e --no-mlflow     # single qu
 | Follow-up query from the earlier question + earlier answer (`followUpQuery`) | q147, q149 fixed; slots 87.5 to 100 (the slot scorer now builds the query like the pipeline) |
 | Review kind by code (`reviewKind`) | 3 slot misses fixed, one model call less |
 | `refineIntent` (date with a number, "when", who words) | Route gold 85.3 to 94.2, blind set 96.0 unchanged |
-| Cheap route (no router and no slot call for a plain question) | Fewer model calls on the slow path |
+| Cheap route (no router and no slot call for a plain question) and no native turn for a plain follow-up | Mac route + slots p95 814 to 561 ms (E4B) |
+| Cite start by the reranker (`pickCiteTimes`) | Cite precision 0.849 to 0.884 (gold), 0.795 to 0.841 (held-out) on the desktop |
 | Cross-language query rewrite on a weak first search | q103 fixed. q018 stays: the model writes "standard topic" for "tema padrão" |
 | Count of mentions by SQL (`countMentions`) | q070 to q072 fixed |
+| Question text as the search query (instead of the model words) | Removed. It raised the best score of unanswerable questions on E2B (0.06 to 0.56) and broke the not-found floor |
 | Empty-answer retry at a top score of 0.9 | Removed. It fixed nothing after the segment pick, and it broke q130 (not answerable, top score 0.98) in two variants |
 
 The bars (`BARS` in `p1-score.mts`; thresholds are never changed in code):
