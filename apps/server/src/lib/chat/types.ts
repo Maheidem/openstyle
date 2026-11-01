@@ -45,6 +45,7 @@ export class SourceMap {
   readonly segments = new Map<string, { startMs: number; text: string }[]>();
 
   private readonly byLabel = new Map<string, Source>();
+  private counter = 0;
 
   /** Adds a source and gives it the next label. An equal source returns the first one. */
   add(s: Omit<Source, "label">): Source {
@@ -59,10 +60,18 @@ export class SourceMap {
         return e;
       }
     }
-    const label = `S${this.byLabel.size + 1}`;
+    const label = `S${++this.counter}`;
     const src: Source = { ...s, label };
     this.byLabel.set(label, src);
     return src;
+  }
+
+  /** Removes sources (a weak search that a better search replaced). Labels are not reused. */
+  remove(labels: Iterable<string>): void {
+    for (const l of labels) {
+      this.byLabel.delete(l);
+      this.segments.delete(l);
+    }
   }
 
   get(label: string): Source | undefined {

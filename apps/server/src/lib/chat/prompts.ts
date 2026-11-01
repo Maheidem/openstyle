@@ -52,7 +52,7 @@ export const ANSWER_SCHEMA: StepSchema<{
 export const ANSWER_SYSTEM = `You answer a question about meeting notes. Use ONLY the numbered sources.
 Write 1 to 3 short sentences in the language of the question. State the answer first.
 One sentence states one fact. Put the labels of the sources that show the fact in "cites", for example ["S2"].
-Copy names, numbers and dates exactly as the sources write them.
+Copy names, numbers and dates exactly as the sources write them. Write the full name of a person (first and last name) when the sources have it.
 Return an empty "sentences" list ONLY when no source speaks about the topic of the question.
 Never use knowledge from outside the sources.`;
 
@@ -138,3 +138,21 @@ const LIST_RE =
 export function asksForList(question: string): boolean {
   return LIST_RE.test(question);
 }
+
+/** Words that ask where a project stands, in the 7 UI languages. */
+const STATUS_RE =
+  /\b(where do we stand|where are we|status of|how is .* going|em que p[eé] estamos|como est[aá]|como anda|d[oó]nde estamos|c[oó]mo va|wo stehen wir|wie steht|o[uù] en sommes|o[uù] en est|a che punto|come procede)\b|どうなって|状況|進捗/iu;
+
+export function asksForStatus(question: string): boolean {
+  return STATUS_RE.test(question);
+}
+
+/** The query rewrite (cross-language step): English search words for a question in another language. */
+export const QUERY_SCHEMA: StepSchema<{ query: string }> = {
+  name: "chat_query",
+  version: 1,
+  zod: z.object({ query: z.string().max(120) }),
+};
+
+export const QUERY_SYSTEM =
+  "Translate a question about meeting notes into English search words. Write 3 to 8 key words. Keep names and numbers as they are. Do not answer the question. Do not add words that the question does not have.";

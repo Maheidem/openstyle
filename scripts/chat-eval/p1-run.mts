@@ -436,7 +436,10 @@ async function partRouter(
         maxOutputTokens: mods.prompts.ROUTER_MAX_TOKENS,
       });
       llm.finish("succeeded");
-      const pred = r.object.intent as Intent;
+      const raw = r.object.intent as Intent;
+      const pred = intents.has(raw)
+        ? mods.plan.refineIntent(it.text, raw, env.corpus.todayMs)
+        : raw;
       return {
         pred: intents.has(pred) ? pred : null,
         ms: performance.now() - t,
@@ -568,7 +571,13 @@ async function partSlots(
     const llm = zod ? await newLlm(env, `slots-${q.id}`, signal) : null;
     const historyText = mods.context.renderHistory(turns.slice(-2));
     const t = performance.now();
-    let slots: Record<string, unknown> = { ...mods.plan.defaultSlots(q.text) };
+    let slots: Record<string, unknown> = {
+      ...mods.plan.defaultSlots(
+        q.text,
+        turns.map((t) => ({ question: t.question, answer: t.answer })),
+        q.intent,
+      ),
+    };
     let err: string | null = null;
     try {
       if (!zod || !llm) throw new Error("no slot call");
@@ -736,6 +745,8 @@ interface E2eRow {
   invalidCites: string[];
   /** Count of the shown cites by source kind. */
   citeKinds?: Record<string, number>;
+  /** Meeting id and start_ms of each shown cite (diagnosis of the cite precision). */
+  citeStarts?: { meeting_id: string; start_ms: number | null; kind: string }[];
   toolCalls: { tool: string; rows: number; args?: unknown }[];
   notes?: string[];
   blocks: string[];
@@ -869,6 +880,11 @@ async function partE2e(env: Env, M: Record<string, number>): Promise<PartOut> {
           m[c.kind] = (m[c.kind] ?? 0) + 1;
           return m;
         }, {}),
+        citeStarts: res.cites.map((c) => ({
+          meeting_id: c.meeting_id,
+          start_ms: c.start_ms,
+          kind: c.kind,
+        })),
         toolCalls: res.toolCalls.map((c) => ({
           tool: c.tool,
           rows: c.rows,

@@ -34,8 +34,11 @@ import type { ChatLlm } from "./llm.js";
 import {
   asksForCount,
   defaultSlots,
+  followUpQuery,
+  mentionPhrase,
   planFor,
   plannedCalls,
+  refineIntent,
   slotSystem,
   slotZod,
 } from "./plan.js";
@@ -45,11 +48,14 @@ import {
   ANSWER_SYSTEM,
   answerUser,
   asksForList,
+  asksForStatus,
   asksWho,
   isoDay,
   looksLikeWrite,
   NATIVE_MAX_TOKENS,
   nativeSystem,
+  QUERY_SCHEMA,
+  QUERY_SYSTEM,
   ROUTER_MAX_TOKENS,
   ROUTER_SCHEMA,
   ROUTER_SYSTEM,
@@ -57,7 +63,7 @@ import {
 } from "./prompts.js";
 import { proposalFor } from "./proposals.js";
 import type { ChatSettings } from "./settings.js";
-import { runTool } from "./tools.js";
+import { countMentions, runTool } from "./tools.js";
 import {
   type Intent,
   SourceMap,
@@ -173,6 +179,10 @@ export async function runChatTurn(input: ChatTurnInput): Promise<TurnResult> {
     })),
   );
   const priorQuestions = turns.map((t) => t.question);
+  const priorTurns = turns.map((t) => ({
+    question: t.question,
+    answer: t.answer,
+  }));
   let router: ChatTrace["router"] = "skipped";
   let intent: Intent | null = null;
   let proposal: TurnResult["proposal"] = null;
@@ -288,6 +298,18 @@ export async function runChatTurn(input: ChatTurnInput): Promise<TurnResult> {
         });
         if (v.ok) {
           first = { tool: v.args.tool, args: v.args.args };
+          // The model writes the topic words of a search. They drop words that
+          // the reranker needs ("who proposed"). Code gives the question as
+          // the query and keeps the arguments of the model (P1.1).
+          if (first.tool === "search_chunks") {
+            first = {
+              ...first,
+              args: {
+                ...(first.args as object),
+                query: question.slice(0, 200),
+              },
+            };
+          }
           router = "native";
           step("route", `native:${v.args.tool}`, started);
         } else {
@@ -311,6 +333,24 @@ export async function runChatTurn(input: ChatTurnInput): Promise<TurnResult> {
   }
 
   let fallbackCalls: Call[] = [];
+  const plain =
+    !write &&
+    !asksForList(question) &&
+    !asksForCount(question) &&
+    !asksForStatus(question);
+  if (!first && plain) {
+    // The cheap route (P1.1): a question that asks for no list, no count, no
+    // status and no change reads text. Code makes the search call. No router
+    // call and no slot call run (two model calls less on the slow path).
+    const started = Date.now();
+    router = "default";
+    intent = "lookup";
+    first = {
+      tool: "search_chunks",
+      args: { query: question.slice(0, 200) },
+    };
+    step("route", "rules:lookup", started);
+  }
   if (!first) {
     const started = Date.now();
     router = "structured";
@@ -332,7 +372,11 @@ export async function runChatTurn(input: ChatTurnInput): Promise<TurnResult> {
         ],
         maxOutputTokens: ROUTER_MAX_TOKENS,
       });
-      routed = r.object.intent === "other" ? "lookup" : r.object.intent;
+      routed = refineIntent(
+        question,
+        r.object.intent === "other" ? "lookup" : r.object.intent,
+        todayMs,
+      );
       step("route", `intent:${r.object.intent}`, started);
     } catch (e) {
       if (signal.aborted) {
@@ -345,7 +389,7 @@ export async function runChatTurn(input: ChatTurnInput): Promise<TurnResult> {
     intent = routed;
     // Dates: a temporal question with no date range reads text, like a lookup.
     const slotsStarted = Date.now();
-    let slots = defaultSlots(question);
+    let slots = defaultSlots(question, [], routed);
     const zod = slotZod(routed, choices);
     if (zod && !(await stopOrNull())) {
       try {
@@ -421,13 +465,10 @@ export async function runChatTurn(input: ChatTurnInput): Promise<TurnResult> {
     const widen = (c: Call): Call => {
       if (c.tool !== "search_chunks") return c;
       const a = c.args as { query?: string };
-      const parts = [
-        turns[0]?.question,
-        turns.at(-1)?.question,
-        a.query ?? question,
-      ].filter((x): x is string => !!x);
-      const query = [...new Set(parts)].join(" ").slice(0, 200);
-      return { ...c, args: { ...a, query } };
+      return {
+        ...c,
+        args: { ...a, query: followUpQuery(question, priorTurns, a.query) },
+      };
     };
     first = widen(first);
     fallbackCalls = fallbackCalls.map(widen);
@@ -440,6 +481,25 @@ export async function runChatTurn(input: ChatTurnInput): Promise<TurnResult> {
       proposal = proposalFor(db, turnScope, first.tool, first.args);
     }
     return finish([{ kind: "read_only" }], [], "");
+  }
+
+  // ---- Count of meetings that name something: a code count (P1.1). ----
+  if (!write) {
+    const phrase = mentionPhrase(question);
+    if (phrase) {
+      const started = Date.now();
+      const r = countMentions(ctx, phrase);
+      toolCalls.push({
+        tool: "count_mentions",
+        args: { phrase },
+        rows: r.rows,
+      });
+      step("tool", "count_mentions", started, r.rows);
+      const cites = r.labels
+        .map((l) => sources.toCite(l))
+        .filter((c): c is ChatCite => c !== null);
+      return finish(r.blocks, cites, "");
+    }
   }
 
   // ---- Stage 3: tools, in rounds. ----
@@ -483,7 +543,7 @@ export async function runChatTurn(input: ChatTurnInput): Promise<TurnResult> {
         : plannedCalls(
             intent,
             turnScope,
-            defaultSlots(question),
+            defaultSlots(question, priorTurns, intent),
             choices,
             question,
             todayMs,
@@ -571,7 +631,63 @@ export async function runChatTurn(input: ChatTurnInput): Promise<TurnResult> {
 
   // ---- The not-found floor: the best hit is too weak for an answer. ----
   const floor = input.scoreFloor ?? SCORE_FLOOR;
-  const searched = results.find((r) => r.tool === "search_chunks");
+  let searched = results.find((r) => r.tool === "search_chunks");
+
+  // Cross-language step (P1.1): a weak first search may come from a question
+  // in another language than the meetings. One model call writes the search
+  // words in the language of the weak hit. A better second search replaces
+  // the first one. Else the floor below ends the turn as before.
+  if (
+    floor > 0 &&
+    searched &&
+    searched.topScore !== null &&
+    searched.topScore < floor &&
+    !(await stopOrNull())
+  ) {
+    const firstSearch = toolCalls.find((c) => c.tool === "search_chunks");
+    if (firstSearch) {
+      const started = Date.now();
+      try {
+        const r = await llm.structured({
+          step: "chatSlots",
+          unitKey: "route/query",
+          schema: QUERY_SCHEMA,
+          system: QUERY_SYSTEM,
+          messages: [{ role: "user", content: question }],
+          maxOutputTokens: SLOT_MAX_TOKENS,
+        });
+        const query = r.object.query.trim();
+        step("slots", "query rewrite", started, null, query.slice(0, 80));
+        if (query !== "") {
+          const before = searched;
+          const second = await run({
+            tool: "search_chunks",
+            args: { ...(firstSearch.args as object), query },
+          });
+          if (
+            second &&
+            second.topScore !== null &&
+            second.topScore > (before.topScore ?? 0)
+          ) {
+            const keep = new Set(second.labels);
+            sources.remove(before.labels.filter((l) => !keep.has(l)));
+            searched = second;
+          } else if (second) {
+            const keep = new Set(before.labels);
+            sources.remove(second.labels.filter((l) => !keep.has(l)));
+          }
+        }
+      } catch (e) {
+        step(
+          "slots",
+          "query rewrite",
+          started,
+          null,
+          gatewayKind(e) || "error",
+        );
+      }
+    }
+  }
   if (
     floor > 0 &&
     searched &&
