@@ -315,12 +315,13 @@ describe("POST /threads/:id/messages", () => {
     expect(users).toEqual([{ content: "first" }, { content: "third" }]);
   });
 
-  it("a client abort closes the run cancelled and stores no answer", async () => {
+  it("a client that leaves does not cancel the turn: the answer is stored (P1.2)", async () => {
     writeSetting(SETTINGS_KEYS.meetingChatEnabled, "true");
+    let release: () => void = () => {};
     pipeline.run.mockImplementation(
-      ({ signal }: { signal: AbortSignal }) =>
-        new Promise((_, reject) => {
-          signal.addEventListener("abort", () => reject(new Error("aborted")));
+      () =>
+        new Promise((resolve) => {
+          release = () => resolve(turnResult());
         }),
     );
     const id = await newThread();
@@ -328,17 +329,53 @@ describe("POST /threads/:id/messages", () => {
     const pending = ask(id, "q", { signal: controller.signal });
     await vi.waitFor(() => expect(pipeline.run).toHaveBeenCalledTimes(1));
     controller.abort();
+    // The client is gone. The thread shows the question and a running turn.
+    const mid = chatThreadDetailSchema.parse(
+      await (await app.request(`/api/chat/threads/${id}`)).json(),
+    );
+    expect(mid.pending).toBe(true);
+    expect(mid.messages.map((m) => m.role)).toEqual(["user"]);
+    // The turn ends. The answer is saved and the run is closed as succeeded.
+    release();
     await Promise.resolve(pending).catch(() => {});
+    await vi.waitFor(() => {
+      const roles = db()
+        .prepare(
+          "SELECT role FROM chat_messages WHERE thread_id = ? ORDER BY id",
+        )
+        .all(id);
+      expect(roles).toEqual([{ role: "user" }, { role: "assistant" }]);
+    });
     await vi.waitFor(() => {
       const run = db()
         .prepare("SELECT status FROM llm_runs WHERE scope_id = ?")
         .get(id) as { status: string } | undefined;
-      expect(run?.status).toBe("cancelled");
+      expect(run?.status).toBe("succeeded");
     });
-    const roles = db()
-      .prepare("SELECT role FROM chat_messages WHERE thread_id = ?")
-      .all(id);
-    expect(roles).toEqual([{ role: "user" }]);
+    const done = chatThreadDetailSchema.parse(
+      await (await app.request(`/api/chat/threads/${id}`)).json(),
+    );
+    expect(done.pending).toBe(false);
+    expect(done.failure).toBeNull();
+  });
+
+  it("a failed turn of a client that left shows as a failure in the detail (P1.2)", async () => {
+    writeSetting(SETTINGS_KEYS.meetingChatEnabled, "true");
+    pipeline.run.mockRejectedValue(new Error("boom"));
+    const id = await newThread();
+    expect((await ask(id, "q")).status).toBe(502);
+    const detail = chatThreadDetailSchema.parse(
+      await (await app.request(`/api/chat/threads/${id}`)).json(),
+    );
+    expect(detail.pending).toBe(false);
+    expect(detail.failure).toEqual({ reason: "failed" });
+    // The next question clears the failure.
+    pipeline.run.mockResolvedValue(turnResult());
+    expect((await ask(id, "again")).status).toBe(200);
+    const after = chatThreadDetailSchema.parse(
+      await (await app.request(`/api/chat/threads/${id}`)).json(),
+    );
+    expect(after.failure).toBeNull();
   });
 
   it("rejects an empty or too long question with 400", async () => {

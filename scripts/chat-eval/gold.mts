@@ -28,6 +28,8 @@ import type {
   RetrievalQuery,
   RetrievalSlice,
   Scope,
+  ThreadQ,
+  ThreadTurn,
   Turn,
 } from "./types.mts";
 
@@ -67,6 +69,15 @@ type Vendor = { name: string; asr: string };
 type Sub = { s: L };
 
 export function buildGold(c: Corpus): GoldSet {
+  return buildAll(c).gold;
+}
+
+/** Multi-turn threads of the follow-up regression (P1.2). Not part of the gold hash. */
+export function buildThreads(c: Corpus): ThreadQ[] {
+  return buildAll(c).threads;
+}
+
+function buildAll(c: Corpus): { gold: GoldSet; threads: ThreadQ[] } {
   const _r = rng(c.seed ^ 0x9e3779b9);
   const people = new Map(c.people.map((p) => [p.id, p]));
   const meetingById = new Map(c.meetings.map((m) => [m.id, m]));
@@ -1574,5 +1585,90 @@ export function buildGold(c: Corpus): GoldSet {
     }
   }
   void OWNER_ID;
-  return { questions, retrieval };
+  // ---- threads (P1.2): 4 to 5 turns in one meeting, real answers fed back ------------
+  const threads: ThreadQ[] = [];
+  {
+    const pool = ["quote", "date", "metric", "decision"].flatMap((fam) =>
+      factsOf(fam).filter(stable),
+    );
+    const byMeeting = new Map<string, Fact[]>();
+    for (const f of pool) {
+      const arr = byMeeting.get(f.meetingId) ?? [];
+      arr.push(f);
+      byMeeting.set(f.meetingId, arr);
+    }
+    const metas = [...byMeeting.entries()]
+      .filter(([, fs]) => fs.length >= 2)
+      .sort(([x], [y]) => x.localeCompare(y));
+    const WHY = [
+      ["Why?", "Por quê?"],
+      ["But why did we decide that?", "Mas por que decidimos isso?"],
+      ["And why is that?", "E por que isso?"],
+    ] as const;
+    metas.slice(0, 12).forEach(([mid, fs], i) => {
+      const lang = langAt(i);
+      const m = meetingById.get(mid) as Meeting;
+      const a = fs[0] as Fact;
+      const b = fs[1] as Fact;
+      const whyText = WHY[i % WHY.length]?.[lang === "en" ? 0 : 1] as string;
+      // The speaker of a fact, when a person (not the account owner) says it.
+      const whoOf = (f: Fact): AnswerKey | null =>
+        f.speakerPersonId ? personKey(f.speakerPersonId) : null;
+      // The summary names the topic in English ("Vendor Audit"). A model may
+      // write it in the language of the question, so the key takes both.
+      const ALIAS: Record<string, string[]> = {
+        vendor: ["fornecedores", "fornecedor"],
+        audit: ["auditoria"],
+        migration: ["migracao"],
+        pricing: ["precos", "preco", "precificacao"],
+        mobile: ["movel"],
+        relaunch: ["relancamento", "lancamento"],
+        sync: ["sincronizacao", "alinhamento"],
+        team: ["equipe", "time"],
+      };
+      const topic = normalize(
+        m.overview
+          .split(".")[0]
+          ?.replace(/^.*?(met for|se reuniu para)\s+/i, "") ?? "",
+      )
+        .split(" ")
+        .filter((w) => w.length > 3)
+        .flatMap((w) => [w, ...(ALIAS[w] ?? [])]);
+      const T = (
+        kind: ThreadTurn["kind"],
+        text: string,
+        key: AnswerKey | null,
+      ): ThreadTurn => ({ kind, text, key });
+      const factA = T("fact", ask(a, lang), valueKey(a));
+      const why = T("why", whyText, null);
+      const factB = T("switch", ask(b, lang), valueKey(b));
+      const whoText = lang === "en" ? "Who said that?" : "Quem disse isso?";
+      const whoA = T("who", whoText, whoOf(a));
+      const whoB = T("who", whoText, whoOf(b));
+      const over = T(
+        "overview",
+        lang === "en"
+          ? "But, what WAS this meeting about?"
+          : "Mas, sobre o que FOI esta reunião?",
+        topic.length > 0 ? { kind: "text", must: [topic], mustNot: [] } : null,
+      );
+      const orders = [
+        [factA, why, whoA, factB, over],
+        [over, factA, why, factB, whoB],
+        [factA, why, over, factB, whoB],
+      ];
+      const turns = (orders[i % 3] as ThreadTurn[]).filter(
+        (t) => t.kind !== "who" || t.key !== null,
+      );
+      threads.push({
+        id: `t${String(i + 1).padStart(2, "0")}`,
+        lang,
+        scope: { kind: "meeting", id: mid },
+        turns,
+        facts: goldOf(a, b),
+      });
+    });
+  }
+
+  return { gold: { questions, retrieval }, threads };
 }

@@ -196,5 +196,9 @@ export type ChatAskReply = z.infer<typeof chatAskReplySchema>;
 export const chatThreadDetailSchema = z.object({
   thread: chatThreadSchema,
   messages: z.array(chatMessageSchema),
+  /** True while a turn of this thread runs on the server (P1.2). */
+  pending: z.boolean(),
+  /** The last turn failed and saved no answer (the client was gone). */
+  failure: z.object({ reason: z.string() }).nullable(),
 });
 export type ChatThreadDetail = z.infer<typeof chatThreadDetailSchema>;

@@ -53,6 +53,8 @@ export const ANSWER_SYSTEM = `You answer a question about meeting notes. Use ONL
 Write 1 to 3 short sentences in the language of the question. State the answer first.
 One sentence states one fact. Put the labels of the sources that show the fact in "cites", for example ["S2"].
 Copy names, numbers and dates exactly as the sources write them. Write the full name of a person (first and last name) when the sources have it.
+Never write a source label such as [S1] inside a sentence. The labels go in "cites" only.
+Answer the new question. Earlier questions give context only: do not copy an earlier answer.
 Return an empty "sentences" list ONLY when no source speaks about the topic of the question.
 Never use knowledge from outside the sources.`;
 

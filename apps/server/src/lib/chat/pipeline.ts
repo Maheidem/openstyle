@@ -23,6 +23,7 @@ import {
   failureNote,
   pickCiteTimes,
   refineCiteTimes,
+  stripCiteMarkers,
   tidyCites,
 } from "./cites.js";
 import {
@@ -35,8 +36,10 @@ import {
 import type { ChatLlm } from "./llm.js";
 import {
   asksForCount,
+  asksOverview,
   defaultSlots,
   followUpQuery,
+  isDependentFollowUp,
   mentionPhrase,
   planFor,
   plannedCalls,
@@ -290,8 +293,26 @@ export async function runChatTurn(input: ChatTurnInput): Promise<TurnResult> {
   // native turn: all 10 follow-ups of the eval and 13 of 20 follow-ups and
   // long-thread turns on E4B and E2B returned text, after 650 to 850 ms on
   // the Mac. Code makes the search call, with the earlier turn in the query.
-  const skipNative = plain && turns.length > 0;
-  if (settings.nativeTools && !skipNative) {
+  const skipNative = plain && turns.length > 0 && isDependentFollowUp(question);
+  // "What was this meeting about?" reads the summary (P1.2). Code makes the
+  // call: a search for it found chunks of one fact and the model repeated the
+  // earlier answer.
+  if (
+    !write &&
+    turnScope.kind === "meeting" &&
+    turnScope.id &&
+    asksOverview(question)
+  ) {
+    const started = Date.now();
+    router = "default";
+    intent = "lookup";
+    first = {
+      tool: "get_meeting_summary",
+      args: { meeting_id: turnScope.id },
+    };
+    step("route", "rules:overview", started);
+  }
+  if (settings.nativeTools && !skipNative && !first) {
     const started = Date.now();
     const names = visibleToolNames(turnScope.kind, write);
     try {
@@ -776,6 +797,9 @@ export async function runChatTurn(input: ChatTurnInput): Promise<TurnResult> {
       return notFound("no_sources");
     }
     const started5 = Date.now();
+    for (const sentence of parsed.sentences) {
+      sentence.text = stripCiteMarkers(sentence.text);
+    }
     assignMissingCites(parsed.sentences, sources);
     const check = checkAnswer({
       sentences: parsed.sentences,

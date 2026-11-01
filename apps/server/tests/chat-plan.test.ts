@@ -4,8 +4,10 @@ import { describe, expect, it } from "vitest";
 import type { Choices } from "../src/lib/chat/choices.js";
 import {
   asksForCount,
+  asksOverview,
   defaultSlots,
   followUpQuery,
+  isDependentFollowUp,
   mentionPhrase,
   planFor,
   plannedCalls,
@@ -324,14 +326,14 @@ describe("follow-up query (P1.1)", () => {
   const turns = [
     { question: "Who will write the rollback plan?", answer: "Ana Silvestre" },
   ];
-  it("holds the earlier question, its answer and the new question", () => {
+  it("holds the new question, the earlier question and its answer", () => {
     expect(followUpQuery("And when is that due?", turns)).toBe(
-      "Who will write the rollback plan? Ana Silvestre And when is that due?",
+      "And when is that due? Who will write the rollback plan? Ana Silvestre",
     );
   });
   it("uses the base query of the model instead of the question", () => {
     expect(followUpQuery("and when?", turns, "rollback plan due")).toBe(
-      "Who will write the rollback plan? Ana Silvestre rollback plan due",
+      "rollback plan due Who will write the rollback plan? Ana Silvestre",
     );
   });
   it("my first question points to the first turn", () => {
@@ -347,7 +349,7 @@ describe("follow-up query (P1.1)", () => {
   it("leaves out an answer that names no topic and cuts at 200 characters", () => {
     expect(
       followUpQuery("when?", [{ question: "Q1?", answer: "found nothing" }]),
-    ).toBe("Q1? when?");
+    ).toBe("when? Q1?");
     expect(
       followUpQuery("x".repeat(300), [{ question: "Q1?", answer: "a" }]).length,
     ).toBeLessThanOrEqual(200);
@@ -356,7 +358,76 @@ describe("follow-up query (P1.1)", () => {
     expect(defaultSlots("and when?", turns).query).toContain(
       "rollback plan? Ana Silvestre",
     );
+    expect(defaultSlots("and when?", turns).query).toMatch(/^and when\?/);
     expect(defaultSlots("who owns it?").query).toBe("who owns it?");
+  });
+});
+
+describe("follow-up or new topic (P1.2)", () => {
+  const long = [
+    {
+      question: "What has been decided?",
+      answer:
+        "The team decided to move the database to Postgres before the cutover window on Sunday night. ".repeat(
+          4,
+        ),
+    },
+  ];
+  it("a short question or one with a reference word is a follow-up", () => {
+    for (const q of [
+      "Why?",
+      "Por quê?",
+      "But why did we decide that?",
+      "Who said that?",
+      "Quem disse isso?",
+      "And when is that due?",
+      "E para quando isso é?",
+      "Back to my first question: when is that task due?",
+      "それはいつ?",
+    ]) {
+      expect(isDependentFollowUp(q), q).toBe(true);
+    }
+  });
+  it("a question with its own topic is not a follow-up", () => {
+    for (const q of [
+      "What did we decide on the database engine?",
+      "How much is the quote for the network gateway?",
+      "Quando é o teste de rollback?",
+      "What did this meeting decide about the budget for hosting?",
+    ]) {
+      expect(isDependentFollowUp(q), q).toBe(false);
+    }
+  });
+  it("a new topic searches with its own words only", () => {
+    const q = "What did we decide on the database engine?";
+    expect(followUpQuery(q, long)).toBe(q);
+  });
+  it("a follow-up query is not taken over by a long earlier answer", () => {
+    const query = followUpQuery("Why?", long);
+    expect(query.startsWith("Why? What has been decided?")).toBe(true);
+    expect(query.length).toBeLessThan(150);
+  });
+  it("detects an overview question in the UI languages", () => {
+    for (const q of [
+      "But, what WAS this meeting about?",
+      "What was this meeting about?",
+      "Sobre o que foi esta reunião?",
+      "Mas, sobre o que FOI esta reunião?",
+      "¿De qué trató esta reunión?",
+      "Worum ging es in dieser Besprechung?",
+      "De quoi parlait cette réunion ?",
+      "Di cosa trattava questa riunione?",
+      "この会議は何についてでしたか",
+    ]) {
+      expect(asksOverview(q), q).toBe(true);
+    }
+    for (const q of [
+      "What did we decide on the database engine?",
+      "Who will write the rollback plan?",
+      "When is the launch?",
+    ]) {
+      expect(asksOverview(q), q).toBe(false);
+    }
   });
 });
 

@@ -209,12 +209,98 @@ const FIRST_RE =
   /\b(first|primeira|primeiro|primera|primero|erste[nr]?|premi[eè]re|premier|prima|primo)\b|最初/iu;
 /** Short answers that describe no topic. */
 const EMPTY_ANSWER = /^(gave no answer|found nothing)$/i;
+/** The part of the earlier answer that joins the query, in characters. */
+const ANSWER_HEAD_CHARS = 100;
 
 /**
- * The search query of a follow-up (spec 2.8 point 4). A follow-up has no topic
- * of its own ("and when is that due?"). The topic is in the earlier question,
- * and the earlier answer names the person or thing. Code builds the query from
- * both. "my first question" points to the first turn, else the last turn.
+ * Words that point back to an earlier turn, in the 7 UI languages: "that",
+ * "isso", "ele", "dies", "cela", "questo", "それ". A question that holds one of
+ * them and is short has no topic of its own.
+ */
+const REFERENCE_RE =
+  /\b(that|this|it|they|them|he|she|him|her|those|these|isso|isto|esse|essa|esses|essas|este|esta|aquilo|ele|ela|eles|elas|disso|dele|dela|eso|esto|ese|esa|ello|[eé]l|ella|ellos|das|dies|diese[rsnm]?|es|er|sie|ihn|ihm|ce|cela|[cç]a|ces|il|elle|ils|elles|questo|questa|quello|quella|lui|lei|loro)\b|それ|これ|その|この|あれ|彼/iu;
+/** Words that ask for a reason or a speaker. They need a topic from the turn before. */
+const DEPENDENT_WORD_RE =
+  /\b(why|por\s*qu[eê]|porque|pourquoi|warum|perch[eé]|who|quem|qui[eé]n|qui|wer|chi)\b|なぜ|どうして|誰/iu;
+/** A conjunction at the start of a question: "And when...", "But why...". */
+const CONJUNCTION_START_RE =
+  /^\s*(and|but|so|then|also|e|mas|ent[aã]o|y|pero|entonces|und|aber|dann|et|mais|alors|ma|quindi|e poi)\b/iu;
+/** "this meeting" names the meeting. It points to no earlier turn. */
+const THIS_MEETING_RE =
+  /\b(this|that|esta|essa|esse|este|deste|desta|dessa|diese[rsn]?|cette|questa|questo)\s+(meeting|call|reuni[aã]o|reunion|reuni[oó]n|besprechung|r[eé]union|riunione)\b|この会議/giu;
+
+const wordCount = (q: string) =>
+  q
+    .trim()
+    .split(/[\s,;:.?!]+/u)
+    .filter(Boolean).length;
+
+/**
+ * True when the question has no topic of its own and leans on the turn before
+ * ("Why?", "And when is that due?", "Who said that?", "my first question").
+ * A question with its own topic ("What did we decide on the database
+ * engine?") is a new topic: it must NOT search with the earlier turn (P1.2:
+ * the old answer took over the query and the same chunk came back).
+ */
+export function isDependentFollowUp(question: string): boolean {
+  const q = question.replace(THIS_MEETING_RE, " ").trim();
+  if (FIRST_RE.test(q)) return true;
+  const n = wordCount(q);
+  const cjk = /[\u3040-\u30ff\u4e00-\u9fff]/u.test(q);
+  const short = cjk ? q.length <= 14 : n <= 3;
+  if (short) return true;
+  if (CONJUNCTION_START_RE.test(q) && n <= 9) return true;
+  const medium = cjk ? q.length <= 24 : n <= 8;
+  return medium && (REFERENCE_RE.test(q) || DEPENDENT_WORD_RE.test(q));
+}
+
+/** "What was this meeting about?": the summary answers, not a search. */
+const OVERVIEW_RE = new RegExp(
+  [
+    // en
+    "what (?:was|is|were) (?:this|the|that) (?:meeting|call) (?:about|for)",
+    "what (?:was|is) (?:this|the) (?:meeting|call)",
+    "what did we (?:discuss|talk about|cover)",
+    "(?:summary|summarize|summarise|overview|recap) (?:of )?(?:this|the) (?:meeting|call)",
+    "(?:summary|summarize|summarise|overview|recap) (?:this|the) (?:meeting|call)",
+    "tell me about this (?:meeting|call)",
+    // pt (accents are folded)
+    "sobre o que (?:foi|e|era) (?:esta|essa|a) reuniao",
+    "(?:do|de) que (?:se )?(?:tratou|trata|foi|falou) (?:esta|essa|a) reuniao",
+    "qual (?:foi|e) o assunto (?:desta|dessa|da) reuniao",
+    "(?:resumo|resuma|resumir) (?:da|desta|dessa) reuniao",
+    "o que (?:discutimos|conversamos|falamos)",
+    // es
+    "de que (?:trato|trata|fue|va) (?:esta|la) reunion",
+    "(?:resumen|resume) (?:de )?(?:esta|la) reunion",
+    "que (?:discutimos|hablamos)",
+    // de
+    "worum (?:ging|geht) es in (?:dieser|der) besprechung",
+    "(?:zusammenfassung|uberblick) (?:von |der |dieser )?besprechung",
+    // fr
+    "de quoi (?:parlait|traitait|s'agissait) (?:cette|la) reunion",
+    "(?:resume|resumer) (?:de )?(?:cette|la) reunion",
+    // it
+    "di cosa (?:trattava|parlava|si e parlato) (?:questa|la) riunione",
+    "(?:riassunto|riassumi|sintesi) (?:di |della |questa )?riunione",
+  ].join("|"),
+  "u",
+);
+const OVERVIEW_JA_RE =
+  /この会議.*(何|なに|どんな|概要|要約)|会議の(概要|要約)/u;
+
+export function asksOverview(question: string): boolean {
+  return OVERVIEW_RE.test(fold(question)) || OVERVIEW_JA_RE.test(question);
+}
+
+/**
+ * The search query of a turn (spec 2.8 point 4). A dependent follow-up has no
+ * topic of its own, so the query holds the NEW question first, then the earlier
+ * question (the topic), then the start of the earlier answer (it names the
+ * person or thing). The earlier answer is cut short: a whole answer took over
+ * the query and every follow-up found the same chunk (P1.2). "My first
+ * question" points to the first turn, else the last turn. A question with a
+ * topic of its own searches with its own words only.
  */
 export function followUpQuery(
   question: string,
@@ -222,10 +308,13 @@ export function followUpQuery(
   base?: string | null,
 ): string {
   const now = (base ?? "").trim() || question.trim();
+  if (!isDependentFollowUp(question)) return queryFor(now, question);
   const ref = FIRST_RE.test(question) ? turns[0] : turns.at(-1);
   if (!ref) return queryFor(now, question);
-  const answer = EMPTY_ANSWER.test(ref.answer.trim()) ? "" : ref.answer;
-  const parts = [ref.question, answer, now].filter(
+  const answer = EMPTY_ANSWER.test(ref.answer.trim())
+    ? ""
+    : ref.answer.trim().slice(0, ANSWER_HEAD_CHARS);
+  const parts = [now, ref.question, answer].filter(
     (x): x is string => !!x && x.trim() !== "",
   );
   return [...new Set(parts)].join(" ").slice(0, QUERY_MAX_CHARS).trim();

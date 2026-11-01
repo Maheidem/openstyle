@@ -449,6 +449,28 @@ export function refineCiteTimes(
 }
 
 /**
+ * A cite marker the model wrote inside the sentence text: "[S1]", "[S1, S2]",
+ * "[S1][S2]", "(S1)", "【S1】", "[Source 1]", "[source: S2]". The cites are in
+ * the `cites` field, so the visible text must not hold the marker (P1.2: the
+ * owner saw a raw "[S1]" in an answer).
+ */
+const CITE_MARKER_RE =
+  /[ \t]*[[(【]\s*(?:(?:sources?|fonte|fuente|quelle)\s*:?\s*)?S?\d+(?:\s*(?:[,;&]|and|e|y|und)\s*S?\d+)*\s*[\])】]/giu;
+
+/** True for a marker group that holds a label like S1 (not a bare number such as "(2)"). */
+function isLabelMarker(m: string): boolean {
+  return /S\s*\d|source|fonte|fuente|quelle/i.test(m);
+}
+
+export function stripCiteMarkers(text: string): string {
+  return text
+    .replace(CITE_MARKER_RE, (m) => (isLabelMarker(m) ? "" : m))
+    .replace(/[ \t]{2,}/g, " ")
+    .replace(/\s+([.,;:!?])/g, "$1")
+    .trim();
+}
+
+/**
  * One cite for each sentence: the source that shares most content words with
  * the sentence. A transcript line of a cited meeting wins over a summary line
  * that says the same (the chip then opens the meeting at the spoken line).

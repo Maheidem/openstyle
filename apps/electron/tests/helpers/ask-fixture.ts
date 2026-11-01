@@ -405,6 +405,8 @@ export class FakeAskLlm {
   readonly requests: AskRequest[] = [];
   /** When true, a native tool turn gets a plain text answer (no tool call). */
   noNativeTools = false;
+  /** Waits this long before each answer call (ms). It keeps a turn running. */
+  answerDelayMs = 0;
   private server: Server | undefined;
   private port = 0;
   private sockets = new Set<Socket>();
@@ -592,6 +594,9 @@ export class FakeAskLlm {
       const question = questionOf(user);
       const sources = parseSources(user);
       record.answered = "chat_answer";
+      if (this.answerDelayMs > 0) {
+        await new Promise((r) => setTimeout(r, this.answerDelayMs));
+      }
       if (question.includes(NOT_FOUND_MARK) || sources.length === 0) {
         this.text(res, JSON.stringify({ found: false, sentences: [] }));
         return;
