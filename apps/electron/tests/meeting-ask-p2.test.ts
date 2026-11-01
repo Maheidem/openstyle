@@ -72,6 +72,26 @@ async function setTheme(page: Page, name: "Light" | "Dark"): Promise<void> {
   else await expect(page.locator("html")).not.toHaveClass(/dark/);
 }
 
+/**
+ * Opens the Meetings page and selects a folder in the rail. The page opens the
+ * newest meeting first and the rail re-draws while it loads, so the test waits
+ * for that meeting before it clicks the folder.
+ */
+async function openFolderPanel(page: Page, folderName: string): Promise<void> {
+  await page.goto("app://renderer/meetings");
+  await expect(page.getByRole("tab", { name: "Transcript" })).toBeVisible({
+    timeout: 20_000,
+  });
+  await page
+    .getByTestId("meetings-list-column")
+    .getByText(folderName, { exact: true })
+    .first()
+    .click();
+  await expect(page.getByTestId("folder-tab-overview")).toBeVisible({
+    timeout: 20_000,
+  });
+}
+
 interface HotkeyState {
   registered: string | null;
   dictating: boolean;
@@ -99,18 +119,12 @@ async function bubblePage(b: Booted): Promise<Page> {
   });
 }
 
-/** A taller dashboard window for the screenshots: the folder header is tall. */
-async function resizeDashboard(b: Booted): Promise<void> {
-  await b.app.evaluate(({ BrowserWindow }) => {
-    const win = BrowserWindow.getAllWindows().find(
-      (w) =>
-        w.webContents.getURL().includes("app://renderer") &&
-        !/pill|tray-popover|chat-bubble|meeting-capture/.test(
-          w.webContents.getURL(),
-        ),
-    );
-    win?.setSize(1280, 1000);
-  });
+/** A screenshot of one element: the folder header is taller than the window. */
+async function shootElement(target: Locator, name: string): Promise<void> {
+  if (!EVIDENCE_DIR) return;
+  mkdirSync(EVIDENCE_DIR, { recursive: true });
+  await target.page().waitForTimeout(600);
+  await target.screenshot({ path: join(EVIDENCE_DIR, name) });
 }
 
 async function shoot(page: Page, name: string): Promise<void> {
@@ -435,8 +449,7 @@ function defineFake(): void {
 
   test("the folder Ask tab: a tab in the folder panel, scope F, answers a list question", async () => {
     test.setTimeout(90_000);
-    await page.goto("app://renderer/meetings");
-    await page.getByText(FOLDER_NAME, { exact: true }).first().click();
+    await openFolderPanel(page, FOLDER_NAME);
     const tab = page.getByTestId("folder-tab-ask");
     await expect(tab).toBeVisible({ timeout: 20_000 });
     await expect(page.getByTestId("folder-tab-overview")).toHaveAttribute(
@@ -617,9 +630,17 @@ function defineFake(): void {
   test("screenshots in light and dark: Ask page, folder tab, bubble", async () => {
     test.skip(!EVIDENCE_DIR, "Set OPENSTYLE_EVIDENCE_DIR for the screenshots.");
     test.setTimeout(180_000);
+    // A taller viewport: the folder header is tall, and the tab must show whole.
+    await page.setViewportSize({ width: 1280, height: 1100 });
     for (const theme of ["Light", "Dark"] as const) {
       const suffix = theme.toLowerCase();
       await setTheme(page, theme);
+      // Settings, Ask: the shortcut row.
+      await page.goto("app://renderer/settings#ask");
+      await expect(page.getByTestId("settings-ask")).toBeVisible({
+        timeout: 15_000,
+      });
+      await shoot(page, `settings-ask-${suffix}.png`);
       // The Ask page: Everything scope with the list answer visible.
       await page.goto("app://renderer/ask");
       await expect(page.getByTestId("ask-page")).toBeVisible({
@@ -632,13 +653,16 @@ function defineFake(): void {
       ).toBeVisible({ timeout: 20_000 });
       await shoot(page, `ask-page-${suffix}.png`);
       // The folder tab.
-      await page.goto("app://renderer/meetings");
-      await page.getByText(FOLDER_NAME, { exact: true }).first().click();
+      await openFolderPanel(page, FOLDER_NAME);
       await page.getByTestId("folder-tab-ask").click();
       await expect(
         page.getByTestId("meeting-ask-assistant").first(),
       ).toBeVisible({ timeout: 20_000 });
       await shoot(page, `folder-tab-${suffix}.png`);
+      await shootElement(
+        page.locator('[data-slot="tabs"]').last(),
+        `folder-tab-panel-${suffix}.png`,
+      );
       // The bubble, with a long answer in it.
       await page.goto("app://renderer/meetings?meeting=ask-m-pricing");
       await expect(page.getByRole("tab", { name: "Transcript" })).toBeVisible({
@@ -756,7 +780,7 @@ function defineReal(): void {
     await page.getByRole("radio", { name: "A meeting" }).click();
     await page.getByTestId("ask-pick-meeting").click();
     await page.getByRole("option", { name: WEEKLY.title }).click();
-    await page.getByTestId("meeting-ask-new").click();
+    // The meeting has no chat yet: the panel starts an empty one.
     const first = await ask(
       page,
       "What is the ferry quote for the harbor crane?",
@@ -802,8 +826,7 @@ function defineReal(): void {
 
   test("the folder Ask tab answers from its meetings", async () => {
     test.setTimeout(300_000);
-    await page.goto("app://renderer/meetings");
-    await page.getByText(HARBOR_FOLDER_NAME, { exact: true }).first().click();
+    await openFolderPanel(page, HARBOR_FOLDER_NAME);
     await page.getByTestId("folder-tab-ask").click();
     await expect(page.getByTestId("meeting-ask")).toHaveAttribute(
       "data-scope",
@@ -856,7 +879,8 @@ function defineReal(): void {
   test("screenshots in light and dark with real answers", async () => {
     test.skip(!EVIDENCE_DIR, "Set OPENSTYLE_EVIDENCE_DIR for the screenshots.");
     test.setTimeout(600_000);
-    await resizeDashboard(b);
+    // A taller viewport: the folder header is tall, and the tab must show whole.
+    await page.setViewportSize({ width: 1280, height: 1100 });
     for (const theme of ["Light", "Dark"] as const) {
       const suffix = theme.toLowerCase();
       await setTheme(page, theme);
@@ -870,13 +894,16 @@ function defineReal(): void {
         page.getByTestId("meeting-ask-assistant").first(),
       ).toBeVisible({ timeout: 20_000 });
       await shoot(page, `ask-page-${suffix}${SUFFIX}.png`);
-      await page.goto("app://renderer/meetings");
-      await page.getByText(HARBOR_FOLDER_NAME, { exact: true }).first().click();
+      await openFolderPanel(page, HARBOR_FOLDER_NAME);
       await page.getByTestId("folder-tab-ask").click();
       await expect(
         page.getByTestId("meeting-ask-assistant").first(),
       ).toBeVisible({ timeout: 20_000 });
       await shoot(page, `folder-tab-${suffix}${SUFFIX}.png`);
+      await shootElement(
+        page.locator('[data-slot="tabs"]').last(),
+        `folder-tab-panel-${suffix}${SUFFIX}.png`,
+      );
       await page.goto("app://renderer/meetings?meeting=ask-m-quote");
       await expect(page.getByRole("tab", { name: "Transcript" })).toBeVisible({
         timeout: 20_000,

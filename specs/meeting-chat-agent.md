@@ -1439,6 +1439,14 @@ The Meetings page tells the main process which meeting or folder is selected (IP
 
 The gold set and its hash stay as in P0. A new set file adds folder and Everything questions (section 8 of the chat-eval skill): lookup, who said, temporal and count at scope A, who said at scope F, and "search wider" cases (a question that is not found at M and found after one widen to F, and after one widen to A). Threads at scope A get their own turns. The bars of section 8.7 (P1 and P2 columns) are reported on E4B and E2B, gold and held-out.
 
+#### 11.6.7 What the build does (facts of the P2 branch)
+
+1. API. Scope A is a thread with no meeting and no folder: `GET /api/chat/threads?all=1`, `POST /api/chat/threads` with `{"scope":{"kind":"all"}}`. `POST /api/chat/threads/:id/messages` takes `{"question"}` or `{"widen":true}`. A not_found block has `wider` (`{kind:"folder",id,name}` or `{kind:"all"}`), and a message trace has `scope`. A widen with no offer gets 409 `widen_not_offered`. There is no schema change: `chat_threads` already allowed both columns NULL (section 4.2).
+2. Settings. `chat_hotkey` (an accelerator, empty means the default). The Ask section of Settings has the recorder. A chord with no key, or the dictation hotkey, is refused.
+3. Main process. `hotkeys/chat.ts` registers the listener and reads the settings; `hotkeys/chat-guard.ts` is the guard (pure, tested with a fake clock); `windows/chat-bubble-window.ts` is the window. The bubble closes on Escape, on the close button and when it loses focus (400 ms after it shows are ignored). When another app had the focus, closing the bubble hides Openstyle, so macOS gives the focus back. When an Openstyle window had the focus, that window gets it back.
+4. Renderer. One `AskPanel` serves the meeting tab, the folder tab and the Ask page (the thread list is a dropdown in the tabs and a column on the page). The cite chip of a folder tab, the Ask page and the bubble opens the meeting at the cited time (`/meetings?meeting=<id>&at=<ms>`). The bubble has its own page (`chat-bubble.html`) and keeps one thread for its questions until it opens again.
+5. Not covered by an automated test (said plainly): a real press of Control+Option+K, the focus return after Escape in a real session, and the window-end path of the guard in the app (it would start the dictation, which opens the microphone). The guard is tested at unit level on both paths (`chat-guard.test.ts`). The app test drives the "K inside the window" path through the E2E seam `e2e:trigger-chat-hotkey` and checks the state of the main process.
+
 ## 12. Owner decisions and open questions
 
 ### 12.1 Decisions (owner answers, 2026-10-31 09:49)

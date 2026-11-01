@@ -76,8 +76,6 @@ export interface AskPanelProps {
   initialThreadId?: string | null;
   /** The name of a folder, for the line "Searched in: ...". */
   folderName?: (id: string) => string | null;
-  /** The thread in view changed. null: an empty chat. */
-  onThread?: (id: string | null) => void;
 }
 
 /**
@@ -95,7 +93,6 @@ export function AskPanel({
   threads: threadsMode,
   initialThreadId = null,
   folderName,
-  onThread,
 }: AskPanelProps): React.JSX.Element {
   const { t, i18n } = useTranslation();
   const queryClient = useQueryClient();
@@ -126,10 +123,6 @@ export function AskPanel({
   });
   const activeId =
     selected === "new" ? null : (selected ?? threads[0]?.id ?? null);
-
-  useEffect(() => {
-    onThread?.(activeId);
-  }, [activeId, onThread]);
 
   // A turn runs on the server and goes on when the panel is away. While the
   // server says `pending`, the panel reloads the thread until the answer is in.
