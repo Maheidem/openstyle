@@ -1174,6 +1174,8 @@ The owner asked four questions in one thread ("What has been decided?", "Why?", 
 
 Eval: `pnpm chat-eval p1 --only threads` runs 12 threads of 4 to 5 turns on a fictional meeting each. The REAL answer of each turn goes back as history. The turns are a fact, "why?", "who said that?", a topic switch and "what was this meeting about?". Keys: a text key for fact, switch, speaker and topic; "why?" has no key (the corpus holds no reasons), so it passes when it is not a repeat. A repeat is an answer with a word overlap (Jaccard) of 0.8 or more with an earlier answer to another question. The threads are not part of the gold set, so the gold hash does not change.
 
+6. **Decisions and next steps read the summary.** In a meeting scope, `asksDecisions` ("What has been decided?", "what did we decide", "o que foi decidido", "decisões", and the same in es, de, fr, it, ja) and `asksNextSteps` ("What are the next steps?") call `get_meeting_summary` by code (`pipeline.ts`, steps `rules:decisions` and `rules:steps`). A question with a topic ("What did we decide on the database?") and a request for the whole list ("show all decisions") keep their old paths. After the summary call, one search with the words of the Decision (or Action item) lines gives transcript lines, so `tidyCites` can point a cite at the spoken segment. That search never ends the turn on a weak score. A meeting with no summary falls back to the search rounds.
+
 Measured 2026-11-01 (temperature 0, thinking off; MLflow experiment `openstyle-lab-chat-agent-p1`, every run read back). Base is `origin/main` (6c3592cc), new is this branch. Values are gold / held-out. Threads is the turn accuracy of the 16 thread eval; repeats are answers that repeat an earlier answer to another question.
 
 | Setup | Lookup + follow-up (bar 85) | Cite precision (bar 0.80) | Not-found acc (bar 90) | Threads base to new | Repeats base to new |
@@ -1183,7 +1185,7 @@ Measured 2026-11-01 (temperature 0, thinking off; MLflow experiment `openstyle-l
 | Mac E2B base | 77.1 / 82.9 | 0.805 / 0.821 | 92.5 / 92.5 | 62.2 / 66.7 | 16 / 17 |
 | Mac E2B new | 77.1 / 82.9 | 0.805 / 0.821 | 92.5 / 92.5 | 91.9 / 95.8 | 0 / 0 |
 
-The E2B lookup + follow-up bar still fails, as before P1.2 (issue #402). The desktop E4B run (llama.cpp) matches: lookup + follow-up 94.3 / 94.3 both ways, threads 98.6 / 93.1 new against 75.0 (held-out) base.
+After change 6 (20 threads, 90 turns): thread turn accuracy base to new is 70.0 to 95.6 on Mac E4B and 52.2 to 91.1 on Mac E2B (gold); decisions turns 0 to 75 and next-steps turns 0 to 100 on both. The bars of the table above did not move. The E2B lookup + follow-up bar still fails, as before P1.2 (issue #402). The desktop E4B run (llama.cpp) matches: lookup + follow-up 94.3 / 94.3 both ways, threads 98.6 / 93.1 new against 75.0 (held-out) base.
 
 ### 8.8 Retrieval eval (P0) and mic diarization eval (PM)
 
