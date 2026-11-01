@@ -123,6 +123,7 @@ export function AskPanel({
   });
   const activeId =
     selected === "new" ? null : (selected ?? threads[0]?.id ?? null);
+  const activeThread = threads.find((th) => th.id === activeId) ?? null;
 
   // A turn runs on the server and goes on when the panel is away. While the
   // server says `pending`, the panel reloads the thread until the answer is in.
@@ -459,7 +460,10 @@ export function AskPanel({
               aria-label={strings.threads}
               data-testid="meeting-ask-threads"
             >
-              <SelectValue placeholder={t("meetings.ask.threadNew")} />
+              <AskSelectValue
+                placeholder={t("meetings.ask.threadNew")}
+                label={activeThread ? threadLabel(activeThread) : null}
+              />
             </SelectTrigger>
             <SelectContent>
               {threads.map((th) => (
@@ -522,6 +526,24 @@ export function AskPanel({
         conversation
       )}
     </section>
+  );
+}
+
+/**
+ * The selected value of a select, cut with an ellipsis when it is too long. The
+ * shared SelectValue is a flex box, so its own line clamp shows no ellipsis.
+ */
+export function AskSelectValue({
+  placeholder,
+  label,
+}: {
+  placeholder: string;
+  label: string | null;
+}): React.JSX.Element {
+  return (
+    <SelectValue placeholder={placeholder} className="min-w-0">
+      {label === null ? null : <span className="truncate">{label}</span>}
+    </SelectValue>
   );
 }
 

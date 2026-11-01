@@ -4,7 +4,6 @@
 // registered only while the setting `meeting_chat_enabled` is "true".
 import { createAppLogger } from "@openstyle/utils";
 import { ipcMain } from "electron";
-import { SETTINGS_KEYS } from "../../shared/settings-keys";
 import { chatHotkeyFromSettings, isLanguageHotkeyTaken } from "../hotkey-utils";
 import { NativeKeyListener } from "../key-listener";
 import { state } from "../main-state";
@@ -168,7 +167,6 @@ export function registerChatHotkeyIpc(): void {
       dictating: state.hotkeyPressed,
       waiting: dictationStartGuard.waiting,
       armed: dictationStartGuard.armed,
-      setting: SETTINGS_KEYS.chatHotkey,
     }));
   }
 }

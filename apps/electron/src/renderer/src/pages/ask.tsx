@@ -11,7 +11,6 @@ import {
   SelectContent,
   SelectItem,
   SelectTrigger,
-  SelectValue,
 } from "@renderer/components/ui/select";
 import { settingsQueryOptions } from "@renderer/lib/query";
 import { useQuery } from "@tanstack/react-query";
@@ -20,7 +19,7 @@ import { useTranslation } from "react-i18next";
 import { useNavigate, useSearchParams } from "react-router";
 import { fetchThread } from "./meetings/ask-api";
 import { scopeOfThread } from "./meetings/ask-model";
-import { AskPanel } from "./meetings/ask-panel";
+import { AskPanel, AskSelectValue } from "./meetings/ask-panel";
 import { useCiteActions, useMeetingsList } from "./meetings/ask-scope";
 import { useMeetingFolders } from "./meetings/folders-data";
 
@@ -101,6 +100,7 @@ export default function AskPage(): React.JSX.Element {
 
   const actions = useCiteActions({ thisMeetingId: null });
   const untitled = t("meetings.ask.untitled");
+  const pickedMeeting = meetings.find((m) => m.id === pick.meetingId) ?? null;
 
   const scope: ChatScope | null =
     pick.kind === "all"
@@ -195,7 +195,10 @@ export default function AskPage(): React.JSX.Element {
                     aria-label={t("ask.pickFolder")}
                     data-testid="ask-pick-folder"
                   >
-                    <SelectValue placeholder={t("ask.pickFolder")} />
+                    <AskSelectValue
+                      placeholder={t("ask.pickFolder")}
+                      label={pick.folderId ? folderName(pick.folderId) : null}
+                    />
                   </SelectTrigger>
                   <SelectContent>
                     {folders.map((f) => (
@@ -216,7 +219,14 @@ export default function AskPage(): React.JSX.Element {
                     aria-label={t("ask.pickMeeting")}
                     data-testid="ask-pick-meeting"
                   >
-                    <SelectValue placeholder={t("ask.pickMeeting")} />
+                    <AskSelectValue
+                      placeholder={t("ask.pickMeeting")}
+                      label={
+                        pickedMeeting
+                          ? meetingName(pickedMeeting, untitled)
+                          : null
+                      }
+                    />
                   </SelectTrigger>
                   <SelectContent>
                     {meetings.map((m) => (
