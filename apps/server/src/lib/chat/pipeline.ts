@@ -280,8 +280,18 @@ export async function runChatTurn(input: ChatTurnInput): Promise<TurnResult> {
 
   // ---- Stage 1+2: the first tool call (native), or the fallback router. ----
   const write = looksLikeWrite(question);
+  const plain =
+    !write &&
+    !asksForList(question) &&
+    !asksForCount(question) &&
+    !asksForStatus(question);
   let first: Call | null = null;
-  if (settings.nativeTools) {
+  // A plain follow-up ("and when is that due?") gets no tool call from the
+  // native turn: all 10 follow-ups of the eval and 13 of 20 follow-ups and
+  // long-thread turns on E4B and E2B returned text, after 650 to 850 ms on
+  // the Mac. Code makes the search call, with the earlier turn in the query.
+  const skipNative = plain && turns.length > 0;
+  if (settings.nativeTools && !skipNative) {
     const started = Date.now();
     const names = visibleToolNames(turnScope.kind, write);
     try {
@@ -331,11 +341,6 @@ export async function runChatTurn(input: ChatTurnInput): Promise<TurnResult> {
   }
 
   let fallbackCalls: Call[] = [];
-  const plain =
-    !write &&
-    !asksForList(question) &&
-    !asksForCount(question) &&
-    !asksForStatus(question);
   if (!first && plain) {
     // The cheap route (P1.1): a question that asks for no list, no count, no
     // status and no change reads text. Code makes the search call. No router

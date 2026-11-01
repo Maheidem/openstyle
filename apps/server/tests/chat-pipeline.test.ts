@@ -3,7 +3,7 @@
 // The database has the real schema. `retrieve` and the model are fakes.
 // All text is fictional.
 
-import type { ChatScope } from "@openstyle/validations";
+import type { ChatMessage, ChatScope } from "@openstyle/validations";
 import { beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 import type { z } from "zod";
 import type { ChatLlm, NativeCallResult } from "../src/lib/chat/llm.js";
@@ -149,13 +149,14 @@ const run = (
   question: string,
   llm: ChatLlm,
   over: Partial<ChatSettings> = {},
+  history: ChatMessage[] = [],
 ) =>
   runChatTurn({
     db: getDb(),
     // Scope "all" is for the eval harness; the routes take a meeting or a folder.
     scope: { kind: "all", id: null } as unknown as ChatScope,
     question,
-    history: [],
+    history,
     settings: { ...SETTINGS, ...over },
     llm,
     signal: new AbortController().signal,
@@ -198,6 +199,26 @@ describe("cheap route", () => {
     expect(r.blocks[0]?.kind).toBe("text");
     expect(log.map((l) => l.step)).toEqual(["native", "chatAnswer"]);
     expect(r.trace.router).toBe("default");
+  });
+
+  it("a plain follow-up makes no native call, and the search holds the earlier turn", async () => {
+    retrieveMock.mockResolvedValue(ok([hit(1, "m1", 0.95)]));
+    const { llm, log } = fakeLlm({
+      native: NO_CALL,
+      structured: {
+        chatAnswer: [answer("The security review is on December 4.", ["S1"])],
+      },
+    });
+    const history = [
+      { role: "user", content: "Who runs the security review?", cites: [] },
+      { role: "assistant", content: "Ana runs it.", blocks: [], cites: [] },
+    ] as unknown as ChatMessage[];
+    const r = await run("And when is that?", llm, {}, history);
+    expect(r.blocks[0]?.kind).toBe("text");
+    expect(log.map((l) => l.step)).toEqual(["chatAnswer"]);
+    const q = (r.toolCalls[0]?.args as { query: string }).query;
+    expect(q).toContain("Who runs the security review?");
+    expect(q).toContain("Ana runs it.");
   });
 
   it("a list question still uses the structured router", async () => {
