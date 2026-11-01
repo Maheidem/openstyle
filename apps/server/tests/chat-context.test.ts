@@ -190,6 +190,31 @@ describe("compactHistory", () => {
     ]);
     expect(u?.answer.length).toBeLessThanOrEqual(200);
   });
+  it("a question with two answers (a widen turn) keeps the last answer", () => {
+    const turns = compactHistory([
+      { role: "user", content: "What is the budget?", cites: [] },
+      {
+        role: "assistant",
+        content: "",
+        blocks: [
+          {
+            kind: "not_found",
+            scope: { kind: "meeting", id: "m1" },
+            reason: "no_sources",
+            nearest: [],
+          },
+        ],
+        cites: [],
+      },
+      { role: "assistant", content: "The budget is 40 thousand.", cites: [] },
+      { role: "user", content: "And who approved it?", cites: [] },
+      { role: "assistant", content: "Ana did.", cites: [] },
+    ]);
+    expect(turns.map((t) => [t.question, t.answer])).toEqual([
+      ["What is the budget?", "The budget is 40 thousand."],
+      ["And who approved it?", "Ana did."],
+    ]);
+  });
   it("describes a block-only answer", () => {
     const [t] = compactHistory([
       { role: "user", content: "List the open items", cites: [] },

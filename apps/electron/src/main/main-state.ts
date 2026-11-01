@@ -11,6 +11,7 @@
  * `quietE2E` and `devFlavor` after the user-data override.
  */
 import type { BrowserWindow, Tray } from "electron";
+import type { ChatBubbleScope } from "../shared/chat-bubble";
 import { AudioPlaybackController } from "./audio-control/controller";
 import type { UpdateDownloadState } from "./auto-update-policy";
 import type { HotkeyRecorder } from "./hotkey-recorder";
@@ -24,6 +25,13 @@ export interface MainState {
   tray: Tray | null;
   /** The popover under the tray icon (windows/tray-popover-window.ts). */
   trayPopover: BrowserWindow | null;
+  /** The Ask bubble (windows/chat-bubble-window.ts). */
+  chatBubble: BrowserWindow | null;
+  /**
+   * What is selected on the Meetings page. The bubble takes its scope from it.
+   * null means nothing is selected (scope A).
+   */
+  chatSelection: ChatBubbleScope | null;
   keyListener: NativeKeyListener | null;
   // Latching flag: records that the native key listener started successfully.
   // It persists while the listener is temporarily torn down for hotkey recording,
@@ -65,6 +73,8 @@ export const state: MainState = {
   settingsWindow: null,
   tray: null,
   trayPopover: null,
+  chatBubble: null,
+  chatSelection: null,
   keyListener: null,
   accessibilityConfirmed: false,
   hotkeyPressed: false,
@@ -98,6 +108,7 @@ export function broadcastToWindows(channel: string, ...args: unknown[]): void {
  */
 export function broadcastServerChanged(): void {
   broadcastToWindows("server:changed");
+  state.chatBubble?.webContents.send("server:changed");
 }
 
 /** Read the `meetings` flag again. The promise resolves after the read. */

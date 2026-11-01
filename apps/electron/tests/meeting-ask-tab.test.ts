@@ -1,19 +1,13 @@
-import {
-  existsSync,
-  mkdirSync,
-  mkdtempSync,
-  rmSync,
-  writeFileSync,
-} from "node:fs";
-import { tmpdir } from "node:os";
+import { mkdirSync, rmSync } from "node:fs";
 import { join } from "node:path";
+import { expect, type Locator, type Page, test } from "@playwright/test";
 import {
-  type ElectronApplication,
-  expect,
-  type Locator,
-  type Page,
-  test,
-} from "@playwright/test";
+  type Booted,
+  boot,
+  hfCacheDir,
+  put,
+  settingValue,
+} from "./helpers/ask-app";
 import {
   ACTION_TASK,
   DECISION_TEXT,
@@ -23,12 +17,7 @@ import {
   readActionItems,
   seedAskMeetings,
 } from "./helpers/ask-fixture";
-import {
-  closeApp,
-  embeddedServerUrl,
-  launchOpenstyle,
-  waitForDashboardWindow,
-} from "./helpers/e2e-app";
+import { closeApp } from "./helpers/e2e-app";
 
 // ---------------------------------------------------------------------------
 // The Ask tab of a meeting (specs/meeting-chat-agent.md, P1). One scenario,
@@ -59,69 +48,6 @@ const Q_FOLLOW_UP = "And who owns the vendor contract draft task?";
 const Q_WRITE = "Mark the first task as done";
 
 const LONG = REAL ? 240_000 : 30_000;
-
-interface Booted {
-  app: ElectronApplication;
-  page: Page;
-  userDataDir: string;
-  base: string;
-  api(method: string, path: string, body?: unknown): Promise<Response>;
-}
-
-/** The folder with the models--* folders of the scratch HF cache. */
-function hfCacheDir(): string {
-  const root = process.env.OPENSTYLE_E2E_ASK_HF ?? "/tmp/chatp1/hf";
-  return existsSync(join(root, "hub")) ? join(root, "hub") : root;
-}
-
-async function boot(
-  prefix: string,
-  env: Record<string, string>,
-): Promise<Booted> {
-  const userDataDir = mkdtempSync(join(tmpdir(), prefix));
-  writeFileSync(
-    join(userDataDir, "settings.json"),
-    JSON.stringify({ onboardingComplete: true }),
-  );
-  writeFileSync(
-    join(userDataDir, "config.freestyle.json"),
-    JSON.stringify({ version: 1, flags: { meetings: true } }),
-  );
-  const app = await launchOpenstyle({ userDataDir, env });
-  const page = await waitForDashboardWindow(app, 15_000);
-  try {
-    await page.waitForLoadState("networkidle", { timeout: 15_000 });
-  } catch {
-    await page.waitForLoadState("load", { timeout: 10_000 });
-  }
-  // The boot sweep of orphans runs 3 s after the start (main/index.ts). The
-  // seeded meetings are not recording, but wait as the other specs do.
-  await new Promise((r) => setTimeout(r, 3500));
-  const base = embeddedServerUrl(app);
-  const api = (method: string, path: string, body?: unknown) =>
-    fetch(`${base}/api${path}`, {
-      method,
-      headers: { "Content-Type": "application/json" },
-      ...(body === undefined ? {} : { body: JSON.stringify(body) }),
-    });
-  return { app, page, userDataDir, base, api };
-}
-
-async function put(b: Booted, key: string, value: string): Promise<void> {
-  const res = await b.api("PUT", `/settings/${key}`, { value });
-  expect(res.status, `PUT /api/settings/${key}`).toBe(200);
-}
-
-async function settingValue(
-  b: Booted,
-  key: string,
-): Promise<string | undefined> {
-  const all = (await (await b.api("GET", "/settings")).json()) as Record<
-    string,
-    string
-  >;
-  return all[key];
-}
 
 /** Opens the subject meeting. The list query reads the DB again on a reload. */
 async function openSubject(page: Page): Promise<void> {

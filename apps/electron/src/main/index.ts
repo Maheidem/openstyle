@@ -45,6 +45,7 @@ import { app, dialog, protocol, screen } from "electron";
 import { registerAppProtocol } from "./app-protocol";
 import { recoverDuckedVolumeFromCrash } from "./audio-control/volume-ducker";
 import { DEV_FLAVOR_NAME, isDevFlavorApp } from "./flavor";
+import { refreshChatHotkey, registerChatHotkeyIpc } from "./hotkeys/chat";
 import {
   getHotkeyActivationMode,
   registerHotkeyIpc,
@@ -70,7 +71,9 @@ import {
   sweepSelfUpdaterBackups,
 } from "./self-updater";
 import { startServerHost } from "./server-host";
+import { waitForServerReady } from "./server-target";
 import { registerUpdater } from "./updater";
+import { registerChatBubbleIpc } from "./windows/chat-bubble-window";
 import {
   createAppWindow,
   resolveAppWindowPosition,
@@ -253,6 +256,7 @@ app.whenReady().then(async () => {
 
   registerCoreIpc({ logsDir });
   registerTrayPopoverIpc({ getHotkeyMode: getHotkeyActivationMode });
+  registerChatBubbleIpc();
   registerMeetingScheduleIpc();
 
   await startServerHost({ userDataOverride });
@@ -309,6 +313,11 @@ app.whenReady().then(async () => {
   registerSystemIpc();
 
   registerHotkeyIpc();
+
+  // The Ask bubble hotkey: registered once the server answers, and only while
+  // the setting meeting_chat_enabled is on.
+  registerChatHotkeyIpc();
+  void waitForServerReady().then(() => refreshChatHotkey());
 });
 
 registerQuitHandlers();

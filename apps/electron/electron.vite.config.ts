@@ -125,6 +125,7 @@ export default defineConfig({
           index: resolve("src/renderer/index.html"),
           pill: resolve("src/renderer/pill.html"),
           "tray-popover": resolve("src/renderer/tray-popover.html"),
+          "chat-bubble": resolve("src/renderer/chat-bubble.html"),
           "meeting-capture": resolve("src/renderer/meeting-capture.html"),
         },
         plugins: analyze ? [mkVisualizer("renderer")] : [],

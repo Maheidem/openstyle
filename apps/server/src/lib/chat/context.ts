@@ -97,7 +97,7 @@ export interface HistoryMessage {
 /**
  * Past turns in compact form (spec 2.8 point 3): the question, a short
  * answer (at most 200 characters) and where it came from. A question with no
- * answer yet is left out.
+ * answer yet is left out. A question with two answers (a widen turn) keeps the last.
  */
 export function compactHistory(
   messages: readonly HistoryMessage[],
@@ -105,9 +105,15 @@ export function compactHistory(
   const turns: HistoryTurn[] = [];
   for (let i = 0; i < messages.length; i++) {
     const q = messages[i];
-    const a = messages[i + 1];
-    if (!q || q.role !== "user" || !a || a.role !== "assistant") continue;
-    i++;
+    if (!q || q.role !== "user") continue;
+    // A widen turn (spec 11.6.4) adds a second answer to the same question.
+    // The last answer is the one that counts.
+    let a: HistoryMessage | undefined;
+    while (messages[i + 1]?.role === "assistant") {
+      a = messages[i + 1];
+      i++;
+    }
+    if (!a) continue;
     const fromText = firstSentence(a.content);
     const answer =
       fromText ||

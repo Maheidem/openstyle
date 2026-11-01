@@ -328,7 +328,10 @@
       "numberRange": "Consentito: {{min}}–{{max}}",
       "numberInvalid": "Inserisci {{min}}–{{max}}",
       "numberSaveFailed": "Impossibile salvare. Il server ha ancora {{value}}.",
-      "numberStripped": "Solo cifre. {{dropped}} rimosso, il campo mostra {{value}}."
+      "numberStripped": "Solo cifre. {{dropped}} rimosso, il campo mostra {{value}}.",
+      "hotkey": "Scorciatoia globale",
+      "hotkeyDesc": "Apre una piccola finestra di Chiedi da qualsiasi app. Se inizia con i tasti di dettatura, la dettatura parte solo se questo tasto non segue entro 150 ms.",
+      "hotkeyConflict": "Scegli una combinazione con un tasto che non sia una scorciatoia di dettatura."
     }
   },
   "today": {
@@ -806,7 +809,8 @@
       "settings": "Impostazioni",
       "help": "Aiuto",
       "meetings": "Riunioni",
-      "import": "Importa"
+      "import": "Importa",
+      "ask": "Chiedi"
     },
     "githubRepo": "Repository GitHub"
   },
@@ -1355,7 +1359,8 @@
         "cite_check": "Non ho potuto verificare la risposta con le fonti, quindi non la mostro.",
         "deadline": "Ci voleva troppo tempo, quindi mi sono fermato.",
         "call_cap": "Ho raggiunto il limite di ricerca per questa domanda.",
-        "model_error": "Il modello non è riuscito a rispondere."
+        "model_error": "Il modello non è riuscito a rispondere.",
+        "noSourcesAll": "Non ho trovato nulla su questo in nessuna riunione."
       },
       "nearest": "Fonti più vicine",
       "readOnly": "Ask non può ancora modificare i dati. Legge solo le tue riunioni.",
@@ -1374,7 +1379,28 @@
         "meetings_other": "ha elencato {{count}} riunioni"
       },
       "trailDropped_one": "{{count}} fonte esclusa",
-      "trailDropped_other": "{{count}} fonti escluse"
+      "trailDropped_other": "{{count}} fonti escluse",
+      "scopeFolder": "Questa cartella: {{name}}",
+      "searchedEverything": "Cercato in: tutto",
+      "searchedFolder": "Cercato in: {{name}}",
+      "searchedWider": "Cercato in un ambito più ampio",
+      "noThreads": "Nessuna chat per ora.",
+      "widenAsk": "Nessun risultato qui. Cercare più in grande?",
+      "widenFolder": "Cerca in tutta la cartella {{name}}",
+      "widenAll": "Cerca ovunque",
+      "errWiden": "Ora non c'è una ricerca più ampia da eseguire.",
+      "folder": {
+        "title": "Chiedi su questa cartella",
+        "empty": "Fai una domanda su questa cartella. Chiedi legge le riunioni della cartella.",
+        "placeholder": "Chiedi su questa cartella",
+        "threads": "Chat di questa cartella"
+      },
+      "everything": {
+        "title": "Chiedi su tutte le riunioni",
+        "empty": "Fai una domanda su tutte le tue riunioni. Chiedi legge trascrizioni e riassunti.",
+        "placeholder": "Chiedi su tutte le riunioni",
+        "threads": "Chat su tutte le riunioni"
+      }
     }
   },
   "help": {
@@ -1554,6 +1580,31 @@
     },
     "models": {
       "label": "Modelli attivi"
+    }
+  },
+  "ask": {
+    "title": "Chiedi",
+    "intro": "Fai una domanda sulle tue riunioni. Scegli dove cercare.",
+    "off": "Chiedi è disattivato. Attivalo in Impostazioni, Riunioni.",
+    "scopeLabel": "Dove cercare",
+    "scopeEverything": "Tutto",
+    "scopeFolder": "Una cartella",
+    "scopeMeeting": "Una riunione",
+    "scopeEverythingText": "Tutte le riunioni",
+    "pickFolder": "Scegli una cartella",
+    "pickMeeting": "Scegli una riunione",
+    "pickFolderHint": "Scegli una cartella su cui fare domande.",
+    "pickMeetingHint": "Scegli una riunione su cui fare domande.",
+    "bubble": {
+      "label": "Chiedi a Openstyle",
+      "scopeIn": "Domanda in: {{name}}",
+      "everything": "tutte le riunioni",
+      "widenEverything": "Cerca ovunque",
+      "widenFolder": "Cerca nella cartella {{name}}",
+      "placeholder": "Chiedi su {{name}}",
+      "openInAsk": "Apri in Chiedi",
+      "close": "Chiudi",
+      "hint": "Invio chiede. Esc chiude."
     }
   }
 }

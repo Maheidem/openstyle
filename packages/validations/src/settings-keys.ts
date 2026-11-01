@@ -85,6 +85,12 @@ export const SETTINGS_KEYS = {
    */
   chatNativeTools: "chat_native_tools",
   /**
+   * The global hotkey of the Ask bubble (spec 11.6.2). An accelerator such as
+   * `Control+Alt+K`. A missing or empty row means the default of the platform.
+   * It is registered only while `meeting_chat_enabled` is `"true"`.
+   */
+  chatHotkey: "chat_hotkey",
+  /**
    * Stop saves the live transcript as the transcript of the meeting (mark
    * "From live"). OFF by default: only the value `"true"` turns it on. It
    * has an effect only while `live_chat_enabled` is on.

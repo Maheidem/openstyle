@@ -3,7 +3,9 @@ import type {
   ChatCite,
   ChatListItem,
   ChatMessage,
+  ChatWider,
 } from "@openstyle/validations";
+import { Button } from "@renderer/components/ui/button";
 import { cn } from "@renderer/lib/utils";
 import { Check, Circle } from "lucide-react";
 import { useTranslation } from "react-i18next";
@@ -129,10 +131,12 @@ function Block({
   block,
   cites,
   actions,
+  onWiden,
 }: {
   block: ChatBlock;
   cites: ChatCite[];
   actions: CiteActions;
+  onWiden?: (wider: ChatWider) => void;
 }): React.JSX.Element | null {
   const { t } = useTranslation();
   switch (block.kind) {
@@ -206,12 +210,33 @@ function Block({
           <p className="m-0">
             {t(
               block.reason === "no_sources"
-                ? block.scope.kind === "folder"
-                  ? "meetings.ask.notFound.noSourcesFolder"
-                  : "meetings.ask.notFound.noSourcesMeeting"
+                ? block.scope.kind === "all"
+                  ? "meetings.ask.notFound.noSourcesAll"
+                  : block.scope.kind === "folder"
+                    ? "meetings.ask.notFound.noSourcesFolder"
+                    : "meetings.ask.notFound.noSourcesMeeting"
                 : `meetings.ask.notFound.${block.reason}`,
             )}
           </p>
+          {block.wider && onWiden && (
+            <div className="mt-2 flex flex-col items-start gap-1">
+              <p className="text-muted-foreground m-0 text-[11.5px]">
+                {t("meetings.ask.widenAsk")}
+              </p>
+              <Button
+                variant="outline"
+                size="sm"
+                className="h-auto max-w-full py-1 whitespace-normal"
+                onClick={() => block.wider && onWiden(block.wider)}
+                data-testid="meeting-ask-widen"
+                data-wider={block.wider.kind}
+              >
+                {block.wider.kind === "folder"
+                  ? t("meetings.ask.widenFolder", { name: block.wider.name })
+                  : t("meetings.ask.widenAll")}
+              </Button>
+            </div>
+          )}
           {block.nearest.length > 0 && (
             <>
               <p className="text-muted-foreground m-0 mt-1.5 text-[11.5px]">
@@ -237,9 +262,15 @@ function Block({
 export function AskAnswer({
   message,
   actions,
+  onWiden,
+  scopeNote,
 }: {
   message: ChatMessage;
   actions: CiteActions;
+  /** Set on the last answer only: the user may ask one step wider. */
+  onWiden?: (wider: ChatWider) => void;
+  /** "Searched in: ..." when the answer came from a wider scope. */
+  scopeNote?: string | null;
 }): React.JSX.Element {
   const { t } = useTranslation();
   const blocks = answerBlocks(message);
@@ -254,8 +285,17 @@ export function AskAnswer({
           block={block}
           cites={message.cites}
           actions={actions}
+          {...(onWiden ? { onWiden } : {})}
         />
       ))}
+      {scopeNote && (
+        <p
+          className="text-muted-foreground m-0 text-[11.5px]"
+          data-testid="meeting-ask-scope-note"
+        >
+          {scopeNote}
+        </p>
+      )}
       {message.trace && (
         <details
           className="text-muted-foreground text-[11.5px]"

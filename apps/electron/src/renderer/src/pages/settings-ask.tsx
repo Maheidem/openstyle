@@ -1,4 +1,5 @@
 import { CHAT_SETTING_LIMITS } from "@openstyle/validations";
+import { HotkeyRecorderControl } from "@renderer/components/hotkey-recorder-control";
 import { Input } from "@renderer/components/ui/input";
 import {
   Select,
@@ -8,6 +9,10 @@ import {
   SelectValue,
 } from "@renderer/components/ui/select";
 import { Switch } from "@renderer/components/ui/switch";
+import {
+  acceleratorsEqual,
+  acceleratorToCombo,
+} from "@renderer/hooks/use-hotkey-recorder";
 import { queryKeys, settingsQueryOptions } from "@renderer/lib/query";
 import { putSetting } from "@renderer/lib/settings";
 import { cn } from "@renderer/lib/utils";
@@ -26,6 +31,17 @@ type RowComponent = (props: {
 }) => React.JSX.Element;
 
 type NumberLimits = { min: number; max: number; default: number };
+
+/** The accelerators of the per-language dictation hotkeys, from the JSON setting. */
+function languageHotkeyValues(raw: string | undefined): string[] {
+  if (!raw) return [];
+  try {
+    const map = JSON.parse(raw) as Record<string, unknown>;
+    return Object.values(map).filter((v): v is string => typeof v === "string");
+  } catch {
+    return [];
+  }
+}
 
 /** A whole number inside the limits, or null. */
 function makeParse(limits: NumberLimits) {
@@ -184,6 +200,23 @@ export function AskSettingsPanel({
     );
   };
 
+  // The global shortcut of the bubble (spec 11.6.2). An empty value means the
+  // default. Main registers it again after the save.
+  const chatHotkey =
+    settings?.[SETTINGS_KEYS.chatHotkey]?.trim() ||
+    window.api?.defaultChatHotkey ||
+    "";
+  const dictationHotkeys = [
+    settings?.[SETTINGS_KEYS.hotkey] || window.api?.defaultHotkey || "",
+    ...languageHotkeyValues(settings?.[SETTINGS_KEYS.languageHotkeys]),
+  ].filter(Boolean);
+  const saveChatHotkey = (value: string): void => {
+    void putSetting(SETTINGS_KEYS.chatHotkey, value).then(async () => {
+      await queryClient.invalidateQueries({ queryKey: queryKeys.settings });
+      window.api?.refreshChatHotkey();
+    });
+  };
+
   return (
     <div className="flex flex-col" data-testid="settings-ask">
       <NumberRow
@@ -244,6 +277,23 @@ export function AskSettingsPanel({
             </SelectItem>
           </SelectContent>
         </Select>
+      </Row>
+      <Row label={t("settings.ask.hotkey")} desc={t("settings.ask.hotkeyDesc")}>
+        <HotkeyRecorderControl
+          accelerator={chatHotkey}
+          target="language"
+          isBlocked={(accel) =>
+            acceleratorToCombo(accel).key === null ||
+            dictationHotkeys.some((other) => acceleratorsEqual(accel, other))
+          }
+          onRecorded={saveChatHotkey}
+          onClear={
+            settings?.[SETTINGS_KEYS.chatHotkey]
+              ? () => saveChatHotkey("")
+              : undefined
+          }
+          conflictNotice={t("settings.ask.hotkeyConflict")}
+        />
       </Row>
       <Row
         label={t("settings.ask.nativeTools")}

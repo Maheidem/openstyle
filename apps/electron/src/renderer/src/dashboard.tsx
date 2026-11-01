@@ -27,6 +27,7 @@ const OnboardingPage = lazy(() => import("@renderer/onboarding"));
 const HelpPage = lazy(() => import("@renderer/pages/help"));
 const ImportPage = lazy(() => import("@renderer/pages/import"));
 const ModelsPage = lazy(() => import("@renderer/pages/models"));
+const AskPage = lazy(() => import("@renderer/pages/ask"));
 const MeetingsPage = lazy(() => import("@renderer/pages/meetings"));
 const SettingsPage = lazy(() => import("@renderer/pages/settings"));
 const TonePage = lazy(() => import("@renderer/pages/tone"));
@@ -100,6 +101,7 @@ function mount(): void {
                         <Route path="/today" element={<HistoryPage />} />
                         <Route element={<PagePad />}>
                           <Route path="/meetings" element={<MeetingsPage />} />
+                          <Route path="/ask" element={<AskPage />} />
                           <Route path="/import" element={<ImportPage />} />
                           <Route path="/settings" element={<SettingsPage />} />
                           <Route

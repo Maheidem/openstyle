@@ -16,7 +16,7 @@ import { existsSync, readdirSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import process from "node:process";
 import { buildCorpus } from "./corpus.mts";
-import { buildThreads } from "./gold.mts";
+import { buildP2, buildThreads } from "./gold.mts";
 import {
   mean,
   ndcgAt,
@@ -67,6 +67,7 @@ export const PARTS = [
   "slots",
   "e2e",
   "threads",
+  "widen",
   "a0",
   "scale",
   "bars",
@@ -74,6 +75,12 @@ export const PARTS = [
 export type Part = (typeof PARTS)[number];
 
 export interface P1Options {
+  /**
+   * The question set: "gold" is the P0 gold set (190 questions, the gold hash).
+   * "p2" is the P2 set (folder and Everything questions, search-wider cases,
+   * threads at scope A and F; not part of the gold hash).
+   */
+  set?: "gold" | "p2";
   /** null = the default parts (all but scale; scale runs with --scale N). */
   only: Set<Part> | null;
   /** Pick N items spread over each set (smoke test). */
@@ -156,6 +163,7 @@ function baseTags(env: Env, arm: string): Record<string, string> {
     model: MODEL_ID,
     "chat.embed_model": EMBED_MODEL_ID,
     "chat.arm": arm,
+    "chat.set": env.opts.set ?? "gold",
   };
 }
 
@@ -1114,20 +1122,33 @@ async function partE2e(env: Env, M: Record<string, number>): Promise<PartOut> {
   const fails = rows.filter((r) => !r.pass);
   text += `\nFailed questions (${fails.length}): ${fails.map((r) => `${r.id}(${r.type}${r.err ? ",ERR" : ""})`).join(" ")}\n`;
 
-  M["toolargs"] = metrics["toolargs.acc"] as number;
-  M.write = metrics["write.kind_ids"] as number;
+  // A bar is measured only when the set has questions of its kind. The P2 set
+  // has no write, no not-answerable and no follow-up question: those bars stay
+  // NOT RUN there, not FAIL.
+  const has = (n: number, v: number): number | undefined =>
+    n > 0 ? v : undefined;
+  const setM = (id: string, v: number | undefined): void => {
+    if (v === undefined) delete M[id];
+    else M[id] = v;
+  };
+  setM("toolargs", has(toolRows.length, metrics["toolargs.acc"] as number));
+  setM("write", has(wr.length, metrics["write.kind_ids"] as number));
   M["route.lat"] = metrics["route_ms.p95"] as number;
-  M["a0.22"] = metrics["acc.a0_subset"] as number;
-  M["a0.35"] = metrics["acc.lookup_followup"] as number;
+  setM("a0.22", has(a22.length, metrics["acc.a0_subset"] as number));
+  setM("a0.35", has(lf.length, metrics["acc.lookup_followup"] as number));
   M["cite.valid"] = metrics["cite.validity"] as number;
   M["cite.invalid"] = invalid;
-  M["nf.acc"] = metrics["nf.acc"] as number;
-  M["nf.false"] = metrics["nf.false"] as number;
-  M.listf1 = metrics["f1.aggregation"] as number;
-  M["cite.prec"] = metrics["cite.precision_start"] as number;
+  setM("nf.acc", has(nfRows.length, metrics["nf.acc"] as number));
+  setM("nf.false", has(answerable.length, metrics["nf.false"] as number));
+  setM("listf1", has(agg.length, metrics["f1.aggregation"] as number));
+  setM(
+    "cite.prec",
+    has(withGold.length, metrics["cite.precision_start"] as number),
+  );
   M["lat.p95"] = metrics["latency_ms.p95"] as number;
   M.writes = metrics["writes.direct"] as number;
-  M.whosaid = metrics["acc.who_said"] as number;
+  setM("whosaid", has(who.length, metrics["acc.who_said"] as number));
+  setM("p2.lookup", has(lf.length, metrics["acc.lookup_followup"] as number));
   M["a0.subset_n"] = a22.length;
   return {
     text,
@@ -1157,7 +1178,10 @@ async function partThreads(
   env: Env,
   M: Record<string, number>,
 ): Promise<PartOut> {
-  const threads = buildThreads(env.corpus);
+  const threads =
+    env.opts.set === "p2"
+      ? buildP2(env.corpus).threads
+      : buildThreads(env.corpus);
   const use = spread(threads, env.opts.limit);
   const rows: Awaited<ReturnType<typeof runThread>> = [];
   // At most 4 threads at once (owner rule); default 2: a desktop llama.cpp
@@ -1191,6 +1215,172 @@ async function partThreads(
       params: { threads: m.threads, turns: m.turns, history: "real answers" },
       tags: baseTags(env, "threads"),
       metrics: m,
+    },
+  };
+}
+
+// ===================================================================================
+// D3. Search wider (P2, spec 6.3 and 11.6.4)
+// ===================================================================================
+
+interface WidenRow {
+  id: string;
+  lang: string;
+  start: string;
+  steps: string[];
+  /** The first turn was not found and offered the expected scope. */
+  offerOk: boolean;
+  /** Each turn before the last one was not found and offered the next scope. */
+  chainOk: boolean;
+  /** The last turn answered by the key. */
+  answerOk: boolean;
+  /** The turn at the first scope gave an answer (a false answer). */
+  falseAnswer: boolean;
+  clicks: number;
+  pass: boolean;
+  answer: string;
+  err: string | null;
+}
+
+const scopeName = (s: { kind: string; id?: string | null }): string =>
+  s.kind === "all" ? "all" : `${s.kind}:${s.id}`;
+
+/**
+ * Each case asks the question at its first scope, then asks it again at the
+ * scope of each click, like the "search wider" button does. A turn at a scope
+ * before the last one must be not found, and its block must offer the next
+ * scope. The last turn must answer by the key. The wider scope is computed by
+ * code (`nextWider`), so the offer is checked by id.
+ */
+async function partWiden(
+  env: Env,
+  M: Record<string, number>,
+): Promise<PartOut> {
+  const { mods, corpus, maps, stack } = env;
+  const cases = spread(buildP2(corpus).widen, env.opts.limit);
+  const rows: WidenRow[] = [];
+  const runAt = async (
+    c: (typeof cases)[number],
+    scope: { kind: string; id: string | null },
+    n: number,
+  ) => {
+    const signal = AbortSignal.timeout(120_000);
+    const llm = await newLlm(env, `${c.id}-${n}`, signal);
+    try {
+      const res = await mods.pipeline.runChatTurn({
+        db: stack.db,
+        scope: scope as never,
+        question: c.text,
+        history: [],
+        settings: mods.settings.readChatSettings(),
+        llm,
+        signal,
+        now: corpus.todayMs,
+        allowProposals: false,
+      });
+      llm.finish("succeeded");
+      return res;
+    } catch (e) {
+      llm.finish("failed", { errorDetail: String(e).slice(0, 200) });
+      throw e;
+    }
+  };
+  for (const c of cases) {
+    const row: WidenRow = {
+      id: c.id,
+      lang: c.lang,
+      start: scopeName(c.start),
+      steps: c.steps.map(scopeName),
+      offerOk: false,
+      chainOk: true,
+      answerOk: false,
+      falseAnswer: false,
+      clicks: 0,
+      pass: false,
+      answer: "",
+      err: null,
+    };
+    try {
+      let scope: { kind: string; id: string | null } = c.start;
+      for (let i = 0; i <= c.steps.length; i++) {
+        const res = await runAt(c, scope, i);
+        const block = res.blocks[0];
+        const nf = block?.kind === "not_found";
+        const last = i === c.steps.length;
+        const expected = c.steps[i] as
+          | { kind: string; id: string | null }
+          | undefined;
+        if (!last) {
+          // Before the last scope the turn must be not found, with the offer.
+          const wider = nf
+            ? (block as { wider?: { kind: string; id?: string } | null }).wider
+            : null;
+          const offered =
+            nf &&
+            wider != null &&
+            expected !== undefined &&
+            wider.kind === expected.kind &&
+            (wider.kind === "all" || wider.id === expected.id);
+          if (i === 0) {
+            row.offerOk = offered;
+            row.falseAnswer = !nf;
+          }
+          if (!offered) row.chainOk = false;
+          if (!nf) {
+            // An answer before the last scope: right only when it passes the key.
+            const a = answerFromTurn(res, maps, c.key);
+            row.answer = res.content.slice(0, 300);
+            row.answerOk = scoreAnswer(a, c.key).pass;
+            row.clicks = i;
+            break;
+          }
+          scope = expected as { kind: string; id: string | null };
+        } else {
+          row.clicks = i;
+          const a = answerFromTurn(res, maps, c.key);
+          row.answer = res.content.slice(0, 300);
+          row.answerOk = !nf && scoreAnswer(a, c.key).pass;
+        }
+      }
+      row.pass = row.offerOk && row.chainOk && row.answerOk;
+    } catch (e) {
+      row.err = String(e).slice(0, 300);
+    }
+    rows.push(row);
+    env.log(
+      `widen ${rows.length}/${cases.length}: pass ${rows.filter((r) => r.pass).length}`,
+    );
+  }
+  const frac = (f: (r: WidenRow) => boolean) =>
+    rows.length === 0 ? 0 : rows.filter(f).length / rows.length;
+  const metrics: Record<string, number> = {
+    cases: rows.length,
+    "offer.acc": frac((r) => r.offerOk),
+    "chain.acc": frac((r) => r.chainOk),
+    "answer.acc": frac((r) => r.answerOk),
+    "false_answer.rate": frac((r) => r.falseAnswer),
+    "pass.acc": frac((r) => r.pass),
+    errors: rows.filter((r) => r.err !== null).length,
+  };
+  for (const steps of [1, 2]) {
+    const sub = rows.filter((r) => r.steps.length === steps);
+    metrics[`pass.clicks${steps}`] =
+      sub.length === 0 ? 0 : sub.filter((r) => r.pass).length / sub.length;
+  }
+  M["widen.offer"] = metrics["offer.acc"] as number;
+  M["widen.answer"] = metrics["answer.acc"] as number;
+  let text = `Search wider: ${rows.length} cases. Offer at the first scope ${pct(metrics["offer.acc"] as number)}%, whole chain ${pct(metrics["chain.acc"] as number)}%, final answer ${pct(metrics["answer.acc"] as number)}%, case pass ${pct(metrics["pass.acc"] as number)}% (one click ${pct(metrics["pass.clicks1"] as number)}%, two clicks ${pct(metrics["pass.clicks2"] as number)}%). False answer at the first scope ${pct(metrics["false_answer.rate"] as number)}%. Errors ${metrics.errors}.\n`;
+  text += `\n| case | lang | start | clicks to | offer | chain | answer | pass | answer text |\n|---|---|---|---|---|---|---|---|---|\n`;
+  for (const r of rows)
+    text += `| ${r.id} | ${r.lang} | ${r.start} | ${r.steps.join(" > ")} | ${r.offerOk ? "ok" : "FAIL"} | ${r.chainOk ? "ok" : "FAIL"} | ${r.answerOk ? "ok" : "FAIL"} | ${r.pass ? "ok" : "FAIL"} | ${r.err ?? r.answer.replace(/\s+/g, " ").slice(0, 70)} |\n`;
+  return {
+    text,
+    data: { rows, metrics },
+    run: {
+      name: "p1-widen",
+      params: { cases: rows.length, clicks: "one step per click" },
+      tags: baseTags(env, "widen"),
+      metrics,
     },
   };
 }
@@ -1358,7 +1548,7 @@ async function partScale(
 
 export async function runP1(
   corpus: Corpus,
-  gold: GoldSet,
+  goldSet: GoldSet,
   hashes: { corpus: string; gold: string },
   opts: P1Options,
   emit: (run: RunOut) => Promise<void>,
@@ -1372,8 +1562,18 @@ export async function runP1(
         `set ${v} (see .claude/skills/chat-eval/SKILL.md, section P1)`,
       );
   }
+  // The search-wider part belongs to the P2 set: it runs by default only there.
   const want = (p: Part) =>
-    opts.only ? opts.only.has(p) : p !== "scale" || opts.scale > 1;
+    opts.only
+      ? opts.only.has(p)
+      : p === "scale"
+        ? opts.scale > 1
+        : p !== "widen" || opts.set === "p2";
+  // The P2 questions replace the gold questions. The retrieval queries stay.
+  const gold: GoldSet =
+    opts.set === "p2"
+      ? { questions: buildP2(corpus).questions, retrieval: goldSet.retrieval }
+      : goldSet;
   const stack = await bootStack("p1", true);
   // The reranker worker is the same dev launcher as the LLM and embed worker.
   process.env.OPENSTYLE_MLX_RERANK_WORKER ??=
@@ -1454,7 +1654,13 @@ export async function runP1(
     opts,
     index: null,
   };
-  if (want("retrieval") || want("e2e") || want("threads") || want("scale")) {
+  if (
+    want("retrieval") ||
+    want("e2e") ||
+    want("threads") ||
+    want("widen") ||
+    want("scale")
+  ) {
     const st = stack.mod.searchState();
     if (st.state !== "on") throw new Error(`search is off: ${st.reason}`);
     const t0 = performance.now();
@@ -1500,6 +1706,7 @@ export async function runP1(
     await done("slots", () => partSlots(env, M));
     await done("e2e", () => partE2e(env, M));
     await done("threads", () => partThreads(env, M));
+    await done("widen", () => partWiden(env, M));
     await done("a0", () => partA0(env, M));
     await done("scale", () => partScale(env, M));
     llmRss.stop();

@@ -328,7 +328,10 @@
       "numberRange": "Autorisé : {{min}}–{{max}}",
       "numberInvalid": "Saisissez {{min}}–{{max}}",
       "numberSaveFailed": "Enregistrement impossible. Le serveur a toujours {{value}}.",
-      "numberStripped": "Chiffres seulement. {{dropped}} retiré, le champ affiche {{value}}."
+      "numberStripped": "Chiffres seulement. {{dropped}} retiré, le champ affiche {{value}}.",
+      "hotkey": "Raccourci global",
+      "hotkeyDesc": "Ouvre une petite fenêtre de question depuis n'importe quelle app. Si elle commence par les touches de dictée, la dictée ne démarre que si cette touche ne suit pas dans les 150 ms.",
+      "hotkeyConflict": "Choisissez une combinaison avec une touche qui n'est pas un raccourci de dictée."
     }
   },
   "today": {
@@ -807,7 +810,8 @@
       "settings": "Réglages",
       "help": "Aide",
       "meetings": "Réunions",
-      "import": "Importer"
+      "import": "Importer",
+      "ask": "Poser une question"
     },
     "githubRepo": "Dépôt GitHub"
   },
@@ -1356,7 +1360,8 @@
         "cite_check": "Je n'ai pas pu vérifier ma réponse avec les sources, donc je ne l'affiche pas.",
         "deadline": "Cela a pris trop de temps, donc je me suis arrêté.",
         "call_cap": "J'ai atteint la limite de recherche pour cette question.",
-        "model_error": "Le modèle n'a pas réussi à répondre."
+        "model_error": "Le modèle n'a pas réussi à répondre.",
+        "noSourcesAll": "Je n'ai rien trouvé à ce sujet dans aucune réunion."
       },
       "nearest": "Sources les plus proches",
       "readOnly": "Ask ne peut pas encore modifier de données. Il lit seulement vos réunions.",
@@ -1375,7 +1380,28 @@
         "meetings_other": "a listé {{count}} réunions"
       },
       "trailDropped_one": "{{count}} source écartée",
-      "trailDropped_other": "{{count}} sources écartées"
+      "trailDropped_other": "{{count}} sources écartées",
+      "scopeFolder": "Ce dossier : {{name}}",
+      "searchedEverything": "Recherche dans : tout",
+      "searchedFolder": "Recherche dans : {{name}}",
+      "searchedWider": "Recherche dans un périmètre plus large",
+      "noThreads": "Aucun chat pour le moment.",
+      "widenAsk": "Rien trouvé ici. Chercher plus largement ?",
+      "widenFolder": "Chercher dans tout le dossier {{name}}",
+      "widenAll": "Tout chercher",
+      "errWiden": "Aucune recherche plus large à lancer maintenant.",
+      "folder": {
+        "title": "Poser une question sur ce dossier",
+        "empty": "Posez une question sur ce dossier. Poser une question lit les réunions du dossier.",
+        "placeholder": "Question sur ce dossier",
+        "threads": "Chats de ce dossier"
+      },
+      "everything": {
+        "title": "Poser une question sur toutes les réunions",
+        "empty": "Posez une question sur toutes vos réunions. Poser une question lit leurs transcriptions et résumés.",
+        "placeholder": "Question sur toutes les réunions",
+        "threads": "Chats sur toutes les réunions"
+      }
     }
   },
   "help": {
@@ -1555,6 +1581,31 @@
     },
     "models": {
       "label": "Modèles actifs"
+    }
+  },
+  "ask": {
+    "title": "Poser une question",
+    "intro": "Posez une question sur vos réunions. Choisissez où chercher.",
+    "off": "Poser une question est désactivé. Activez-le dans Réglages, Réunions.",
+    "scopeLabel": "Où chercher",
+    "scopeEverything": "Tout",
+    "scopeFolder": "Un dossier",
+    "scopeMeeting": "Une réunion",
+    "scopeEverythingText": "Toutes les réunions",
+    "pickFolder": "Choisir un dossier",
+    "pickMeeting": "Choisir une réunion",
+    "pickFolderHint": "Choisissez un dossier sur lequel poser une question.",
+    "pickMeetingHint": "Choisissez une réunion sur laquelle poser une question.",
+    "bubble": {
+      "label": "Interroger Openstyle",
+      "scopeIn": "Question dans : {{name}}",
+      "everything": "toutes les réunions",
+      "widenEverything": "Tout chercher",
+      "widenFolder": "Chercher dans le dossier {{name}}",
+      "placeholder": "Question sur {{name}}",
+      "openInAsk": "Ouvrir dans Poser une question",
+      "close": "Fermer",
+      "hint": "Entrée envoie. Échap ferme."
     }
   }
 }

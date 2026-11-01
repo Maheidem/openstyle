@@ -16,6 +16,10 @@ export function getTrayPopoverURL(): string {
   return rendererUrl("/tray-popover.html");
 }
 
+export function getChatBubbleURL(): string {
+  return rendererUrl("/chat-bubble.html");
+}
+
 export function getMeetingCaptureURL(): string {
   return rendererUrl("/meeting-capture.html");
 }

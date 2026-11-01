@@ -149,15 +149,39 @@ describe("threads", () => {
     expect((await ask("nope", "hi")).status).toBe(404);
   });
 
-  it("rejects the scope all and a list without a scope", async () => {
-    const res = await jsonRequest(app, "POST", "/api/chat/threads", {
-      scope: { kind: "all", id: "x" },
-    });
-    expect(res.status).toBe(400);
+  it("rejects a list without a scope or with two scopes, and a scope all with a field", async () => {
     expect((await app.request("/api/chat/threads")).status).toBe(400);
     expect(
       (await app.request("/api/chat/threads?meeting_id=a&folder_id=b")).status,
     ).toBe(400);
+    expect(
+      (await app.request("/api/chat/threads?meeting_id=a&all=1")).status,
+    ).toBe(400);
+    const res = await jsonRequest(app, "POST", "/api/chat/threads", {
+      scope: { kind: "meeting" },
+    });
+    expect(res.status).toBe(400);
+  });
+
+  it("makes and lists threads of scope A (no meeting, no folder) apart from the other scopes", async () => {
+    const meetingThread = await newThread();
+    const res = await jsonRequest(app, "POST", "/api/chat/threads", {
+      scope: { kind: "all" },
+    });
+    expect(res.status).toBe(200);
+    const made = chatThreadSchema.parse(
+      ((await res.json()) as { thread: unknown }).thread,
+    );
+    expect(made.meeting_id).toBeNull();
+    expect(made.folder_id).toBeNull();
+    const all = (await (
+      await app.request("/api/chat/threads?all=1")
+    ).json()) as { threads: { id: string }[] };
+    expect(all.threads.map((t) => t.id)).toEqual([made.id]);
+    const mine = (await (
+      await app.request("/api/chat/threads?meeting_id=m1")
+    ).json()) as { threads: { id: string }[] };
+    expect(mine.threads.map((t) => t.id)).toEqual([meetingThread]);
   });
 
   it("the GET routes need no setting", async () => {
@@ -383,5 +407,132 @@ describe("POST /threads/:id/messages", () => {
     const id = await newThread();
     expect((await ask(id, "   ")).status).toBe(400);
     expect((await ask(id, "x".repeat(1001))).status).toBe(400);
+  });
+});
+
+describe("widen turn (spec 11.6.4)", () => {
+  const notFound = (scope: unknown, wider: unknown) =>
+    turnResult({
+      blocks: [
+        { kind: "not_found", scope, reason: "no_sources", nearest: [], wider },
+      ],
+      content: "",
+      cites: [],
+    });
+  const widen = (threadId: string) =>
+    app.request(`/api/chat/threads/${threadId}/messages`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ widen: true }),
+    });
+  const userRows = (threadId: string) =>
+    db()
+      .prepare(
+        "SELECT content FROM chat_messages WHERE thread_id = ? AND role = 'user' ORDER BY id",
+      )
+      .all(threadId);
+
+  beforeEach(() => {
+    db().exec("DELETE FROM meeting_folders");
+    db()
+      .prepare(
+        "INSERT INTO meeting_folders (id, name, created_at, updated_at) VALUES ('f1', 'Project Atlas', 1, 1)",
+      )
+      .run();
+    db().prepare("UPDATE meetings SET folder_id = 'f1' WHERE id = 'm1'").run();
+    writeSetting(SETTINGS_KEYS.meetingChatEnabled, "true");
+  });
+
+  it("asks the last question again at the folder, with no second user message", async () => {
+    const id = await newThread();
+    pipeline.run.mockResolvedValueOnce(
+      notFound(
+        { kind: "meeting", id: "m1" },
+        { kind: "folder", id: "f1", name: "Project Atlas" },
+      ),
+    );
+    expect((await ask(id, "What is the budget?")).status).toBe(200);
+    pipeline.run.mockResolvedValueOnce(turnResult());
+    const res = await widen(id);
+    expect(res.status).toBe(200);
+    const input = pipeline.run.mock.calls[1]?.[0];
+    expect(input.scope).toEqual({ kind: "folder", id: "f1" });
+    expect(input.question).toBe("What is the budget?");
+    expect(input.history).toEqual([]);
+    expect(userRows(id)).toEqual([{ content: "What is the budget?" }]);
+    const reply = chatAskReplySchema.parse(await res.json());
+    expect(reply.user.content).toBe("What is the budget?");
+  });
+
+  it("goes one step per confirm: folder to everything", async () => {
+    const id = await newThread();
+    pipeline.run.mockResolvedValueOnce(
+      notFound(
+        { kind: "meeting", id: "m1" },
+        { kind: "folder", id: "f1", name: "Project Atlas" },
+      ),
+    );
+    await ask(id, "q");
+    pipeline.run.mockResolvedValueOnce(
+      notFound({ kind: "folder", id: "f1" }, { kind: "all" }),
+    );
+    await widen(id);
+    pipeline.run.mockResolvedValueOnce(turnResult());
+    expect((await widen(id)).status).toBe(200);
+    expect(pipeline.run.mock.calls[2]?.[0].scope).toEqual({ kind: "all" });
+  });
+
+  it("answers 409 widen_not_offered when the last answer has no offer, and runs nothing", async () => {
+    const id = await newThread();
+    pipeline.run.mockResolvedValueOnce(turnResult());
+    await ask(id, "q");
+    const res = await widen(id);
+    expect(res.status).toBe(409);
+    expect(chatGateErrorSchema.parse(await res.json()).reason).toBe(
+      "widen_not_offered",
+    );
+    expect(pipeline.run).toHaveBeenCalledTimes(1);
+    // A fresh thread has no offer either.
+    expect((await widen(await newThread())).status).toBe(409);
+  });
+
+  it("answers 409 widen_not_offered when the setting turns the offer off", async () => {
+    const id = await newThread();
+    pipeline.run.mockResolvedValueOnce(
+      notFound(
+        { kind: "meeting", id: "m1" },
+        { kind: "folder", id: "f1", name: "Project Atlas" },
+      ),
+    );
+    await ask(id, "q");
+    writeSetting(SETTINGS_KEYS.chatSearchWider, "false");
+    expect((await widen(id)).status).toBe(409);
+    expect(pipeline.run).toHaveBeenCalledTimes(1);
+  });
+
+  it("a thread of scope A runs the turn at scope A", async () => {
+    const res = await jsonRequest(app, "POST", "/api/chat/threads", {
+      scope: { kind: "all" },
+    });
+    const id = ((await res.json()) as { thread: { id: string } }).thread.id;
+    pipeline.run.mockResolvedValueOnce(turnResult());
+    expect((await ask(id, "Who owns the audit?")).status).toBe(200);
+    expect(pipeline.run.mock.calls[0]?.[0].scope).toEqual({ kind: "all" });
+  });
+
+  it("rejects a body with both fields or none", async () => {
+    const id = await newThread();
+    const both = await app.request(`/api/chat/threads/${id}/messages`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ question: "q", widen: true }),
+    });
+    expect(both.status).toBe(400);
+    const none = await app.request(`/api/chat/threads/${id}/messages`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: "{}",
+    });
+    expect(none.status).toBe(400);
   });
 });

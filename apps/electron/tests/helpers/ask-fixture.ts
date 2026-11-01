@@ -129,6 +129,87 @@ export const MEETINGS: SeedMeeting[] = [
   },
 ];
 
+// ---------------------------------------------------------------------------
+// Fictional data of P2 (spec 11.6): a second folder and one unfiled meeting.
+// ---------------------------------------------------------------------------
+
+export const HARBOR_FOLDER_ID = "ask-folder-harbor";
+export const HARBOR_FOLDER_NAME = "Harbor pricing";
+/** A fact that only the Harbor folder holds. The Orchid meetings never say it. */
+export const FERRY_QUESTION = "What is the ferry quote for the harbor crane?";
+export const FERRY_TEXT =
+  "Ferry quote for the harbor crane: 48 thousand dollars.";
+export const UNFILED_ID = "ask-m-hallway";
+
+export const HARBOR_MEETINGS: SeedMeeting[] = [
+  {
+    id: "ask-m-pricing",
+    title: "Pricing review",
+    startedAt: BASE + 1 * DAY,
+    overview:
+      "The harbor team reviewed the crane offers and agreed to ask the ferry company for a firm quote.",
+    keyPoints: [
+      "The crane supplier raised its list price by six percent",
+      "The ferry company can ship the crane parts in one trip",
+    ],
+    decisions: ["Ask the ferry company for a firm quote for the harbor crane."],
+    actionItems: [
+      {
+        task: "Request the ferry quote for the harbor crane",
+        owner: "Mara Lindqvist",
+        due: "2026-10-22",
+      },
+    ],
+    openQuestions: ["Does the ferry quote include the port fees?"],
+    topics: [
+      "The crane supplier raised its list price by six percent, so we should lock the order before the end of the month.",
+      "The ferry company can ship all the crane parts in one trip, which saves a second customs check.",
+      "Mara, please request the ferry quote for the harbor crane this week, and ask if the port fees are included.",
+      "I will send the request today. I expect an answer by the twenty-second of October.",
+    ],
+  },
+  {
+    id: "ask-m-quote",
+    title: "Quote check",
+    startedAt: BASE + 8 * DAY,
+    overview:
+      "The harbor team compared the ferry quote with the budget and approved the order.",
+    keyPoints: ["The ferry quote is inside the budget"],
+    decisions: ["Approve the ferry order for the harbor crane."],
+    actionItems: [
+      {
+        task: "Sign the ferry order for the harbor crane",
+        owner: "Mara Lindqvist",
+        due: "2026-11-03",
+      },
+    ],
+    openQuestions: [],
+    topics: [
+      FERRY_TEXT,
+      "That is inside the budget we agreed in September, so I suggest we approve the order today.",
+      "Approved. Mara, please sign the ferry order for the harbor crane before the third of November.",
+    ],
+  },
+];
+
+export const UNFILED_MEETING: SeedMeeting = {
+  id: UNFILED_ID,
+  title: "Hallway chat",
+  startedAt: BASE + 4 * DAY,
+  overview: "A short chat about the office move and the new badge system.",
+  keyPoints: ["The office move is planned for January"],
+  decisions: ["Collect the old badges at the front desk."],
+  actionItems: [
+    { task: "Order the new badge printer", owner: "Tomas Weber", due: null },
+  ],
+  openQuestions: ["Who prepares the move checklist?"],
+  topics: [
+    "The office move is planned for January, and we need the badge printer before then.",
+    "Let us collect the old badges at the front desk after the move.",
+    "Tomas, please order the new badge printer. I do not know yet who prepares the move checklist.",
+  ],
+};
+
 const FILLER = [
   "Okay, let me share my screen so everyone sees the same plan.",
   "Can you hear me well? The line was bad a minute ago.",
@@ -188,8 +269,15 @@ export function markdownOf(m: SeedMeeting): string {
   ].join("\n\n");
 }
 
-/** Writes the folder and the meetings into the profile DB. Call it while the app runs. */
-export function seedAskMeetings(userDataDir: string): void {
+/**
+ * Writes the folder and the meetings into the profile DB. Call it while the
+ * app runs. With `extra` it also writes the Harbor folder (two meetings) and
+ * one unfiled meeting (P2, spec 11.6).
+ */
+export function seedAskMeetings(
+  userDataDir: string,
+  options: { extra?: boolean } = {},
+): void {
   const db = new DatabaseSync(join(userDataDir, "freestyle.db"));
   try {
     db.exec("PRAGMA busy_timeout = 5000");
@@ -198,7 +286,19 @@ export function seedAskMeetings(userDataDir: string): void {
       `INSERT INTO meeting_folders (id, name, description, created_at, updated_at)
        VALUES (?, ?, NULL, ?, ?)`,
     ).run(FOLDER_ID, FOLDER_NAME, now, now);
-    for (const m of MEETINGS) {
+    const all: { m: SeedMeeting; folderId: string | null }[] = MEETINGS.map(
+      (m) => ({ m, folderId: FOLDER_ID }),
+    );
+    if (options.extra) {
+      db.prepare(
+        `INSERT INTO meeting_folders (id, name, description, created_at, updated_at)
+         VALUES (?, ?, NULL, ?, ?)`,
+      ).run(HARBOR_FOLDER_ID, HARBOR_FOLDER_NAME, now, now);
+      for (const m of HARBOR_MEETINGS)
+        all.push({ m, folderId: HARBOR_FOLDER_ID });
+      all.push({ m: UNFILED_MEETING, folderId: null });
+    }
+    for (const { m, folderId } of all) {
       const lines = transcriptLines(m);
       db.prepare(
         `INSERT INTO meetings
@@ -212,7 +312,7 @@ export function seedAskMeetings(userDataDir: string): void {
         m.startedAt,
         m.startedAt + lines.length * 12_000,
         lines.length * 12_000,
-        FOLDER_ID,
+        folderId,
         m.startedAt,
       );
       const insert = db.prepare(
@@ -393,9 +493,10 @@ function questionOf(user: string): string {
 /**
  * The fake model. It looks at each request and answers by rule, so a run is
  * deterministic:
- * - native tool turn: search_chunks for most questions, get_meeting_summary
- *   when the question holds "owns" or "owner", a propose tool for a write
- *   question;
+ * - native tool turn: search_chunks for most questions, list_action_items for
+ *   "action items", list_decisions_questions for "decisions",
+ *   get_meeting_summary when the question holds "owns" or "owner", a propose
+ *   tool for a write question;
  * - chat_router: lookup, or write for "Mark ...";
  * - chat_slots: valid empty slots;
  * - chat_answer: one sentence, copied from the source that shares most words
@@ -407,6 +508,12 @@ export class FakeAskLlm {
   noNativeTools = false;
   /** Waits this long before each answer call (ms). It keeps a turn running. */
   answerDelayMs = 0;
+  /**
+   * When true, the answer is "not found" unless a source shares at least two
+   * words with the question. A source of another meeting then gives a real
+   * not-found answer, which the search-wider spec (P2) needs.
+   */
+  requireOverlap = false;
   private server: Server | undefined;
   private port = 0;
   private sockets = new Set<Socket>();
@@ -553,6 +660,19 @@ export class FakeAskLlm {
           done: true,
         });
       } else if (
+        /\baction items?\b/i.test(q) &&
+        tools.includes("list_action_items")
+      ) {
+        // A list question (P2): the open action items of the scope.
+        record.answered = "list_action_items";
+        this.toolCall(res, "list_action_items", { status: "open" });
+      } else if (
+        /\bdecisions\b/i.test(q) &&
+        tools.includes("list_decisions_questions")
+      ) {
+        record.answered = "list_decisions_questions";
+        this.toolCall(res, "list_decisions_questions", { kind: "decision" });
+      } else if (
         /\bowns?\b|\bowner\b/i.test(q) &&
         tools.includes("get_meeting_summary")
       ) {
@@ -600,6 +720,16 @@ export class FakeAskLlm {
       if (question.includes(NOT_FOUND_MARK) || sources.length === 0) {
         this.text(res, JSON.stringify({ found: false, sentences: [] }));
         return;
+      }
+      if (this.requireOverlap) {
+        const qwords = new Set(words(question));
+        const enough = sources.some(
+          (s) => words(s.text).filter((w) => qwords.has(w)).length >= 2,
+        );
+        if (!enough) {
+          this.text(res, JSON.stringify({ found: false, sentences: [] }));
+          return;
+        }
       }
       const qw = new Set(words(question));
       let best = sources[0] as ParsedSource;

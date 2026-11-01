@@ -22,6 +22,7 @@ import {
 } from "../permission-dialogs";
 import { getServerSettings, waitForServerReady } from "../server-target";
 import { showPill } from "../windows/pill-window";
+import { DictationStartGuard } from "./chat-guard";
 import { startNativeRetry } from "./native-retry";
 import {
   clearHotkeyStuckWatchdog,
@@ -31,6 +32,15 @@ import {
 const hotkeyLog = createAppLogger("hotkey");
 
 const DEFAULT_HOTKEY = getDefaultHotkey();
+
+/**
+ * Holds a dictation start for 150 ms while the Ask bubble hotkey (Control+Alt+K)
+ * is on and the dictation hotkey is a prefix of it. K inside the window opens
+ * the bubble and starts no dictation (specs/meeting-chat-agent.md 11.6.2).
+ */
+export const dictationStartGuard = new DictationStartGuard({
+  isDictating: () => state.hotkeyPressed,
+});
 let hotkeyActivationMode: "hold" | "toggle" = "hold";
 /** Which hotkey (if any) started the in-progress dictation session. */
 let activeDictationLanguage: string | null = null;
@@ -135,6 +145,13 @@ function armHotkeyStuckWatchdog(): void {
  * one can run at a time regardless of which hotkey started it.
  */
 export function handleDictationHotkeyDown(language?: string): void {
+  const accel = language
+    ? (state.languageHotkeyAccels.get(language) ?? null)
+    : state.currentHotkeyAccel;
+  dictationStartGuard.press(accel, () => startDictationFromHotkey(language));
+}
+
+function startDictationFromHotkey(language?: string): void {
   if (hotkeyActivationMode === "toggle") {
     if (!state.hotkeyPressed) {
       state.hotkeyPressed = true;
@@ -161,6 +178,9 @@ export function handleDictationHotkeyDown(language?: string): void {
 }
 
 export function handleDictationHotkeyUp(language?: string): void {
+  // A start that still waits for the chat key runs now: a short tap starts
+  // and stops a dictation, as before the guard.
+  dictationStartGuard.release();
   if (hotkeyActivationMode === "toggle") return;
 
   // Only the hotkey that started the session ends it — a stray key-up from a
@@ -352,6 +372,7 @@ async function registerHotkey(hotkey?: string): Promise<void> {
     }
     state.hotkeyPressed = false;
     activeDictationLanguage = null;
+    dictationStartGuard.cancel();
     clearHotkeyStuckWatchdog();
     globalShortcut.unregisterAll();
     fallbackShortcut = null;

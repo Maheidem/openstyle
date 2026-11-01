@@ -328,7 +328,10 @@
       "numberRange": "Zulässig: {{min}}–{{max}}",
       "numberInvalid": "Bitte {{min}}–{{max}} eingeben",
       "numberSaveFailed": "Speichern fehlgeschlagen. Der Server hat weiterhin {{value}}.",
-      "numberStripped": "Nur Ziffern. {{dropped}} entfernt, das Feld zeigt {{value}}."
+      "numberStripped": "Nur Ziffern. {{dropped}} entfernt, das Feld zeigt {{value}}.",
+      "hotkey": "Globales Tastenkürzel",
+      "hotkeyDesc": "Öffnet aus jeder App ein kleines Fragen-Fenster. Beginnt es mit den Diktiertasten, startet das Diktat nur, wenn diese Taste nicht innerhalb von 150 ms folgt.",
+      "hotkeyConflict": "Wählen Sie eine Kombination mit einer Taste, die kein Diktierkürzel ist."
     }
   },
   "today": {
@@ -807,7 +810,8 @@
       "settings": "Einstellungen",
       "help": "Hilfe",
       "meetings": "Meetings",
-      "import": "Import"
+      "import": "Import",
+      "ask": "Fragen"
     },
     "githubRepo": "GitHub-Repository"
   },
@@ -1356,7 +1360,8 @@
         "cite_check": "Ich konnte meine Antwort nicht mit den Quellen prüfen, darum zeige ich sie nicht.",
         "deadline": "Das dauerte zu lange, darum habe ich abgebrochen.",
         "call_cap": "Ich habe die Suchgrenze für diese Frage erreicht.",
-        "model_error": "Das Modell konnte nicht antworten."
+        "model_error": "Das Modell konnte nicht antworten.",
+        "noSourcesAll": "Dazu habe ich in keinem Meeting etwas gefunden."
       },
       "nearest": "Nächste Quellen",
       "readOnly": "Ask kann noch keine Daten ändern. Es liest nur deine Meetings.",
@@ -1375,7 +1380,28 @@
         "meetings_other": "{{count}} Meetings aufgelistet"
       },
       "trailDropped_one": "{{count}} Quelle ausgelassen",
-      "trailDropped_other": "{{count}} Quellen ausgelassen"
+      "trailDropped_other": "{{count}} Quellen ausgelassen",
+      "scopeFolder": "Dieser Ordner: {{name}}",
+      "searchedEverything": "Durchsucht: alles",
+      "searchedFolder": "Durchsucht: {{name}}",
+      "searchedWider": "In einem weiteren Bereich durchsucht",
+      "noThreads": "Noch keine Chats.",
+      "widenAsk": "Hier nichts gefunden. Breiter suchen?",
+      "widenFolder": "Den ganzen Ordner {{name}} durchsuchen",
+      "widenAll": "Alles durchsuchen",
+      "errWiden": "Jetzt gibt es keine weitere Suche.",
+      "folder": {
+        "title": "Zu diesem Ordner fragen",
+        "empty": "Stellen Sie eine Frage zu diesem Ordner. Fragen liest die Meetings des Ordners.",
+        "placeholder": "Zu diesem Ordner fragen",
+        "threads": "Chats dieses Ordners"
+      },
+      "everything": {
+        "title": "Zu allen Meetings fragen",
+        "empty": "Stellen Sie eine Frage zu allen Ihren Meetings. Fragen liest Transkripte und Zusammenfassungen.",
+        "placeholder": "Zu allen Meetings fragen",
+        "threads": "Chats zu allen Meetings"
+      }
     }
   },
   "help": {
@@ -1555,6 +1581,31 @@
     },
     "models": {
       "label": "Aktive Modelle"
+    }
+  },
+  "ask": {
+    "title": "Fragen",
+    "intro": "Stellen Sie eine Frage zu Ihren Meetings. Wählen Sie, wo gesucht wird.",
+    "off": "Fragen ist aus. Schalten Sie es in den Einstellungen unter Meetings ein.",
+    "scopeLabel": "Wo gesucht wird",
+    "scopeEverything": "Alles",
+    "scopeFolder": "Ein Ordner",
+    "scopeMeeting": "Ein Meeting",
+    "scopeEverythingText": "Alle Meetings",
+    "pickFolder": "Ordner wählen",
+    "pickMeeting": "Meeting wählen",
+    "pickFolderHint": "Wählen Sie einen Ordner, zu dem Sie fragen möchten.",
+    "pickMeetingHint": "Wählen Sie ein Meeting, zu dem Sie fragen möchten.",
+    "bubble": {
+      "label": "Openstyle fragen",
+      "scopeIn": "Frage in: {{name}}",
+      "everything": "allen Meetings",
+      "widenEverything": "Alles durchsuchen",
+      "widenFolder": "Ordner {{name}} durchsuchen",
+      "placeholder": "Frage zu {{name}}",
+      "openInAsk": "In Fragen öffnen",
+      "close": "Schließen",
+      "hint": "Enter sendet. Esc schließt."
     }
   }
 }

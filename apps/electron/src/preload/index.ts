@@ -9,7 +9,11 @@ import type {
   ActiveAudioPlaybackMode,
   AudioPlaybackMode,
 } from "../shared/audio-playback";
-import { getDefaultHotkey } from "../shared/hotkey-defaults";
+import type { ChatBubbleScope, ChatBubbleShown } from "../shared/chat-bubble";
+import {
+  getDefaultChatHotkey,
+  getDefaultHotkey,
+} from "../shared/hotkey-defaults";
 import type { ImportAudioResult } from "../shared/import-types";
 import type {
   ConfirmedDevices,
@@ -44,6 +48,7 @@ const api = {
   platform: process.platform as string,
   isE2E: (process.env.OPENSTYLE_E2E ?? process.env.FREESTYLE_E2E) === "1",
   defaultHotkey: getDefaultHotkey(),
+  defaultChatHotkey: getDefaultChatHotkey(),
   pasteText: (text: string): Promise<void> =>
     ipcRenderer.invoke("paste:text", text),
   copyText: (text: string): Promise<void> =>
@@ -313,6 +318,27 @@ const api = {
   onTranscriptionDone: listen("transcription:done"),
   // Fullscreen state
   onFullscreenChanged: listen<[isFullscreen: boolean]>("fullscreen:changed"),
+  // --- Ask bubble (main/windows/chat-bubble-window.ts, main/hotkeys/chat.ts) ---
+  /** The Meetings page tells main what is selected. null: nothing. */
+  setChatSelection: (scope: ChatBubbleScope | null): void =>
+    ipcRenderer.send("chat:selection", scope),
+  /** The Settings page saved the switch or the hotkey: register it again. */
+  refreshChatHotkey: (): void => ipcRenderer.send("chat-hotkey:refresh"),
+  /** The bubble opened (or opened again). Main gives the scope. */
+  onChatBubbleShown: listen<[shown: ChatBubbleShown]>("chat-bubble:shown"),
+  /** The open that happened before the page mounted, or null. */
+  getChatBubbleState: (): Promise<ChatBubbleShown | null> =>
+    ipcRenderer.invoke("chat-bubble:state"),
+  onChatBubbleHidden: listen("chat-bubble:hidden"),
+  hideChatBubble: (): void => ipcRenderer.send("chat-bubble:hide"),
+  setChatBubbleHeight: (height: number): void =>
+    ipcRenderer.send("chat-bubble:set-height", height),
+  /** Close the bubble and continue the thread on the Ask page. */
+  openChatBubbleThreadInAsk: (threadId: string): void =>
+    ipcRenderer.send("chat-bubble:open-in-ask", threadId),
+  /** Close the bubble and open a cited meeting at the cited time. */
+  openChatBubbleCite: (meetingId: string, startMs: number | null): void =>
+    ipcRenderer.send("chat-bubble:open-cite", meetingId, startMs),
   // --- Tray popover (main/windows/tray-popover-window.ts) ---
   getTrayPopoverState: (): Promise<TrayPopoverState> =>
     ipcRenderer.invoke("tray-popover:state"),

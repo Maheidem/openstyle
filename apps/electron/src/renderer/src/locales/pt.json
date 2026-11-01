@@ -328,7 +328,10 @@
       "numberRange": "Permitido: {{min}}–{{max}}",
       "numberInvalid": "Digite {{min}}–{{max}}",
       "numberSaveFailed": "Não foi possível salvar. O servidor ainda tem {{value}}.",
-      "numberStripped": "Somente dígitos. {{dropped}} removido, o campo mostra {{value}}."
+      "numberStripped": "Somente dígitos. {{dropped}} removido, o campo mostra {{value}}.",
+      "hotkey": "Atalho global",
+      "hotkeyDesc": "Abre uma pequena janela de Perguntar a partir de qualquer app. Se começar com as teclas de ditado, o ditado só começa se esta tecla não vier em 150 ms.",
+      "hotkeyConflict": "Escolha uma combinação com uma tecla que não seja um atalho de ditado."
     }
   },
   "today": {
@@ -806,7 +809,8 @@
       "settings": "Configurações",
       "help": "Ajuda",
       "meetings": "Reuniões",
-      "import": "Importar"
+      "import": "Importar",
+      "ask": "Perguntar"
     },
     "githubRepo": "Repositório do GitHub"
   },
@@ -1355,7 +1359,8 @@
         "cite_check": "Não consegui conferir minha resposta com as fontes, então não a mostro.",
         "deadline": "Demorou demais, então parei.",
         "call_cap": "Atingi o limite de buscas para esta pergunta.",
-        "model_error": "O modelo falhou ao responder."
+        "model_error": "O modelo falhou ao responder.",
+        "noSourcesAll": "Não encontrei nada sobre isso em nenhuma reunião."
       },
       "nearest": "Fontes mais próximas",
       "readOnly": "O Ask ainda não pode alterar dados. Ele só lê suas reuniões.",
@@ -1374,7 +1379,28 @@
         "meetings_other": "listou {{count}} reuniões"
       },
       "trailDropped_one": "{{count}} fonte deixada de fora",
-      "trailDropped_other": "{{count}} fontes deixadas de fora"
+      "trailDropped_other": "{{count}} fontes deixadas de fora",
+      "scopeFolder": "Esta pasta: {{name}}",
+      "searchedEverything": "Pesquisado em: tudo",
+      "searchedFolder": "Pesquisado em: {{name}}",
+      "searchedWider": "Pesquisado em um escopo mais amplo",
+      "noThreads": "Ainda não há chats.",
+      "widenAsk": "Nada encontrado aqui. Pesquisar em um escopo maior?",
+      "widenFolder": "Pesquisar na pasta inteira {{name}}",
+      "widenAll": "Pesquisar tudo",
+      "errWiden": "Não há uma pesquisa mais ampla para executar agora.",
+      "folder": {
+        "title": "Perguntar sobre esta pasta",
+        "empty": "Faça uma pergunta sobre esta pasta. Perguntar lê as reuniões da pasta.",
+        "placeholder": "Pergunte sobre esta pasta",
+        "threads": "Chats desta pasta"
+      },
+      "everything": {
+        "title": "Perguntar sobre todas as reuniões",
+        "empty": "Faça uma pergunta sobre todas as suas reuniões. Perguntar lê as transcrições e os resumos.",
+        "placeholder": "Pergunte sobre todas as reuniões",
+        "threads": "Chats sobre todas as reuniões"
+      }
     }
   },
   "help": {
@@ -1554,6 +1580,31 @@
     },
     "models": {
       "label": "Modelos ativos"
+    }
+  },
+  "ask": {
+    "title": "Perguntar",
+    "intro": "Faça uma pergunta sobre as suas reuniões. Escolha onde pesquisar.",
+    "off": "Perguntar está desativado. Ative em Ajustes, Reuniões.",
+    "scopeLabel": "Onde pesquisar",
+    "scopeEverything": "Tudo",
+    "scopeFolder": "Uma pasta",
+    "scopeMeeting": "Uma reunião",
+    "scopeEverythingText": "Todas as reuniões",
+    "pickFolder": "Escolha uma pasta",
+    "pickMeeting": "Escolha uma reunião",
+    "pickFolderHint": "Escolha uma pasta sobre a qual perguntar.",
+    "pickMeetingHint": "Escolha uma reunião sobre a qual perguntar.",
+    "bubble": {
+      "label": "Perguntar ao Openstyle",
+      "scopeIn": "Perguntando em: {{name}}",
+      "everything": "todas as reuniões",
+      "widenEverything": "Pesquisar tudo",
+      "widenFolder": "Pesquisar na pasta {{name}}",
+      "placeholder": "Pergunte sobre {{name}}",
+      "openInAsk": "Abrir em Perguntar",
+      "close": "Fechar",
+      "hint": "Enter pergunta. Esc fecha."
     }
   }
 }

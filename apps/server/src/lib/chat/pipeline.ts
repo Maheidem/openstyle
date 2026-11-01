@@ -72,6 +72,7 @@ import {
 } from "./prompts.js";
 import { proposalFor } from "./proposals.js";
 import type { ChatSettings } from "./settings.js";
+import { nextWider } from "./store.js";
 import { countMentions, runTool } from "./tools.js";
 import {
   type Intent,
@@ -173,7 +174,10 @@ export async function runChatTurn(input: ChatTurnInput): Promise<TurnResult> {
   const { db, scope, question, llm, signal, settings } = input;
   const t0 = Date.now();
   const todayMs = input.now ?? t0;
-  const turnScope: TurnScope = { kind: scope.kind, id: scope.id };
+  const turnScope: TurnScope = {
+    kind: scope.kind,
+    id: scope.kind === "all" ? null : scope.id,
+  };
   const sources = new SourceMap();
   const steps: ChatTraceStep[] = [];
   const toolCalls: TurnResult["toolCalls"] = [];
@@ -225,6 +229,7 @@ export async function runChatTurn(input: ChatTurnInput): Promise<TurnResult> {
     content,
     cites,
     trace: {
+      scope,
       intent,
       router,
       steps,
@@ -252,7 +257,19 @@ export async function runChatTurn(input: ChatTurnInput): Promise<TurnResult> {
   const notFound = (
     reason: Extract<ChatBlock, { kind: "not_found" }>["reason"],
   ): TurnResult =>
-    finish([{ kind: "not_found", scope, reason, nearest: nearest() }], [], "");
+    finish(
+      [
+        {
+          kind: "not_found",
+          scope,
+          reason,
+          nearest: nearest(),
+          wider: nextWider(db, scope, settings.searchWider),
+        },
+      ],
+      [],
+      "",
+    );
 
   /** Deadline and call cap end the turn with a block. A client abort throws. */
   const stopReason = ():

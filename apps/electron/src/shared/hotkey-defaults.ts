@@ -22,3 +22,15 @@ export function getDefaultHotkey(platform: string = process.platform): string {
       return "Control+Alt+Space";
   }
 }
+
+/**
+ * The default global hotkey of the Ask bubble (specs/meeting-chat-agent.md
+ * 11.6.2). On macOS it extends the dictation hotkey Control+Alt with K, so
+ * the dictation guard can tell the two apart. Control+Space and
+ * Control+Alt+Space are macOS input-source shortcuts and are not used.
+ */
+export function getDefaultChatHotkey(
+  platform: string = process.platform,
+): string {
+  return platform === "darwin" ? "Control+Alt+K" : "Control+Shift+K";
+}

@@ -5,7 +5,7 @@ import assert from "node:assert/strict";
 import { createHash } from "node:crypto";
 import { test } from "node:test";
 import { buildCorpus, summaryMarkdown, TODAY_MS } from "./corpus.mts";
-import { buildGold } from "./gold.mts";
+import { buildGold, buildP2 } from "./gold.mts";
 import {
   mrrAt,
   ndcgAt,
@@ -307,4 +307,78 @@ test("retrieval metrics and fusion", () => {
     ]),
     [1, 2],
   ); // tie: smaller id first
+});
+
+// ---- the P2 set (chat agent P2, spec 11.6.6) -------------------------------------
+
+test("the gold hash does not change when the P2 set is added", () => {
+  // The P0 and P1 reports quote this hash. The P2 set is a separate set file.
+  assert.equal(sha(g).slice(0, 16), "1e41bd5cea578222");
+});
+
+test("the P2 set is deterministic and has the planned shape", () => {
+  const p2 = buildP2(c);
+  assert.equal(sha(buildP2(buildCorpus())), sha(p2));
+  assert.equal(p2.widen.length, 24);
+  assert.equal(p2.threads.filter((t) => t.scope.kind === "all").length, 6);
+  assert.equal(p2.threads.filter((t) => t.scope.kind === "folder").length, 4);
+  const kinds = new Set(p2.questions.map((q) => `${q.type}:${q.scope.kind}`));
+  for (const k of [
+    "lookup:all",
+    "lookup:folder",
+    "who_said:all",
+    "who_said:folder",
+    "aggregation:all",
+    "temporal:all",
+    "temporal:folder",
+  ]) {
+    assert.ok(kinds.has(k), `P2 questions have ${k}`);
+  }
+  assert.equal(
+    new Set(p2.questions.map((q) => q.id)).size,
+    p2.questions.length,
+  );
+  for (const q of p2.questions) assert.ok(q.id.startsWith("p2-"));
+});
+
+test("a widen case: the fact is outside the first scope and inside the last", () => {
+  const p2 = buildP2(c);
+  const meetingOf = (id: string) => c.meetings.find((m) => m.id === id);
+  const inScope = (
+    scope: { kind: string; id: string | null },
+    meetingId: string,
+  ) =>
+    scope.kind === "all" ||
+    (scope.kind === "meeting" && scope.id === meetingId) ||
+    (scope.kind === "folder" && meetingOf(meetingId)?.folderId === scope.id);
+  for (const w of p2.widen) {
+    const factMeeting = w.gold[0]?.meetingId as string;
+    assert.ok(
+      !inScope(w.start, factMeeting),
+      `${w.id}: fact outside the start`,
+    );
+    const last = w.steps[w.steps.length - 1] as (typeof w.steps)[number];
+    assert.ok(
+      inScope(last, factMeeting),
+      `${w.id}: fact inside the last scope`,
+    );
+    // Each step is one step wider than the one before it.
+    let prev = w.start;
+    for (const step of w.steps) {
+      if (prev.kind === "meeting") {
+        const folder = meetingOf(prev.id as string)?.folderId ?? null;
+        assert.ok(
+          folder === null
+            ? step.kind === "all"
+            : step.kind === "folder" && step.id === folder,
+          `${w.id}: a meeting widens to its folder, or to all when unfiled`,
+        );
+      } else {
+        assert.equal(step.kind, "all", `${w.id}: a folder widens to all`);
+      }
+      // The middle scopes do not hold the fact.
+      if (step !== last) assert.ok(!inScope(step, factMeeting));
+      prev = step;
+    }
+  }
 });

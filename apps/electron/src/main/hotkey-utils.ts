@@ -1,3 +1,4 @@
+import { getDefaultChatHotkey } from "../shared/hotkey-defaults";
 import { SETTINGS_KEYS } from "../shared/settings-keys";
 
 const HOTKEY_MODIFIER_PARTS = new Set([
@@ -174,4 +175,91 @@ export function hotkeyModeFromSettings(
   settings: Record<string, string>,
 ): "hold" | "toggle" {
   return settings[SETTINGS_KEYS.hotkeyMode] === "toggle" ? "toggle" : "hold";
+}
+
+// ---------------------------------------------------------------------------
+// Ask bubble hotkey (specs/meeting-chat-agent.md 11.6.2) — pure helpers.
+// ---------------------------------------------------------------------------
+
+const CHORD_MODIFIER_CATEGORY: Record<string, string> = {
+  alt: "alt",
+  option: "alt",
+  rightalt: "alt",
+  rightoption: "alt",
+  control: "control",
+  ctrl: "control",
+  rightcontrol: "control",
+  rightctrl: "control",
+  shift: "shift",
+  rightshift: "shift",
+  command: "command",
+  cmd: "command",
+  meta: "command",
+  super: "command",
+  win: "command",
+  rightcommand: "command",
+  rightcmd: "command",
+  rightsuper: "command",
+  rightwin: "command",
+  rightmeta: "command",
+  commandorcontrol: "commandorcontrol",
+  cmdorctrl: "commandorcontrol",
+  fn: "fn",
+  globe: "fn",
+};
+
+/** The modifier categories and the key of an accelerator. */
+function chordParts(accel: string): {
+  modifiers: Set<string>;
+  key: string | null;
+} {
+  const modifiers = new Set<string>();
+  let key: string | null = null;
+  for (const raw of accel.split("+")) {
+    const part = raw.trim().toLowerCase();
+    if (!part) continue;
+    const category = CHORD_MODIFIER_CATEGORY[part];
+    if (category) modifiers.add(category);
+    else key = part;
+  }
+  return { modifiers, key };
+}
+
+/**
+ * True when pressing the dictation hotkey also presses the first keys of the
+ * chat hotkey: the dictation hotkey is modifiers only, and the chat hotkey has
+ * a key and holds all those modifiers. Control+Alt is a prefix of
+ * Control+Alt+K. The dictation guard needs this (hotkeys/chat-guard.ts).
+ */
+export function isChordPrefix(
+  dictationAccel: string,
+  chatAccel: string,
+): boolean {
+  const dictation = chordParts(dictationAccel);
+  const chat = chordParts(chatAccel);
+  if (dictation.key !== null || dictation.modifiers.size === 0) return false;
+  if (chat.key === null) return false;
+  for (const m of dictation.modifiers) {
+    if (!chat.modifiers.has(m)) return false;
+  }
+  return true;
+}
+
+/**
+ * The chat hotkey to register from a settings map, or null when none is
+ * wanted: the switch `meeting_chat_enabled` is not `"true"`, or the saved
+ * value is not a valid chord. An empty or missing value means the default.
+ * A chat hotkey needs a key: a modifier-only chord is refused, so it cannot
+ * clash with the hold-to-talk dictation hotkey.
+ */
+export function chatHotkeyFromSettings(
+  settings: Record<string, string>,
+  platform: string = process.platform,
+): string | null {
+  if (settings[SETTINGS_KEYS.meetingChatEnabled] !== "true") return null;
+  const saved = settings[SETTINGS_KEYS.chatHotkey]?.trim();
+  const raw = saved ? saved : getDefaultChatHotkey(platform);
+  if (!isValidAccelerator(raw)) return null;
+  const accel = normalizeAccelerator(raw);
+  return chordParts(accel).key === null ? null : accel;
 }

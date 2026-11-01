@@ -328,7 +328,10 @@
       "numberRange": "設定可能: {{min}}〜{{max}}",
       "numberInvalid": "{{min}}〜{{max}}で入力してください",
       "numberSaveFailed": "保存できませんでした。サーバーは現在 {{value}} です。",
-      "numberStripped": "数字のみ。{{dropped}} を除外し、{{value}} と表示しています。"
+      "numberStripped": "数字のみ。{{dropped}} を除外し、{{value}} と表示しています。",
+      "hotkey": "グローバルショートカット",
+      "hotkeyDesc": "どのアプリからでも小さな質問ウィンドウを開きます。音声入力のキーで始まる場合、150 ミリ秒以内にこのキーが続かないときだけ音声入力が始まります。",
+      "hotkeyConflict": "音声入力のショートカットではない、キー付きの組み合わせを選んでください。"
     }
   },
   "today": {
@@ -807,7 +810,8 @@
       "settings": "設定",
       "help": "ヘルプ",
       "meetings": "ミーティング",
-      "import": "インポート"
+      "import": "インポート",
+      "ask": "質問"
     },
     "githubRepo": "GitHubリポジトリ"
   },
@@ -1348,7 +1352,8 @@
         "cite_check": "回答をソースで確認できなかったため、表示しません。",
         "deadline": "時間がかかりすぎたため、中止しました。",
         "call_cap": "この質問の検索上限に達しました。",
-        "model_error": "モデルが回答に失敗しました。"
+        "model_error": "モデルが回答に失敗しました。",
+        "noSourcesAll": "どの会議にもこれに関する情報は見つかりませんでした。"
       },
       "nearest": "最も近いソース",
       "readOnly": "Ask はまだデータを変更できません。会議を読むだけです。",
@@ -1361,7 +1366,28 @@
         "listed_other": "{{count}} 件の項目を一覧化",
         "meetings_other": "{{count}} 件の会議を一覧化"
       },
-      "trailDropped_other": "{{count}} 件のソースを除外"
+      "trailDropped_other": "{{count}} 件のソースを除外",
+      "scopeFolder": "このフォルダー: {{name}}",
+      "searchedEverything": "検索範囲: すべて",
+      "searchedFolder": "検索範囲: {{name}}",
+      "searchedWider": "より広い範囲で検索しました",
+      "noThreads": "チャットはまだありません。",
+      "widenAsk": "ここには見つかりません。範囲を広げて検索しますか?",
+      "widenFolder": "フォルダー {{name}} 全体を検索",
+      "widenAll": "すべてを検索",
+      "errWiden": "今は実行できる広範囲の検索がありません。",
+      "folder": {
+        "title": "このフォルダーについて質問",
+        "empty": "このフォルダーについて質問してください。フォルダー内の会議を読んで答えます。",
+        "placeholder": "このフォルダーについて質問",
+        "threads": "このフォルダーのチャット"
+      },
+      "everything": {
+        "title": "すべての会議について質問",
+        "empty": "すべての会議について質問してください。文字起こしと要約を読んで答えます。",
+        "placeholder": "すべての会議について質問",
+        "threads": "すべての会議のチャット"
+      }
     }
   },
   "help": {
@@ -1541,6 +1567,31 @@
     },
     "models": {
       "label": "使用中のモデル"
+    }
+  },
+  "ask": {
+    "title": "質問",
+    "intro": "会議について質問してください。検索する範囲を選べます。",
+    "off": "質問機能はオフです。設定の「ミーティング」でオンにしてください。",
+    "scopeLabel": "検索範囲",
+    "scopeEverything": "すべて",
+    "scopeFolder": "フォルダー",
+    "scopeMeeting": "会議",
+    "scopeEverythingText": "すべての会議",
+    "pickFolder": "フォルダーを選択",
+    "pickMeeting": "会議を選択",
+    "pickFolderHint": "質問するフォルダーを選んでください。",
+    "pickMeetingHint": "質問する会議を選んでください。",
+    "bubble": {
+      "label": "Openstyle に質問",
+      "scopeIn": "質問の範囲: {{name}}",
+      "everything": "すべての会議",
+      "widenEverything": "すべてを検索",
+      "widenFolder": "フォルダー {{name}} を検索",
+      "placeholder": "{{name}} について質問",
+      "openInAsk": "質問ページで開く",
+      "close": "閉じる",
+      "hint": "Enter で質問、Esc で閉じます。"
     }
   }
 }

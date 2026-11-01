@@ -2,7 +2,7 @@
 
 Status: DRAFT for owner review. Date: 2026-10-31. Base: `main` at `a7083674`.
 Revision 2 (2026-10-31, 09:49): owner answers applied. Section 12.1 lists them as decisions D1 to D4. Revision 3 (10:45): placement decided, D5 (section 11).
-Revision 4 (2026-10-31, 11:10): owner review applied, decisions D6 to D18 (section 12.1). Name note: `SD8` is decision D8 of `specs/local-semantic-search.md`. `D1` to `D18` are decisions of this spec.
+Revision 4 (2026-10-31, 11:10): owner review applied, decisions D6 to D18 (section 12.1). Revision 5 (2026-11-01): decision D19, the P2 surfaces (section 11.6). Name note: `SD8` is decision D8 of `specs/local-semantic-search.md`. `D1` to `D18` are decisions of this spec.
 Scope of this document: design only. No product code is part of this change.
 Language: ASD-STE100 Simplified Technical English.
 Diagrams follow the rule "Diagram conventions" in `AGENTS.md`. The pipeline diagram (2.2), the live-variant diagram (2.4) and the failure diagrams (2.5a, 2.5b) are written to it. The other diagrams are small single-concern sketches.
@@ -1187,6 +1187,56 @@ Measured 2026-11-01 (temperature 0, thinking off; MLflow experiment `openstyle-l
 
 After change 6 (20 threads, 90 turns): thread turn accuracy base to new is 70.0 to 95.6 on Mac E4B and 52.2 to 91.1 on Mac E2B (gold); decisions turns 0 to 75 and next-steps turns 0 to 100 on both. The bars of the table above did not move. The E2B lookup + follow-up bar still fails, as before P1.2 (issue #402). The desktop E4B run (llama.cpp) matches: lookup + follow-up 94.3 / 94.3 both ways, threads 98.6 / 93.1 new against 75.0 (held-out) base.
 
+#### 8.7c P2 results (branch feat/chat-ask-p2, 2026-11-01)
+
+Measured at temperature 0, thinking off. Each cell is "corpus seed / held-out seed" (seed 20271105). Desktop is the llama.cpp server (Gemma 4 E4B and E2B, GGUF). Mac is the MLX worker (`gemma-4-e4b-qat-4bit`, `gemma-4-e2b-qat-4bit`), run under the GPU lock. Every run is in MLflow experiment `openstyle-lab-chat-agent-p1` (id 100), tags `chat.set` (`gold` or `p2`), `backend` and `model`, and each run was read back (`READ BACK OK`). The gold hash is `1e41bd5cea578222`. The P2 set is `buildP2` in `scripts/chat-eval/gold.mts` (`pnpm chat-eval p1 --set p2`, section 11.6.6).
+
+**No regression.** A control on the Mac E4B, corpus seed: `origin/main` (f1791df1) and this branch give the same pass or fail on all 190 gold questions, and the same numbers (lookup + follow-up 91.4, cite precision 0.854, not-found 95.0, list F1 0.979). The Mac E4B held-out threads give the same 88 turns, 93.2% and 1 repeat on both. The repeat is an older P1.2 case (PT "Why?"), not a P2 change.
+
+### P0 gold set (P1 bars, no regression). Values are corpus seed / held-out seed.
+
+| Metric | Desktop E4B | Desktop E2B | Mac E4B | Mac E2B |
+|---|---|---|---|---|
+| Lookup + follow-up, bar 85 | 94.3 / 91.4 | 85.7 / 88.6 | 91.4 / 91.4 | 77.1 / 82.9 |
+| A0 22, bar 74 | 95.5 / 90.9 | 86.4 / 86.4 | 90.9 / 90.9 | 81.8 / 81.8 |
+| Cite precision, bar 0.80 | 0.851 / 0.886 | 0.774 / 0.807 | 0.854 / 0.870 | 0.805 / 0.821 |
+| Not-found acc, bar 90 | 95.0 / 95.0 | 95.0 / 95.0 | 95.0 / 95.0 | 92.5 / 92.5 |
+| False not-found, bar max 15 | 1.4 / 1.4 | 1.4 / 1.4 | 0.7 / 0.7 | 1.4 / 0.7 |
+| List F1, bar 0.85 | 0.979 / 1.000 | 0.979 / 1.000 | 0.979 / 1.000 | 0.979 / 1.000 |
+| Who said, P2 bar 70 | 100.0 / 100.0 | 95.0 / 100.0 | 100.0 / 100.0 | 100.0 / 100.0 |
+| Tool+args, bar 85 | 94.2 / 94.2 | 93.7 / 93.2 | 94.2 / 94.2 | 92.6 / 92.6 |
+| Write, bar 90 | 92.0 / 92.0 | 92.0 / 92.0 | 92.0 / 92.0 | 92.0 / 92.0 |
+| Route gold, bar 90 | 94.2 / 94.2 | 85.3 / 84.7 | 94.7 / 94.7 | 95.8 / 95.8 |
+| Cite valid, bar 100 | 100.0 / 100.0 | 100.0 / 100.0 | 100.0 / 100.0 | 100.0 / 100.0 |
+| Invalid cites shown, bar 0 | 0 / 0 | 0 / 0 | 0 / 0 | 0 / 0 |
+| Turn p95 ms, bar 6000 | 1063 / 1151 | 884 / 902 | 2141 / 1989 | 1229 / 1232 |
+| Threads turn acc | 95.6 / 88.6 | 90.0 / 93.2 | 95.6 / 93.2 | 91.1 / 92.0 |
+| Thread repeats | 0 / 0 | 0 / 0 | 0 / 1 | 0 / 1 |
+
+### P2 set (folder and Everything). Values are corpus seed / held-out seed.
+
+| Metric | Desktop E4B | Desktop E2B | Mac E4B | Mac E2B |
+|---|---|---|---|---|
+| Lookup (P2 bar 70) | 90.5 / 90.5 | 90.5 / 85.7 | 90.5 / 90.5 | 85.7 / 90.5 |
+| Who said, bar 70 | 100.0 / 100.0 | 100.0 / 100.0 | 100.0 / 100.0 | 100.0 / 100.0 |
+| Cite precision, bar 0.80 | 0.947 / 0.947 | 0.919 / 0.971 | 0.947 / 0.947 | 0.886 / 0.972 |
+| List F1, bar 0.85 | 1.000 / 0.900 | 1.000 / 0.900 | 1.000 / 0.900 | 1.000 / 0.900 |
+| Cite valid, bar 100 | 100.0 / 100.0 | 100.0 / 100.0 | 100.0 / 100.0 | 100.0 / 100.0 |
+| Invalid cites shown | 0 / 0 | 0 / 0 | 0 / 0 | 0 / 0 |
+| Widen: offer, bar 90 | 95.8 / 95.8 | 91.7 / 87.5 | 91.7 / 95.8 | 87.5 / 87.5 |
+| Widen: answer, bar 70 | 87.5 / 87.5 | 75.0 / 70.8 | 79.2 / 83.3 | 66.7 / 62.5 |
+| Threads A and F turn acc | 100.0 / 94.9 | 94.6 / 89.7 | 97.3 / 89.7 | 89.2 / 87.2 |
+| Thread repeats | 0 / 0 | 0 / 0 | 0 / 0 | 0 / 0 |
+| False not-found | 1.9 / 1.9 | 1.9 / 3.7 | 1.9 / 1.9 | 3.8 / 1.9 |
+| Turn p95 ms | 1047 / 998 | 1718 / 1996 | 2234 / 1965 | 1124 / 1211 |
+
+Findings:
+
+1. E4B meets every P1 and P2 bar on both backends and both seeds (the Mac E4B P2 set: lookup 90.5, who said 100, widen offer 91.7 / 95.8, widen answer 79.2 / 83.3).
+2. E2B misses these bars (the floor, D9): lookup + follow-up on the gold set (Mac 77.1 / 82.9, the open issue #402; the desktop passes), the widen offer on the held-out P2 set (87.5) and the widen answer on the Mac (66.7 / 62.5). The cases that fail are scope traps where the model answers from a near topic at the narrow scope, and lookups that the model calls not found at the wide scope. Cite validity is 100% and no invalid cite was shown in any of the 16 runs.
+3. Dictation latency while a chat turn runs was not measured in P2. The 150 ms guard adds a fixed 150 ms to a dictation start only while the chat hotkey is on.
+4. The retrieval bars of P1 were run again once on the final head (Mac, `--only retrieval`): nDCG@10 0.651, recall@10 any 86.4%, rerank 30 passes both slices (100.0 / 92.5), rerank 15 fails both slices (73.0 / 80.0), as in P1. The 46,000-row latency bar was not run again (`retrieve()` has no change).
+
 ### 8.8 Retrieval eval (P0) and mic diarization eval (PM)
 
 Retrieval eval: metrics, arms and bars are in section 7.4. The gold ranges come from the corpus of 8.2. Add to the corpus: 40 queries with exact names, 40 with exact numbers, 30 concept queries, 20 with an ASR-style misspelling of a name in the transcript, 20 date-bounded queries. Half are in Portuguese and half in English, so nDCG@10 is per language.
@@ -1347,7 +1397,7 @@ The owner said the Cmd+K quick ask and the Ask tab have "an awesome synergy". Th
 | Phase | UI scope |
 |---|---|
 | P1 | One thin UI: the Ask tab on the meeting page (scope M). The API and the eval already cover scope F. The folder questions (R2 at folder level, R5, R6) are proven by the gold eval and by command against the real server in P1, and this is stated in the PR. Their screen proof comes in P2. |
-| P2 | The Ask tab on the folder Overview (scope F), and Cmd+K with widening to Everything (scope A) and "continue in the tab". Screen proofs for R3, R4, R6, R7. |
+| P2 | Replaced by D19 (section 11.6): the Ask tab on the folder Overview (scope F), the Ask page, the global bubble and the Everything scope (A). Cmd+K is dropped. Screen proofs for R3, R4, R6, R7. |
 | P3 and P4 | Proposal cards and the activity log in the same tab (and in the Cmd+K result when a proposal comes from there). |
 | P5 | The live view chat panel switches to the Ask pipeline at scope "this meeting, live". |
 | Later | Ask page for the Everything scope and old-thread search. |
@@ -1356,6 +1406,96 @@ The owner said the Cmd+K quick ask and the Ask tab have "an awesome synergy". Th
 
 1. Power user: wants an optional drawer later, so the chat stays open while the user moves between pages. Not in the plan. Reopen after P2 if Cmd+K plus the tab is not enough.
 2. Product manager: wants the source-text panel of concept B (the cited text next to the answer) inside the tab. Plan: a cite chip opens the cited lines in a side panel of the tab (transcript lines around `start_ms`, from `get_transcript_window`, section 3.2), in addition to opening the meeting. DECISION: P2 builds it, because it needs the window tool.
+
+### 11.6 P2 placement: Ask page, global bubble, folder tab (D19)
+
+Status: DECIDED by the owner on 2026-11-01 (decision D19, section 12.1). D19 replaces D5 for P2. D5 stays for the Ask tab of one meeting (P1). The in-app Cmd+K palette of D5 is dropped. The API of section 5.3 stays placement-agnostic: any surface gives a scope and a thread.
+
+#### 11.6.1 The surfaces
+
+| Surface | What it is | Scope |
+|---|---|---|
+| Ask tab on the meeting page | Unchanged from P1. | M |
+| Ask tab on the folder Overview | A tab next to the Overview in the folder panel. The scope is fixed by the page. | F |
+| Ask page | A page in the left sidebar, next to Meetings. It has a scope picker (Everything, one folder, one meeting), the thread list of the picked scope (newest first), a new-chat button, and the same answer, cite chip and "How I found this" UI as the meeting tab. | A, F or M |
+| Bubble | A small floating window. A global hotkey opens it from any app. It has the scope in words, one action to widen the scope, an input, a short answer with cite chips, and "Open in Ask". | the selection in the Meetings page, else A |
+
+One thread model serves all four surfaces (section 4.2). A thread made on any surface shows in the thread list of its scope on every surface. A thread with no meeting and no folder has the scope A (the table already allows it: both columns NULL).
+
+```mermaid
+flowchart TD
+  U1(["Meeting tab: scope M"]) --> TH
+  U2(["Folder tab: scope F"]) --> TH
+  U3(["Ask page: scope picker M, F or A"]) --> TH
+  U4(["Bubble: scope from the Meetings selection, else A"]) --> TH
+  TH["1 THREAD [CODE]<br/>in: scope, thread id or new<br/>out: thread row (meeting_id, folder_id, or both NULL)"]
+  TH --> TURN["2 TURN [LLM calls: stages 1, 2b, 4, 4r of 2.2]<br/>in: question, scope, history<br/>out: answer blocks + cites, or not_found block"]
+  TURN -->|"answer with valid cites"| X1(["EXIT answer in the thread list of the scope"])
+  TURN -->|"not_found, scope is M or F, Search wider is on"| W["3 OFFER [CODE]<br/>out: not_found block with the next wider scope<br/>M to F (A if unfiled), F to A"]
+  TURN -->|"not_found, scope is A, or Search wider is off"| X2(["EXIT not_found block, no offer"])
+  W -->|"user does not click"| X3(["EXIT thread stays at the narrow scope"])
+  W -->|"user clicks once"| TURN2["4 WIDEN TURN [LLM calls: same stages]<br/>in: the same question, the wider scope<br/>out: answer or not_found; the cites show the scope<br/>bound: one step per click"]
+  TURN2 -->|"answer"| X1
+  TURN2 -->|"not_found"| W
+```
+
+Counting from the diagram: a turn has the LLM calls of section 2.2 (at most `R + 3`). A widen turn is a normal turn at a wider scope. It adds no extra call. The exits are X1, X2 and X3.
+
+#### 11.6.2 The global hotkey and the guard
+
+The owner holds Control+Option for dictation (the default hotkey of macOS is `Control+Alt`, `apps/electron/src/shared/hotkey-defaults.ts`). The chat hotkey is `Control+Option+K` by default. It is a setting (`chat_hotkey`) with a recorder in Settings. Control+Space and Control+Option+Space are taken by macOS input sources on the owner's Mac, so they are not used.
+
+Rules (DECISION):
+
+1. OS-level hotkeys go through the main process (`AGENTS.md`, section "IPC"). The main process starts one native key listener for the chat hotkey, as it does for each language hotkey. The listener swallows the key, so the foreground app does not get a "k".
+2. The hotkey is registered only when `meeting_chat_enabled` is `"true"`. A change of the switch or the hotkey registers or removes it at once.
+3. The guard. When the chat hotkey is on and the dictation hotkey is a prefix of it (all modifiers of the dictation hotkey are modifiers of the chat hotkey), a dictation start waits 150 ms. If the chat key goes down in this window, the start is cancelled and the bubble opens. If the window ends first, dictation starts. If the user releases the dictation hotkey inside the window, dictation starts at once and stops at once (the same as before the guard). If the chat key goes down while a dictation runs, the chat key is ignored. The cost: every dictation start is 150 ms later while the chat is on. A dictation hotkey that is not a prefix of the chat hotkey has no delay.
+4. The same guard applies to the per-language dictation hotkeys.
+
+```mermaid
+flowchart TD
+  D0(["Dictation hotkey down"]) --> C1{"chat hotkey on and the dictation hotkey is a prefix of it?"}
+  C1 -->|no| S1["START dictation now [CODE]"]
+  C1 -->|yes| T["WAIT 150 ms [CODE]<br/>bound: 150 ms, one timer"]
+  T -->|"chat key down inside the window"| B["CANCEL start, OPEN bubble [CODE]"]
+  T -->|"dictation hotkey up inside the window"| S2["START now, then STOP [CODE]<br/>same as before the guard"]
+  T -->|"window ends"| S3["START dictation [CODE]"]
+  S3 -->|"chat key down while dictation runs"| I(["EXIT chat key ignored"])
+  B --> X1(["EXIT bubble open, no dictation"])
+  S1 --> X2(["EXIT dictation running"])
+  S2 --> X3(["EXIT dictation started and stopped"])
+```
+
+The bubble closes with Escape and returns focus to the app that had it. When the bubble was opened from the background, Openstyle hides itself on close, so macOS gives focus back.
+
+#### 11.6.3 The bubble scope
+
+The Meetings page tells the main process which meeting or folder is selected (IPC `chat:selection`). The main process keeps the last value. The hotkey reads it at press time. A meeting that is selected gives scope M. A folder gives scope F. Nothing selected, or the Meetings page was never open, gives scope A. The bubble shows the scope in words ("Asking in: Weekly sync") and one action "Search everything" that widens the scope of the next question one step (M to F, F to A, an unfiled meeting to A). "Open in Ask" opens the main window on the Ask page with the same thread selected, so the thread continues there.
+
+#### 11.6.4 Search wider (D16) in P2
+
+1. A `not_found` block at scope M or F carries `wider`: the next scope (kind, id, name), or none when Search wider is off or the scope is A. Code computes it. The model does not.
+2. The user clicks "Search the whole folder" or "Search everything". The client sends `POST /api/chat/threads/:id/messages` with `{"widen": true}`. The server reads the last message of the thread. It must be an assistant message with a `not_found` block that has `wider`. The server takes the question of the user message before it and runs a normal turn at `wider`. It saves no second user message. A thread whose last message is not such a block gets 409 `widen_not_offered`.
+3. The answer message carries its scope in `trace.scope`. The UI shows "Searched in: Project Atlas" when the scope of the answer differs from the scope of the thread.
+4. Code never widens alone, also not in the last tool round (section 6.3).
+
+#### 11.6.5 What P2 does not build
+
+1. The Cmd+K palette (dropped by the owner). The API has no palette code.
+2. The source-text side panel of section 11.5 point 2. A cite chip opens the meeting on the Transcript tab at the time of the cite. The side panel moves to a later phase.
+3. Proposal cards (P3), person merge (P4), live variant (P5).
+
+#### 11.6.6 P2 evaluation
+
+The gold set and its hash stay as in P0. A new set file adds folder and Everything questions (section 8 of the chat-eval skill): lookup, who said, temporal and count at scope A, who said at scope F, and "search wider" cases (a question that is not found at M and found after one widen to F, and after one widen to A). Threads at scope A get their own turns. The bars of section 8.7 (P1 and P2 columns) are reported on E4B and E2B, gold and held-out.
+
+#### 11.6.7 What the build does (facts of the P2 branch)
+
+1. API. Scope A is a thread with no meeting and no folder: `GET /api/chat/threads?all=1`, `POST /api/chat/threads` with `{"scope":{"kind":"all"}}`. `POST /api/chat/threads/:id/messages` takes `{"question"}` or `{"widen":true}`. A not_found block has `wider` (`{kind:"folder",id,name}` or `{kind:"all"}`), and a message trace has `scope`. A widen with no offer gets 409 `widen_not_offered`. There is no schema change: `chat_threads` already allowed both columns NULL (section 4.2).
+2. Settings. `chat_hotkey` (an accelerator, empty means the default). The Ask section of Settings has the recorder. A chord with no key, or the dictation hotkey, is refused.
+3. Main process. `hotkeys/chat.ts` registers the listener and reads the settings; `hotkeys/chat-guard.ts` is the guard (pure, tested with a fake clock); `windows/chat-bubble-window.ts` is the window. The bubble closes on Escape, on the close button and when it loses focus (400 ms after it shows are ignored). When another app had the focus, closing the bubble hides Openstyle, so macOS gives the focus back. When an Openstyle window had the focus, that window gets it back.
+4. Renderer. One `AskPanel` serves the meeting tab, the folder tab and the Ask page (the thread list is a dropdown in the tabs and a column on the page). The cite chip of a folder tab, the Ask page and the bubble opens the meeting at the cited time (`/meetings?meeting=<id>&at=<ms>`). The bubble has its own page (`chat-bubble.html`) and keeps one thread for its questions until it opens again.
+5. Not covered by an automated test (said plainly): a real press of Control+Option+K, the focus return after Escape in a real session, and the window-end path of the guard in the app (it would start the dictation, which opens the microphone). The guard is tested at unit level on both paths (`chat-guard.test.ts`). The app test drives the "K inside the window" path through the E2E seam `e2e:trigger-chat-hotkey` and checks the state of the main process.
 
 ## 12. Owner decisions and open questions
 
@@ -1382,6 +1522,7 @@ The owner said the Cmd+K quick ask and the Ask tab have "an awesome synergy". Th
 | D16 (was Q11) | Search wider: ask permission, one step per confirm (meeting, folder, everything; unfiled goes to everything). Code never widens alone. | 6.3 |
 | D17 (was Q10) | The owner labels name pairs by hand on a labelling page (same, different, unsure, skip), from resolver candidates on real meetings, between P2 and P4. Labels stay private. | 8.6 |
 | D18 (was Q9) | Keep chats for now. Later one global retention knob on the Ask page. Threads cascade with their meeting or folder. Context window handling is specified in 2.8. | 2.8, 4.2 |
+| D19 | UI for P2 (2026-11-01, replaces D5 for P2): a main-nav Ask page with a scope picker (Everything, folder, meeting) and a thread list; a global `Control+Option+K` hotkey (a setting) that opens a floating bubble from anywhere, with the scope taken from the Meetings selection and a guard so that dictation starts only when K does not follow within about 150 ms; a folder Ask tab on the folder Overview; the Everything scope with search wider. The in-app Cmd+K palette is dropped. | 11.6, 9.1 (P2) |
 
 ### 12.2 Open questions
 

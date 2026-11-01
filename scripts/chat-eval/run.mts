@@ -130,6 +130,7 @@ async function main() {
         info.gold,
         info.hashes,
         {
+          set: arg("set") === "p2" ? "p2" : "gold",
           only,
           limit: Number(arg("limit")) || null,
           scale: Number(arg("scale")) || (only?.has("scale") ? 256 : 1),
@@ -164,7 +165,7 @@ async function main() {
     return;
   }
   console.error(
-    "usage: pnpm chat-eval corpus [--write] | retrieval [--no-mlflow] | router [--no-mlflow] | p1 [--no-mlflow] [--only a,b] [--limit N] [--scale N]",
+    "usage: pnpm chat-eval corpus [--write] | retrieval [--no-mlflow] | router [--no-mlflow] | p1 [--no-mlflow] [--only a,b] [--limit N] [--scale N] [--set p2] [--seed N]",
   );
   process.exitCode = 2;
 }

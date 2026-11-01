@@ -378,7 +378,10 @@
       "numberRange": "Allowed: {{min}}–{{max}}",
       "numberInvalid": "Enter {{min}}–{{max}}",
       "numberSaveFailed": "Could not save. The server still has {{value}}.",
-      "numberStripped": "Digits only. {{dropped}} removed, the field shows {{value}}."
+      "numberStripped": "Digits only. {{dropped}} removed, the field shows {{value}}.",
+      "hotkey": "Global shortcut",
+      "hotkeyDesc": "Opens a small Ask window from any app. When it starts with the dictation keys, dictation starts only if this key does not follow within 150 ms.",
+      "hotkeyConflict": "Pick a combination with a key that is not a dictation shortcut."
     }
   },
   "today": {
@@ -971,7 +974,8 @@
       "settings": "Settings",
       "help": "Help",
       "meetings": "Meetings",
-      "import": "Import"
+      "import": "Import",
+      "ask": "Ask"
     },
     "githubRepo": "GitHub repo"
   },
@@ -1674,7 +1678,8 @@
         "cite_check": "I could not check my answer against the sources, so I do not show it.",
         "deadline": "This took too long, so I stopped.",
         "call_cap": "I reached the search limit for this question.",
-        "model_error": "The model failed to answer."
+        "model_error": "The model failed to answer.",
+        "noSourcesAll": "I found nothing about this in any meeting."
       },
       "nearest": "Nearest sources",
       "readOnly": "Ask cannot change data yet. It can only read your meetings.",
@@ -1693,7 +1698,28 @@
         "meetings_other": "listed {{count}} meetings"
       },
       "trailDropped_one": "{{count}} source left out",
-      "trailDropped_other": "{{count}} sources left out"
+      "trailDropped_other": "{{count}} sources left out",
+      "scopeFolder": "This folder: {{name}}",
+      "searchedEverything": "Searched in: everything",
+      "searchedFolder": "Searched in: {{name}}",
+      "searchedWider": "Searched in a wider scope",
+      "noThreads": "No chats yet.",
+      "widenAsk": "Nothing found here. Search wider?",
+      "widenFolder": "Search the whole folder {{name}}",
+      "widenAll": "Search everything",
+      "errWiden": "There is no wider search to run now.",
+      "folder": {
+        "title": "Ask about this folder",
+        "empty": "Ask a question about this folder. Ask reads the meetings of the folder.",
+        "placeholder": "Ask about this folder",
+        "threads": "Chats of this folder"
+      },
+      "everything": {
+        "title": "Ask about all meetings",
+        "empty": "Ask a question about all your meetings. Ask reads their transcripts and summaries.",
+        "placeholder": "Ask about all meetings",
+        "threads": "Chats about all meetings"
+      }
     }
   },
   "help": {
@@ -1873,6 +1899,31 @@
     },
     "models": {
       "label": "Active models"
+    }
+  },
+  "ask": {
+    "title": "Ask",
+    "intro": "Ask a question about your meetings. Choose where Ask looks.",
+    "off": "Ask is off. Turn it on in Settings, Meetings.",
+    "scopeLabel": "Where to look",
+    "scopeEverything": "Everything",
+    "scopeFolder": "A folder",
+    "scopeMeeting": "A meeting",
+    "scopeEverythingText": "All meetings",
+    "pickFolder": "Choose a folder",
+    "pickMeeting": "Choose a meeting",
+    "pickFolderHint": "Choose a folder to ask about.",
+    "pickMeetingHint": "Choose a meeting to ask about.",
+    "bubble": {
+      "label": "Ask Openstyle",
+      "scopeIn": "Asking in: {{name}}",
+      "everything": "all meetings",
+      "widenEverything": "Search everything",
+      "widenFolder": "Search folder {{name}}",
+      "placeholder": "Ask about {{name}}",
+      "openInAsk": "Open in Ask",
+      "close": "Close",
+      "hint": "Enter asks. Esc closes."
     }
   }
 }
