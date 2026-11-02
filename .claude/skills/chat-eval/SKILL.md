@@ -164,6 +164,18 @@ No new bars: thresholds are the owner's to set (`BARS` stays as it is).
 
 `CHAT_EVAL_IDS=b01,b09` picks single threads. The rows hold the pipeline steps (`trace`) for debugging. Bars: `broad.*` in `BARS` (coverage 50%, invalid cites 0, repeats 0, length 90%, not found 10%, elaboration with content 70%).
 
+### Digging questions (Ask research mode D21, `--only dig`)
+
+`pnpm chat-eval p1 --only dig [--no-mlflow]` runs 32 questions (48 turns, spec 11.9.12) on extra fictional data (`dig-corpus.mts`: 3 projects, 13 meetings, ids `dg-*`, loaded on top of the base corpus inside this part). It is not in the default parts and not in the gold hash. Code: `p1-dig.mts` (questions, keys, scoring), `dig.test.mts` (the keys are backed by the data), `partDig` in `p1-run.mts`. MLflow run `p1-dig`.
+
+- Questions: "what are the open items" then "why are they still open?", "what blocked X?", "how did decision Y evolve?", "who pushed for Z and why?", "what changed between the first and the last meeting?", "is anything still unresolved about W?". EN and PT, meeting, folder and Everything scope. 4 controls ask a simple fact and must stay cheap.
+- A turn passes when: coverage of the must-mention reasons is at least `minCov`, the answer cites at least half of the meetings that hold a reason, 0 invalid cites, no repeat, length in range, not `not_found`, not `clarify`, and no done item in a list of open items. The row also holds LLM calls, tool calls and latency.
+- Headline numbers use the digging turns (not the `fact` setup turns and not the controls). `CHAT_EVAL_IDS=dg01,dg07` picks single questions.
+- A key is wrong when the data does not back it: run `pnpm chat-eval:test` after any change of the data or the keys.
+- Baseline of 2026-11-02 (spec 11.9.13): digging pass 22.9% on Mac E2B and E4B, 25.7% on desktop E4B; not found 40.0% / 31.4% / 28.6%.
+- The desktop llama.cpp server can need minutes to swap a model: a first request that waits for a long time is a swap, not a hang. Ping it with one small request before a run.
+- `pnpm chat-eval real --db <copy.db> --dig` runs 6 generic digging questions on the 3 folders with the most meetings (named A, B, C in the output). It stops when the chat model is not the local MLX model.
+
 ### Real threads (private, `pnpm chat-eval real`)
 
 `pnpm chat-eval real --db <copy.db> --threads <id prefix>,<id prefix> --label after` copies a read-only copy of the owner's DB to `/tmp/chatp0/run/real`, replays the QUESTIONS of the threads through the real pipeline with the default model of that DB (new answers go back as history), deletes the scratch copy, and prints numbers only (sentences, cites, repeat, not found). The answer texts go only to `~/Library/Application Support/Openstyle-eval/chat-real/<label>-<time>.json` (before and after; "before" is what the DB stores). Never commit those texts, never log them to MLflow. Needs the GPU lock and the worker env of the P1 section. `--extra "q1|q2"` adds new questions at scope Everything (D20): the first turn, then the first chip, then the same question with `no_clarify`; the output has a `clarify=` column. A second copy of the DB with the setting `chat_clarify` = `false` gives the answers without a clarify question (the "before" of those questions).
