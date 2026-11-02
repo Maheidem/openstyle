@@ -5,6 +5,7 @@
 //   router     the production router prompt on the gold and the blind set
 //   slots      the production slot fill with the gold intent
 //   e2e        the full production pipeline runChatTurn on the 190 questions
+//   clarify    (only with --only clarify) the clarify block and the map-reduce synthesis
 //   a0         the A0 numbers on the same question ids
 //   scale      (only with --scale N) retrieve() latency at N x the corpus
 //   bars       the table of pass bars from the runs of this invocation
@@ -15,6 +16,11 @@ import { createHash } from "node:crypto";
 import { existsSync, readdirSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import process from "node:process";
+import {
+  addonAsCorpus,
+  buildClarifyAddon,
+  LONG_PROGRAM_ID,
+} from "./clarify-corpus.mts";
 import { buildCorpus } from "./corpus.mts";
 import { buildP2, buildThreads } from "./gold.mts";
 import {
@@ -31,6 +37,20 @@ import {
   runBroad,
   summarizeBroad,
 } from "./p1-broad.mts";
+import {
+  buildClarifyItems,
+  buildMapItems,
+  callsFromBroad,
+  callsFromQuestions,
+  callsFromThreads,
+  detectArgs,
+  type FalseClarify,
+  falseClarifyRate,
+  runClarifyItem,
+  runMapItem,
+  summarizeClarify,
+  summarizeMap,
+} from "./p1-clarify.mts";
 import {
   answerFromTurn,
   barsTable,
@@ -75,6 +95,7 @@ export const PARTS = [
   "threads",
   "widen",
   "broad",
+  "clarify",
   "a0",
   "scale",
   "bars",
@@ -1290,6 +1311,154 @@ async function partBroad(
 }
 
 // ===================================================================================
+// D5. Clarify block and map-reduce synthesis (D20, 2026-11-02)
+// ===================================================================================
+
+const pctOf = (x: number) => `${(x * 100).toFixed(1)}%`;
+
+/**
+ * The clarify detector is code, so the false-clarify rate on the existing
+ * questions needs no model. This part adds the extra data of
+ * `clarify-corpus.mts` to the scratch DB (it stays there: run this part last,
+ * not together with `scale`).
+ */
+async function partClarify(
+  env: Env,
+  M: Record<string, number>,
+): Promise<PartOut> {
+  const { corpus, stack, maps } = env;
+  const clarifyMod = await import("../../apps/server/src/lib/chat/clarify.ts");
+  const detect = (a: ReturnType<typeof detectArgs>) =>
+    clarifyMod.detectClarify({
+      db: stack.db,
+      scope: a.scope as never,
+      question: a.question,
+      lastAssistantBlocks: a.lastAssistantBlocks,
+      hasEarlierQuestion: a.hasEarlierQuestion,
+    });
+  const sets = () => ({
+    gold: callsFromQuestions(env.gold.questions),
+    broad: callsFromBroad(corpus),
+    threads: callsFromThreads(
+      env.opts.set === "p2" ? buildP2(corpus).threads : buildThreads(corpus),
+    ),
+  });
+  const fcOf = () => {
+    const out: Record<string, FalseClarify> = {};
+    for (const [k, calls] of Object.entries(sets()))
+      out[k] = falseClarifyRate(calls, (c) => detect(detectArgs(c)));
+    return out;
+  };
+  // 1. Existing questions on the base corpus only.
+  const fcBase = fcOf();
+  // 2. The extra data.
+  const addon = buildClarifyAddon();
+  loadCorpus(stack, addonAsCorpus(corpus, addon));
+  for (const m of addon.meetings) await stack.mod.indexMeeting(m.id);
+  env.log(`clarify: loaded ${addon.meetings.length} extra meetings`);
+  const fcAddon = fcOf();
+  const known = {
+    meeting: (id: string) =>
+      stack.db.prepare("SELECT 1 FROM meetings WHERE id = ?").get(id) !==
+      undefined,
+    start: (mid: string, s: number) =>
+      stack.db
+        .prepare(
+          "SELECT 1 FROM meeting_segments WHERE meeting_id = ? AND start_ms = ? UNION SELECT 1 FROM meeting_chunks WHERE meeting_id = ? AND start_ms = ?",
+        )
+        .get(mid, s, mid, s) !== undefined,
+    item: (id: string) => maps.prodToItem.has(id),
+  };
+  const cenv = { corpus, stack, mods: env.mods, detect, known };
+  const only = process.env.CHAT_EVAL_IDS?.split(",");
+  const items = spread(
+    buildClarifyItems(addon).filter((q) => !only || only.includes(q.id)),
+    env.opts.limit,
+  );
+  const rows = [];
+  for (const it of items) {
+    const r = await runClarifyItem(cenv, it);
+    rows.push(r);
+    env.log(`clarify ${it.id}: ${r.got}`);
+  }
+  const m = summarizeClarify(rows);
+  const mapItems = spread(
+    buildMapItems().filter((q) => !only || only.includes(q.id)),
+    env.opts.limit,
+  );
+  const mrows = [];
+  for (const it of mapItems) {
+    const r = await runMapItem(cenv, it, addon.longFacts);
+    mrows.push(r);
+    env.log(`map ${it.id}: ${r.pass ? "ok" : "FAIL"} ${r.note}`);
+  }
+  const mm = summarizeMap(mrows);
+  const fcLine = (n: string, f: Record<string, FalseClarify>) =>
+    `${n}: ` +
+    Object.entries(f)
+      .map(([k, v]) => `${k} ${v.clarify}/${v.n} (${pctOf(v.rate)})`)
+      .join(", ");
+  let text = `Clarify: ${m.items} items. Precision ${pctOf(m.precision)}, recall ${pctOf(m.recall)} (scope ${pctOf(m["recall.scope"] ?? 0)}, intent ${pctOf(m["recall.intent"] ?? 0)}, person ${pctOf(m["recall.person"] ?? 0)}); false-clarify rate on the should-not items ${pctOf(m.false_clarify_rate)}; right \`why\` ${pctOf(m.why_acc)}; chips ok ${pctOf(m.chips_ok)} of ${m.chips}; errors ${m.errors}.\n`;
+  text += `False-clarify rate on the existing questions (detector alone, no model):\n- ${fcLine("base corpus", fcBase)}\n- ${fcLine("with the extra data", fcAddon)}\n`;
+  for (const [k, v] of Object.entries(fcBase))
+    for (const s of v.samples) text += `  base ${k}: ${s}\n`;
+  for (const [k, v] of Object.entries(fcAddon))
+    for (const s of v.samples) text += `  extra ${k}: ${s}\n`;
+  text += `\n| id | expect | why | got | ok | chips |\n|---|---|---|---|---|---|\n`;
+  for (const r of rows)
+    text += `| ${r.id} | ${r.expect} | ${r.why ?? ""} | ${r.got} | ${r.err ? "ERR" : r.score.tp || r.score.tn ? (r.score.whyOk === false ? "WHY" : "ok") : "FAIL"} | ${r.chips.map((c) => `${c.label}:${c.reason}`).join("; ")} |\n`;
+  text += `\nMap-reduce on "Long Program" (${addon.meetings.filter((x) => x.folderId === LONG_PROGRAM_ID).length} meetings, ${addon.longFacts.length} must-mention facts): ${mm.items} items. Pass ${pctOf(mm.pass)}; map_reduce step in ${pctOf(mm.map_step)}; coverage ${pctOf(mm.cov)} (early third ${pctOf(mm.cov_early)}, late third ${pctOf(mm.cov_late)}); invalid or missing cites ${mm.invalid_cites}; not found ${pctOf(mm.not_found)}; sources dropped ${mm.sources_dropped.toFixed(1)} per answer; errors ${mm.errors}.\n`;
+  text += `\n| id | pass | map_reduce | cov | early | late | hits e/l | cites bad | dropped | note |\n|---|---|---|---|---|---|---|---|---|---|\n`;
+  for (const r of mrows)
+    text += `| ${r.id} | ${r.err ? "ERR" : r.pass ? "ok" : "FAIL"} | ${r.mapStep ? "yes" : "NO"} | ${r.cov.toFixed(2)} | ${r.covEarly.toFixed(2)} | ${r.covLate.toFixed(2)} | ${r.hitEarly}/${r.hitLate} | ${r.invalidCites + r.uncited} | ${r.sourcesDropped} | ${r.note} |\n`;
+  M["clarify.precision"] = m.precision;
+  M["clarify.recall"] = m.recall;
+  M["clarify.false_rate"] = m.false_clarify_rate;
+  M["clarify.chips_ok"] = m.chips_ok;
+  M["clarify.fc_gold"] = fcBase.gold?.rate ?? 0;
+  M["clarify.fc_broad"] = fcBase.broad?.rate ?? 0;
+  M["clarify.fc_threads"] = fcBase.threads?.rate ?? 0;
+  M["map.pass"] = mm.pass;
+  M["map.cov"] = mm.cov;
+  const flat: Record<string, number> = {
+    ...Object.fromEntries(
+      Object.entries(m).map(([k, v]) => [`clarify.${k}`, v]),
+    ),
+    ...Object.fromEntries(Object.entries(mm).map(([k, v]) => [`map.${k}`, v])),
+  };
+  for (const [set, f] of [
+    ["base", fcBase],
+    ["extra", fcAddon],
+  ] as const)
+    for (const [k, v] of Object.entries(f)) {
+      flat[`fc.${set}.${k}.rate`] = v.rate;
+      flat[`fc.${set}.${k}.n`] = v.n;
+      flat[`fc.${set}.${k}.clarify`] = v.clarify;
+    }
+  return {
+    text,
+    data: {
+      rows,
+      mapRows: mrows,
+      falseClarify: { fcBase, fcAddon },
+      metrics: flat,
+    },
+    run: {
+      name: "p1-clarify",
+      params: {
+        items: m.items,
+        map_items: mm.items,
+        long_meetings: addon.meetings.filter(
+          (x) => x.folderId === LONG_PROGRAM_ID,
+        ).length,
+      },
+      tags: baseTags(env, "clarify"),
+      metrics: flat,
+    },
+  };
+}
+
+// ===================================================================================
 // D3. Search wider (P2, spec 6.3 and 11.6.4)
 // ===================================================================================
 
@@ -1638,7 +1807,7 @@ export async function runP1(
       ? opts.only.has(p)
       : p === "scale"
         ? opts.scale > 1
-        : p === "broad"
+        : p === "broad" || p === "clarify"
           ? false
           : p !== "widen" || opts.set === "p2";
   // The P2 questions replace the gold questions. The retrieval queries stay.
@@ -1732,6 +1901,7 @@ export async function runP1(
     want("threads") ||
     want("widen") ||
     want("broad") ||
+    want("clarify") ||
     want("scale")
   ) {
     const st = stack.mod.searchState();
@@ -1781,6 +1951,7 @@ export async function runP1(
     await done("threads", () => partThreads(env, M));
     await done("widen", () => partWiden(env, M));
     await done("broad", () => partBroad(env, M));
+    await done("clarify", () => partClarify(env, M));
     await done("a0", () => partA0(env, M));
     await done("scale", () => partScale(env, M));
     llmRss.stop();

@@ -4,6 +4,13 @@
 import assert from "node:assert/strict";
 import { createHash } from "node:crypto";
 import { test } from "node:test";
+import {
+  addonAsCorpus,
+  buildClarifyAddon,
+  LONG_COUNT,
+  LONG_END,
+  LONG_PROGRAM_ID,
+} from "./clarify-corpus.mts";
 import { buildCorpus, summaryMarkdown, TODAY_MS } from "./corpus.mts";
 import { buildGold, buildP2 } from "./gold.mts";
 import {
@@ -380,5 +387,76 @@ test("a widen case: the fact is outside the first scope and inside the last", ()
       if (step !== last) assert.ok(!inScope(step, factMeeting));
       prev = step;
     }
+  }
+});
+
+// --- The extra data of the clarify part (clarify-corpus.mts) ---------------
+
+test("the clarify data is built on top and the base stays the same", () => {
+  const before = sha(c);
+  const gBefore = sha(g).slice(0, 16);
+  const a = buildClarifyAddon();
+  const again = buildClarifyAddon();
+  assert.equal(sha(a), sha(again));
+  assert.equal(sha(buildCorpus()), before);
+  assert.equal(gBefore, "1e41bd5cea578222");
+  const base = new Set(c.meetings.map((m) => m.id));
+  const baseFolders = new Set(c.folders.map((f) => f.id));
+  for (const m of a.meetings) assert.ok(!base.has(m.id), m.id);
+  for (const f of a.folders) assert.ok(!baseFolders.has(f.id), f.id);
+  assert.equal(addonAsCorpus(c, a).meetings.length, a.meetings.length);
+});
+
+test("two Harbor folders, two Martas, and 72 Long Program meetings", () => {
+  const a = buildClarifyAddon();
+  const names = a.folders.map((f) => f.name);
+  assert.ok(names.includes("Harbor Mobile") && names.includes("Harbor Web"));
+  for (const n of ["Harbor Mobile", "Harbor Web"]) {
+    const f = a.folders.find((x) => x.name === n)!;
+    const ms = a.meetings.filter((m) => m.folderId === f.id);
+    assert.ok(ms.length >= 3, n);
+    for (const m of ms)
+      assert.ok(m.overview.length > 0 && m.keyPoints.length > 0);
+  }
+  const martas = a.people.filter((p) => p.first === "Marta");
+  assert.equal(martas.length, 2);
+  assert.notEqual(martas[0]?.full, martas[1]?.full);
+  const spokenBy = (full: string) =>
+    new Set(
+      a.meetings
+        .filter((m) => m.speakers.some((s) => s.displayName === full))
+        .map((m) => m.folderId),
+    );
+  assert.ok(spokenBy("Marta Reis").has("fld-harbor-mobile"));
+  assert.ok(!spokenBy("Marta Reis").has("fld-harbor-web"));
+  assert.ok(spokenBy("Marta Lacerda").has("fld-harbor-web"));
+  assert.ok(!spokenBy("Marta Lacerda").has("fld-harbor-mobile"));
+  const long = a.meetings.filter((m) => m.folderId === LONG_PROGRAM_ID);
+  assert.equal(long.length, LONG_COUNT);
+  assert.ok(long.length >= 60);
+  // Date order is the index order; the meetings are older than the base corpus.
+  for (let i = 1; i < long.length; i++)
+    assert.ok((long[i]?.startedAt ?? 0) > (long[i - 1]?.startedAt ?? 0));
+});
+
+test("every Long Program fact is unique, in its summary, early and late", () => {
+  const a = buildClarifyAddon();
+  const byMeeting = new Map<string, number>();
+  for (const f of a.longFacts)
+    byMeeting.set(f.meetingId, (byMeeting.get(f.meetingId) ?? 0) + 1);
+  for (const [id, n] of byMeeting) assert.ok(n === 2 || n === 3, `${id} ${n}`);
+  const tokens = a.longFacts.map((f) => f.group[0] as string);
+  assert.equal(new Set(tokens).size, tokens.length);
+  const md = new Map(a.meetings.map((m) => [m.id, summaryMarkdown(m)]));
+  for (const f of a.longFacts)
+    assert.ok(md.get(f.meetingId)?.includes(f.group[0] as string), f.group[0]);
+  const count = (p: string) => a.longFacts.filter((f) => f.period === p).length;
+  assert.ok(count("early") >= LONG_END * 2);
+  assert.ok(count("late") >= LONG_END * 2);
+  // A fact token appears in one meeting only.
+  for (const f of a.longFacts) {
+    const re = new RegExp(`\\b${f.group[0]}\\b`);
+    const where = [...md].filter(([, t]) => re.test(t));
+    assert.equal(where.length, 1, f.group[0]);
   }
 });

@@ -4,9 +4,21 @@
 import assert from "node:assert/strict";
 import { createHash } from "node:crypto";
 import { test } from "node:test";
+import { buildClarifyAddon } from "./clarify-corpus.mts";
 import { buildCorpus } from "./corpus.mts";
 import { buildGold } from "./gold.mts";
 import { scoreAnswer } from "./keys.mts";
+import {
+  buildClarifyItems,
+  buildMapItems,
+  callsFromThreads,
+  detectArgs,
+  falseClarifyRate,
+  scoreChip,
+  scoreClarify,
+  scoreMapReduce,
+  summarizeClarify,
+} from "./p1-clarify.mts";
 import {
   answerFromTurn,
   BARS,
@@ -812,4 +824,145 @@ test("the broad bars are in the bar table", () => {
     "broad.fresh",
   ])
     assert.ok(ids.includes(id), id);
+});
+
+// --- clarify part keys (p1-clarify.mts) ------------------------------------
+
+const clar = { kind: "clarify", why: "scope", options: [] };
+const txt = { kind: "text" };
+
+test("scoreClarify: ask and no_ask, right and wrong why", () => {
+  const ask = { expect: "ask", why: "scope" } as const;
+  const no = { expect: "no_ask", why: null } as const;
+  assert.deepEqual(
+    [scoreClarify(ask, [clar]).tp, scoreClarify(ask, [clar]).whyOk],
+    [true, true],
+  );
+  assert.equal(scoreClarify({ ...ask, why: "person" }, [clar]).whyOk, false);
+  assert.equal(scoreClarify(ask, [txt]).fn, true);
+  assert.equal(scoreClarify(no, [clar]).fp, true);
+  assert.equal(scoreClarify(no, [txt]).tn, true);
+  // Only the FIRST block counts.
+  assert.equal(scoreClarify(no, [txt, clar]).tn, true);
+  assert.equal(scoreClarify(no, []).tn, true);
+});
+
+test("scoreChip: clarify again, not found and errors fail", () => {
+  assert.deepEqual(scoreChip("all", { blocks: [txt] }), {
+    ok: true,
+    reason: "ok",
+  });
+  assert.equal(scoreChip("all", { blocks: [clar] }).reason, "clarify_again");
+  assert.equal(scoreChip("all", { blocks: [{ kind: "not_found" }] }).ok, false);
+  // A chip that need not be answerable may be not found.
+  assert.equal(scoreChip("none", { blocks: [{ kind: "not_found" }] }).ok, true);
+  assert.equal(scoreChip("none", { blocks: [], err: "x" }).reason, "error");
+});
+
+test("summarizeClarify: precision, recall, false-clarify rate", () => {
+  const mk = (
+    expect: "ask" | "no_ask",
+    why: string | null,
+    blocks: { kind: string; why?: string }[],
+  ) => ({
+    id: "x",
+    expect,
+    why,
+    got: "",
+    score: scoreClarify({ expect, why: why as never }, blocks),
+    options: 0,
+    chips: [],
+    err: null,
+  });
+  const m = summarizeClarify([
+    mk("ask", "scope", [clar]), // tp
+    mk("ask", "scope", [txt]), // fn
+    mk("no_ask", null, [clar]), // fp
+    mk("no_ask", null, [txt]), // tn
+    mk("no_ask", null, [txt]), // tn
+    mk("no_ask", null, [txt]), // tn
+  ]);
+  assert.equal(m.precision, 0.5);
+  assert.equal(m.recall, 0.5);
+  assert.equal(m.false_clarify_rate, 0.25);
+});
+
+test("the clarify items have both kinds and the three whys", () => {
+  const items = buildClarifyItems(buildClarifyAddon());
+  const ids = new Set(items.map((i) => i.id));
+  assert.equal(ids.size, items.length);
+  for (const w of ["scope", "intent", "person"])
+    assert.ok(
+      items.some((i) => i.expect === "ask" && i.why === w),
+      w,
+    );
+  assert.ok(items.filter((i) => i.expect === "no_ask").length >= 10);
+  for (const i of items.filter((x) => x.expect === "no_ask"))
+    assert.equal(i.why, null);
+});
+
+test("falseClarifyRate counts the turns whose detector fires", () => {
+  const calls = callsFromThreads([
+    {
+      scope: { kind: "all", id: null },
+      turns: [{ text: "a" }, { text: "b" }, { text: "c" }, { text: "d" }],
+    },
+  ]);
+  assert.equal(calls.length, 4);
+  assert.equal(calls[0]?.history.length, 0);
+  assert.equal(calls[3]?.history.length, 3);
+  const r = falseClarifyRate(calls, (c) =>
+    c.question === "b" ? { kind: "clarify", why: "intent" } : null,
+  );
+  assert.deepEqual([r.n, r.clarify, r.rate], [4, 1, 0.25]);
+  // The history turns build the "last assistant" blocks of the detector.
+  const a = detectArgs({
+    scope: { kind: "all", id: null },
+    question: "q",
+    history: [{ q: "h", a: "__clarify__" }],
+  });
+  assert.equal(a.lastAssistantBlocks[0]?.kind, "clarify");
+  assert.equal(a.hasEarlierQuestion, true);
+});
+
+test("scoreMapReduce: early and late facts, the step, the cites", () => {
+  const addon = buildClarifyAddon();
+  const f = addon.longFacts;
+  const early = f.find((x) => x.period === "early" && x.kind === "cost")!;
+  const late = f.find((x) => x.period === "late" && x.kind === "cost")!;
+  const ok = {
+    text: `It cost ${early.group[0]} euros. Later it cost ${late.group[0]} euros.`,
+    blocks: [txt],
+    stepNames: ["search_chunks", "map_reduce"],
+    cites: { shown: 2, invalid: [] as string[] },
+    uncited: 0,
+    sourcesDropped: 0,
+  };
+  const good = scoreMapReduce(f, ok);
+  assert.equal(good.pass, true);
+  assert.ok(good.cov > 0 && good.covEarly > 0 && good.covLate > 0);
+  // Each condition alone fails the item.
+  assert.equal(scoreMapReduce(f, { ...ok, stepNames: [] }).pass, false);
+  assert.equal(
+    scoreMapReduce(f, { ...ok, cites: { shown: 1, invalid: ["S1:no_cite"] } })
+      .pass,
+    false,
+  );
+  assert.equal(scoreMapReduce(f, { ...ok, uncited: 1 }).pass, false);
+  assert.equal(
+    scoreMapReduce(f, { ...ok, text: `Only ${early.group[0]}.` }).pass,
+    false,
+  );
+  assert.equal(
+    scoreMapReduce(f, { ...ok, text: `Only ${late.group[0]}.` }).pass,
+    false,
+  );
+  assert.equal(
+    scoreMapReduce(f, { ...ok, blocks: [{ kind: "not_found" }] }).pass,
+    false,
+  );
+  assert.equal(
+    buildMapItems().every((i) => i.scope.kind === "folder"),
+    true,
+  );
 });
