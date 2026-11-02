@@ -31,6 +31,7 @@ import {
   tidyCites,
   withoutTold,
 } from "./cites.js";
+import { detectClarify, isGlobalQuestion } from "./clarify.js";
 import {
   assembleAnswerInput,
   compactHistory,
@@ -39,6 +40,7 @@ import {
   renderHistory,
 } from "./context.js";
 import type { ChatLlm } from "./llm.js";
+import { mapNotes } from "./mapreduce.js";
 import {
   asksDecisions,
   asksElaboration,
@@ -137,6 +139,8 @@ export interface ChatTurnInput {
   now?: number;
   /** Eval only: a write question gives a proposal. Nothing is applied in any case. */
   allowProposals?: boolean;
+  /** "Answer anyway": no clarifying question for this turn (D20). */
+  noClarify?: boolean;
   /** Override of `SCORE_FLOOR` (the eval measures it). */
   scoreFloor?: number;
 }
@@ -297,6 +301,23 @@ export async function runChatTurn(input: ChatTurnInput): Promise<TurnResult> {
     if (llm.calls() >= HARD_CAP_CALLS) return "call_cap";
     return null;
   };
+
+  // Stage 0a: a clarifying question (D20). Code only, no LLM call.
+  if (settings.clarify && !input.noClarify) {
+    const started = Date.now();
+    const lastAssistant = input.history.findLast((m) => m.role === "assistant");
+    const block = detectClarify({
+      db,
+      scope: turnScope,
+      question,
+      lastAssistantBlocks: lastAssistant?.blocks ?? [],
+      hasEarlierQuestion: input.history.some((m) => m.role === "user"),
+    });
+    if (block) {
+      step("gate", `clarify:${block.why}`, started, block.options.length);
+      return finish([block], [], "");
+    }
+  }
 
   // Stage 0b: prefetch. The closed choices are built by code (spec 2.3).
   const choices: Choices = buildChoices(
@@ -615,13 +636,17 @@ export async function runChatTurn(input: ChatTurnInput): Promise<TurnResult> {
         return null;
       }
     };
-    const digest = (ids?: string[]) => {
+    let digestIds: string[] | undefined;
+    let digestLabels: string[] = [];
+    const digest = (ids?: string[], budgetTokens?: number) => {
       const t = Date.now();
+      digestIds = ids;
       const r = summaryDigest(ctx, {
         ...(ids ? { meetingIds: ids } : {}),
-        budgetTokens: Math.floor(settings.sourceBudget * 0.6),
+        budgetTokens: budgetTokens ?? Math.floor(settings.sourceBudget * 0.6),
         ...(more ? { told: seenMeetings } : {}),
       });
+      digestLabels = r.labels;
       toolCalls.push({
         tool: r.tool,
         args: { meetings: ids?.length ?? "scope" },
@@ -657,7 +682,10 @@ export async function runChatTurn(input: ChatTurnInput): Promise<TurnResult> {
             .filter(Boolean),
         ),
       ].slice(0, 6);
-      if (ids.length > 0) digest(ids);
+      // A question with no topic ("an overview of everything") reads every
+      // meeting: the map-reduce below shortens what does not fit (D20).
+      if (isGlobalQuestion(question)) digest();
+      else if (ids.length > 0) digest(ids);
     }
     const why = stopReason();
     if (why) return notFound(why);
@@ -678,12 +706,76 @@ export async function runChatTurn(input: ChatTurnInput): Promise<TurnResult> {
       seen.has(seenKey(x.meetingId, x.kind, x.itemId, x.startMs, x.text));
     const spoken = (x: Source) =>
       x.kind === "transcript" || x.kind === "window";
-    const ranked = [
-      ...all.filter((x) => !isSeen(x) && !spoken(x)),
-      ...all.filter((x) => !isSeen(x) && spoken(x)),
-      ...all.filter((x) => isSeen(x) && !spoken(x)),
-      ...all.filter((x) => isSeen(x) && spoken(x)),
-    ];
+    const rankSources = () => {
+      const now = sources.all().filter((x) => x.kind !== "folder");
+      return [
+        ...now.filter((x) => !isSeen(x) && !spoken(x)),
+        ...now.filter((x) => !isSeen(x) && spoken(x)),
+        ...now.filter((x) => isSeen(x) && !spoken(x)),
+        ...now.filter((x) => isSeen(x) && spoken(x)),
+      ];
+    };
+    let ranked = rankSources();
+    // Map-reduce (D20): the digest of a folder or of Everything does not fit
+    // the window, so the oldest meetings would drop. Map: shorten the full
+    // summaries in groups, each note keeps its label. Reduce: the synthesis
+    // answer below reads the notes.
+    if (turnScope.kind !== "meeting" && digestLabels.length >= 4) {
+      const dry = assembleAnswerInput({
+        system: SYNTH_SYSTEM,
+        question,
+        history: turns,
+        sources: ranked,
+        budgetTokens: settings.sourceBudget,
+        windowTokens: llm.contextWindow,
+        maxOutputTokens: SYNTH_MAX_TOKENS,
+        fixedTokens:
+          estimatePromptTokens(SYNTH_SYSTEM) + estimatePromptTokens(toldPrompt),
+      });
+      const overflow = dry.droppedLabels.filter((l) =>
+        digestLabels.includes(l),
+      );
+      if (overflow.length > 0) {
+        const t = Date.now();
+        sources.remove(digestLabels);
+        digest(digestIds, 1_000_000);
+        const full = digestLabels
+          .map((l) => sources.get(l))
+          .filter((x): x is Source => x !== undefined);
+        const cap = settings.sourceBudget;
+        const win = llm.contextWindow;
+        const groupTokens = Math.max(
+          1000,
+          Math.min(
+            Math.floor(cap * 0.7),
+            win === null ? Number.POSITIVE_INFINITY : win - 2400,
+          ),
+        );
+        // The notes together fill about 60% of the source budget.
+        const noteChars = Math.max(
+          90,
+          Math.min(420, Math.floor((cap * 0.6 * 4) / Math.max(1, full.length))),
+        );
+        const m = await mapNotes({
+          sources: full,
+          question,
+          llm,
+          signal,
+          groupTokens,
+          noteChars,
+          stop: stopReason,
+        });
+        step(
+          "tool",
+          "map_reduce",
+          t,
+          m.sources,
+          `Reading ${m.sources} meetings in ${m.groups} groups; ${m.calls} calls; ${m.fallback} code cuts`,
+        );
+        if (m.stopped) return notFound(m.stopped as never);
+        ranked = rankSources();
+      }
+    }
     return answerStage({
       ranked,
       synth: true,

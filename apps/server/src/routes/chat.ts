@@ -169,6 +169,7 @@ const chat = new Hono()
             settings,
             llm,
             signal,
+            ...(body.no_clarify ? { noClarify: true } : {}),
           });
           const assistant = appendMessage(db, thread.id, {
             role: "assistant",

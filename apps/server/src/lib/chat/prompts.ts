@@ -95,6 +95,37 @@ When the sources are listed by date, tell the story in date order.
 When a block ALREADY TOLD is given, do NOT repeat its facts. Give other facts from the sources.
 Never use knowledge from outside the sources.`;
 
+/** Output cap of one map call (D20): short notes, one for each source. */
+export const MAP_MAX_TOKENS = 1200;
+
+/**
+ * Map step of a big scope (spec 11.8): one short note for each source of a
+ * group. The note keeps the label, so the final cites point to a real meeting.
+ */
+export const MAP_SCHEMA: StepSchema<{
+  notes: { label: string; note: string }[];
+}> = {
+  name: "chat_map_notes",
+  version: 1,
+  zod: z.object({
+    notes: z.array(z.object({ label: z.string(), note: z.string() })).max(60),
+  }),
+};
+
+export const MAP_SYSTEM = `You shorten meeting notes for a later answer. Use ONLY the numbered sources.
+Write one note for each source, in the language of the source. Keep its label exactly.
+A note holds the facts that matter for the QUESTION: decisions, numbers, dates, names of people, owners, open questions.
+Copy names, numbers and dates exactly. Never add a fact that the source does not hold.
+Keep each note under the given word limit. Skip a source that has nothing for the question: write its note as the title only.`;
+
+export function mapUser(args: {
+  sources: string;
+  question: string;
+  words: number;
+}): string {
+  return `SOURCES:\n${args.sources}\n\nQUESTION: ${args.question}\nWORD LIMIT FOR EACH NOTE: ${args.words}`;
+}
+
 /** The user text of the answer call. */
 export function answerUser(args: {
   history: string;

@@ -79,6 +79,7 @@ export const SETTINGS_KEYS = {
   chatDeadlineSeconds: "chat_deadline_seconds",
   /** Ask page: `"false"` turns the "search wider" offer off. */
   chatSearchWider: "chat_search_wider",
+  chatClarify: "chat_clarify",
   /**
    * Ask page: the router uses the native tool calls of the local worker
    * (spec 2.1 point 6). A missing row means on; only `"false"` turns it off.
