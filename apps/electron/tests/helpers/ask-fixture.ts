@@ -406,6 +406,7 @@ export interface AskRequest {
     | "chat_answer"
     | "chat_synthesis"
     | "chat_map_notes"
+    | "chat_reflect"
     | "other";
   system: string;
   /** The text of the last user message. */
@@ -517,6 +518,13 @@ export class FakeAskLlm {
   stepDelayMs = 0;
   /** Waits this long before each answer call (ms). It keeps a turn running. */
   answerDelayMs = 0;
+  /** Waits this long before each reflect call of the research loop (ms): the step text of a research turn (D21). */
+  reflectDelayMs = 0;
+  /**
+   * The `next` word of each reflect call, in order (D21). The last word repeats.
+   * A research turn with three leads needs "next_lead" twice before "stop".
+   */
+  reflectScript: string[] = ["stop"];
   /**
    * When true, the answer is "not found" unless a source shares at least two
    * words with the question. A source of another meeting then gives a real
@@ -643,7 +651,8 @@ export class FakeAskLlm {
             schema === "chat_slots" ||
             schema === "chat_answer" ||
             schema === "chat_synthesis" ||
-            schema === "chat_map_notes"
+            schema === "chat_map_notes" ||
+            schema === "chat_reflect"
           ? schema
           : "other";
     const record: AskRequest = {
@@ -775,6 +784,18 @@ export class FakeAskLlm {
           sentences: [{ text: sentence, cites: [best.label] }],
         }),
       );
+      return;
+    }
+    if (kind === "chat_reflect") {
+      record.answered = "chat_reflect";
+      if (this.reflectDelayMs > 0) {
+        await new Promise((r) => setTimeout(r, this.reflectDelayMs));
+      }
+      const n = this.ofKind("chat_reflect").length - 1;
+      const next =
+        this.reflectScript[Math.min(n, this.reflectScript.length - 1)] ??
+        "stop";
+      this.text(res, JSON.stringify({ next, query: "" }));
       return;
     }
     if (kind === "chat_map_notes") {
