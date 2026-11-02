@@ -24,6 +24,8 @@ export const MAX_LEADS = { local: 3, cloud: 5 } as const;
 export const PER_LEAD_ACTS = 3;
 /** A new loop turn needs time for the answer: it starts before this share of the deadline. */
 export const SOFT_DEADLINE_SHARE = 0.5;
+/** Summaries that one `act` reads (at most 3 tool calls for each loop turn, 11.9.10). */
+export const SUMMARIES_PER_ACT = 3;
 /** The answer attempts that must stay possible under the call cap. */
 export const ANSWER_RESERVE = 3;
 
@@ -215,7 +217,8 @@ function priorItems(
 export function seedLeads(t: Turn): Lead[] {
   const { question, history } = t.input;
   const max = t.input.llm.isLocal ? MAX_LEADS.local : MAX_LEADS.cloud;
-  const dependent = isDependentFollowUp(question);
+  // Only a question with an earlier turn can lean on it ("this project" is not a follow-up).
+  const dependent = t.turns.length > 0 && isDependentFollowUp(question);
   if (dependent && asksReason(question)) {
     const items = priorItems(history).slice(0, max);
     if (items.length > 0) {
@@ -252,9 +255,18 @@ export function seedLeads(t: Turn): Lead[] {
 
 // ---- Strategies (node `act`) ----
 
-function order(t: Turn, lead: Lead): Strategy[] {
+function order(
+  t: Turn,
+  lead: Lead,
+  evidence: readonly Evidence[],
+): Strategy[] {
   if (lead.list) return ["list_open", "search", "other_meetings", "summary"];
   if (t.turnScope.kind === "meeting") return ["search", "summary", "window"];
+  // A search that found nothing (a question with no topic word scores under
+  // the floor): the summaries of the meetings come before the wider search.
+  if (!evidence.some((e) => e.leadId === lead.id)) {
+    return ["search", "summary", "other_meetings", "window"];
+  }
   return ["search", "other_meetings", "summary", "window"];
 }
 
@@ -286,7 +298,7 @@ export function chooseCalls(
   const asked = run.requested ? REQUESTED[run.requested.next] : null;
   const candidates: Strategy[] = [
     ...(asked && !used.has(asked) ? [asked] : []),
-    ...order(t, lead),
+    ...order(t, lead, evidence),
   ];
   for (const strategy of candidates) {
     if (used.has(strategy)) continue;
@@ -349,16 +361,28 @@ function buildCalls(
           .filter((c) => c.tool === "get_meeting_summary")
           .map((c) => (c.args as { meeting_id?: string }).meeting_id),
       );
+      // The meeting of the scope or of the lead, the meetings of the best
+      // hits, then the first and the last meeting of the scope (a question
+      // with no topic word, such as "what changed between the first and the
+      // last meeting", is answered by those summaries).
+      const inScope = scopeMeetingIds(t.input.db, t.turnScope);
       const candidates = [
         ...(t.turnScope.kind === "meeting" && t.turnScope.id
           ? [t.turnScope.id]
           : []),
         ...(lead.meetingId ? [lead.meetingId] : []),
         ...evidence.map((e) => e.meetingId),
+        ...(inScope.length > 0 ? [inScope[0], inScope.at(-1)] : []),
+        ...inScope,
       ];
-      const id = candidates.find((m) => m && !read.has(m));
-      return id
-        ? [{ tool: "get_meeting_summary", args: { meeting_id: id } }]
+      const ids = [
+        ...new Set(candidates.filter((m): m is string => !!m && !read.has(m))),
+      ].slice(0, SUMMARIES_PER_ACT);
+      return ids.length > 0
+        ? ids.map((id) => ({
+            tool: "get_meeting_summary",
+            args: { meeting_id: id },
+          }))
         : null;
     }
     case "window": {

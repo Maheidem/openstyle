@@ -276,7 +276,9 @@ export function reflectUser(args: {
   return [
     `QUESTION: ${args.question}`,
     `LEAD: ${args.lead}`,
-    `SOURCES FOUND (${args.sources === "" ? "none" : "newest last"}):\n${args.sources}`,
+    args.sources === ""
+      ? "SOURCES FOUND: none. No source scored high enough for the lead. Use rephrase with the key words of the lead, or other_meetings."
+      : `SOURCES FOUND (newest last):\n${args.sources}`,
     `DONE SO FAR: ${args.done}`,
   ].join("\n");
 }
