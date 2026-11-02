@@ -69,7 +69,7 @@ export const SYNTH_SCHEMA: StepSchema<{
 };
 
 export const ANSWER_SYSTEM = `You answer a question about meeting notes. Use ONLY the numbered sources.
-Write 1 to 3 short sentences in the language of the question. State the answer first. Answer every part of the question (for example both the person and the date).
+Write 1 to 3 short sentences in the language of the question. State the answer first.
 One sentence states one fact. Put the labels of the sources that show the fact in "cites", for example ["S2"].
 When the sources show several separate facts that answer the question, put them in "bullets", one fact for each bullet, with their own "cites". Else leave "bullets" empty.
 Copy names, numbers and dates exactly as the sources write them. Write the full name of a person (first and last name) when the sources have it.
