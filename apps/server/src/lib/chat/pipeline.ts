@@ -686,7 +686,8 @@ export async function runChatTurn(input: ChatTurnInput): Promise<TurnResult> {
       ].slice(0, 6);
       // A question with no topic ("an overview of everything") reads every
       // meeting: the map-reduce below shortens what does not fit (D20).
-      if (isGlobalQuestion(question)) digest();
+      // Only a first question: a follow-up ("tell me more") stays on the topic of the thread.
+      if (turns.length === 0 && isGlobalQuestion(question)) digest();
       else if (ids.length > 0) digest(ids);
     }
     const why = stopReason();
