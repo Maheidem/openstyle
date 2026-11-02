@@ -1563,7 +1563,7 @@ Eval: the `clarify` part of `pnpm chat-eval p1` (section 8; skill `chat-eval`). 
 
 ### 11.9 Research mode (D21, owner request 2026-11-02)
 
-Status: DRAFT; the owner approved the open decisions on 2026-11-02 (11.9.14, 12.2). This step is spec and eval only. No product code changes. The numbers in 11.9.13 are measured on `main` at `ad98f171` with the eval code of this branch. Prefixes `S/`, `V/` and `W/` are from section 0.2. Labels are from section 0.1. A name in `monospace` with no path is a name in the code of the build step (it does not exist yet).
+Status: BUILT in PR #412 (2026-11-02). Section 11.9.16 says what the build changed against this text and shows the numbers. The text before 11.9.16 is the approved design; where the build differs, 11.9.16 wins. The owner approved the open decisions on 2026-11-02 (11.9.14, 12.2). The numbers in 11.9.13 are measured on `main` at `ad98f171` with the eval code of the spec step. Prefixes `S/`, `V/` and `W/` are from section 0.2. Labels are from section 0.1. A name in `monospace` with no path is a name in the code of the build step (it does not exist yet).
 
 #### 11.9.1 The owner request and the problem
 
@@ -1993,6 +1993,40 @@ Why these numbers (reasons, not measurements): D1 and D2 ask for about two times
 | Checkpoint rows hold meeting text | The state holds evidence snippets. | Delete on success; cascade with the run (11.9.8). A check that a deleted meeting removes the runs that read it is a build task. UNKNOWN today. |
 | The fast path regresses during the migration | The Mac MLX arm is deterministic at temperature 0. | The M1 and M2 exit check is a row-by-row diff with 0 changed rows. |
 | The dig data is small (13 meetings, 28 digging questions) | Fictional data is a lab, not the real world. | The real-data run (`real --dig`) is the cross-check. The owner reads its texts. A held-out seed for the dig data is not built (OPEN, low priority). |
+
+#### 11.9.16 As built (PR #412, 2026-11-02)
+
+**Files.** The graph is in `S/lib/chat/research/` (`graph.ts` nodes and edges, `state.ts`, `research.ts` leads, strategies and stop rules, `trigger.ts`, `run.ts` runner). The stage code of the old `runChatTurn` is `S/lib/chat/turn.ts` (class `Turn`, one method for each stage). `S/lib/chat/pipeline.ts` only starts the graph. The setting is `chat_research` (`V/settings-keys.ts`), the new step id is `chatReflect`, the wire change is `ChatProgress` (`researching`) and `ChatTrace.research` (`V/chat.ts`). The renderer writes the step text and the trail line from fields (`R/pages/meetings/ask-model.ts`, `ask-blocks.tsx`, key `meetings.ask.trailResearch` in all 8 locale files).
+
+**Migration.** M1 (stage methods) and M2 (fast mode in the graph) and M3 (research mode) have an exit check each, by command, on Mac E2B against `main` at `8c3ce745` (one result file for each run, temperature 0). A row is the result of one question or one turn. The comparison drops the time fields.
+
+| Step | gold: e2e (190), threads (90), widen (24), broad (42), clarify (27) | P2 set: router (277), e2e (53), threads (37), widen (24) |
+|---|---|---|
+| M1 | 0 changed rows | 0 changed rows |
+| M2 | 0 changed rows | 0 changed rows |
+| M3 with `chat_research` off | 0 changed rows | 0 changed rows |
+| M3 with `chat_research` on | 3 rows of e2e (q057 to q059, the "which questions are still open" list: same answer and cites, other route), 50 turns of threads (the "why" follow-ups go through research), 0 rows of the others | the bars are equal to `main` (table below) |
+
+M4: the old loop code is gone since M2 (`runChatTurn` is the graph start). `pnpm knip` and `pnpm biome check .` exit 0.
+
+**What differs from the design above (all by the numbers of this section).**
+
+1. **Rule 7 is stricter for several leads.** `reflect` `stop` ends the loop only when no other open lead lacks evidence. Else the lead closes (as `next_lead`) and the next lead runs. A lead with no evidence does not close because the model says `stop` or `next_lead`: its other strategies run. Reason: in the first Mac E2B dig run of the build, all 7 "why" turns made 1 tool call and 2 LLM calls (E2B said `stop` after the first search), so 2 of 3 leads were never read. With the rule the 3-lead turns make 3 searches.
+2. **The model's `next` word picks the strategy only when the lead has evidence** (or `rephrase` with search words). With no evidence the code order runs, and `summary` comes before `other_meetings`. Reason: a question with no topic word (`what changed between the first and the last meeting`) scores under the floor, and `other_meetings` repeated the same empty search. Items 2 and 6 together: not found on 4 of 35 digging turns before the two changes (Mac E2B, dg10 turn 2, dg14, dg17 turn 2, dg28), 0 of 35 after.
+3. **`summary` reads up to 3 meetings in one `act`**, the first and the last meeting of the scope when nothing else points at a meeting (at most 3 tool calls for each loop turn, 11.9.10). A lead that has no call left closes with no loop turn.
+4. **`list_open` is also a strategy of a digging question about open points** ("is anything still unresolved about X") at a meeting or folder scope, after the first search. Only a first question that asks for the open items ends in a list (`blocks` node, the lists of both list tools in one answer).
+5. **Leads from a list are ranked** by the words that they share with the questions of the thread. A list at Everything holds the items of every project, and the first 3 items are not the right ones.
+6. **A research follow-up treats the earlier answer as told.** The facts of that answer leave the new answer (`dropToldSentences`), so "what blocked it?" does not repeat the answer to "what is the contract?" (the repeat guard made it not found).
+7. **Early exits are edges after `plan`.** A write question and a count of mentions end after the same model calls as before the build (the route call can give the propose tool that the eval reads), so the rows stay equal. `END` is reached from `scope`, `plan`, `blocks`, `cite_check` and `not_found` only. The test `tests/chat-graph.test.ts` checks that no path from `synthesize` reaches the end without `cite_check` or `not_found`.
+8. **The trigger has one more rule.** A question that starts with a list command ("List all open action items for Ana.") keeps the list path. Without it 11 of the 190 gold questions (5.8%) went to research. With it 3 (1.6%).
+9. **`recursionLimit`** is `3 x MAX_ITER + 12` for a research turn and `3 x rounds + 80` for a fast turn (a map-reduce has up to 4 answer slices).
+10. **Arm R1 (`chatPlan`) is not built.** It stays OFF as the design says. The "reflect off" arm is `CHAT_EVAL_REFLECT=off`.
+
+**Answers to the UNKNOWNs of 11.9.8.** (a) Checkpoint write time: p95 1.4 to 1.5 ms for each write on Mac E2B (bar D17: 10 ms). (b) Does a deleted meeting remove the chat runs that read it? No. A chat run has `meeting_id` NULL (`S/lib/llm/recorder.ts`, `startRun`), so the cascade of `llm_runs.meeting_id` does not reach it, and nothing links it to the thread. A deleted meeting removes its thread and messages (`chat_threads` FK). The checkpoints of a FAILED turn, and the call records of every chat turn (`llm_calls.messages_json`, as before this build), stay. A succeeded turn leaves no checkpoint (`tests/chat-research-pipeline.test.ts`). OPEN: the failed-turn rows should leave with their thread. This needs a schema step and is not part of this build.
+
+**Eval commands.** `pnpm chat-eval p1 --only dig` (bars `dig.*` in the `bars` part); `CHAT_EVAL_RESEARCH=off` for the old path; `CHAT_EVAL_REFLECT=off` for the loop with no reflect call; `CHAT_EVAL_THREADS_PAR=1` for one thread (latency without the other thread on the GPU). Skill: `.claude/skills/chat-eval/SKILL.md`.
+
+RESULTS_PLACEHOLDER
 
 Sources for this section: https://docs.langchain.com/oss/javascript/langgraph/agentic-rag, `/workflows-agents`, `/use-graph-api`, `/interrupts`, `/streaming`, `/thinking-in-langgraph`, https://docs.langchain.com/oss/javascript/migrate/langgraph-v1, https://github.com/langchain-ai/open_deep_research, https://github.com/langchain-ai/langgraphjs (adaptive RAG notebook `examples/rag/langgraph_adaptive_rag_local.ipynb`) and the repo lines named in the text.
 

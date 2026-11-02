@@ -1,7 +1,7 @@
 import { mkdirSync, rmSync } from "node:fs";
 import { join } from "node:path";
 import { expect, type Locator, type Page, test } from "@playwright/test";
-import { type Booted, boot, put } from "./helpers/ask-app";
+import { type Booted, boot, put, settingValue } from "./helpers/ask-app";
 import { FakeAskLlm, seedAskMeetings } from "./helpers/ask-fixture";
 import { closeApp } from "./helpers/e2e-app";
 
@@ -211,4 +211,17 @@ test("the setting turns the loop off: the same question makes no reflect call", 
   } finally {
     await put(b, "chat_research", "true");
   }
+});
+
+test("the Ask settings page has the research switch: on by default, it writes chat_research", async () => {
+  test.setTimeout(60_000);
+  await page.goto("app://renderer/settings#ask");
+  const sw = page.getByTestId("settings-ask-research");
+  await expect(sw).toBeVisible({ timeout: 15_000 });
+  await expect(sw).toHaveAttribute("aria-checked", "true");
+  await sw.click();
+  await expect.poll(() => settingValue(b, "chat_research")).toBe("false");
+  await expect(sw).toHaveAttribute("aria-checked", "false");
+  await sw.click();
+  await expect.poll(() => settingValue(b, "chat_research")).toBe("true");
 });
