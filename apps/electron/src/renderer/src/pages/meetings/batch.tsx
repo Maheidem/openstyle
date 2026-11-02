@@ -122,12 +122,6 @@ export function useMeetingBatch(enabled: boolean) {
   return { state: data, start, cancel };
 }
 
-/** A key that changes when a new batch starts or the batch moves on. The
- * rail hides a finished batch until this key changes. */
-export function batchKey(state: MeetingBatchState): string {
-  return `${state.total}/${state.done}/${state.skipped}/${state.failed}/${state.cancelled}`;
-}
-
 /** The stage counts of a folder, with one "Run on N" button per stage. */
 export function FolderStageCard({
   folder,

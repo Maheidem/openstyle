@@ -51,6 +51,9 @@ export type BatchSkipReason = z.infer<typeof batchSkipReasonSchema>;
 
 /** The state of the batch queue. The queue lives in memory only. */
 export const meetingBatchStateSchema = z.object({
+  /** Names the batch. It changes when a new batch starts, so the app can
+   * keep a closed batch closed. */
+  id: z.string(),
   /** True while an item runs or waits. */
   active: z.boolean(),
   /** The items of the current batch (since the queue was last empty). */

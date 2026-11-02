@@ -1,3 +1,4 @@
+import { randomUUID } from "node:crypto";
 import { createAppLogger, errorMessage } from "@openstyle/utils";
 import type {
   BatchSkipReason,
@@ -72,6 +73,9 @@ export interface BatchQueue {
 export function createBatchQueue(deps: BatchQueueDeps): BatchQueue {
   let pending: Item[] = [];
   let current: Item | null = null;
+  /** Names the current batch. A new batch gets a new id (unlike the counts,
+   * two batches can end with the same numbers). */
+  let batchId = randomUUID();
   let total = 0;
   let done = 0;
   let cancelled = 0;
@@ -88,6 +92,7 @@ export function createBatchQueue(deps: BatchQueueDeps): BatchQueue {
 
   function state(): MeetingBatchState {
     return {
+      id: batchId,
       active: current !== null || pending.length > 0,
       total,
       done,
@@ -177,7 +182,8 @@ export function createBatchQueue(deps: BatchQueueDeps): BatchQueue {
   return {
     enqueue(ids, stage, onlyIfNeeded) {
       if (current === null && pending.length === 0) {
-        // A new batch: the counters start again.
+        // A new batch: the counters start again, with a new id.
+        batchId = randomUUID();
         total = 0;
         done = 0;
         cancelled = 0;

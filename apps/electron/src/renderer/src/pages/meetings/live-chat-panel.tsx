@@ -25,30 +25,69 @@ export type ChatListMessage = {
   cites: Cite[];
 };
 
+/** The model that gets the live text (`GET /api/meetings/:id/chat`). */
+export interface ChatModelInfo {
+  provider: string;
+  model: string;
+  local: boolean;
+}
+
+interface ChatData {
+  messages: ChatListMessage[];
+  model: ChatModelInfo | null;
+}
+
+/** An answer that takes longer than this ends in an error, never in endless
+ * waiting. The server stops earlier (120 s cold, then the task timeout). */
+const ASK_TIMEOUT_MS = 150_000;
+
 /**
  * The saved chat of a meeting (`GET /api/meetings/:id/chat`). The server keeps
  * it, so it survives a page change and can be read after Stop. The query cache
  * keeps it while the panel is not on screen.
  */
-export function useChatMessages(meetingId: string | null) {
+function useChatQuery<T>(
+  meetingId: string | null,
+  select: (data: ChatData) => T,
+) {
   return useQuery({
     queryKey: queryKeys.meetings.chat(meetingId ?? ""),
     enabled: !!meetingId,
     staleTime: 0,
-    queryFn: async (): Promise<ChatListMessage[]> => {
+    queryFn: async (): Promise<ChatData> => {
       const res = await getClient().api.meetings[":id"].chat.$get({
         param: { id: meetingId ?? "" },
       });
       if (!res.ok) throw new Error("Failed to load the chat");
-      const { messages } = await res.json();
-      return messages.map((m) => ({
-        key: `saved-${m.id}`,
-        role: m.role,
-        content: m.content,
-        cites: m.cites as Cite[],
-      }));
+      const { messages, model } = await res.json();
+      return {
+        messages: messages.map((m) => ({
+          key: `saved-${m.id}`,
+          role: m.role,
+          content: m.content,
+          cites: m.cites as Cite[],
+        })),
+        model,
+      };
     },
+    select,
   });
+}
+
+export function useChatMessages(meetingId: string | null) {
+  return useChatQuery(meetingId, (data) => data.messages);
+}
+
+/** The text of a failed ask: the error text of the server, else a timeout or
+ * network message. */
+async function askErrorText(res: Response): Promise<string> {
+  try {
+    const body = (await res.json()) as { error?: unknown };
+    if (typeof body.error === "string" && body.error) return body.error;
+  } catch {
+    // No JSON body.
+  }
+  return `HTTP ${res.status}`;
 }
 
 function CiteChip({ cite }: { cite: Cite }): React.JSX.Element {
@@ -133,23 +172,28 @@ export function LiveChatPanel({
   // The question while the answer is on its way, and a failed answer. The
   // server saves only answered questions.
   const [sending, setSending] = useState<string | null>(null);
-  const [failed, setFailed] = useState<string | null>(null);
+  const [failed, setFailed] = useState<{
+    question: string;
+    error: string;
+  } | null>(null);
   const [unavailable, setUnavailable] = useState(false);
   const { data: saved = [] } = useChatMessages(meetingId);
+  const { data: modelInfo } = useChatQuery(meetingId, (data) => data.model);
   const answered = saved.some((m) => m.role === "assistant");
   const [slow, setSlow] = useState(false);
 
   const ask = useMutation({
     mutationFn: async (question: string) => {
-      const res = await getClient().api.meetings[":id"].chat.$post({
-        param: { id: meetingId ?? "" },
-        json: { question },
-      });
+      const res = await getClient().api.meetings[":id"].chat.$post(
+        { param: { id: meetingId ?? "" }, json: { question } },
+        { init: { signal: AbortSignal.timeout(ASK_TIMEOUT_MS) } },
+      );
+      // 409 means the setting is off. A cloud model is no longer refused.
       if (res.status === 409) {
         setUnavailable(true);
         return null;
       }
-      if (!res.ok) throw new Error("chat failed");
+      if (!res.ok) throw new Error(await askErrorText(res));
       return await res.json();
     },
     onSuccess: async () => {
@@ -159,9 +203,17 @@ export function LiveChatPanel({
       });
       setSending(null);
     },
-    onError: (_err, question) => {
+    onError: (err, question) => {
       setSending(null);
-      setFailed(question);
+      setFailed({
+        question,
+        error:
+          err instanceof DOMException && err.name === "TimeoutError"
+            ? t("meetings.liveChat.chatTimeout")
+            : err instanceof Error
+              ? err.message
+              : "",
+      });
     },
   });
 
@@ -182,13 +234,15 @@ export function LiveChatPanel({
           {
             key: "failed-question",
             role: "user" as const,
-            content: failed,
+            content: failed.question,
             cites: [],
           },
           {
             key: "failed",
             role: "error" as const,
-            content: t("meetings.liveChat.chatError"),
+            content: failed.error
+              ? t("meetings.liveChat.chatErrorDetail", { error: failed.error })
+              : t("meetings.liveChat.chatError"),
             cites: [],
           },
         ]
@@ -230,6 +284,19 @@ export function LiveChatPanel({
           {t("meetings.liveChat.experimental")}
         </span>
       </div>
+      {modelInfo && !unavailable && (
+        <p
+          className="text-muted-foreground mono mb-2 shrink-0 text-[10px]"
+          data-testid="live-chat-model"
+        >
+          {modelInfo.local
+            ? t("meetings.liveChat.chatSendsLocal", { model: modelInfo.model })
+            : t("meetings.liveChat.chatSendsTo", {
+                provider: modelInfo.provider,
+                model: modelInfo.model,
+              })}
+        </p>
+      )}
       {unavailable ? (
         <p
           className="text-muted-foreground text-[12px]"

@@ -71,9 +71,17 @@ The second pass with the strong model is the normal final pass after the stop. I
 
 The chat is a new LLM task id: `liveChat` (`LLM_TASK_IDS`). Profile: temperature 0, no reasoning, 300 output tokens, 30 s timeout (120 s for the first call, which loads the model). The default assignment is the app default LLM. That is the dictation cleanup model by default, so both share one worker. The user can assign another model on the Models page. "Keep ready" for this task is off by default.
 
-The chat answers only from a local model (the audio text stays on the Mac). A non-local model gives HTTP 409 with `reason: "not_local"`, and the panel shows "unavailable".
+The chat uses the model of the task `liveChat`, local or cloud, through the normal task resolution and the normal provider and key flow (owner decision 2026-11-02, decision D1 of `specs/meeting-chat-agent.md`: cloud is the user's choice, local first). The old rule "local model only" and the `not_local` answer (HTTP 409) are removed. The route sends only the sources of the turn (up to 6000 estimated tokens) to that one provider and never to another. The panel shows the provider and model that receive the live text (`GET /api/meetings/:id/chat` returns `model: { provider, model, local }`, and the answer returns `provider` and `model`). The only 409 left is `reason: "off"` (the setting is off), and the panel shows "unavailable".
 
-The chat call follows the light pattern of dictation cleanup: `resolveTaskCall`, `createChatModel`, `withLlmLane` (class `interactive`). The reply is one JSON object `{ "answer", "cites" }`. There is no token streaming. A reply that is not JSON becomes a plain answer with no cites.
+Errors never end in an endless "loading". The route has a time limit (120 s for the first call, else the task timeout, plus 15 s for the wait in the lane). The panel has its own limit of 150 s. A failure (no key, provider down, timeout, unreadable reply) gives HTTP 502 with `error` text and `reason` (`failed` or `bad_reply`). The panel shows "The answer failed: <text>".
+
+The chat call follows the light pattern of dictation cleanup: `resolveTaskCall`, `createChatModel`, `withLlmLane` (class `interactive`). The reply is one JSON object `{ "answer", "cites" }`. There is no token streaming.
+
+Reply parsing (`parseChatReply`, `lib/meetings/live/chat-prompt.ts`):
+1. Code takes the first balanced JSON object of the reply. Text before or after it is ignored (for example a stray character after the closing brace). If the object has junk inside, code reads the `answer` string and the `cites` array with a pattern each.
+2. Inline markers such as `[L7]` or `[L7, L10]` leave the answer text and join the cites.
+3. A reply with no JSON at all is a plain answer (markers lifted).
+4. A reply that looks like JSON but has no readable `answer` is never shown. The route calls the model once more. If that reply is also unreadable, the route answers 502 with `reason: "bad_reply"` and the panel shows a short error.
 
 The server saves the chat with the meeting (table `meeting_chat_messages`, schema 52, rows go with the meeting). Each answered question is saved as two rows, the question and the answer with its cites. The model sees the last 4 saved messages. The panel does not send a history. The chat so survives a click on another meeting, a page change and a restart of the page, and it can be read after Stop (a "Live chat" tab in the meeting detail).
 
@@ -112,7 +120,7 @@ UI (hidden while the setting is off). The live view fills the right pane (the me
 - Auto-open: when a recording starts and the setting is on, the right pane shows the live view of that meeting. The user can click away. A click on the RECORDING row (list or folder tree), or on the "Open live view" link of the card, opens it again. The view shows only while the meeting records. After Stop the pane shows the normal meeting detail.
 - Layout: header with the meeting title, the RECORDING badge and the timer. Two columns: the live transcript on the left, the chat on the right with the input at the bottom. When the pane is narrower than 32 rem, the columns stack (transcript on top).
 - `LiveTranscriptPanel`: final lines, one grey partial for each channel, a time and a source label (Me / Them). It scrolls to the end. States: warming, unavailable (with the reason: `provider_not_local`, `model_missing`, `worker_missing`).
-- `LiveChatPanel`: input, messages, cite chips (live time, or past meeting title and time). A first answer that takes more than 3 s shows the "warming" text. A non-local model shows "unavailable".
+- `LiveChatPanel`: input, messages, cite chips (live time, or past meeting title and time). A first answer that takes more than 3 s shows the "warming" text. The line under the title names the provider and model that receive the live text. An error shows its text in the thread. The text "unavailable" shows only when the setting is off.
 - The recording card keeps the timer, the mic and system levels and Stop. With the setting on it also has the "Open live view" link.
 - Settings, Meetings section: a switch "Live transcript and chat (experimental)".
 - After Stop: the meeting detail shows the status "Transcribed" and the mark "From live" next to it, and a "Live chat" tab when the meeting has chat messages.

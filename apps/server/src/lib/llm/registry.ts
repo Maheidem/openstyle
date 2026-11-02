@@ -95,6 +95,18 @@ export interface GatewayOverrides {
  * so pulling in this module at boot doesn't eagerly evaluate every `@ai-sdk/*`
  * package.
  */
+/**
+ * The OpenRouter endpoint. An E2E run (`OPENSTYLE_E2E=1`) can point it at a
+ * fake server with `OPENSTYLE_E2E_OPENROUTER_URL`, so a cloud provider can be
+ * tested without the network. Outside an E2E run the variable is ignored.
+ */
+function openRouterBaseUrl(): string {
+  const fake = process.env.OPENSTYLE_E2E_OPENROUTER_URL;
+  return process.env.OPENSTYLE_E2E === "1" && fake
+    ? fake
+    : "https://openrouter.ai/api/v1";
+}
+
 export interface LlmProvider {
   readonly providerId: string;
   /**
@@ -452,7 +464,7 @@ const PROVIDERS: LlmProvider[] = [
       const { createOpenAI } = await import("@ai-sdk/openai");
       return createOpenAI({
         apiKey,
-        baseURL: "https://openrouter.ai/api/v1",
+        baseURL: openRouterBaseUrl(),
         // Only the LLM gateway passes `bodyExtra`; dictation keeps the plain client.
         ...(taskContext?.bodyExtra
           ? {
