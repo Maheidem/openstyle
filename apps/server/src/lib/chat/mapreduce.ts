@@ -19,6 +19,10 @@ export interface MapResult {
   /** Sources that kept a code cut (a failed call, or a note that added a fact). */
   fallback: number;
   calls: number;
+  /** Why sources kept the code cut: a failed call, no note for the label, or a note with a number the source lacks. */
+  why: { error: number; missing: number; unsafe: number };
+  /** First error text of a failed call (for the trace). */
+  firstError: string | null;
 }
 
 const cut = (s: string, n: number) => {
@@ -38,13 +42,17 @@ function noteIsSafe(note: string, source: string): boolean {
 export function groupSources(
   sources: readonly Source[],
   groupTokens: number,
+  maxPerGroup = Number.POSITIVE_INFINITY,
 ): Source[][] {
   const groups: Source[][] = [];
   let cur: Source[] = [];
   let used = 0;
   for (const s of sources) {
     const t = estimatePromptTokens(renderSource(s)) + 1;
-    if (cur.length > 0 && used + t > groupTokens) {
+    if (
+      cur.length > 0 &&
+      (used + t > groupTokens || cur.length >= maxPerGroup)
+    ) {
       groups.push(cur);
       cur = [];
       used = 0;
@@ -72,12 +80,21 @@ export async function mapNotes(args: {
   stop: () => string | null;
   onGroup?: (done: number, total: number) => void;
 }): Promise<MapResult & { stopped: string | null }> {
-  const groups = groupSources(args.sources, args.groupTokens);
+  // The notes of one group must fit the output cap: about 3.5 characters per
+  // token, plus the JSON around each note.
+  const perNote = Math.ceil(args.noteChars / 3.5) + 20;
+  const groups = groupSources(
+    args.sources,
+    args.groupTokens,
+    Math.max(3, Math.floor((MAP_MAX_TOKENS * 0.7) / perNote)),
+  );
   const result: MapResult = {
     sources: args.sources.length,
     groups: groups.length,
     fallback: 0,
     calls: 0,
+    why: { error: 0, missing: 0, unsafe: 0 },
+    firstError: null,
   };
   const words = Math.max(12, Math.round(args.noteChars / 6));
   let g = 0;
@@ -96,6 +113,7 @@ export async function mapNotes(args: {
     result.calls++;
     args.onGroup?.(++g, groups.length);
     let notes: { label: string; note: string }[] = [];
+    let failed = false;
     try {
       const r = await args.llm.structured({
         step: "chatAnswer",
@@ -117,13 +135,22 @@ export async function mapNotes(args: {
       notes = r.object.notes;
     } catch (e) {
       if (args.signal.aborted) throw e;
+      failed = true;
+      result.firstError ??= ((e as Error).message ?? "error").slice(0, 100);
     }
-    const byLabel = new Map(notes.map((n) => [n.label, n.note.trim()]));
+    // The model may write "[S5]" or "S5": the label is the S and its digits.
+    const byLabel = new Map(
+      notes.map((n) => [n.label.match(/S\d+/)?.[0] ?? n.label, n.note.trim()]),
+    );
     for (const s of group) {
       const note = byLabel.get(s.label);
       const src = original.get(s.label) ?? s.text;
-      if (note && noteIsSafe(note, src)) s.text = cut(note, args.noteChars);
-      else fallbackFor(s);
+      if (note && noteIsSafe(note, src)) {
+        s.text = cut(note, args.noteChars);
+      } else {
+        result.why[failed ? "error" : note ? "unsafe" : "missing"]++;
+        fallbackFor(s);
+      }
     }
   }
   return { ...result, stopped: null };

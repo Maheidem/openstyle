@@ -116,7 +116,7 @@ export const MAP_SYSTEM = `You shorten meeting notes for a later answer. Use ONL
 Write one note for each source, in the language of the source. Keep its label exactly.
 A note holds the facts that matter for the QUESTION: decisions, numbers, dates, names of people, owners, open questions.
 Copy names, numbers and dates exactly. Never add a fact that the source does not hold.
-Keep each note under the given word limit. Skip a source that has nothing for the question: write its note as the title only.`;
+Do not repeat the title or the date of the source: the reader sees them. Keep each note under the given word limit. Skip a source that has nothing for the question: write its note as the title only.`;
 
 export function mapUser(args: {
   sources: string;

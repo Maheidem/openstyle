@@ -717,6 +717,7 @@ export async function runChatTurn(input: ChatTurnInput): Promise<TurnResult> {
       ];
     };
     let ranked = rankSources();
+    let mapped: { from: string; to: string; n: number } | null = null;
     // Map-reduce (D20): the digest of a folder or of Everything does not fit
     // the window, so the oldest meetings would drop. Map: shorten the full
     // summaries in groups, each note keeps its label. Reduce: the synthesis
@@ -752,9 +753,13 @@ export async function runChatTurn(input: ChatTurnInput): Promise<TurnResult> {
           ),
         );
         // The notes together fill about 60% of the source budget.
+        // Each source also costs its title and date (about 28 tokens).
         const noteChars = Math.max(
-          90,
-          Math.min(420, Math.floor((cap * 0.6 * 4) / Math.max(1, full.length))),
+          80,
+          Math.min(
+            420,
+            Math.floor(((cap * 0.6) / Math.max(1, full.length) - 28) * 4),
+          ),
         );
         const m = await mapNotes({
           sources: full,
@@ -770,11 +775,70 @@ export async function runChatTurn(input: ChatTurnInput): Promise<TurnResult> {
           "map_reduce",
           t,
           m.sources,
-          `Reading ${m.sources} meetings in ${m.groups} groups; ${m.calls} calls; ${m.fallback} code cuts`,
+          `Reading ${m.sources} meetings in ${m.groups} groups; ${m.calls} calls; ${m.fallback} code cuts (error ${m.why.error}, missing ${m.why.missing}, unsafe ${m.why.unsafe})${m.firstError ? `; ${m.firstError}` : ""}`,
         );
         if (m.stopped) return notFound(m.stopped as never);
+        const days = full
+          .map((x) => x.startedAt)
+          .filter((x): x is number => x !== null)
+          .sort((a, b) => a - b);
+        const day = (ms: number | undefined) =>
+          ms === undefined ? "" : new Date(ms).toISOString().slice(0, 10);
+        mapped = { from: day(days[0]), to: day(days.at(-1)), n: full.length };
       }
       ranked = rankSources();
+    }
+    if (mapped) {
+      // Reduce in date slices (D20): one answer for each third of the period,
+      // so the late meetings get bullets too (a model that reads 72 notes
+      // writes about the first ones). Each slice has its own cite check.
+      const summaries = ranked.filter((x) => x.kind === "summary");
+      const parts = Math.min(3, Math.max(1, Math.ceil(summaries.length / 24)));
+      const size = Math.ceil(summaries.length / parts);
+      const slices = Array.from({ length: parts }, (_, i) =>
+        summaries.slice(i * size, (i + 1) * size),
+      ).filter((x) => x.length > 0);
+      const results: TurnResult[] = [];
+      for (const [i, slice] of slices.entries()) {
+        const day = (x: Source | undefined) =>
+          x?.startedAt == null
+            ? ""
+            : new Date(x.startedAt).toISOString().slice(0, 10);
+        const r = await answerStage({
+          ranked: slice,
+          synth: true,
+          focus: `these are ${slice.length} meetings from ${day(slice[0])} to ${day(slice.at(-1))}, part ${i + 1} of ${slices.length} of a longer story; ${i === 0 ? "the lead says what the whole folder is about in one sentence; " : "write only bullets; "}one bullet for each important fact, in date order, with its date`,
+        });
+        results.push(r);
+        const stop = stopReason();
+        if (stop) return notFound(stop);
+      }
+      const good = results.filter(
+        (r) => !r.blocks.some((b) => b.kind === "not_found"),
+      );
+      if (good.length === 0) return results.at(-1) ?? notFound("no_sources");
+      const blocks: ChatBlock[] = [];
+      const cites = new Map<string, ChatCite>();
+      for (const [i, r] of good.entries()) {
+        for (const b of r.blocks) {
+          blocks.push(i > 0 && b.kind === "text" ? { ...b, bullet: true } : b);
+        }
+        for (const c of r.cites) cites.set(c.label, c);
+      }
+      const content = answerContent(
+        blocks.flatMap((b) =>
+          b.kind === "text"
+            ? [
+                {
+                  text: b.text,
+                  cites: b.cites,
+                  ...(b.bullet ? { bullet: true } : {}),
+                },
+              ]
+            : [],
+        ),
+      );
+      return finish(blocks, [...cites.values()], content);
     }
     return answerStage({
       ranked,

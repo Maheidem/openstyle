@@ -400,7 +400,7 @@ export function buildMapItems(): MapItem[] {
     { id: "mr1", question: "Give me the story of Long Program.", scope },
     {
       id: "mr2",
-      question: "What were the key decisions across the program?",
+      question: "Give me the history of the program with the key decisions.",
       scope,
     },
     {
