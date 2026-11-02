@@ -292,10 +292,12 @@ describe("map-reduce synthesis", () => {
     expect(
       log.filter((l) => l.unitKey.startsWith("map/")).length,
     ).toBeGreaterThan(0);
-    // The oldest meeting is in the sources of the final call.
-    const reduce = log.at(-1);
-    expect(reduce?.user).toContain("Program step 1");
-    expect(reduce?.user).toContain("Program step 40");
+    // The reduce runs in date slices: the oldest and the newest meeting are
+    // each in the sources of one reduce call.
+    const reduces = log.filter((l) => !l.unitKey.startsWith("map/"));
+    expect(reduces.length).toBeGreaterThanOrEqual(2);
+    expect(reduces.some((l) => l.user.includes("Program step 1,"))).toBe(true);
+    expect(reduces.some((l) => l.user.includes("Program step 40,"))).toBe(true);
     expect(r.blocks.some((b) => b.kind === "not_found")).toBe(false);
     // Every cite points to a real meeting of the folder.
     expect(r.cites.length).toBeGreaterThan(0);
