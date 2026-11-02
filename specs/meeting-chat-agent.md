@@ -1524,30 +1524,30 @@ Rules (all in code, `S/lib/chat/clarify.ts`; no LLM call, so no latency cost):
 4. **Limits.** A page that fixes the scope (meeting tab, folder tab) never gets rule 2 or 3. At most one clarify for each question, and never two in a row (the last assistant message must not be a clarify). The setting "Ask clarifying questions" (`chat_clarify`, default on) turns the block off.
 5. **Recall is limited on purpose.** The topic and name words are English plus names. A wrong question costs more than a missed one, so the rules ask only when the evidence is split.
 
-**B. Map-reduce synthesis.** The synthesis path (section 11.7) keeps its sources. When the folder digest, or the digest of Everything, does not fit the source budget and the window (a dry run of `assembleAnswerInput` drops a digest source), code runs a map step first (`S/lib/chat/mapreduce.ts`):
+**B. Map-reduce synthesis.** The synthesis path (section 11.7) keeps its sources. A folder or Everything digest with 6 or more meetings is measured first with the FULL summaries (on a scratch source map, so labels do not change). When the full summaries do not fit the digest budget (60% of the source budget), the old digest would cut every meeting to one line and lose the facts. Code then runs a map step (`S/lib/chat/mapreduce.ts`):
 
 1. The digest is built again with the full summaries. A question over Everything with no topic word ("an overview of everything") digests every meeting, not only the meetings of the top hits.
-2. Sources are cut into groups that fit the window. Each group is one `chatAnswer` call (`MAP_SCHEMA`): one short note for each source, with the label of the source. At most 8 map calls for each turn. The total of all calls stays under the hard cap of 16.
+2. Sources are cut into groups that fit the window and the output cap. Each group is one `chatAnswer` call (`MAP_SCHEMA`): one short note for each source, with the label of the source (`[S5]` and `S5` both count). A group that fails (cut at the output cap, or notes missing) is split in halves and asked again once. At most 10 map calls for each turn; a source after that keeps the code cut. The hard cap of 16 calls for each turn still holds: a turn that reaches it ends with `not_found` (`call_cap`).
 3. Code checks each note. A note with a number that its source does not hold, a missing note or a failed call gives the code cut of the source text. The note replaces the text of the source; the label, meeting and date stay.
-4. Reduce: the normal synthesis answer reads the notes. The cite check, the cite times and the `dropUnsupported` rule are unchanged. Cites point to real meetings because the labels never change.
-5. Progress: the trace step `map_reduce` says "Reading N meetings in G groups". The route is one request, so the UI shows its normal pending state. Streaming the step text is not built.
+4. Reduce in date slices: the notes go to at most 3 `synth` answers, one for each part of the period (24 meetings or fewer in each). Each slice has its own cite check, cite times and `dropUnsupported` rule. The first slice gives the lead; the other slices give bullets only. A model that reads 72 notes in one call writes about the first ones only (measured: late third 0 to 1% of the facts, with slices 23 to 25%, E4B). Cites point to real meetings because the labels never change.
+5. Progress: the trace step `map_reduce` says "Reading N meetings in G groups" and the trail line of the answer says "shortened N meeting summaries". The route is one request, so the UI shows its normal pending state. Streaming the step text is not built.
 
 ```mermaid
 flowchart TD
   Q["0a [CODE] clarify check: person, folder, intent rules; no LLM call"] -->|"ambiguous, setting on, not twice in a row"| C["EXIT clarify block: question + 2 to 6 chips"]
   Q -->|"clear, or Answer anyway"| R["1-3 [CODE] route and tools (section 2.2)"]
   C -->|"chip click: option.ask"| Q
-  R -->|"broad question, folder or Everything"| D["[CODE] digest of the summaries; dry run of assembleAnswerInput"]
+  R -->|"broad question, folder or Everything"| D["[CODE] digest of the summaries; measure the full summaries"]
   D -->|"all sources fit"| A["4 [LLM call] synthesis answer, max 3 attempts"]
-  D -->|"a digest source would drop"| M["[LLM call x groups, max 8] map: one note for each source, label kept"]
+  D -->|"full summaries do not fit 60% of the budget"| M["[LLM call x groups, max 10] map: one note for each source, label kept; a failed group is split once"]
   M -->|"bad note, extra number, failed call"| K["[CODE] code cut of the source text"]
   M -->|"notes valid"| A
   K --> A
-  A -->|"cite check pass"| OK["EXIT answer: lead + bullets with cites"]
+  A -->|"cite check pass"| OK["EXIT answer: lead + bullets with cites (up to 3 date slices)"]
   A -->|"cite check fails twice, deadline, call cap"| NF["EXIT not_found"]
 ```
 
-LLM calls on the map path: up to 8 map calls and up to 3 answer attempts. The clarify path has 0 calls.
+LLM calls on the map path: up to 10 map calls, then up to 3 answer attempts for each of up to 3 slices. The clarify path has 0 calls.
 
 Eval: the `clarify` part of `pnpm chat-eval p1` (section 8; skill `chat-eval`). Results are in the PR that added D20.
 
