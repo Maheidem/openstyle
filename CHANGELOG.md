@@ -1,5 +1,11 @@
 # Changelog
 
+## 2.25.0-alpha.16
+
+### Bug Fixes 🐛
+
+- (chat) Ask synthesis for broad questions by @Maheidem in [#408](https://github.com/Maheidem/openstyle/pull/408)
+
 ## 2.25.0-alpha.15
 
 ### New Features ✨
