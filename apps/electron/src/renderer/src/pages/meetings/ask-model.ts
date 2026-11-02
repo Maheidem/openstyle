@@ -7,6 +7,8 @@ import {
   type ChatBlock,
   type ChatCite,
   type ChatMessage,
+  type ChatProgress,
+  type ChatResearch,
   type ChatScope,
   type ChatThread,
   type ChatTrace,
@@ -94,6 +96,22 @@ export function summarizeTrace(trace: ChatTrace | null): TraceSummaryPart[] {
     key,
     count: counts.get(key) ?? 0,
   }));
+}
+
+/**
+ * The trail line under a research answer (spec 11.9.7 point 7). Built from the
+ * fields of the trace; no model text. Null when the turn was not a research turn.
+ */
+export function researchTrail(trace: ChatTrace | null): ChatResearch | null {
+  return trace?.research ?? null;
+}
+
+/** The leads that the line names as not found, cut to a short text each. */
+export function notFoundLeads(r: ChatResearch, max = 3, chars = 60): string {
+  return r.open_leads
+    .slice(0, max)
+    .map((l) => (l.length > chars ? `${l.slice(0, chars - 1).trimEnd()}…` : l))
+    .join("; ");
 }
 
 // ---------------------------------------------------------------------------
@@ -381,17 +399,28 @@ export function askErrorView(
   return { key: "errFailed", action: "retry" };
 }
 
-/** The fixed words of a running turn's stage (D20). The UI writes them with `t()`. */
+/** The fixed words of a running turn's stage (D20, D21). The UI writes them with `t()`. */
 export function progressKey(
-  progress:
-    | { stage: "searching" | "reading" | "answering"; count: number | null }
-    | null
-    | undefined,
-): { key: string; count: number } | null {
+  progress: ChatProgress | null | undefined,
+): { key: string; count: number; vars: Record<string, number> } | null {
   if (!progress) return null;
   const count = progress.count ?? 0;
   if (progress.stage === "answering") {
-    return { key: "meetings.ask.step.answering", count };
+    return { key: "meetings.ask.step.answering", count, vars: {} };
   }
-  return { key: `meetings.ask.step.${progress.stage}`, count };
+  if (progress.stage === "researching") {
+    // The key is plural on the number of leads: one lead has no "reason 1 of 1".
+    const leads = progress.leads ?? 1;
+    return {
+      key: "meetings.ask.step.researching",
+      count: leads,
+      vars: {
+        round: progress.iteration ?? 1,
+        max: progress.max_iter ?? 1,
+        lead: progress.lead_index ?? 1,
+        leads,
+      },
+    };
+  }
+  return { key: `meetings.ask.step.${progress.stage}`, count, vars: {} };
 }

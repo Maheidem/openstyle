@@ -384,7 +384,9 @@
       "numberStripped": "Digits only. {{dropped}} removed, the field shows {{value}}.",
       "hotkey": "Global shortcut",
       "hotkeyDesc": "Opens a small Ask window from any app. When it starts with the dictation keys, dictation starts only if this key does not follow within 150 ms.",
-      "hotkeyConflict": "Pick a combination with a key that is not a dictation shortcut."
+      "hotkeyConflict": "Pick a combination with a key that is not a dictation shortcut.",
+      "research": "Research mode",
+      "researchDesc": "For questions that need digging, Ask searches several times in several meetings before it answers. A simple fact still gets a fast answer."
     }
   },
   "today": {
@@ -1768,7 +1770,26 @@
         "searching_other": "Searching {{count}} meetings…",
         "reading_one": "Reading {{count}} meeting…",
         "reading_other": "Reading {{count}} meetings…",
-        "answering": "Writing the answer…"
+        "answering": "Writing the answer…",
+        "researching_one": "Looking for the answer, round {{round}} of {{max}}…",
+        "researching_other": "Looking for: reason {{lead}} of {{leads}}, round {{round}} of {{max}}…"
+      },
+      "trailResearch": {
+        "meetings_one": "Looked in {{count}} meeting",
+        "meetings_other": "Looked in {{count}} meetings",
+        "searches_one": "{{count}} search",
+        "searches_other": "{{count}} searches",
+        "notFound": "not found: {{what}}",
+        "rounds": "Research: {{iterations}} of {{max}} rounds.",
+        "stop": {
+          "enough": "Stopped: the sources answer the question.",
+          "max_iter": "Stopped: the limit of {{max}} rounds.",
+          "stalled": "Stopped: two searches in a row found nothing new.",
+          "call_cap": "Stopped: the limit of model calls.",
+          "deadline": "Stopped: the time limit.",
+          "no_leads": "Stopped: every part was searched.",
+          "error": "Stopped: an error."
+        }
       }
     }
   },

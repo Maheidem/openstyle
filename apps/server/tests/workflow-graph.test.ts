@@ -168,7 +168,8 @@ describe("GR2: where LangGraph is imported", () => {
     for (const f of offenders) {
       expect(
         f.startsWith("lib/meetings/workflow/") ||
-          f.startsWith("lib/llm/workflow/"),
+          f.startsWith("lib/llm/workflow/") ||
+          f.startsWith("lib/chat/research/"),
       ).toBe(true);
     }
   });

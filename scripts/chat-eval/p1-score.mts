@@ -971,8 +971,165 @@ export const BARS: readonly BarDef[] = [
 ];
 
 /** Rows for all bars from a map of measured numbers (missing = NOT RUN). */
+
+/**
+ * The pass bars of the research mode, D1 to D17 of spec 11.9.14 (approved by
+ * the owner on 2026-11-02). Three bars depend on the model tier: E2B is the
+ * floor, E4B and above must score higher. `tier` is 2 for E2B, 4 otherwise.
+ * D14 (latency) is stated for Mac E2B; the desktop run is a cross-check.
+ */
+export function digBars(tier: number): BarDef[] {
+  const e2 = tier <= 2;
+  const mk = (
+    id: string,
+    bar: string,
+    threshold: number,
+    dir: BarDir,
+    unit: BarUnit,
+    origin: string,
+  ): BarDef => ({
+    id: `dig.${id}`,
+    bar,
+    threshold,
+    dir,
+    unit,
+    source: "p1-dig",
+    origin: `spec 11.9.14 ${origin}`,
+  });
+  return [
+    mk("pass", "Dig: digging pass", e2 ? 0.5 : 0.6, "min", "pct", "D1"),
+    mk(
+      "cov",
+      "Dig: coverage of the must-mention reasons",
+      e2 ? 0.65 : 0.75,
+      "min",
+      "pct",
+      "D2",
+    ),
+    mk(
+      "recall_multi",
+      "Dig: cross-meeting recall (keys with 2 or more meetings)",
+      0.7,
+      "min",
+      "pct",
+      "D3",
+    ),
+    mk("not_found", "Dig: not found on digging turns", 0.1, "max", "pct", "D4"),
+    mk(
+      "invalid_cites",
+      "Dig: invalid cites and uncited text blocks",
+      0,
+      "max",
+      "count",
+      "D5",
+    ),
+    mk("repeats", "Dig: repeated answers in a thread", 0, "max", "count", "D6"),
+    mk("len_ok", "Dig: answer length in range", 0.9, "min", "pct", "D7"),
+    mk(
+      "pass_second",
+      "Dig: pass on the second turn of a thread",
+      e2 ? 0.5 : 0.6,
+      "min",
+      "pct",
+      "D8",
+    ),
+    mk(
+      "lang_gap",
+      "Dig: EN pass minus PT pass (at most 10 points)",
+      0.1,
+      "max",
+      "pct",
+      "D9",
+    ),
+    mk("control_pass", "Dig: controls pass", 1, "min", "pct", "D10"),
+    mk(
+      "control_llm_calls_mean",
+      "Dig: controls, mean LLM calls",
+      2.0,
+      "max",
+      "ratio",
+      "D11",
+    ),
+    mk(
+      "control_tool_calls_mean",
+      "Dig: controls, mean tool calls",
+      e2 ? 1.5 : 1.8,
+      "max",
+      "ratio",
+      "D11",
+    ),
+    mk(
+      "control_ms_p95",
+      "Dig: controls latency p95 (baseline plus 20%)",
+      e2 ? 1182 * 1.2 : 2366 * 1.2,
+      "max",
+      "ms",
+      "D12",
+    ),
+    mk(
+      "llm_calls_mean",
+      "Dig: LLM calls per digging turn, mean",
+      6,
+      "max",
+      "ratio",
+      "D13",
+    ),
+    mk(
+      "llm_calls_p95",
+      "Dig: LLM calls per digging turn, p95",
+      9,
+      "max",
+      "ratio",
+      "D13",
+    ),
+    mk(
+      "llm_calls_max",
+      "Dig: LLM calls in any turn",
+      16,
+      "max",
+      "count",
+      "D13",
+    ),
+    mk("ms_p50", "Dig: digging turn latency p50", 15000, "max", "ms", "D14"),
+    mk("ms_p95", "Dig: digging turn latency p95", 30000, "max", "ms", "D14"),
+    mk(
+      "trigger_recall",
+      "Dig: trigger recall on the digging turns",
+      0.9,
+      "min",
+      "pct",
+      "D15",
+    ),
+    mk(
+      "trigger_false_gold",
+      "Dig: false trigger on the 190 gold questions",
+      0.05,
+      "max",
+      "pct",
+      "D15",
+    ),
+    mk(
+      "trigger_false_controls",
+      "Dig: false trigger on the controls",
+      0,
+      "max",
+      "count",
+      "D15",
+    ),
+    mk(
+      "ckpt_ms_p95",
+      "Dig: checkpoint write time per node, p95",
+      10,
+      "max",
+      "ms",
+      "D17",
+    ),
+  ];
+}
+
 export function evaluateBars(
   measured: Record<string, number | null | undefined>,
 ): BarRow[] {
-  return BARS.map((b) => barRow(b, measured[b.id]));
+  const tier = measured["dig.tier"] ?? 2;
+  return [...BARS, ...digBars(tier)].map((b) => barRow(b, measured[b.id]));
 }

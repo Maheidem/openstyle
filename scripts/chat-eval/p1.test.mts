@@ -31,6 +31,7 @@ import {
   citeHits,
   confusion,
   creditGroup,
+  digBars,
   evaluateBars,
   firstTool,
   goldSpans,
@@ -621,7 +622,7 @@ test("barStatus: threshold direction, not run and reported", () => {
 
 test("bars table: every bar has a row, thresholds are fixed, unmeasured = NOT RUN", () => {
   const rows = evaluateBars({});
-  assert.equal(rows.length, BARS.length);
+  assert.equal(rows.length, BARS.length + digBars(2).length);
   assert.ok(rows.every((r) => r.status === "NOT RUN"));
   const ids = new Set(BARS.map((b) => b.id));
   assert.equal(ids.size, BARS.length, "bar ids are unique");
@@ -965,4 +966,24 @@ test("scoreMapReduce: early and late facts, the step, the cites", () => {
     buildMapItems().every((i) => i.scope.kind === "folder"),
     true,
   );
+});
+
+test("dig bars: the approved thresholds of spec 11.9.14, by model tier", () => {
+  const th = (tier: number, id: string) =>
+    digBars(tier).find((b) => b.id === `dig.${id}`)?.threshold;
+  assert.equal(th(2, "pass"), 0.5);
+  assert.equal(th(4, "pass"), 0.6);
+  assert.equal(th(2, "cov"), 0.65);
+  assert.equal(th(4, "cov"), 0.75);
+  assert.equal(th(2, "pass_second"), 0.5);
+  assert.equal(th(4, "pass_second"), 0.6);
+  assert.equal(th(2, "recall_multi"), 0.7);
+  assert.equal(th(2, "not_found"), 0.1);
+  assert.equal(th(2, "ms_p50"), 15000);
+  assert.equal(th(2, "ms_p95"), 30000);
+  assert.equal(th(2, "trigger_recall"), 0.9);
+  assert.equal(th(2, "trigger_false_gold"), 0.05);
+  assert.equal(th(2, "ckpt_ms_p95"), 10);
+  const ids = digBars(2).map((b) => b.id);
+  assert.equal(new Set(ids).size, ids.length);
 });

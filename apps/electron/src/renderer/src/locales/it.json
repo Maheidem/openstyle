@@ -333,7 +333,9 @@
       "numberStripped": "Solo cifre. {{dropped}} rimosso, il campo mostra {{value}}.",
       "hotkey": "Scorciatoia globale",
       "hotkeyDesc": "Apre una piccola finestra di Chiedi da qualsiasi app. Se inizia con i tasti di dettatura, la dettatura parte solo se questo tasto non segue entro 150 ms.",
-      "hotkeyConflict": "Scegli una combinazione con un tasto che non sia una scorciatoia di dettatura."
+      "hotkeyConflict": "Scegli una combinazione con un tasto che non sia una scorciatoia di dettatura.",
+      "research": "Modalità ricerca",
+      "researchDesc": "Per le domande che richiedono approfondimento, Ask cerca più volte in più riunioni prima di rispondere. Un fatto semplice ottiene comunque una risposta rapida."
     }
   },
   "today": {
@@ -1434,7 +1436,26 @@
         "searching_other": "Cerco in {{count}} riunioni…",
         "reading_one": "Leggo {{count}} riunione…",
         "reading_other": "Leggo {{count}} riunioni…",
-        "answering": "Scrivo la risposta…"
+        "answering": "Scrivo la risposta…",
+        "researching_one": "Cerco la risposta, giro {{round}} di {{max}}…",
+        "researching_other": "Cerco: motivo {{lead}} di {{leads}}, giro {{round}} di {{max}}…"
+      },
+      "trailResearch": {
+        "meetings_one": "Cercato in {{count}} riunione",
+        "meetings_other": "Cercato in {{count}} riunioni",
+        "searches_one": "{{count}} ricerca",
+        "searches_other": "{{count}} ricerche",
+        "notFound": "non trovato: {{what}}",
+        "rounds": "Ricerca: {{iterations}} giri su {{max}}.",
+        "stop": {
+          "enough": "Fermato: le fonti rispondono alla domanda.",
+          "max_iter": "Fermato: limite di {{max}} giri.",
+          "stalled": "Fermato: due ricerche di fila non hanno trovato nulla di nuovo.",
+          "call_cap": "Fermato: limite di chiamate al modello.",
+          "deadline": "Fermato: limite di tempo.",
+          "no_leads": "Fermato: tutte le parti sono state cercate.",
+          "error": "Fermato: un errore."
+        }
       }
     }
   },

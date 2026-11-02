@@ -256,12 +256,13 @@ DECISION:
 5. Write proposals never target the live meeting. Reason: its ids are not final. Segments are rewritten by the final pass (`specs/live-chat.md`, section 8).
 6. The router call is skipped in live mode when the question has no write verb. DECISION to save latency: live mode uses intent `lookup` directly. ASSUMPTION; the eval compares both.
 7. The chat model and the ASR model are different workers. The live chat already runs this way (`specs/live-chat.md`, section 6, memory numbers).
+8. Owner decision 2026-11-02: the live chat merges into Ask (P5) only after Ask answers at least as well as the live chat does today ("Merge after the Ask style fix"). Until then the live chat keeps its own code path. Cloud models are allowed in the live chat since #410 (`specs/live-chat.md:74`).
 
 ```mermaid
 flowchart TD
   IN(["Input: question in the live view, scope = this meeting, live=true"]) --> L0
-  L0["0 GATE [CODE]<br/>in: settings, model<br/>out: ok or typed error"]
-  L0 -->|"no model or no key"| LX1(["EXIT error block"])
+  L0["0 GATE [CODE]<br/>in: settings, model<br/>out: ok or typed error; cloud allowed since #410 (specs/live-chat.md:74)"]
+  L0 -->|"no model, no key or setting off"| LX1(["EXIT error block"])
   L0 -->|ok| L0B["0b PREFETCH [CODE]<br/>in: folder, compact history<br/>out: folder block F"]
   L0B --> L1["1 ROUTER skipped [CODE]<br/>intent = lookup"]
   L1 --> L3A["3a get_live_tail [CODE]<br/>in: live store (memory)<br/>out: lines L1..Lm"]
@@ -1562,7 +1563,7 @@ Eval: the `clarify` part of `pnpm chat-eval p1` (section 8; skill `chat-eval`). 
 
 ### 11.9 Research mode (D21, owner request 2026-11-02)
 
-Status: DRAFT; the owner approved the open decisions on 2026-11-02 (11.9.14, 12.2). This step is spec and eval only. No product code changes. The numbers in 11.9.13 are measured on `main` at `ad98f171` with the eval code of this branch. Prefixes `S/`, `V/` and `W/` are from section 0.2. Labels are from section 0.1. A name in `monospace` with no path is a name in the code of the build step (it does not exist yet).
+Status: BUILT in PR #412 (2026-11-02). Section 11.9.16 says what the build changed against this text and shows the numbers. The text before 11.9.16 is the approved design; where the build differs, 11.9.16 wins. The owner approved the open decisions on 2026-11-02 (11.9.14, 12.2). The numbers in 11.9.13 are measured on `main` at `ad98f171` with the eval code of the spec step. Prefixes `S/`, `V/` and `W/` are from section 0.2. Labels are from section 0.1. A name in `monospace` with no path is a name in the code of the build step (it does not exist yet).
 
 #### 11.9.1 The owner request and the problem
 
@@ -1993,6 +1994,85 @@ Why these numbers (reasons, not measurements): D1 and D2 ask for about two times
 | The fast path regresses during the migration | The Mac MLX arm is deterministic at temperature 0. | The M1 and M2 exit check is a row-by-row diff with 0 changed rows. |
 | The dig data is small (13 meetings, 28 digging questions) | Fictional data is a lab, not the real world. | The real-data run (`real --dig`) is the cross-check. The owner reads its texts. A held-out seed for the dig data is not built (OPEN, low priority). |
 
+#### 11.9.16 As built (PR #412, 2026-11-02)
+
+**Files.** The graph is in `S/lib/chat/research/` (`graph.ts` nodes and edges, `state.ts`, `research.ts` leads, strategies and stop rules, `trigger.ts`, `run.ts` runner). The stage code of the old `runChatTurn` is `S/lib/chat/turn.ts` (class `Turn`, one method for each stage). `S/lib/chat/pipeline.ts` only starts the graph. The setting is `chat_research` (`V/settings-keys.ts`), the new step id is `chatReflect`, the wire change is `ChatProgress` (`researching`) and `ChatTrace.research` (`V/chat.ts`). The renderer writes the step text and the trail line from fields (`R/pages/meetings/ask-model.ts`, `ask-blocks.tsx`, key `meetings.ask.trailResearch` in all 8 locale files).
+
+**Migration.** M1 (stage methods) and M2 (fast mode in the graph) and M3 (research mode) have an exit check each, by command, on Mac E2B against `main` at `8c3ce745` (one result file for each run, temperature 0). A row is the result of one question or one turn. The comparison drops the time fields.
+
+| Step | gold: e2e (190), threads (90), widen (24), broad (42), clarify (27) | P2 set: router (277), e2e (53), threads (37), widen (24) |
+|---|---|---|
+| M1 | 0 changed rows | 0 changed rows |
+| M2 | 0 changed rows | 0 changed rows |
+| M3 with `chat_research` off | 0 changed rows | 0 changed rows |
+| M3 with `chat_research` on | 3 rows of e2e (q057 to q059, the "which questions are still open" list: same answer and cites, other route), 50 turns of threads (the "why" follow-ups go through research), 0 rows of the others | the bars are equal to `main` (table below) |
+
+M4: the old loop code is gone since M2 (`runChatTurn` is the graph start). `pnpm knip` and `pnpm biome check .` exit 0.
+
+**What differs from the design above (all by the numbers of this section).**
+
+1. **Rule 7 is stricter for several leads.** `reflect` `stop` ends the loop only when no other open lead lacks evidence. Else the lead closes (as `next_lead`) and the next lead runs. A lead with no evidence does not close because the model says `stop` or `next_lead`: its other strategies run. Reason: in the first Mac E2B dig run of the build, all 7 "why" turns made 1 tool call and 2 LLM calls (E2B said `stop` after the first search), so 2 of 3 leads were never read. With the rule the 3-lead turns make 3 searches.
+2. **The model's `next` word picks the strategy only when the lead has evidence** (or `rephrase` with search words). With no evidence the code order runs, and `summary` comes before `other_meetings`. Reason: a question with no topic word (`what changed between the first and the last meeting`) scores under the floor, and `other_meetings` repeated the same empty search. Items 2 and 6 together: not found on 4 of 35 digging turns before the two changes (Mac E2B, dg10 turn 2, dg14, dg17 turn 2, dg28), 0 of 35 after.
+3. **`summary` reads up to 3 meetings in one `act`**, the first and the last meeting of the scope when nothing else points at a meeting (at most 3 tool calls for each loop turn, 11.9.10). A lead that has no call left closes with no loop turn.
+4. **`list_open` is also a strategy of a digging question about open points** ("is anything still unresolved about X") at a meeting or folder scope, after the first search. Only a first question that asks for the open items ends in a list (`blocks` node, the lists of both list tools in one answer).
+5. **Leads from a list are ranked** by the words that they share with the questions of the thread. A list at Everything holds the items of every project, and the first 3 items are not the right ones.
+6. **A research follow-up treats the earlier answer as told.** The facts of that answer leave the new answer (`dropToldSentences`), so "what blocked it?" does not repeat the answer to "what is the contract?" (the repeat guard made it not found).
+7. **Early exits are edges after `plan`.** A write question and a count of mentions end after the same model calls as before the build (the route call can give the propose tool that the eval reads), so the rows stay equal. `END` is reached from `scope`, `plan`, `blocks`, `cite_check` and `not_found` only. The test `tests/chat-graph.test.ts` checks that no path from `synthesize` reaches the end without `cite_check` or `not_found`.
+8. **The trigger has one more rule.** A question that starts with a list command ("List all open action items for Ana.") keeps the list path. Without it 11 of the 190 gold questions (5.8%) went to research. With it 3 (1.6%).
+9. **`recursionLimit`** is `3 x MAX_ITER + 12` for a research turn and `3 x rounds + 80` for a fast turn (a map-reduce has up to 4 answer slices).
+10. **Arm R1 (`chatPlan`) is not built.** It stays OFF as the design says. The "reflect off" arm is `CHAT_EVAL_REFLECT=off`.
+
+**Answers to the UNKNOWNs of 11.9.8.** (a) Checkpoint write time: p95 1.4 to 1.5 ms for each write on Mac E2B (bar D17: 10 ms). (b) Does a deleted meeting remove the chat runs that read it? No. A chat run has `meeting_id` NULL (`S/lib/llm/recorder.ts`, `startRun`), so the cascade of `llm_runs.meeting_id` does not reach it, and nothing links it to the thread. A deleted meeting removes its thread and messages (`chat_threads` FK). The checkpoints of a FAILED turn, and the call records of every chat turn (`llm_calls.messages_json`, as before this build), stay. A succeeded turn leaves no checkpoint (`tests/chat-research-pipeline.test.ts`). OPEN: the failed-turn rows should leave with their thread. This needs a schema step and is not part of this build.
+
+**Eval commands.** `pnpm chat-eval p1 --only dig` (bars `dig.*` in the `bars` part); `CHAT_EVAL_RESEARCH=off` for the old path; `CHAT_EVAL_REFLECT=off` for the loop with no reflect call; `CHAT_EVAL_THREADS_PAR=1` for one thread (latency without the other thread on the GPU). Skill: `.claude/skills/chat-eval/SKILL.md`.
+
+**Results.** Mac MLX (Gemma 4 E2B and E4B), temperature 0, thinking off, `chat_research` on, one run for each cell (a measure, 8.1 rule 5), GPU lock taken by the harness, every run read back from MLflow (experiment `openstyle-lab-chat-agent-p1`). Code: the head of PR #412. The dig part has one corpus (no seed), so the gold and the held-out seed (20271105) differ only in the other parts.
+
+*The dig part, bars D1 to D17 (11.9.14).* Latency is from a run with one thread (`CHAT_EVAL_THREADS_PAR=1`). With the harness default of 2 threads the 4 controls share the GPU with research turns, and their p95 is 1552 ms (E2B) and 3884 ms (E4B), over the bar; alone they match `main` (below).
+
+| # | Bar | Baseline E2B / E4B | Bar E2B | Mac E2B | Bar E4B | Mac E4B |
+|---|---|---|---|---|---|---|
+| D1 | digging pass | 22.9% / 22.9% | at least 50% | 77.1% | at least 60% | 82.9% |
+| D2 | coverage of the reasons | 23.8% / 30.0% | at least 65% | 78.0% | at least 75% | 79.4% |
+| D3 | cross-meeting recall | 31.9% / 38.3% | at least 70% | 91.2% | at least 70% | 90.7% |
+| D4 | `not_found` on digging turns | 40.0% / 31.4% | at most 10% | 0.0% | at most 10% | 0.0% |
+| D5 | invalid cites and uncited blocks | 0 / 0 | 0 | 0 | 0 | 0 |
+| D6 | repeated answers | 0 / 0 | 0 | 0 | 0 | 0 |
+| D7 | length in range | 57.1% / 60.0% | at least 90% | 100.0% | at least 90% | 100.0% |
+| D8 | pass on the second turn | 25.0% / 18.8% | at least 50% | 75.0% | at least 60% | 87.5% |
+| D9 | EN pass minus PT pass | 33.3 to 0.0 / 25.0 to 18.2 | at most 10 points | 6.4 points | at most 10 points | 1.5 points |
+| D10 | controls pass | 100% / 100% | 100% | 100% | 100% | 100% |
+| D11 | controls LLM calls, tool calls (mean) | 2.0, 1.5 / 2.0, 1.8 | at most 2.0, 1.5 | 2.0, 1.5 | at most 2.0, 1.8 | 2.0, 1.75 |
+| D12 | controls latency p95 | 1182 / 2366 ms | at most 1418 ms | 1259 ms | at most 2839 ms | 1436 ms |
+| D13 | LLM calls for a digging turn: mean, p95, most | 1.6, 2 / 1.5, 2 | at most 6, 9, 16 | 2.1, 4, 4 | at most 6, 9, 16 | 2.4, 4, 4 |
+| D14 | digging turn latency p50, p95 | 1.2, 2.8 s / 1.6, 3.3 s | at most 15, 30 s | 2.0, 5.3 s | at most 15, 30 s | 3.7, 7.7 s |
+| D15 | trigger recall; false on gold; false on controls | not built | at least 90%; at most 5%; 0 | 100%; 1.6%; 0 | same | 100%; 1.6%; 0 |
+| D17 | checkpoint write time p95 | not built | at most 10 ms | 1 ms | at most 10 ms | 1 ms |
+
+The 3 false triggers on the gold questions are q057 to q059 ("Which questions are still open in ..."). They give the same list as before (same F1). The 42 broad turns: 0 false. The held-out seed: 3 of 190 as well (no model needed).
+
+*D12, controls alone (one thread, 4 controls, warm calls after the first).* E2B, `main` / this build: 561, 655, 519 ms / 531, 619, 502 ms. E4B: 1094, 1305, 988 ms / 1228, 1442, 1059 ms (plus 7% to 12%, inside the 20% of the bar). The first call of each run is the cold model load (about 5.7 s on E2B, both builds).
+
+*D16, real data (11.9.12, `pnpm chat-eval real --dig`, Mac E2B, read-only copy of the owner DB, deleted after the run).* 5 of 6 turns pass the shape rule (bar: at least 4; before the build: 2 of 6). Folder A (34 meetings): the open items as a list of 50 cited items (13 meetings), then 4 sentences with 3 cites. Folder B (14 meetings): a list of 50 cited items (9 meetings), then 4 sentences. Folder C (7 meetings): the decisions, 4 sentences with 3 cites; the second turn ("who pushed for the biggest change, and why") is `not_found` after the repeat guard (the answer repeated the first one). The texts are private (`~/Library/Application Support/Openstyle-eval/chat-real/`).
+
+*Existing bars with research on (D18).* The same invocation as the baseline of 8.7c, with the dig bars NOT RUN. Each cell is the count of bars. "Equal to `main`" means every bar value equals the value of `main` at `8c3ce745` run with the same invocation (E2B; held-out and P2 held-out included), except the two latency bars. E4B: every bar passes, as in 8.7c.
+
+| Run | PASS | FAIL | The failing bars |
+|---|---|---|---|
+| E2B gold (router, slots, e2e, a0, threads, widen, broad, clarify) | 24 | 3 | lookup + follow-up 80.0%, widen offer 87.5%, widen answer 66.7%: the same values on `main` (E2B misses of 8.7c, N1) |
+| E2B held-out | 24 | 3 | 82.9%, 87.5%, 62.5%: equal to `main` |
+| E2B P2 set, gold | 16 | 2 | widen offer 87.5%, widen answer 66.7%: equal to `main` |
+| E2B P2 set, held-out | 16 | 2 | 87.5%, 62.5%: equal to `main` |
+| E4B gold | 27 | 0 | none |
+| E4B held-out | 27 | 0 | none |
+| E4B P2 set, gold | 18 | 0 | none |
+| E4B P2 set, held-out | 18 | 0 | none |
+
+The two latency bars are higher with research on, and inside their bars: turn p95 1486 ms against 1192 ms on `main` (E2B held-out; 1481 against 1097 on gold), route p95 338 against 252 ms. Research turns take 2 to 4 s. The threads part (not a bar): with research on, 50 of 90 turns have another answer (the "why" follow-ups); accuracy 88.9% to 90.0%, repeats 1 to 0, threads with all turns right 11 to 12 of 12; 3 turns went from fail to pass and 2 from pass to fail (overview turns that follow a changed answer).
+
+*E2E (fake model, the real app, server and graph; `apps/electron/tests/meeting-ask-research.test.ts`, 5 tests, CI macOS job green).* A research question shows the step text "Looking for: reason 1 of 3, round 1 of 4...", then an answer with bullets whose cites name 3 meetings and the trail line "Looked in 3 meetings · 3 searches" with the details under "How I found this". A fact keeps the fast path (no reflect call, no trail line). A page change during the loop keeps the turn. The setting off gives no reflect call. The settings switch writes `chat_research`. A local run with the real E2B model and the real index (fictional data, 3 meetings): "Why are these still open?" took 2.3 s (dark run), 3 searches, 4 cites from 3 meetings; the fact question took 0.8 to 1.3 s and had no trail line. Screenshots: `specs/assets/chat-ask-d21/`.
+
+
 Sources for this section: https://docs.langchain.com/oss/javascript/langgraph/agentic-rag, `/workflows-agents`, `/use-graph-api`, `/interrupts`, `/streaming`, `/thinking-in-langgraph`, https://docs.langchain.com/oss/javascript/migrate/langgraph-v1, https://github.com/langchain-ai/open_deep_research, https://github.com/langchain-ai/langgraphjs (adaptive RAG notebook `examples/rag/langgraph_adaptive_rag_local.ipynb`) and the repo lines named in the text.
 
 ## 12. Owner decisions and open questions
@@ -2022,7 +2102,7 @@ Sources for this section: https://docs.langchain.com/oss/javascript/langgraph/ag
 | D18 (was Q9) | Keep chats for now. Later one global retention knob on the Ask page. Threads cascade with their meeting or folder. Context window handling is specified in 2.8. | 2.8, 4.2 |
 | D19 | UI for P2 (2026-11-01, replaces D5 for P2): a main-nav Ask page with a scope picker (Everything, folder, meeting) and a thread list; a global `Control+Option+K` hotkey (a setting) that opens a floating bubble from anywhere, with the scope taken from the Meetings selection and a guard so that dictation starts only when K does not follow within about 150 ms; a folder Ask tab on the folder Overview; the Everything scope with search wider. The in-app Cmd+K palette is dropped. | 11.6, 9.1 (P2) |
 | D20 | Ask clarifies and synthesizes big scopes (2026-11-02): a code-only clarify block (person, folder, intent ambiguity; setting on by default; one for each question, never twice in a row) with chips and "Answer anyway"; map-reduce synthesis when a folder or Everything digest does not fit the window; labels carry through the notes, so the cite check is unchanged. | 11.8 |
-| D21 | Ask researches (2026-11-02, owner request, build comes after this spec): for a question that needs digging ("what are the open items", then "why are they open?"), a LangGraph.js graph repeats search, observe and reflect. Nodes: scope, plan, act, observe, reflect, synthesize, cite_check, not_found. Code owns the stop rules (`MAX_ITER` 4 local and 6 cloud, stalled after 2 rounds with nothing new, no repeat of a tool with the same arguments, the call cap 16, the deadline, `recursionLimit`). `cite_check` is the last node and no edge skips it. Step text streams with `streamMode: "custom"`. The checkpointer is `NodeSqliteSaver`. A simple fact finishes in round 1. Owner decisions 2026-11-02: default on; one model for all nodes; trail line under research answers; clarify stays end-turn; checkpoints of finished turns are deleted, failed ones kept; bars of 11.9.14 approved with research latency on E2B p50 at most 15 s and p95 at most 30 s. Spec and the digging eval baseline come first. | 11.9 |
+| D21 | Ask researches (2026-11-02, owner request; built in PR #412, see 11.9.16): for a question that needs digging ("what are the open items", then "why are they open?"), a LangGraph.js graph repeats search, observe and reflect. Nodes: scope, plan, act, observe, reflect, synthesize, cite_check, not_found. Code owns the stop rules (`MAX_ITER` 4 local and 6 cloud, stalled after 2 rounds with nothing new, no repeat of a tool with the same arguments, the call cap 16, the deadline, `recursionLimit`). `cite_check` is the last node and no edge skips it. Step text streams with `streamMode: "custom"`. The checkpointer is `NodeSqliteSaver`. A simple fact finishes in round 1. Owner decisions 2026-11-02: default on; one model for all nodes; trail line under research answers; clarify stays end-turn; checkpoints of finished turns are deleted, failed ones kept; bars of 11.9.14 approved with research latency on E2B p50 at most 15 s and p95 at most 30 s. Owner note 2026-11-02: the live chat merges into Ask (P5) only after Ask answers at least as well as the live chat does today (2.4 point 8). | 11.9, 2.4 |
 
 ### 12.2 Open questions
 

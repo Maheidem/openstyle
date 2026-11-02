@@ -333,7 +333,9 @@
       "numberStripped": "Somente dígitos. {{dropped}} removido, o campo mostra {{value}}.",
       "hotkey": "Atalho global",
       "hotkeyDesc": "Abre uma pequena janela de Perguntar a partir de qualquer app. Se começar com as teclas de ditado, o ditado só começa se esta tecla não vier em 150 ms.",
-      "hotkeyConflict": "Escolha uma combinação com uma tecla que não seja um atalho de ditado."
+      "hotkeyConflict": "Escolha uma combinação com uma tecla que não seja um atalho de ditado.",
+      "research": "Modo de pesquisa",
+      "researchDesc": "Para perguntas que pedem investigação, o Ask busca várias vezes em várias reuniões antes de responder. Um fato simples continua com resposta rápida."
     }
   },
   "today": {
@@ -1434,7 +1436,26 @@
         "searching_other": "Buscando em {{count}} reuniões…",
         "reading_one": "Lendo {{count}} reunião…",
         "reading_other": "Lendo {{count}} reuniões…",
-        "answering": "Escrevendo a resposta…"
+        "answering": "Escrevendo a resposta…",
+        "researching_one": "Procurando a resposta, rodada {{round}} de {{max}}…",
+        "researching_other": "Procurando: motivo {{lead}} de {{leads}}, rodada {{round}} de {{max}}…"
+      },
+      "trailResearch": {
+        "meetings_one": "Procurei em {{count}} reunião",
+        "meetings_other": "Procurei em {{count}} reuniões",
+        "searches_one": "{{count}} busca",
+        "searches_other": "{{count}} buscas",
+        "notFound": "não encontrado: {{what}}",
+        "rounds": "Pesquisa: {{iterations}} de {{max}} rodadas.",
+        "stop": {
+          "enough": "Parou: as fontes respondem à pergunta.",
+          "max_iter": "Parou: limite de {{max}} rodadas.",
+          "stalled": "Parou: duas buscas seguidas não acharam nada novo.",
+          "call_cap": "Parou: limite de chamadas ao modelo.",
+          "deadline": "Parou: limite de tempo.",
+          "no_leads": "Parou: todas as partes foram buscadas.",
+          "error": "Parou: um erro."
+        }
       }
     }
   },

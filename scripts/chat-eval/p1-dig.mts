@@ -523,6 +523,10 @@ export interface DigRow {
   ms: number;
   answer: string;
   trace: string;
+  /** The research mode ran for this turn (the trace holds `research`). */
+  research: boolean;
+  /** The time of each checkpoint write of the turn, in ms. */
+  ckptMs: number[];
 }
 
 const has = (norm: string, g: string[]): boolean =>
@@ -577,6 +581,7 @@ export async function runDig(env: DigEnv, q: DigQ): Promise<DigRow[]> {
       question: t.text,
     };
     let llm: Awaited<ReturnType<typeof mods.llm.createChatLlm>> | null = null;
+    const ckptMs: number[] = [];
     try {
       llm = await mods.llm.createChatLlm(stack.db, {
         threadId: `eval-${q.id}`,
@@ -592,6 +597,10 @@ export async function runDig(env: DigEnv, q: DigQ): Promise<DigRow[]> {
         signal,
         now: env.corpusTodayMs,
         allowProposals: false,
+        onCheckpointMs: (ms) => ckptMs.push(ms),
+        ...(process.env.CHAT_EVAL_REFLECT === "off"
+          ? { researchReflect: false }
+          : {}),
       });
       llm.finish("succeeded");
       const nf = res.blocks.some((b) => b.kind === "not_found");
@@ -665,6 +674,8 @@ export async function runDig(env: DigEnv, q: DigQ): Promise<DigRow[]> {
         trace: res.trace.steps
           .map((x) => `${x.stage}:${x.name}${x.note ? `(${x.note})` : ""}`)
           .join(" > "),
+        research: res.trace.research !== undefined,
+        ckptMs,
       });
       earlier.push(text);
       const mk = {
@@ -720,6 +731,8 @@ export async function runDig(env: DigEnv, q: DigQ): Promise<DigRow[]> {
         ms: Date.now() - t0,
         answer: "",
         trace: "",
+        research: false,
+        ckptMs,
       });
       break;
     }
@@ -763,7 +776,17 @@ export function summarizeDig(rows: DigRow[]): Record<string, number> {
     dig.map((r) => r.llmCalls),
     0.95,
   );
+  m.llm_calls_max = Math.max(0, ...rows.map((r) => r.llmCalls));
   m.tool_calls_mean = mean(dig.map((r) => r.toolCalls));
+  // The trigger (11.9.9): digging turns that ran the research mode, and
+  // controls and setup facts that ran it although they should not.
+  m.trigger_recall = mean(dig.map((r) => (r.research ? 1 : 0)));
+  m.trigger_false_controls = ctl.filter((r) => r.research).length;
+  m.trigger_false_setup = setup.filter((r) => r.research).length;
+  m.ckpt_ms_p95 = pctile(
+    rows.flatMap((r) => r.ckptMs),
+    0.95,
+  );
   m.ms_p50 = pctile(
     dig.map((r) => r.ms),
     0.5,
@@ -796,6 +819,13 @@ export function summarizeDig(rows: DigRow[]): Record<string, number> {
       m[`pass.${l}`] = mean(rs.map((r) => (r.pass ? 1 : 0)));
       m[`cov.${l}`] = mean(rs.map((r) => r.cov));
     }
+  }
+  if (m["pass.en"] !== undefined && m["pass.pt"] !== undefined) {
+    // D9: PT pass not below EN pass by more than 10 points.
+    m.lang_gap = Math.max(
+      0,
+      (m["pass.en"] as number) - (m["pass.pt"] as number),
+    );
   }
   for (const k of [
     "list",

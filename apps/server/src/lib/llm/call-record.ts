@@ -25,7 +25,11 @@ export type FolderStepId = "folderDescription" | "folderStanding";
 
 /** The LLM stages of the Ask tab (specs/meeting-chat-agent.md 2.6). The
  * native tool turn of the router also records as `chatRoute`. */
-export type ChatStepId = "chatRoute" | "chatSlots" | "chatAnswer";
+export type ChatStepId =
+  | "chatRoute"
+  | "chatSlots"
+  | "chatAnswer"
+  | "chatReflect";
 
 /** Every step that the gateway can call. */
 export type GatewayStepId = LlmStepId | FolderStepId | ChatStepId;

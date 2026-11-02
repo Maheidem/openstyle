@@ -256,6 +256,7 @@ const SETTING_VALIDATORS: ReadonlyMap<string, SettingCheck> = new Map([
   [SETTINGS_KEYS.meetingChatEnabled, checkBooleanFlag],
   [SETTINGS_KEYS.chatSearchWider, checkBooleanFlag],
   [SETTINGS_KEYS.chatClarify, checkBooleanFlag],
+  [SETTINGS_KEYS.chatResearch, checkBooleanFlag],
   [SETTINGS_KEYS.chatNativeTools, checkBooleanFlag],
   // The bubble hotkey (spec 11.6.2): an accelerator in printable ASCII, or
   // empty for the default. The main process checks the chord itself.

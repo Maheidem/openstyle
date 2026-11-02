@@ -183,6 +183,7 @@ export function AskSettingsPanel({
   const [searchWider, setSearchWider] = useState<"true" | "false">("true");
   const [nativeTools, setNativeTools] = useState(true);
   const [clarify, setClarify] = useState(true);
+  const [research, setResearch] = useState(true);
 
   useEffect(() => {
     if (!settings) return;
@@ -195,6 +196,7 @@ export function AskSettingsPanel({
     );
     setNativeTools(settings[SETTINGS_KEYS.chatNativeTools] !== "false");
     setClarify(clarifyEnabled(settings[SETTINGS_KEYS.chatClarify]));
+    setResearch(clarifyEnabled(settings[SETTINGS_KEYS.chatResearch]));
   }, [settings, applyRounds, applySourceBudget, applyK, applyDeadline]);
 
   const save = (key: string, value: string): void => {
@@ -293,6 +295,20 @@ export function AskSettingsPanel({
           }}
           aria-label={t("settings.ask.clarify")}
           data-testid="settings-ask-clarify"
+        />
+      </Row>
+      <Row
+        label={t("settings.ask.research")}
+        desc={t("settings.ask.researchDesc")}
+      >
+        <Switch
+          checked={research}
+          onCheckedChange={(on) => {
+            setResearch(on);
+            save(SETTINGS_KEYS.chatResearch, String(on));
+          }}
+          aria-label={t("settings.ask.research")}
+          data-testid="settings-ask-research"
         />
       </Row>
       <Row label={t("settings.ask.hotkey")} desc={t("settings.ask.hotkeyDesc")}>

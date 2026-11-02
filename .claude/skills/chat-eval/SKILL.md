@@ -173,6 +173,11 @@ No new bars: thresholds are the owner's to set (`BARS` stays as it is).
 - Headline numbers use the digging turns (not the `fact` setup turns and not the controls). `CHAT_EVAL_IDS=dg01,dg07` picks single questions.
 - A key is wrong when the data does not back it: run `pnpm chat-eval:test` after any change of the data or the keys.
 - Baseline of 2026-11-02 (spec 11.9.13): digging pass 22.9% on Mac E2B and E4B, 25.7% on desktop E4B; not found 40.0% / 31.4% / 28.6%.
+- The bars of spec 11.9.14 (D1 to D17) are in `digBars(tier)` of `p1-score.mts`; the `bars` part shows them as `dig.*`. The tier comes from the model: 2 for E2B (the floor), 4 for E4B and above. The tier sets D1, D2, D8 and the control tool calls and latency. D18 (no regression) is the other parts of the same invocation.
+- Research mode is ON in the scratch profile, as in the app. `CHAT_EVAL_RESEARCH=off` writes `chat_research=false`: the old fast path, for the row-by-row diff against main (0 changed rows on e2e, threads, widen, broad, clarify). `CHAT_EVAL_REFLECT=off` runs the loop with no reflect call (code order of the strategies; the "reflect off" arm of 11.9.15).
+- The dig part also reports `trigger_recall` (digging turns that ran the loop), `trigger_false_gold` and `trigger_false_broad` (code only, no model: the 190 gold questions and the 42 broad turns), `trigger_false_controls`, `ckpt_ms_p95` (checkpoint write time, D17) and `lang_gap` (D9).
+- The 4 controls (`dg29` to `dg32`) share the GPU with the other questions when the part runs with 2 threads, so their p95 is noisy. For D12 run them alone: `CHAT_EVAL_IDS=dg29,dg30,dg31,dg32 CHAT_EVAL_THREADS_PAR=1 pnpm chat-eval p1 --no-mlflow --only dig` on this commit and on main, and compare.
+- The desktop llama.cpp server is shared and swaps models: a dig run there can spend minutes in one call (the turn deadline is 240 s in the harness). Use it for a first look; use the Mac for numbers.
 - The desktop llama.cpp server can need minutes to swap a model: a first request that waits for a long time is a swap, not a hang. Ping it with one small request before a run.
 - `pnpm chat-eval real --db <copy.db> --dig` runs 6 generic digging questions on the 3 folders with the most meetings (named A, B, C in the output). It stops when the chat model is not the local MLX model.
 

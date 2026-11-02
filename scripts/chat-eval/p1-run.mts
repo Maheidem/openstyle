@@ -1366,8 +1366,29 @@ async function partDig(env: Env, M: Record<string, number>): Promise<PartOut> {
   await Promise.all(Array.from({ length: Math.min(par, qs.length) }, worker));
   rows.sort((a, b) => a.id.localeCompare(b.id) || a.turn - b.turn);
   const m = summarizeDig(rows);
+  // The false trigger (11.9.9, D15): the 190 gold questions and the 42 broad
+  // turns, with no model. Controls are counted in the rows above.
+  const { researchTrigger } = await import(
+    "../../apps/server/src/lib/chat/research/trigger.ts"
+  );
+  const falseOf = (qs: string[]) =>
+    qs.filter((q) =>
+      researchTrigger({ question: q, history: [], enabled: true }),
+    );
+  const goldFalse = falseOf(env.gold.questions.map((q) => q.text));
+  const broadTexts = buildBroad(corpus).flatMap((q) =>
+    q.turns.map((t) => t.text),
+  );
+  const broadFalse = falseOf(broadTexts);
+  m.trigger_false_gold = goldFalse.length / env.gold.questions.length;
+  m.trigger_false_broad = broadFalse.length / Math.max(1, broadTexts.length);
+  m.trigger_false_gold_n = goldFalse.length;
+  m.trigger_false_broad_n = broadFalse.length;
+  M["dig.tier"] = /e2b/i.test(MODEL_ID) ? 2 : 4;
+  M["dig.research_on"] = process.env.CHAT_EVAL_RESEARCH === "off" ? 0 : 1;
   let text = `Dig: ${m.questions} questions, ${m.turns} turns (${m["n.meeting"]} meeting, ${m["n.folder"]} folder, ${m["n.all"]} all digging turns; ${m.control_n} control turns). Digging pass ${pct(m.pass as number)}% (second turns ${pct(m.pass_second as number)}%); coverage of the must-mention reasons ${pct(m.cov as number)}%; cross-meeting recall ${pct(m.recall_multi as number)}%; not found ${pct(m.not_found as number)}%; clarify ${pct(m.clarify as number)}%; invalid or missing cites ${m.invalid_cites}; repeats ${m.repeats}; length in range ${pct(m.len_ok as number)}%; errors ${m.errors}. EN ${pct(m["pass.en"] ?? 0)}%, PT ${pct(m["pass.pt"] ?? 0)}%.\n`;
   text += `Cost of a digging turn: LLM calls mean ${(m.llm_calls_mean as number).toFixed(1)} (p95 ${m.llm_calls_p95}), tool calls mean ${(m.tool_calls_mean as number).toFixed(1)}, latency p50 ${m.ms_p50} ms, p95 ${m.ms_p95} ms. Controls (a simple fact): pass ${pct(m.control_pass as number)}%, LLM calls mean ${(m.control_llm_calls_mean as number).toFixed(1)}, tool calls mean ${(m.control_tool_calls_mean as number).toFixed(1)}, latency p95 ${m.control_ms_p95} ms.\n`;
+  text += `Trigger: recall ${pct(m.trigger_recall as number)}% of the digging turns; false on gold ${m.trigger_false_gold_n} of ${env.gold.questions.length}, on broad turns ${m.trigger_false_broad_n} of ${broadTexts.length}, on controls ${m.trigger_false_controls}.\n`;
   text += `\n| id | turn | scope | lang | kind | pass | cov | recall | cited | blocks | chars | cites bad | repeat | llm | tools | first tool | ms |\n|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|\n`;
   for (const r of rows)
     text += `| ${r.id}${r.control ? "c" : ""} | ${r.turn} | ${r.scope} | ${r.lang} | ${r.kind} | ${r.pass ? "ok" : r.err ? "ERR" : r.notFound ? "NOTFOUND" : r.clarify ? "CLARIFY" : "FAIL"} | ${r.covHit}/${r.covOf} | ${r.recall === null ? "-" : r.recall.toFixed(2)} | ${r.citedMeetings} | ${r.blocks} | ${r.chars} | ${r.invalidCites + r.uncited} | ${r.repeat ? "REPEAT" : ""} | ${r.llmCalls} | ${r.toolCalls} | ${r.tool ?? ""} | ${r.ms} |\n`;
@@ -1388,6 +1409,15 @@ async function partDig(env: Env, M: Record<string, number>): Promise<PartOut> {
     "control_pass",
     "control_llm_calls_mean",
     "control_ms_p95",
+    "control_tool_calls_mean",
+    "llm_calls_p95",
+    "llm_calls_max",
+    "lang_gap",
+    "trigger_recall",
+    "trigger_false_gold",
+    "trigger_false_broad",
+    "trigger_false_controls",
+    "ckpt_ms_p95",
   ])
     M[`dig.${k}`] = m[k] as number;
   return {
@@ -1941,6 +1971,11 @@ export async function runP1(
   w("search_embedding_model", EMBED_MODEL_ID);
   w("meeting_chat_enabled", "true");
   w("chat_native_tools", "true");
+  // Research mode (D21): on as in the app; CHAT_EVAL_RESEARCH=off measures the old path.
+  w(
+    "chat_research",
+    process.env.CHAT_EVAL_RESEARCH === "off" ? "false" : "true",
+  );
   stack.db
     .prepare("UPDATE model_configs SET is_default = 0 WHERE type = 'llm'")
     .run();

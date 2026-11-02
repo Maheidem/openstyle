@@ -406,6 +406,7 @@ export interface AskRequest {
     | "chat_answer"
     | "chat_synthesis"
     | "chat_map_notes"
+    | "chat_reflect"
     | "other";
   system: string;
   /** The text of the last user message. */
@@ -476,6 +477,8 @@ function words(s: string): string[] {
 interface ParsedSource {
   label: string;
   text: string;
+  /** The meeting title of the source line, "" when the line has none. */
+  title: string;
 }
 
 /** The `[S1] Title, 2026-10-12: text` lines of the SOURCES block. */
@@ -484,10 +487,15 @@ export function parseSources(user: string): ParsedSource[] {
   const out: ParsedSource[] = [];
   for (const line of block.split("\n")) {
     const m =
-      /^\[(S\d+)\] (?:.*?, )?\d{4}-\d{2}-\d{2}(?: \d{2}:\d{2})?: (.*)$/.exec(
+      /^\[(S\d+)\] (?:(.*?), )?\d{4}-\d{2}-\d{2}(?: \d{2}:\d{2})?: (.*)$/.exec(
         line,
       );
-    if (m) out.push({ label: m[1] as string, text: m[2] as string });
+    if (m)
+      out.push({
+        label: m[1] as string,
+        title: (m[2] as string | undefined) ?? "",
+        text: m[3] as string,
+      });
   }
   return out;
 }
@@ -517,6 +525,19 @@ export class FakeAskLlm {
   stepDelayMs = 0;
   /** Waits this long before each answer call (ms). It keeps a turn running. */
   answerDelayMs = 0;
+  /**
+   * When true, a synthesis answer cites one source of each meeting before it
+   * takes a second source of the same meeting (D21: a research answer reads
+   * several meetings).
+   */
+  spreadMeetings = false;
+  /** Waits this long before each reflect call of the research loop (ms): the step text of a research turn (D21). */
+  reflectDelayMs = 0;
+  /**
+   * The `next` word of each reflect call, in order (D21). The last word repeats.
+   * A research turn with three leads needs "next_lead" twice before "stop".
+   */
+  reflectScript: string[] = ["stop"];
   /**
    * When true, the answer is "not found" unless a source shares at least two
    * words with the question. A source of another meeting then gives a real
@@ -643,7 +664,8 @@ export class FakeAskLlm {
             schema === "chat_slots" ||
             schema === "chat_answer" ||
             schema === "chat_synthesis" ||
-            schema === "chat_map_notes"
+            schema === "chat_map_notes" ||
+            schema === "chat_reflect"
           ? schema
           : "other";
     const record: AskRequest = {
@@ -777,6 +799,18 @@ export class FakeAskLlm {
       );
       return;
     }
+    if (kind === "chat_reflect") {
+      record.answered = "chat_reflect";
+      if (this.reflectDelayMs > 0) {
+        await new Promise((r) => setTimeout(r, this.reflectDelayMs));
+      }
+      const n = this.ofKind("chat_reflect").length - 1;
+      const next =
+        this.reflectScript[Math.min(n, this.reflectScript.length - 1)] ??
+        "stop";
+      this.text(res, JSON.stringify({ next, query: "" }));
+      return;
+    }
     if (kind === "chat_map_notes") {
       // The map step of a big scope (D20): one short note for each source,
       // with its label. The note is the first sentence of the source.
@@ -815,7 +849,16 @@ export class FakeAskLlm {
         this.text(res, JSON.stringify({ lead: [], bullets: [] }));
         return;
       }
-      const picks = rest.slice(0, 3);
+      const picks = this.spreadMeetings
+        ? [
+            ...rest.filter(
+              (s, i) =>
+                s.title !== first.title &&
+                rest.findIndex((x) => x.title === s.title) === i,
+            ),
+            ...rest,
+          ].slice(0, 3)
+        : rest.slice(0, 3);
       // The schema asks for 2 bullets at least: repeat the first source when needed.
       while (picks.length < 2) picks.push(first);
       this.text(
