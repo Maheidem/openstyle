@@ -1361,6 +1361,7 @@
         "deadline": "Cela a pris trop de temps, donc je me suis arrêté.",
         "call_cap": "J'ai atteint la limite de recherche pour cette question.",
         "model_error": "Le modèle n'a pas réussi à répondre.",
+        "nothing_new": "Je n'ai plus d'autres faits à ce sujet dans les sources.",
         "noSourcesAll": "Je n'ai rien trouvé à ce sujet dans aucune réunion."
       },
       "nearest": "Sources les plus proches",

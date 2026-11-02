@@ -480,6 +480,41 @@ function defineFake(): void {
     await shoot(page, "folder-tab.png");
   });
 
+  test("the folder Ask tab: a story question gives a lead paragraph and cited bullets from the meeting summaries", async () => {
+    test.setTimeout(120_000);
+    // The folder tab of the test before is still open.
+    await expect(page.getByTestId("meeting-ask")).toHaveAttribute(
+      "data-scope",
+      `folder:${FOLDER_ID}`,
+    );
+    const answer = await ask(
+      page,
+      "Tell me the story of this project so far. A good and complete onboarding",
+    );
+    const bullets = answer.getByTestId("meeting-ask-bullets");
+    await expect(bullets).toBeVisible();
+    const items = bullets.getByTestId("meeting-ask-block-text");
+    expect(await items.count()).toBeGreaterThanOrEqual(2);
+    // Each bullet carries a chip that names a meeting of the folder.
+    const chips = answer.getByTestId("meeting-ask-cite");
+    expect(await chips.count()).toBeGreaterThanOrEqual(2);
+    const label = (await chips.first().getAttribute("aria-label")) ?? "";
+    expect(label).toMatch(/^Open meeting /);
+    if (fake) {
+      expect(fake.ofKind("chat_synthesis").length).toBeGreaterThanOrEqual(1);
+      // The sources are one line for each meeting of the folder, in date order.
+      const user = fake.ofKind("chat_synthesis").at(-1)?.user ?? "";
+      expect(user.indexOf("Weekly sync")).toBeGreaterThan(-1);
+      expect(user.indexOf("Weekly sync")).toBeLessThan(
+        user.indexOf("Vendor review"),
+      );
+      expect(user.indexOf("Vendor review")).toBeLessThan(
+        user.indexOf("Roadmap check"),
+      );
+    }
+    await shoot(page, `folder-broad${SUFFIX}.png`);
+  });
+
   test("the bubble: the Meetings selection sets the scope; widen; open in Ask; Escape", async () => {
     test.setTimeout(120_000);
     // Select a meeting of the Harbor folder on the Meetings page.

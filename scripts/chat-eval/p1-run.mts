@@ -26,6 +26,12 @@ import {
   scoreSet,
 } from "./keys.mts";
 import {
+  type BroadRow,
+  buildBroad,
+  runBroad,
+  summarizeBroad,
+} from "./p1-broad.mts";
+import {
   answerFromTurn,
   barsTable,
   buildIdMaps,
@@ -68,6 +74,7 @@ export const PARTS = [
   "e2e",
   "threads",
   "widen",
+  "broad",
   "a0",
   "scale",
   "bars",
@@ -1220,6 +1227,69 @@ async function partThreads(
 }
 
 // ===================================================================================
+// D4. Broad questions (Ask synthesis, 2026-11-01)
+// ===================================================================================
+
+async function partBroad(
+  env: Env,
+  M: Record<string, number>,
+): Promise<PartOut> {
+  const { corpus, stack, maps } = env;
+  const only = process.env.CHAT_EVAL_IDS?.split(",");
+  const qs = spread(
+    buildBroad(corpus).filter((q) => !only || only.includes(q.id)),
+    env.opts.limit,
+  );
+  const known = {
+    meeting: (id: string) =>
+      stack.db.prepare("SELECT 1 FROM meetings WHERE id = ?").get(id) !==
+      undefined,
+    start: (mid: string, s: number) =>
+      stack.db
+        .prepare(
+          "SELECT 1 FROM meeting_segments WHERE meeting_id = ? AND start_ms = ? UNION SELECT 1 FROM meeting_chunks WHERE meeting_id = ? AND start_ms = ?",
+        )
+        .get(mid, s, mid, s) !== undefined,
+    item: (id: string) => maps.prodToItem.has(id),
+  };
+  const rows: BroadRow[] = [];
+  const par = Math.min(2, Number(process.env.CHAT_EVAL_THREADS_PAR ?? 2) || 2);
+  let next = 0;
+  const worker = async () => {
+    while (next < qs.length) {
+      const q = qs[next++] as (typeof qs)[number];
+      const r = await runBroad({ ...env, known }, q);
+      rows.push(...r);
+      env.log(`broad ${q.id}: ${r.filter((x) => x.pass).length}/${r.length}`);
+    }
+  };
+  await Promise.all(Array.from({ length: Math.min(par, qs.length) }, worker));
+  rows.sort((a, b) => a.id.localeCompare(b.id) || a.turn - b.turn);
+  const m = summarizeBroad(rows);
+  let text = `Broad: ${m.turns} turns (${m["n.meeting"]} meeting, ${m["n.folder"]} folder, ${m["n.all"]} all). Pass ${pct(m.pass as number)}%; coverage of the must-mention facts ${pct(m.cov as number)}% (first turns); elaboration turns with new content ${pct(m.fresh_rate as number)}%; not found ${pct(m.not_found as number)}%; invalid or missing cites ${m.invalid_cites}; repeated answers ${m.repeats}; length in range ${pct(m.len_ok as number)}%; text blocks per answer ${(m.blocks_mean as number).toFixed(1)} (bullets ${(m.bullets_mean as number).toFixed(1)}); errors ${m.errors}. EN ${pct(m["pass.en"] ?? 0)}%, PT ${pct(m["pass.pt"] ?? 0)}%.\n`;
+  text += `\n| id | turn | scope | lang | pass | cov | new | blocks | chars | cites bad | repeat | tool | ms |\n|---|---|---|---|---|---|---|---|---|---|---|---|---|\n`;
+  for (const r of rows)
+    text += `| ${r.id} | ${r.turn} | ${r.scope} | ${r.lang} | ${r.pass ? "ok" : r.err ? "ERR" : r.notFound ? "NOTFOUND" : "FAIL"} | ${r.cov.toFixed(2)} | ${r.fresh} | ${r.blocks} | ${r.chars} | ${r.invalidCites + r.uncited} | ${r.repeat ? "REPEAT" : ""} | ${r.tool ?? ""} | ${r.ms} |\n`;
+  M["broad.pass"] = m.pass as number;
+  M["broad.cov"] = m.cov as number;
+  M["broad.cite_invalid"] = m.invalid_cites as number;
+  M["broad.repeats"] = m.repeats as number;
+  M["broad.len_ok"] = m.len_ok as number;
+  M["broad.not_found"] = m.not_found as number;
+  M["broad.fresh"] = m.fresh_rate as number;
+  return {
+    text,
+    data: { rows, metrics: m },
+    run: {
+      name: "p1-broad",
+      params: { turns: m.turns, history: "real answers" },
+      tags: baseTags(env, "broad"),
+      metrics: m,
+    },
+  };
+}
+
+// ===================================================================================
 // D3. Search wider (P2, spec 6.3 and 11.6.4)
 // ===================================================================================
 
@@ -1568,7 +1638,9 @@ export async function runP1(
       ? opts.only.has(p)
       : p === "scale"
         ? opts.scale > 1
-        : p !== "widen" || opts.set === "p2";
+        : p === "broad"
+          ? false
+          : p !== "widen" || opts.set === "p2";
   // The P2 questions replace the gold questions. The retrieval queries stay.
   const gold: GoldSet =
     opts.set === "p2"
@@ -1659,6 +1731,7 @@ export async function runP1(
     want("e2e") ||
     want("threads") ||
     want("widen") ||
+    want("broad") ||
     want("scale")
   ) {
     const st = stack.mod.searchState();
@@ -1707,6 +1780,7 @@ export async function runP1(
     await done("e2e", () => partE2e(env, M));
     await done("threads", () => partThreads(env, M));
     await done("widen", () => partWiden(env, M));
+    await done("broad", () => partBroad(env, M));
     await done("a0", () => partA0(env, M));
     await done("scale", () => partScale(env, M));
     llmRss.stop();

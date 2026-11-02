@@ -46,6 +46,7 @@ const Q_FACT = "What did we decide about the beta launch date?";
 const Q_NOT_FOUND = `What is the budget for the ${NOT_FOUND_MARK}?`;
 const Q_FOLLOW_UP = "And who owns the vendor contract draft task?";
 const Q_WRITE = "Mark the first task as done";
+const Q_BROAD = "I need more details about this meeting";
 
 const LONG = REAL ? 240_000 : 30_000;
 
@@ -458,6 +459,41 @@ function defineScenario(): void {
     await expect(page.getByTestId("meeting-ask-user")).toHaveCount(4);
   });
 
+  test("a broad question gives a lead paragraph and bullets, each with its own cite chip", async () => {
+    test.setTimeout(REAL ? 300_000 : 90_000);
+    const answer = await ask(page, Q_BROAD);
+    const stored = await threadMessages(b, SUBJECT.id);
+    const turn = stored.at(-1);
+    console.log(
+      `BROAD stored blocks=${turn?.blocks?.length} steps=${turn?.trace?.steps.map((x) => `${x.stage}:${x.name}`).join(", ")}`,
+    );
+    // Code decides: no native call; the summary and the search are read.
+    expect(turn?.trace?.steps.some((x) => x.name === "rules:synthesis")).toBe(
+      true,
+    );
+    const bullets = answer.getByTestId("meeting-ask-bullets");
+    await expect(bullets).toBeVisible();
+    const items = bullets.getByTestId("meeting-ask-block-text");
+    expect(await items.count()).toBeGreaterThanOrEqual(2);
+    // The lead paragraph comes before the list, and every block has a chip.
+    const lead = answer.locator("p").first();
+    await expect(lead).toBeVisible();
+    expect(((await lead.innerText()) ?? "").trim().length).toBeGreaterThan(10);
+    for (let i = 0; i < (await items.count()); i++) {
+      expect(
+        await items.nth(i).getByTestId("meeting-ask-cite").count(),
+      ).toBeGreaterThanOrEqual(1);
+    }
+    expect(
+      await answer.getByTestId("meeting-ask-cite").count(),
+    ).toBeGreaterThanOrEqual(2);
+    if (fake) {
+      expect(fake.ofKind("chat_synthesis").length).toBe(1);
+      // The synthesis prompt carries the summary sections as numbered sources.
+      expect(fake.ofKind("chat_synthesis")[0]?.user).toContain("Key points:");
+    }
+  });
+
   test("real mode: a transcript question can cite a transcript segment", async () => {
     test.skip(!REAL, "Only in real mode.");
     test.setTimeout(600_000);
@@ -540,6 +576,21 @@ function defineScenario(): void {
         el.scrollTop = 0;
       });
       await page.screenshot({ path: join(dir, `ask-${name}${suffix}.png`) });
+
+      // 1b. The broad answer: lead paragraph and cited bullets.
+      const bulletsBox = page.getByTestId("meeting-ask-bullets").first();
+      await bulletsBox.evaluate((el) => {
+        const box = el.closest('[data-testid="meeting-ask-messages"]');
+        if (box)
+          box.scrollTop +=
+            el.getBoundingClientRect().top -
+            box.getBoundingClientRect().top -
+            140;
+      });
+      await expect(bulletsBox).toBeVisible();
+      await page.screenshot({
+        path: join(dir, `ask-broad-${name}${suffix}.png`),
+      });
 
       // 2. The write question: the read-only reply is visible.
       const readOnly = page.getByTestId("meeting-ask-block-read-only").first();

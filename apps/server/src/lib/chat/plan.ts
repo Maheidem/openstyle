@@ -300,6 +300,139 @@ export function asksOverview(question: string): boolean {
   return OVERVIEW_RE.test(fold(question)) || OVERVIEW_JA_RE.test(question);
 }
 
+/**
+ * Broad questions (owner report 2026-11-01): history, story, onboarding,
+ * "give me details", "tell me more", "what is this project about". A lookup
+ * pipeline answers one fact; these ask for a synthesis of the summaries and
+ * the top chunks. Accents are folded before the test.
+ */
+const ELABORATION_RE = new RegExp(
+  [
+    // en
+    "\\b(?:give|gimme|get|need|want|show|send) (?:me )?(?:some |a few )?(?:more |further |extra )?(?:details?|info|information|context|background)\\b",
+    "\\bmore (?:details?|info|information|context|background)\\b",
+    "\\bdetails? (?:please|about|on|of)\\b",
+    "\\btell me more\\b",
+    "\\b(?:elaborate|expand on|go deeper|go into (?:more )?detail|in more detail|in detail)\\b",
+    "\\bwhat else\\b",
+    "\\banything else\\b",
+    // pt
+    "\\b(?:me )?(?:de|da|passa|passe|quero|preciso de|manda) (?:mais )?detalhes\\b",
+    "\\bmais (?:detalhes|informacoes|informacao|contexto)\\b",
+    "\\b(?:conte|conta|fale|fala|diga|diz) mais\\b",
+    "\\b(?:explique|explica|me explica) melhor\\b",
+    "\\b(?:aprofunde|aprofundar|detalhe|detalha)\\b",
+    "\\bo que mais\\b",
+    // es
+    "\\b(?:dame|quiero|necesito|dime) (?:mas )?detalles\\b",
+    "\\bmas (?:detalles|informacion|contexto)\\b",
+    "\\b(?:cuentame|dime|cuenta) mas\\b",
+    "\\bque mas\\b",
+    // de
+    "\\bmehr (?:details|informationen|kontext)\\b",
+    "\\berzahl(?:e)? mir mehr\\b",
+    "\\bgenauer\\b",
+    // fr
+    "\\bplus de (?:details|precisions|informations|contexte)\\b",
+    "\\b(?:dis|raconte)[- ]moi (?:en )?plus\\b",
+    "\\bdonne[- ]moi (?:plus de )?details\\b",
+    // it
+    "\\bpiu (?:dettagli|informazioni|contesto)\\b",
+    "\\b(?:dimmi|raccontami) (?:di )?(?:piu|altro)\\b",
+  ].join("|"),
+  "u",
+);
+const ELABORATION_JA_RE = /詳しく|もっと(?:教えて|知りたい)|詳細/u;
+
+const SYNTHESIS_RE = new RegExp(
+  [
+    // en
+    "\\b(?:tell|give|walk|take) me (?:through |the |a |an )?(?:whole |full |entire |complete |good )?(?:story|history|background|timeline|overview|picture|summary)\\b",
+    "\\b(?:story|history|background|timeline|backstory) (?:of|behind|about|for) (?:the |this |our )?(?:project|folder|work|team|everything|all)\\b",
+    "\\bwhat(?:'s| is) the (?:story|history|background|timeline|big picture)\\b",
+    "\\bhow did (?:this|the|that|our|it) (?:project |work |effort |thing )?(?:begin|start|come about|get started)\\b",
+    "\\bhow (?:it|this|the project|everything) (?:began|started)\\b",
+    "\\bonboard\\w*",
+    "\\b(?:catch|bring|get) me up to speed\\b",
+    "\\bcatch me up\\b",
+    "\\bwhat(?:'s| is| was) (?:this|the|our) (?:whole )?(?:project|folder|work|effort) (?:about|for)\\b",
+    "\\bwhat(?:'s| is| has) (?:been )?(?:happening|going on|happened)(?: so far| here| in this)?\\b",
+    "\\b(?:overview|summary|recap|rundown|big picture) of (?:the |this |our |everything|all)\\b",
+    "\\b(?:summari[sz]e|recap) (?:the |this |our )?(?:project|folder|everything|all)\\b",
+    "\\bthe whole (?:project|story|thing)\\b",
+    "\\bwhole project\\b",
+    "\\btell me (?:everything|anything|something)\\b",
+    "\\bcan(?:'?t| ?not| not) you tell me (?:anything|something)\\b",
+    "\\bany(?:thing)? (?:you can|at all)\\b",
+    // pt
+    "\\b(?:me )?(?:conte|conta|fale|fala|explique|explica|resuma|resume) (?:a |toda a |tudo sobre a |sobre a |sobre o |tudo sobre o )?(?:historia|tudo|projeto|trajetoria|linha do tempo)\\b",
+    "\\b(?:a )?historia (?:d[oae]|desse|deste|dessa|desta) (?:projeto|pasta|trabalho|equipe)\\b",
+    "\\bqual (?:e |foi )?a historia\\b",
+    "\\bcomo (?:esse|este|o|isso|tudo) (?:projeto )?(?:comecou|iniciou|surgiu|nasceu)\\b",
+    "\\bonboarding\\b",
+    "\\b(?:me )?(?:atualiza|atualize|poe|ponha) (?:a par|em dia)?\\b",
+    "\\bvisao geral\\b",
+    "\\b(?:resumo|panorama) (?:d[oae]|desse|deste|dessa|desta|geral) ?(?:projeto|pasta|tudo)?\\b",
+    "\\bsobre o que (?:e|eh|foi) (?:esse|este|o) projeto\\b",
+    "\\bo que (?:ja )?(?:aconteceu|rolou)\\b",
+    "\\bnao (?:consegue|pode) (?:me )?(?:dizer|falar|contar) (?:nada|alguma coisa|algo)\\b",
+    "\\bprojeto (?:todo|inteiro)\\b",
+    // es
+    "\\b(?:cuentame|cuenta|dime|explicame) (?:la |toda la |todo sobre la |sobre el |sobre la )?(?:historia|todo|proyecto|cronologia)\\b",
+    "\\bhistoria del proyecto\\b",
+    "\\bcomo (?:empezo|comenzo|inicio|surgio) (?:este |el )?(?:proyecto)?\\b",
+    "\\bvision general\\b",
+    "\\bresumen (?:del|de este|de todo) (?:proyecto|todo)\\b",
+    "\\bno puedes decirme nada\\b",
+    "\\bproyecto entero\\b",
+    // de
+    "\\berzahl(?:e)? mir (?:die |von der |ueber die )?(?:geschichte|alles)\\b",
+    "\\b(?:die )?geschichte (?:des|von diesem|dieses|vom) projekt\\b",
+    "\\bwie (?:hat|begann|fing) (?:das |dieses )?projekt (?:angefangen|an|begonnen)\\b",
+    "\\buberblick (?:uber|ueber) (?:das|dieses|alles)\\b",
+    "\\bkannst du mir (?:nichts|gar nichts) sagen\\b",
+    "\\bganze projekt\\b",
+    // fr
+    "\\b(?:raconte|dis)[- ]moi (?:toute |l')?(?:histoire|tout)\\b",
+    "\\bhistorique (?:du|de ce) projet\\b",
+    "\\bcomment (?:le|ce) projet a (?:commence|demarre)\\b",
+    "\\bapercu (?:du|de ce|global) ?(?:projet)?\\b",
+    "\\btu ne peux rien me dire\\b",
+    "\\bprojet entier\\b",
+    // it
+    "\\braccontami (?:la |tutta la )?(?:storia|tutto)\\b",
+    "\\bstoria del progetto\\b",
+    "\\bcome (?:e iniziato|e cominciato|nasce) (?:il |questo )?progetto\\b",
+    "\\bpanoramica (?:del|di questo)? ?(?:progetto)?\\b",
+    "\\bnon puoi dirmi niente\\b",
+    "\\bprogetto intero\\b",
+  ].join("|"),
+  "u",
+);
+const SYNTHESIS_JA_RE =
+  /経緯|プロジェクト(?:の|について).*(?:歴史|概要|全体|まとめ)|全体像|何も教えてくれない/u;
+
+/** "Give me details", "tell me more", "elaborate": the user wants more than the last answer gave. */
+export function asksElaboration(question: string): boolean {
+  return (
+    ELABORATION_RE.test(fold(question)) || ELABORATION_JA_RE.test(question)
+  );
+}
+
+/**
+ * A broad question: history, story, onboarding, overview, details, "tell me
+ * more", "can't you tell me anything". Code decides (owner decision
+ * 2026-11-01). A question about one fact stays a lookup.
+ */
+export function asksSynthesis(question: string): boolean {
+  const q = fold(question).replace(/[’‘]/g, "'");
+  return (
+    SYNTHESIS_RE.test(q) ||
+    SYNTHESIS_JA_RE.test(question) ||
+    asksElaboration(question)
+  );
+}
+
 /** Words that ask for the whole list: the review path (a list block) keeps those. */
 const LIST_ALL_RE =
   /\b(show|list|display|all|every|each|mostre|mostrar|liste|listar|todas?|todos|muestra|muestre|alle|zeige|tous|toutes|montre|tutti|tutte|mostra|elenca)\b|一覧|すべて|全部/u;
@@ -308,7 +441,7 @@ const TAIL =
 const DECISIONS_RE = new RegExp(
   [
     `^(?:(?:so|and|but|e|mas|y|pero|und|aber|et|mais|ma),? )?(?:what|which)(?: (?:has|have|was|were|is|are))?(?: been)? (?:decided|(?:the )?decisions?)${TAIL}$`,
-    `^(?:(?:so|and|but),? )?what (?:did|do|have) we (?:decide|decided)${TAIL}$`,
+    `^(?:(?:so|and|but),? )?what (?:did|do|have) (?:we|the team|they|everyone|everybody) (?:decide|decided)${TAIL}$`,
     `^(?:the |any )?decisions?${TAIL}$`,
     `^o que (?:foi|ficou|ja foi|foi que) decidido${TAIL}$`,
     `^o que (?:decidimos|a gente decidiu|foi deliberado)${TAIL}$`,

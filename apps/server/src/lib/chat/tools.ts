@@ -1,6 +1,7 @@
 import type { DatabaseSync } from "node:sqlite";
 import type { ChatBlock, ChatListItem } from "@openstyle/validations";
 import type { z } from "zod";
+import { estimatePromptTokens } from "../llm/token-budget.js";
 import { cutText } from "../meetings/folder-description.js";
 import {
   actionItemKey,
@@ -1204,6 +1205,133 @@ export function countMentions(ctx: ToolContext, phrase: string): ToolResult {
     rows: ids.size,
     labels,
     blocks: [{ kind: "count", n: ids.size, what: "meetings" }],
+    topScore: null,
+    degraded: null,
+    ms: Date.now() - started,
+  };
+}
+
+// ---------------------------------------------------------------------------
+// summary_digest (code step, not a model tool)
+// ---------------------------------------------------------------------------
+
+/** The detail of one meeting in a digest: all sections, the gist, or one line. */
+export type DigestTier = "full" | "gist" | "line";
+
+const join = (xs: readonly string[], max: number) =>
+  cutText(xs.join("; "), max);
+
+/** The text of one meeting at one detail level (the title and date are in the source head). */
+function digestText(m: MeetingRow, tier: DigestTier): string {
+  const s = parseSummary(m.summary_json);
+  if (!s) {
+    const md = String(m.markdown ?? "").replace(/\s+/g, " ");
+    return cutText(md, tier === "full" ? 900 : tier === "gist" ? 420 : 140);
+  }
+  const first = gistOf(s, m.markdown) ?? "";
+  if (tier === "line") return cutText(first || s.keyPoints[0] || "", 160);
+  if (tier === "gist") {
+    return [
+      s.overview ? cutText(s.overview, 200) : "",
+      s.keyPoints.length
+        ? `Key points: ${join(s.keyPoints.slice(0, 3), 260)}`
+        : "",
+      s.decisions.length
+        ? `Decisions: ${join(s.decisions.slice(0, 2), 160)}`
+        : "",
+    ]
+      .filter(Boolean)
+      .join(" ");
+  }
+  return [
+    s.overview ? `Overview: ${cutText(s.overview, 300)}` : "",
+    s.keyPoints.length ? `Key points: ${join(s.keyPoints, 420)}` : "",
+    s.decisions.length ? `Decisions: ${join(s.decisions, 300)}` : "",
+    s.actionItems.length
+      ? `Action items: ${join(
+          s.actionItems.map(
+            (x) =>
+              `${x.task}${x.owner ? ` (${x.owner}${x.due ? `, ${x.due}` : ""})` : ""}`,
+          ),
+          300,
+        )}`
+      : "",
+    s.openQuestions.length
+      ? `Open questions: ${join(s.openQuestions, 240)}`
+      : "",
+  ]
+    .filter(Boolean)
+    .join(" ");
+}
+
+export interface DigestOptions {
+  /** Only these meetings (scope "all": the meetings of the best hits). Else every meeting in scope. */
+  meetingIds?: readonly string[];
+  /** Tokens that the digest sources may use together. */
+  budgetTokens: number;
+  /** Meetings the thread told already: they get more detail last. The rest grow newest first. */
+  told?: ReadonlySet<string>;
+}
+
+/**
+ * One source for each meeting with a summary, in date order (title, date and
+ * text). The detail is chosen by code to fit the budget (spec 2.8): every
+ * meeting starts as one line, then the newest meetings (those the thread did not tell yet first) grow to the gist and then to the full summary while the budget
+ * lasts. The cite of a source opens that meeting.
+ */
+export function summaryDigest(ctx: ToolContext, o: DigestOptions): ToolResult {
+  const started = Date.now();
+  const ids = o.meetingIds ? new Set(o.meetingIds) : null;
+  const meetings = loadMeetings(ctx.db, ctx.scope).filter(
+    (m) => (!ids || ids.has(m.id)) && (m.summary_json || m.markdown),
+  );
+  const tiers = new Map<string, DigestTier>(
+    meetings.map((m) => [m.id, "line"]),
+  );
+  const cost = (m: MeetingRow, t: DigestTier) =>
+    estimatePromptTokens(
+      `[S99] ${m.title ?? ""}, ${isoDay(m.at)}: ${digestText(m, t)}`,
+    ) + 1;
+  let used = meetings.reduce((a, m) => a + cost(m, "line"), 0);
+  const newest = [...meetings].reverse();
+  const order = [
+    ...newest.filter((m) => !o.told?.has(m.id)),
+    ...newest.filter((m) => o.told?.has(m.id)),
+  ];
+  for (const next of ["gist", "full"] as const) {
+    for (const m of order) {
+      const now = tiers.get(m.id) as DigestTier;
+      if (now === next) continue;
+      const extra = cost(m, next) - cost(m, now);
+      if (used + extra > o.budgetTokens) continue;
+      used += extra;
+      tiers.set(m.id, next);
+    }
+  }
+  const labels: string[] = [];
+  for (const m of meetings) {
+    const text = digestText(m, tiers.get(m.id) as DigestTier);
+    if (!text) continue;
+    addSource(
+      ctx,
+      {
+        kind: "summary",
+        meetingId: m.id,
+        title: m.title,
+        startedAt: m.at,
+        startMs: null,
+        endMs: null,
+        itemId: null,
+        text,
+      },
+      labels,
+    );
+  }
+  return {
+    tool: "summary_digest",
+    rows: labels.length,
+    labels,
+    blocks: [],
     topScore: null,
     degraded: null,
     ms: Date.now() - started,

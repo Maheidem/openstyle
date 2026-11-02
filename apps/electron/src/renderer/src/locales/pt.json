@@ -1360,6 +1360,7 @@
         "deadline": "Demorou demais, então parei.",
         "call_cap": "Atingi o limite de buscas para esta pergunta.",
         "model_error": "O modelo falhou ao responder.",
+        "nothing_new": "Não tenho mais fatos sobre isso nas fontes.",
         "noSourcesAll": "Não encontrei nada sobre isso em nenhuma reunião."
       },
       "nearest": "Fontes mais próximas",

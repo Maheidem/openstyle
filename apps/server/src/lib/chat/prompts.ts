@@ -11,7 +11,9 @@ import { INTENTS, type Intent } from "./types.js";
 export const ROUTER_MAX_TOKENS = 24;
 export const SLOT_MAX_TOKENS = 150;
 export const NATIVE_MAX_TOKENS = 200;
-export const ANSWER_MAX_TOKENS = 400;
+export const ANSWER_MAX_TOKENS = 500;
+/** A lead paragraph plus up to 6 bullets with cites needs more room (synthesis, owner decision 2026-11-01). */
+export const SYNTH_MAX_TOKENS = 900;
 
 const INTENT_LINES = `lookup: asks for ONE specific fact: an amount, a number, a name, or what was decided about one topic. "What did we decide on the database?"
 who_said: asks WHO said, proposed, approved or will do something. "Who proposed the pilot?" "Who will write the rollback plan?"
@@ -31,31 +33,66 @@ export const ROUTER_SCHEMA: StepSchema<{ intent: Intent }> = {
   zod: z.object({ intent: z.enum(INTENTS) }),
 };
 
-/** Stage 4: the answer. Sentences with their own cites (the cite check works per sentence). */
+const sentenceSchema = z.object({
+  text: z.string().max(280),
+  cites: z.array(z.string().max(6)).max(3),
+});
+
+/**
+ * Stage 4: the answer. Sentences with their own cites (the cite check works
+ * per sentence). `bullets` is optional: a lookup that finds several facts may
+ * list them (owner decision 2026-11-01).
+ */
 export const ANSWER_SCHEMA: StepSchema<{
   sentences: { text: string; cites: string[] }[];
+  bullets?: { text: string; cites: string[] }[];
 }> = {
   name: "chat_answer",
-  version: 2,
+  version: 3,
   zod: z.object({
-    sentences: z
-      .array(
-        z.object({
-          text: z.string().max(320),
-          cites: z.array(z.string().max(6)).max(3),
-        }),
-      )
-      .max(6),
+    sentences: z.array(sentenceSchema).max(6),
+    bullets: z.array(sentenceSchema).max(5).optional(),
+  }),
+};
+
+/** Stage 4 for a broad question: a lead paragraph (1 to 3 sentences) plus 2 to 6 bullets. */
+export const SYNTH_SCHEMA: StepSchema<{
+  lead: { text: string; cites: string[] }[];
+  bullets: { text: string; cites: string[] }[];
+}> = {
+  name: "chat_synthesis",
+  version: 1,
+  zod: z.object({
+    lead: z.array(sentenceSchema).min(1).max(3),
+    bullets: z.array(sentenceSchema).min(2).max(6),
   }),
 };
 
 export const ANSWER_SYSTEM = `You answer a question about meeting notes. Use ONLY the numbered sources.
 Write 1 to 3 short sentences in the language of the question. State the answer first.
 One sentence states one fact. Put the labels of the sources that show the fact in "cites", for example ["S2"].
+When the sources show several separate facts that answer the question, put them in "bullets", one fact for each bullet, with their own "cites". Else leave "bullets" empty.
 Copy names, numbers and dates exactly as the sources write them. Write the full name of a person (first and last name) when the sources have it.
 Never write a source label such as [S1] inside a sentence. The labels go in "cites" only.
 Answer the new question. Earlier questions give context only: do not copy an earlier answer.
 Return an empty "sentences" list ONLY when no source speaks about the topic of the question.
+Never use knowledge from outside the sources.`;
+
+/**
+ * The system text for a broad question (overview, details, history, story,
+ * onboarding, "tell me more"). Lead paragraph, then bullets; every sentence
+ * and every bullet has its own cites.
+ */
+export const SYNTH_SYSTEM = `You explain a project or a meeting from meeting notes. Use ONLY the numbered sources.
+Write the answer in the language of the QUESTION, even when the sources use another language.
+"lead" holds 1 to 3 short sentences: the main point first.
+"bullets" holds 3 to 6 bullets. One bullet states one fact, such as a decision, a number, a date, a person, an open question or a next step. Keep each bullet under 30 words.
+Put the labels of the sources that show the sentence or bullet in "cites", for example ["S2"]. Every sentence and every bullet needs at least one label.
+Copy names, numbers and dates exactly as the sources write them. Write the full name of a person when the sources have it.
+Never write a source label such as [S1] inside the text. The labels go in "cites" only.
+Cover different sources: do not say the same fact twice.
+When the sources are listed by date, tell the story in date order.
+When a block ALREADY TOLD is given, do NOT repeat its facts. Give other facts from the sources.
 Never use knowledge from outside the sources.`;
 
 /** The user text of the answer call. */
@@ -64,9 +101,12 @@ export function answerUser(args: {
   sources: string;
   question: string;
   repair: string | null;
+  /** Facts the thread already gave (a broad question asked again). */
+  told?: string;
 }): string {
   return [
     args.history ? `EARLIER QUESTIONS:\n${args.history}\n` : "",
+    args.told ? `ALREADY TOLD (do not repeat):\n${args.told}\n` : "",
     `SOURCES:\n${args.sources || "(none)"}\n`,
     args.repair ? `FIX THIS IN YOUR ANSWER: ${args.repair}\n` : "",
     `QUESTION: ${args.question}`,
