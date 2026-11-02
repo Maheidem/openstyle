@@ -1364,7 +1364,12 @@
         "call_cap": "J'ai atteint la limite de recherche pour cette question.",
         "model_error": "Le modèle n'a pas réussi à répondre.",
         "nothing_new": "Je n'ai plus d'autres faits à ce sujet dans les sources.",
-        "noSourcesAll": "Je n'ai rien trouvé à ce sujet dans aucune réunion."
+        "noSourcesAll": "Je n'ai rien trouvé à ce sujet dans aucune réunion.",
+        "searchedMeeting": "Cette réunion a été parcourue.",
+        "searchedFolder_one": "{{count}} réunion de ce dossier parcourue.",
+        "searchedFolder_other": "{{count}} réunions de ce dossier parcourues.",
+        "searchedAll_one": "{{count}} réunion parcourue au total.",
+        "searchedAll_other": "{{count}} réunions parcourues au total."
       },
       "nearest": "Sources les plus proches",
       "readOnly": "Ask ne peut pas encore modifier de données. Il lit seulement vos réunions.",
@@ -1418,6 +1423,15 @@
         "empty": "Posez une question sur toutes vos réunions. Poser une question lit leurs transcriptions et résumés.",
         "placeholder": "Question sur toutes les réunions",
         "threads": "Chats sur toutes les réunions"
+      },
+      "scopeSize_one": "{{count}} réunion · les réponses citent seulement celles-ci",
+      "scopeSize_other": "{{count}} réunions · les réponses citent seulement celles-ci",
+      "step": {
+        "searching_one": "Recherche dans {{count}} réunion…",
+        "searching_other": "Recherche dans {{count}} réunions…",
+        "reading_one": "Lecture de {{count}} réunion…",
+        "reading_other": "Lecture de {{count}} réunions…",
+        "answering": "Rédaction de la réponse…"
       }
     }
   },

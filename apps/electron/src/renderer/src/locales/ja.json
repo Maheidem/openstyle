@@ -1356,7 +1356,10 @@
         "call_cap": "この質問の検索上限に達しました。",
         "model_error": "モデルが回答に失敗しました。",
         "nothing_new": "ソースには、これに関するこれ以上の情報はありません。",
-        "noSourcesAll": "どの会議にもこれに関する情報は見つかりませんでした。"
+        "noSourcesAll": "どの会議にもこれに関する情報は見つかりませんでした。",
+        "searchedMeeting": "この会議を検索しました。",
+        "searchedFolder_other": "このフォルダの会議 {{count}} 件を検索しました。",
+        "searchedAll_other": "すべての会議 {{count}} 件を検索しました。"
       },
       "nearest": "最も近いソース",
       "readOnly": "Ask はまだデータを変更できません。会議を読むだけです。",
@@ -1403,6 +1406,12 @@
         "empty": "すべての会議について質問してください。文字起こしと要約を読んで答えます。",
         "placeholder": "すべての会議について質問",
         "threads": "すべての会議のチャット"
+      },
+      "scopeSize_other": "会議 {{count}} 件 · 回答はこれらだけを引用します",
+      "step": {
+        "searching_other": "{{count}} 件の会議を検索中…",
+        "reading_other": "{{count}} 件の会議を読み込み中…",
+        "answering": "回答を作成中…"
       }
     }
   },

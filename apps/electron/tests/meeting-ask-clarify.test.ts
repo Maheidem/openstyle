@@ -36,11 +36,21 @@ async function setTheme(page: Page, name: "Light" | "Dark"): Promise<void> {
   else await expect(page.locator("html")).not.toHaveClass(/dark/);
 }
 
-/** "New chat" is disabled while the thread is empty. */
+/**
+ * A fresh thread. "New chat" is disabled while the thread is empty, and the
+ * stored thread of the scope loads a moment after the page (CI showed a
+ * question that landed in the old thread), so the check repeats until the
+ * conversation stays empty.
+ */
 async function newChat(page: Page): Promise<void> {
+  const users = page.getByTestId("meeting-ask-user");
   const button = page.getByTestId("meeting-ask-new");
-  if (await button.isEnabled()) await button.click();
-  await expect(page.getByTestId("meeting-ask-assistant")).toHaveCount(0);
+  for (let i = 0; i < 4; i++) {
+    await page.waitForTimeout(700);
+    if ((await users.count()) === 0) return;
+    if (await button.isEnabled()) await button.click();
+  }
+  await expect(users).toHaveCount(0);
 }
 
 async function ask(page: Page, question: string): Promise<Locator> {
@@ -105,6 +115,10 @@ for (const theme of ["Light", "Dark"] as const) {
     await page.goto("app://renderer/ask");
     await expect(page.getByTestId("ask-page")).toBeVisible({ timeout: 15_000 });
     await newChat(page);
+    // The scope line names the number of meetings (design gap G2).
+    await expect(page.getByTestId("meeting-ask-scope-size")).toContainText(
+      /meetings · answers cite only these/,
+    );
     const callsBefore = fake.requests.length;
     const turn = await ask(page, Q_AMBIGUOUS);
     const block = turn.getByTestId("meeting-ask-block-clarify");
@@ -183,6 +197,10 @@ for (const theme of ["Light", "Dark"] as const) {
       "data-scope",
       "all",
     );
+    // The bubble is a dialog with a name (design gap G3).
+    const dialog = bubble.getByRole("dialog");
+    await expect(dialog).toHaveAttribute("aria-modal", "true");
+    await expect(dialog).toHaveAccessibleName(/\S/);
     await bubble.getByTestId("chat-bubble-input").fill(Q_AMBIGUOUS);
     await bubble.getByTestId("chat-bubble-send").click();
     const answer = bubble.getByTestId("chat-bubble-answer");
@@ -212,7 +230,20 @@ for (const theme of ["Light", "Dark"] as const) {
     await page.getByRole("option", { name: LONG_FOLDER_NAME }).click();
     await newChat(page);
     const mapBefore = fake.ofKind("chat_map_notes").length;
-    const turn = await ask(page, Q_STORY);
+    // The status line names the step while the turn runs (design gap G4).
+    fake.stepDelayMs = 900;
+    const answers = page.getByTestId("meeting-ask-assistant");
+    const before = await answers.count();
+    await page.getByTestId("meeting-ask-input").fill(Q_STORY);
+    await page.getByTestId("meeting-ask-send").click();
+    await expect(page.getByTestId("meeting-ask-status")).toContainText(
+      /Reading 30 meetings|Writing the answer/,
+      { timeout: 20_000 },
+    );
+    await shoot(page, `step-text-${theme.toLowerCase()}.png`);
+    await expect(answers).toHaveCount(before + 1, { timeout: 60_000 });
+    fake.stepDelayMs = 0;
+    const turn = answers.nth(before);
     const texts = turn.getByTestId("meeting-ask-block-text");
     expect(await texts.count()).toBeGreaterThanOrEqual(3);
     // The map step ran, and the final calls read the notes (one per date slice).
@@ -226,6 +257,10 @@ for (const theme of ["Light", "Dark"] as const) {
     expect(
       await turn.getByTestId("meeting-ask-cite").count(),
     ).toBeGreaterThanOrEqual(2);
+    // At folder scope a cite chip names its meeting (design gap G1).
+    await expect(turn.getByTestId("meeting-ask-cite").first()).toContainText(
+      /Program step \d+/,
+    );
     await turn.getByTestId("meeting-ask-trail").locator("summary").click();
     await expect(turn.getByTestId("meeting-ask-trail")).toContainText(
       /shortened 30 meeting summaries/,
@@ -233,3 +268,46 @@ for (const theme of ["Light", "Dark"] as const) {
     await shoot(page, `map-reduce-answer-${theme.toLowerCase()}.png`);
   });
 }
+
+for (const theme of ["Light", "Dark"] as const) {
+  test(`not found is a card with the number of searched meetings (${theme})`, async () => {
+    test.setTimeout(90_000);
+    await setTheme(page, theme);
+    await page.goto("app://renderer/ask");
+    await page.getByRole("radio", { name: "A folder" }).click();
+    await page.getByTestId("ask-pick-folder").click();
+    await page.getByRole("option", { name: LONG_FOLDER_NAME }).click();
+    await newChat(page);
+    const turn = await ask(page, "What did we say about the Mars colony?");
+    const card = turn.getByTestId("meeting-ask-block-not-found");
+    await expect(card).toBeVisible();
+    await expect(card.getByTestId("meeting-ask-searched")).toHaveText(
+      "Searched 30 meetings in this folder.",
+    );
+    await shoot(page, `not-found-card-${theme.toLowerCase()}.png`);
+  });
+}
+
+test("the bubble returns the focus when Escape closes it, and its dialog has a name", async () => {
+  test.setTimeout(60_000);
+  await page.goto("app://renderer/meetings");
+  await expect(page.getByRole("tab", { name: "Transcript" })).toBeVisible({
+    timeout: 20_000,
+  });
+  await page.evaluate(() =>
+    window.electron.ipcRenderer.send("e2e:trigger-chat-hotkey"),
+  );
+  const bubble = await bubblePage(b);
+  await expect(bubble.getByRole("dialog")).toBeVisible();
+  await expect(bubble.getByTestId("chat-bubble-input")).toBeFocused();
+  await bubble.keyboard.press("Escape");
+  await expect
+    .poll(() =>
+      page.evaluate(() =>
+        window.electron.ipcRenderer.invoke("e2e:chat-bubble-visible"),
+      ),
+    )
+    .toBe(false);
+  // The input of the bubble no longer has the focus, and the main window page is the one that can take it.
+  await expect(page.getByRole("tab", { name: "Transcript" })).toBeVisible();
+});

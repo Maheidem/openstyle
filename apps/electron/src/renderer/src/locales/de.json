@@ -1364,7 +1364,12 @@
         "call_cap": "Ich habe die Suchgrenze für diese Frage erreicht.",
         "model_error": "Das Modell konnte nicht antworten.",
         "nothing_new": "Dazu habe ich in den Quellen keine weiteren Fakten.",
-        "noSourcesAll": "Dazu habe ich in keinem Meeting etwas gefunden."
+        "noSourcesAll": "Dazu habe ich in keinem Meeting etwas gefunden.",
+        "searchedMeeting": "Dieses Meeting durchsucht.",
+        "searchedFolder_one": "{{count}} Meeting in diesem Ordner durchsucht.",
+        "searchedFolder_other": "{{count}} Meetings in diesem Ordner durchsucht.",
+        "searchedAll_one": "{{count}} Meeting in allem durchsucht.",
+        "searchedAll_other": "{{count}} Meetings in allem durchsucht."
       },
       "nearest": "Nächste Quellen",
       "readOnly": "Ask kann noch keine Daten ändern. Es liest nur deine Meetings.",
@@ -1418,6 +1423,15 @@
         "empty": "Stellen Sie eine Frage zu allen Ihren Meetings. Fragen liest Transkripte und Zusammenfassungen.",
         "placeholder": "Zu allen Meetings fragen",
         "threads": "Chats zu allen Meetings"
+      },
+      "scopeSize_one": "{{count}} Meeting · Antworten zitieren nur diese",
+      "scopeSize_other": "{{count}} Meetings · Antworten zitieren nur diese",
+      "step": {
+        "searching_one": "Suche in {{count}} Meeting…",
+        "searching_other": "Suche in {{count}} Meetings…",
+        "reading_one": "Lese {{count}} Meeting…",
+        "reading_other": "Lese {{count}} Meetings…",
+        "answering": "Schreibe die Antwort…"
       }
     }
   },

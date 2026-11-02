@@ -513,6 +513,8 @@ export class FakeAskLlm {
   readonly requests: AskRequest[] = [];
   /** When true, a native tool turn gets a plain text answer (no tool call). */
   noNativeTools = false;
+  /** Waits this long before each map and synthesis call (ms): the step text of a long turn (D20). */
+  stepDelayMs = 0;
   /** Waits this long before each answer call (ms). It keeps a turn running. */
   answerDelayMs = 0;
   /**
@@ -779,6 +781,9 @@ export class FakeAskLlm {
       // The map step of a big scope (D20): one short note for each source,
       // with its label. The note is the first sentence of the source.
       record.answered = "chat_map_notes";
+      if (this.stepDelayMs > 0) {
+        await new Promise((r) => setTimeout(r, this.stepDelayMs));
+      }
       const notes = [
         ...user.matchAll(/^\[(S\d+)\] [^:]*?\d{4}-\d{2}-\d{2}: (.*)$/gm),
       ].map((m) => ({
@@ -792,6 +797,9 @@ export class FakeAskLlm {
       // A broad question: a lead sentence from the first source and one bullet
       // for each of the next three sources, each cited with its own label.
       record.answered = "chat_synthesis";
+      if (this.stepDelayMs > 0) {
+        await new Promise((r) => setTimeout(r, this.stepDelayMs));
+      }
       const sources = parseSources(user);
       const clean = (t: string) => {
         const body = t.replace(

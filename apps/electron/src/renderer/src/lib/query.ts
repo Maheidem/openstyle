@@ -117,6 +117,8 @@ export const queryKeys = {
     threads: (key: string) => ["chat", "threads", key] as const,
     /** `GET /api/chat/threads/:id`, the thread with its messages. */
     thread: (id: string) => ["chat", "thread", id] as const,
+    /** `GET /api/chat/scope-size`: how many meetings a scope covers. */
+    scopeSize: (key: string) => ["chat", "scope-size", key] as const,
   },
 
   history: {

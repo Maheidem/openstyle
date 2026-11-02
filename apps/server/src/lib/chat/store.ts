@@ -329,3 +329,25 @@ export function loadHistoryForPrompt(
     .filter((m) => m.id < beforeId)
     .slice(-CHAT_HISTORY_MAX_MESSAGES);
 }
+
+/** How many meetings a scope covers ("Searched N meetings", the scope line). */
+export function countScopeMeetings(
+  db: DatabaseSync,
+  scope: { kind: "meeting" | "folder" | "all"; id?: string | null },
+): number {
+  if (scope.kind === "meeting") {
+    const row = db
+      .prepare("SELECT COUNT(*) AS n FROM meetings WHERE id = ?")
+      .get(scope.id ?? "") as { n: number };
+    return row.n;
+  }
+  if (scope.kind === "folder") {
+    const row = db
+      .prepare("SELECT COUNT(*) AS n FROM meetings WHERE folder_id = ?")
+      .get(scope.id ?? "") as { n: number };
+    return row.n;
+  }
+  return (
+    db.prepare("SELECT COUNT(*) AS n FROM meetings").get() as { n: number }
+  ).n;
+}

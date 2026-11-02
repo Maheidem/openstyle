@@ -1682,7 +1682,12 @@
         "call_cap": "I reached the search limit for this question.",
         "model_error": "The model failed to answer.",
         "nothing_new": "I have no more facts about this in the sources.",
-        "noSourcesAll": "I found nothing about this in any meeting."
+        "noSourcesAll": "I found nothing about this in any meeting.",
+        "searchedMeeting": "Searched this meeting.",
+        "searchedFolder_one": "Searched {{count}} meeting in this folder.",
+        "searchedFolder_other": "Searched {{count}} meetings in this folder.",
+        "searchedAll_one": "Searched {{count}} meeting in everything.",
+        "searchedAll_other": "Searched {{count}} meetings in everything."
       },
       "nearest": "Nearest sources",
       "readOnly": "Ask cannot change data yet. It can only read your meetings.",
@@ -1736,6 +1741,15 @@
         "empty": "Ask a question about all your meetings. Ask reads their transcripts and summaries.",
         "placeholder": "Ask about all meetings",
         "threads": "Chats about all meetings"
+      },
+      "scopeSize_one": "{{count}} meeting · answers cite only these",
+      "scopeSize_other": "{{count}} meetings · answers cite only these",
+      "step": {
+        "searching_one": "Searching {{count}} meeting…",
+        "searching_other": "Searching {{count}} meetings…",
+        "reading_one": "Reading {{count}} meeting…",
+        "reading_other": "Reading {{count}} meetings…",
+        "answering": "Writing the answer…"
       }
     }
   },

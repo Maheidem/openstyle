@@ -45,6 +45,20 @@ export async function fetchThreads(scope: ChatScope): Promise<ChatThread[]> {
   return (body as { threads: ChatThread[] }).threads;
 }
 
+/** How many meetings the scope covers (the scope line, D20). */
+export async function fetchScopeSize(scope: ChatScope): Promise<number> {
+  const query =
+    scope.kind === "meeting"
+      ? { meeting_id: scope.id }
+      : scope.kind === "folder"
+        ? { folder_id: scope.id }
+        : { all: "1" as const };
+  const res = await getClient().api.chat["scope-size"].$get({ query });
+  if (!res.ok) throw await failureOf(res);
+  const body: unknown = await res.json();
+  return (body as { meetings: number }).meetings;
+}
+
 export async function fetchThread(id: string): Promise<ChatThreadDetail> {
   const res = await getClient().api.chat.threads[":id"].$get({
     param: { id },

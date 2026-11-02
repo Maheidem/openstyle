@@ -380,3 +380,18 @@ export function askErrorView(
   }
   return { key: "errFailed", action: "retry" };
 }
+
+/** The fixed words of a running turn's stage (D20). The UI writes them with `t()`. */
+export function progressKey(
+  progress:
+    | { stage: "searching" | "reading" | "answering"; count: number | null }
+    | null
+    | undefined,
+): { key: string; count: number } | null {
+  if (!progress) return null;
+  const count = progress.count ?? 0;
+  if (progress.stage === "answering") {
+    return { key: "meetings.ask.step.answering", count };
+  }
+  return { key: `meetings.ask.step.${progress.stage}`, count };
+}

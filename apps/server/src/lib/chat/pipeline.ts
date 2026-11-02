@@ -3,6 +3,7 @@ import type {
   ChatBlock,
   ChatCite,
   ChatMessage,
+  ChatProgress,
   ChatScope,
   ChatTrace,
   ChatTraceStep,
@@ -84,7 +85,7 @@ import {
 } from "./prompts.js";
 import { proposalFor } from "./proposals.js";
 import type { ChatSettings } from "./settings.js";
-import { nextWider } from "./store.js";
+import { countScopeMeetings, nextWider } from "./store.js";
 import { countMentions, runTool, summaryDigest } from "./tools.js";
 import {
   type Intent,
@@ -140,6 +141,8 @@ export interface ChatTurnInput {
   now?: number;
   /** Eval only: a write question gives a proposal. Nothing is applied in any case. */
   allowProposals?: boolean;
+  /** Called when the turn enters a new stage (D20): the route keeps it for the client to poll. */
+  onProgress?: (p: ChatProgress) => void;
   /** "Answer anyway": no clarifying question for this turn (D20). */
   noClarify?: boolean;
   /** Override of `SCORE_FLOOR` (the eval measures it). */
@@ -261,6 +264,10 @@ export async function runChatTurn(input: ChatTurnInput): Promise<TurnResult> {
     ms: Date.now() - t0,
   });
 
+  const progress = (p: ChatProgress): void => input.onProgress?.(p);
+  const scopeMeetings = countScopeMeetings(db, turnScope);
+  progress({ stage: "searching", count: scopeMeetings });
+
   const nearest = (): ChatCite[] =>
     sources
       .all()
@@ -279,6 +286,7 @@ export async function runChatTurn(input: ChatTurnInput): Promise<TurnResult> {
           scope,
           reason,
           nearest: nearest(),
+          searched: scopeMeetings,
           wider:
             reason === "nothing_new"
               ? null
@@ -396,6 +404,7 @@ export async function runChatTurn(input: ChatTurnInput): Promise<TurnResult> {
       historyDropped = assembled.historyTurnsDropped;
       sourceTokens = assembled.parts.sources;
       const started = Date.now();
+      progress({ stage: "answering", count: null });
       let parsed: AnswerSentence[];
       try {
         const user = answerUser({
@@ -750,6 +759,7 @@ export async function runChatTurn(input: ChatTurnInput): Promise<TurnResult> {
           .map((l) => sources.get(l))
           .filter((x): x is Source => x !== undefined);
 
+        progress({ stage: "reading", count: full.length });
         const t = Date.now();
         const cap = settings.sourceBudget;
         const win = llm.contextWindow;

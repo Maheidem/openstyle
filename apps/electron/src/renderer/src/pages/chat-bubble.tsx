@@ -5,14 +5,17 @@ import type {
 } from "@openstyle/validations";
 import { Button } from "@renderer/components/ui/button";
 import { Textarea } from "@renderer/components/ui/textarea";
+import { queryKeys } from "@renderer/lib/query";
 import { cn } from "@renderer/lib/utils";
 import type { ChatBubbleShown } from "@shared/chat-bubble";
+import { useQuery } from "@tanstack/react-query";
 import { MessageSquareText, X } from "lucide-react";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import {
   AskRequestError,
   createThread,
+  fetchThread,
   postQuestion,
 } from "./meetings/ask-api";
 import {
@@ -27,6 +30,7 @@ import {
   citeTarget,
   clarifyAnywayTurn,
   clarifyPickTurn,
+  progressKey,
   widenedScope,
   widerOffer,
 } from "./meetings/ask-model";
@@ -203,6 +207,7 @@ export default function ChatBubblePage(): React.JSX.Element {
   };
 
   const actions: CiteActions = {
+    showTitle: threadScope.kind !== "meeting",
     resolve: (cite) => citeTarget(cite, null, null),
     open: (target) => {
       if (target.kind === "meeting") {
@@ -228,12 +233,28 @@ export default function ChatBubblePage(): React.JSX.Element {
     },
   };
 
+  // While a turn runs the thread says which stage it is in (D20).
+  const { data: running } = useQuery({
+    queryKey: queryKeys.chat.thread(threadId ?? ""),
+    queryFn: () => fetchThread(threadId ?? ""),
+    enabled: busy && threadId !== null,
+    refetchInterval: 1000,
+  });
+  const step = progressKey(running?.progress);
+  const statusText = step
+    ? t(step.key, { count: step.count })
+    : slow
+      ? t("meetings.ask.warming")
+      : t("meetings.ask.thinking");
+
   const check = checkQuestion(input);
   const canWiden = !busy && answer !== null && widerOffer(answer) !== null;
 
   return (
     <main
       ref={rootRef}
+      role="dialog"
+      aria-modal="true"
       aria-label={t("ask.bubble.label")}
       data-testid="chat-bubble"
       data-scope={scope.kind === "all" ? "all" : `${scope.kind}:${scope.id}`}
@@ -301,8 +322,7 @@ export default function ChatBubblePage(): React.JSX.Element {
         className={cn("text-muted-foreground text-[12px]", !busy && "sr-only")}
         data-testid="chat-bubble-status"
       >
-        {busy &&
-          (slow ? t("meetings.ask.warming") : t("meetings.ask.thinking"))}
+        {busy && statusText}
       </div>
 
       {question !== null && (

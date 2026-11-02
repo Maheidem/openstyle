@@ -21,6 +21,8 @@ import {
 export interface CiteActions {
   resolve: (cite: ChatCite) => CiteTarget;
   open: (target: CiteTarget) => void;
+  /** Folder and Everything scope: the chip shows the meeting title too (D20 design gap G1). */
+  showTitle?: boolean;
 }
 
 /**
@@ -69,7 +71,17 @@ function CiteChip({
         "disabled:cursor-not-allowed disabled:opacity-60",
       )}
     >
-      {view.label} · {visible}
+      <span>{view.label}</span>
+      {actions.showTitle && !removed && (
+        <>
+          {" · "}
+          <span className="inline-block max-w-[11rem] truncate align-bottom">
+            {title}
+          </span>
+        </>
+      )}
+      {" · "}
+      {visible}
     </button>
   );
 }
@@ -219,7 +231,10 @@ function Block({
       );
     case "not_found":
       return (
-        <div data-testid="meeting-ask-block-not-found">
+        <div
+          className="border-border bg-muted/40 flex flex-col gap-1 rounded-lg border border-dashed p-3"
+          data-testid="meeting-ask-block-not-found"
+        >
           <p className="m-0">
             {t(
               block.reason === "no_sources"
@@ -231,6 +246,22 @@ function Block({
                 : `meetings.ask.notFound.${block.reason}`,
             )}
           </p>
+          {block.searched !== undefined && (
+            <p
+              className="text-muted-foreground m-0 text-[11.5px]"
+              data-testid="meeting-ask-searched"
+            >
+              {block.scope.kind === "meeting"
+                ? t("meetings.ask.notFound.searchedMeeting")
+                : block.scope.kind === "folder"
+                  ? t("meetings.ask.notFound.searchedFolder", {
+                      count: block.searched,
+                    })
+                  : t("meetings.ask.notFound.searchedAll", {
+                      count: block.searched,
+                    })}
+            </p>
+          )}
           {block.wider && onWiden && (
             <div className="mt-2 flex flex-col items-start gap-1">
               <p className="text-muted-foreground m-0 text-[11.5px]">

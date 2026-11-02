@@ -152,6 +152,8 @@ export const chatBlockSchema = z.discriminatedUnion("kind", [
     ]),
     /** The nearest sources, shown as links. */
     nearest: z.array(chatCiteSchema),
+    /** How many meetings the search covered ("Searched N meetings"). Absent in old messages. */
+    searched: z.number().int().optional(),
     /**
      * The one wider scope that the user may ask for (spec 6.3, D16). Code sets
      * it. It is absent when the scope is A or the setting turns the offer off.
@@ -261,12 +263,24 @@ export const chatAskReplySchema = z.object({
 });
 export type ChatAskReply = z.infer<typeof chatAskReplySchema>;
 
+/**
+ * What a running turn does now (D20, spec 11.8). The client polls it while a
+ * turn runs. `count` is the meetings that the stage covers, or null.
+ */
+export const chatProgressSchema = z.object({
+  stage: z.enum(["searching", "reading", "answering"]),
+  count: z.number().int().nullable(),
+});
+export type ChatProgress = z.infer<typeof chatProgressSchema>;
+
 /** The reply of `GET /api/chat/threads/:id`. */
 export const chatThreadDetailSchema = z.object({
   thread: chatThreadSchema,
   messages: z.array(chatMessageSchema),
   /** True while a turn of this thread runs on the server (P1.2). */
   pending: z.boolean(),
+  /** The stage of the running turn, else null. */
+  progress: chatProgressSchema.nullable().optional(),
   /** The last turn failed and saved no answer (the client was gone). */
   failure: z.object({ reason: z.string() }).nullable(),
 });

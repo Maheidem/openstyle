@@ -25,6 +25,7 @@ import { useNavigate } from "react-router";
 import {
   AskRequestError,
   createThread,
+  fetchScopeSize,
   fetchThread,
   fetchThreads,
   postQuestion,
@@ -39,6 +40,7 @@ import {
   clarifyPickTurn,
   danglingQuestion,
   mergeMessages,
+  progressKey,
   readSelectedThread,
   rememberSelectedThread,
   scopeKey,
@@ -91,7 +93,7 @@ export function AskPanel({
   scope,
   scopeText,
   strings,
-  actions,
+  actions: baseActions,
   threads: threadsMode,
   initialThreadId = null,
   folderName,
@@ -102,6 +104,11 @@ export function AskPanel({
   const listRef = useRef<HTMLDivElement>(null);
   const lastAnswerRef = useRef<HTMLDivElement>(null);
   const key = scopeKey(scope);
+  // Folder and Everything: a cite chip names its meeting (D20, design gap G1).
+  const actions: CiteActions = {
+    ...baseActions,
+    showTitle: scope.kind !== "meeting",
+  };
 
   // null: the newest thread. "new": an empty chat. Else: a thread id. The
   // choice outlives the panel: the user can leave and come back.
@@ -118,6 +125,11 @@ export function AskPanel({
   const [failure, setFailure] = useState<AskFailure | null>(null);
   const [slow, setSlow] = useState(false);
 
+  const { data: scopeSize } = useQuery({
+    queryKey: queryKeys.chat.scopeSize(key),
+    queryFn: () => fetchScopeSize(scope),
+    staleTime: 30_000,
+  });
   const { data: threads = [] } = useQuery({
     queryKey: queryKeys.chat.threads(key),
     queryFn: () => fetchThreads(scope),
@@ -133,7 +145,9 @@ export function AskPanel({
     queryKey: queryKeys.chat.thread(activeId ?? ""),
     queryFn: () => fetchThread(activeId ?? ""),
     enabled: activeId !== null,
-    refetchInterval: (query) => (query.state.data?.pending ? 1500 : false),
+    // While a turn runs, the thread says which stage it is in (D20).
+    refetchInterval: (query) =>
+      query.state.data?.pending || pending !== null || widening ? 1000 : false,
   });
   const messages: ChatMessage[] = activeId ? (detail?.messages ?? []) : [];
   const serverPending = activeId !== null && detail?.pending === true;
@@ -252,6 +266,12 @@ export function AskPanel({
 
   const check = checkQuestion(input);
   const busy = working || serverPending;
+  const step = progressKey(detail?.progress);
+  const statusText = step
+    ? t(step.key, { count: step.count })
+    : slow
+      ? t("meetings.ask.warming")
+      : t("meetings.ask.thinking");
   const dangling =
     !working && !failure ? danglingQuestion(messages, serverPending) : null;
   const empty = messages.length === 0 && !busy && !failure;
@@ -401,8 +421,7 @@ export function AskPanel({
         className="text-muted-foreground min-h-4 text-[12px]"
         data-testid="meeting-ask-status"
       >
-        {busy &&
-          (slow ? t("meetings.ask.warming") : t("meetings.ask.thinking"))}
+        {busy && statusText}
       </div>
 
       <div className="flex shrink-0 flex-col gap-1">
@@ -458,6 +477,14 @@ export function AskPanel({
         >
           {scopeText}
         </span>
+        {scopeSize !== undefined && (
+          <span
+            className="text-muted-foreground text-[11.5px]"
+            data-testid="meeting-ask-scope-size"
+          >
+            {t("meetings.ask.scopeSize", { count: scopeSize })}
+          </span>
+        )}
         <span className="mono text-muted-foreground text-[9px] uppercase tracking-[0.14em]">
           {t("meetings.ask.experimental")}
         </span>
