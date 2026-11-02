@@ -727,21 +727,26 @@ export async function runChatTurn(input: ChatTurnInput): Promise<TurnResult> {
       // short, and that loses the facts. Map-reduce runs when the FULL
       // summaries do not fit the digest budget.
       const digestBudget = Math.floor(settings.sourceBudget * 0.6);
-      const labelsNow = digestLabels;
-      sources.remove(labelsNow);
-      digest(digestIds, 1_000_000);
-      const full = digestLabels
-        .map((l) => sources.get(l))
-        .filter((x): x is Source => x !== undefined);
-      const fullTokens = full.reduce(
-        (n, x) => n + estimatePromptTokens(renderSource(x)) + 1,
-        0,
+      // Measure the full digest on a scratch source map: the labels of the
+      // real map stay as they are when nothing needs to be shortened.
+      const scratch = new SourceMap();
+      summaryDigest(
+        { ...ctx, sources: scratch },
+        {
+          ...(digestIds ? { meetingIds: digestIds } : {}),
+          budgetTokens: 1_000_000,
+        },
       );
-      if (fullTokens <= digestBudget) {
-        // Everything fits: the normal digest holds the same full text.
+      const fullTokens = scratch
+        .all()
+        .reduce((n, x) => n + estimatePromptTokens(renderSource(x)) + 1, 0);
+      if (fullTokens > digestBudget) {
         sources.remove(digestLabels);
-        digest(digestIds);
-      } else {
+        digest(digestIds, 1_000_000);
+        const full = digestLabels
+          .map((l) => sources.get(l))
+          .filter((x): x is Source => x !== undefined);
+
         const t = Date.now();
         const cap = settings.sourceBudget;
         const win = llm.contextWindow;

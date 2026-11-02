@@ -80,9 +80,9 @@ export async function mapNotes(args: {
   stop: () => string | null;
   onGroup?: (done: number, total: number) => void;
 }): Promise<MapResult & { stopped: string | null }> {
-  // The notes of one group must fit the output cap: about 3.5 characters per
-  // token, plus the JSON around each note.
-  const perNote = Math.ceil(args.noteChars / 3.5) + 20;
+  // The notes of one group must fit the output cap: about 2.5 characters per
+  // token (a small model writes long JSON), plus the JSON around each note.
+  const perNote = Math.ceil(args.noteChars / 2.5) + 30;
   const groups = groupSources(
     args.sources,
     args.groupTokens,

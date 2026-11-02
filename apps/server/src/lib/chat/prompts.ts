@@ -96,7 +96,7 @@ When a block ALREADY TOLD is given, do NOT repeat its facts. Give other facts fr
 Never use knowledge from outside the sources.`;
 
 /** Output cap of one map call (D20): short notes, one for each source. */
-export const MAP_MAX_TOKENS = 1200;
+export const MAP_MAX_TOKENS = 1500;
 
 /**
  * Map step of a big scope (spec 11.8): one short note for each source of a
