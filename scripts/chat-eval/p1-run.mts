@@ -23,6 +23,7 @@ import {
 } from "./clarify-corpus.mts";
 import { buildCorpus } from "./corpus.mts";
 import { buildDigAddon, digAsCorpus } from "./dig-corpus.mts";
+import { buildHeldoutAddon, buildHeldoutDig } from "./dig-heldout.mts";
 import { buildP2, buildThreads } from "./gold.mts";
 import {
   mean,
@@ -1320,7 +1321,9 @@ async function partBroad(
 async function partDig(env: Env, M: Record<string, number>): Promise<PartOut> {
   const { corpus, stack, maps } = env;
   // The extra data is loaded on top of the base corpus (its ids start with dg-).
-  const addon = buildDigAddon();
+  // CHAT_EVAL_DIG_SET=heldout: the blind held-out set (dig-heldout.mts).
+  const heldout = process.env.CHAT_EVAL_DIG_SET === "heldout";
+  const addon = heldout ? buildHeldoutAddon() : buildDigAddon();
   loadCorpus(stack, digAsCorpus(corpus, addon));
   // Item cites of the dig meetings are known by the same key function.
   const digMaps = buildIdMaps(
@@ -1331,7 +1334,9 @@ async function partDig(env: Env, M: Record<string, number>): Promise<PartOut> {
   env.log(`dig: loaded ${addon.meetings.length} extra meetings`);
   const only = process.env.CHAT_EVAL_IDS?.split(",");
   const qs = spread(
-    buildDig().filter((q) => !only || only.includes(q.id)),
+    (heldout ? buildHeldoutDig() : buildDig()).filter(
+      (q) => !only || only.includes(q.id),
+    ),
     env.opts.limit,
   );
   const known = {
@@ -1424,9 +1429,9 @@ async function partDig(env: Env, M: Record<string, number>): Promise<PartOut> {
     text,
     data: { rows, metrics: m },
     run: {
-      name: "p1-dig",
+      name: heldout ? "p1-dig-heldout" : "p1-dig",
       params: { turns: m.turns, history: "real answers" },
-      tags: baseTags(env, "dig"),
+      tags: baseTags(env, heldout ? "dig-heldout" : "dig"),
       metrics: m,
     },
   };

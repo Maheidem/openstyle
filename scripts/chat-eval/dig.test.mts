@@ -156,3 +156,41 @@ test("summarizeDig keeps controls and setup turns out of the headline numbers", 
   assert.equal(m.control_llm_calls_mean, 1);
   assert.equal(m.llm_calls_mean, 5);
 });
+
+// ---- The blind held-out set (dig-heldout.mts) ----
+test("held-out dig set: 30 questions, 4 controls, every key is in the data", async () => {
+  const { buildHeldoutAddon, buildHeldoutDig } = await import(
+    "./dig-heldout.mts"
+  );
+  const ha = buildHeldoutAddon();
+  const hq = buildHeldoutDig();
+  assert.equal(hq.length, 30);
+  assert.equal(hq.filter((q) => q.control).length, 4);
+  assert.equal(new Set(hq.map((q) => q.id)).size, hq.length);
+  const text = (id: string) => {
+    const m = ha.meetings.find((x) => x.id === id);
+    assert.ok(m, `meeting ${id} exists`);
+    return normalize(
+      [
+        m.title,
+        m.overview,
+        ...m.keyPoints,
+        ...m.decisions.map((d) => d.text),
+        ...m.actionItems.map((a) => `${a.task} ${a.owner}`),
+        ...m.openQuestions.map((q) => q.text),
+        ...m.segments.map((s) => s.text),
+      ].join(" "),
+    );
+  };
+  for (const q of hq)
+    for (const t of q.turns) {
+      const all = t.meetings.map(text).join(" ");
+      for (const g of t.groups)
+        assert.ok(
+          hasGroup(all, g),
+          `${q.id}: group ${g.join("|")} not in data`,
+        );
+    }
+  // The base ids stay apart from the other data sets.
+  assert.ok(ha.meetings.every((m) => m.id.startsWith("hd-")));
+});

@@ -1,0 +1,2228 @@
+{
+  "people": [
+    {
+      "key": "p1",
+      "first": "Marisol",
+      "last": "Quenby",
+      "asr": "Marisol Kwenby"
+    },
+    {
+      "key": "p2",
+      "first": "Tobias",
+      "last": "Vandrell",
+      "asr": "Tobias Vandrel"
+    },
+    {
+      "key": "p3",
+      "first": "Priyanka",
+      "last": "Haldane",
+      "asr": "Priyanka Halden"
+    },
+    {
+      "key": "p4",
+      "first": "Leopold",
+      "last": "Strand",
+      "asr": "Leopold Strann"
+    },
+    {
+      "key": "p5",
+      "first": "Sunniva",
+      "last": "Albright",
+      "asr": "Sunniva Albrite"
+    },
+    {
+      "key": "p6",
+      "first": "Rogério",
+      "last": "Matoso",
+      "asr": "Rogerio Matozo"
+    },
+    {
+      "key": "p7",
+      "first": "Cássia",
+      "last": "Brandolini",
+      "asr": "Cassia Brandoline"
+    },
+    {
+      "key": "p8",
+      "first": "Heitor",
+      "last": "Valcanover",
+      "asr": "Heitor Valcanover"
+    }
+  ],
+  "projects": [
+    {
+      "key": "A",
+      "name": "Loyalty App Relaunch",
+      "lang": "en"
+    },
+    {
+      "key": "B",
+      "name": "Entregas Pão Sereno",
+      "lang": "pt"
+    },
+    {
+      "key": "C",
+      "name": "Warehouse Migration",
+      "lang": "en"
+    }
+  ],
+  "meetings": [
+    {
+      "key": "a1",
+      "project": "A",
+      "n": 1,
+      "day": 0,
+      "title": "Kickoff for the loyalty app relaunch",
+      "lang": "en",
+      "overview": "The team starts the relaunch of the loyalty app. They set the launch date, the budget and the first owners.",
+      "keyPoints": [
+        "Launch planned for 14 March",
+        "Budget set at 120k",
+        "Quillpay stays as payment provider for now",
+        "Tobias leads QA",
+        "Store submission needs several prerequisites"
+      ],
+      "decisions": [
+        "Keep Quillpay as the payment provider for launch",
+        "Launch on 14 March"
+      ],
+      "actions": [
+        {
+          "task": "Book six test devices",
+          "owner": "p2",
+          "due": "this week",
+          "done": true
+        },
+        {
+          "task": "Set up a crash dashboard",
+          "owner": "p2",
+          "due": "this week",
+          "done": true
+        },
+        {
+          "task": "Finish the icon set",
+          "owner": "p5",
+          "due": "12 January",
+          "done": false
+        },
+        {
+          "task": "Get legal sign-off on the privacy label",
+          "owner": "p3",
+          "due": "end of January",
+          "done": false
+        }
+      ],
+      "openQuestions": ["How long do loyalty points last?"],
+      "say": [
+        {
+          "who": "p1",
+          "text": "Okay, let's start. This is the kickoff for the loyalty app relaunch. The goal is a launch on 14 March."
+        },
+        {
+          "who": "p2",
+          "text": "14 March works for QA if we freeze features by 20 February. I will lead QA for the whole run."
+        },
+        {
+          "who": "p1",
+          "text": "Good. The budget is 120k for the full relaunch, and that includes the payment work."
+        },
+        {
+          "who": "p3",
+          "text": "For payments I suggest we keep Quillpay. We already have the contract and the team knows the API."
+        },
+        {
+          "who": "p5",
+          "text": "I agree. Changing providers now would cost us weeks, and I want the design work to start soon."
+        },
+        {
+          "who": "p1",
+          "text": "Then the decision is simple. Quillpay stays for launch."
+        },
+        {
+          "who": "p2",
+          "text": "I will book six test devices this week. I will also set up a crash dashboard so we see problems early."
+        },
+        {
+          "who": "p5",
+          "text": "On my side I need to finish the icon set. We have forty icons and I want them done by 12 January."
+        },
+        {
+          "who": "p1",
+          "text": "Priyanka, what do we need for the store?"
+        },
+        {
+          "who": "p3",
+          "text": "Mainly the privacy label for the app store. I will ask legal for a sign-off, and I will start with the data map."
+        },
+        {
+          "who": "p1",
+          "text": "Fine. Another thing. How long do loyalty points last before they expire?"
+        },
+        {
+          "who": "p3",
+          "text": "Nobody knows yet. Finance has not told us. Put it as an open question."
+        },
+        {
+          "who": "p5",
+          "text": "We should also think about guest checkout. Many shoppers want to pay without an account."
+        },
+        {
+          "who": "p1",
+          "text": "Yes, keep guest checkout in scope for now. We will look at it again."
+        },
+        {
+          "who": "p2",
+          "text": "I also want a weekly meeting, same day, thirty minutes."
+        },
+        {
+          "who": "p1",
+          "text": "Agreed. Next meeting in one week."
+        }
+      ]
+    },
+    {
+      "key": "a2",
+      "project": "A",
+      "n": 2,
+      "day": 7,
+      "title": "Store prerequisites check",
+      "lang": "en",
+      "overview": "The team reviews the store submission checklist. Several items still wait on other teams. Guest checkout work is paused.",
+      "keyPoints": [
+        "Privacy label review is still pending",
+        "A crash on older Android devices is under study",
+        "Icon set is partly done",
+        "Push certificate renewal is assigned",
+        "Guest checkout is paused"
+      ],
+      "decisions": ["Guest checkout work is paused for now"],
+      "actions": [
+        {
+          "task": "Get legal sign-off on the privacy label",
+          "owner": "p3",
+          "due": "2 February",
+          "done": false
+        },
+        {
+          "task": "Fix the Android 11 crash",
+          "owner": "p2",
+          "due": "28 January",
+          "done": false
+        },
+        {
+          "task": "Renew the push certificate",
+          "owner": "p1",
+          "due": "30 January",
+          "done": false
+        },
+        {
+          "task": "Finish the icon set",
+          "owner": "p5",
+          "due": "19 January",
+          "done": false
+        },
+        {
+          "task": "Write the release notes draft",
+          "owner": "p5",
+          "due": "this week",
+          "done": true
+        },
+        {
+          "task": "Buy two more Android phones for the lab",
+          "owner": "p2",
+          "due": "next week",
+          "done": false
+        }
+      ],
+      "openQuestions": [
+        "How long do loyalty points last?",
+        "Who pays for the extra phones?"
+      ],
+      "say": [
+        {
+          "who": "p1",
+          "text": "Let's go through the store checklist. Priyanka, where is the privacy label?"
+        },
+        {
+          "who": "p3",
+          "text": "Still waiting for legal. They have a backlog of twelve days, so the review will not finish before 2 February."
+        },
+        {
+          "who": "p1",
+          "text": "That is late. Please keep pushing them, and tell me if it slips again."
+        },
+        {
+          "who": "p2",
+          "text": "On crashes, I found one on Android 11. The app closes when a user opens the points screen after a login."
+        },
+        {
+          "who": "p2",
+          "text": "I cannot reproduce it well, because we have only two Android 11 phones in the lab. I will ask for a few more."
+        },
+        {
+          "who": "p5",
+          "text": "I finished the release notes draft yesterday. I put it in the shared folder."
+        },
+        {
+          "who": "p1",
+          "text": "Thanks. And the icon set, Sunniva?"
+        },
+        {
+          "who": "p5",
+          "text": "Twenty-six of forty are done. I will finish the rest by 19 January."
+        },
+        {
+          "who": "p1",
+          "text": "Another thing. The push notification certificate must be renewed. I will take that one myself."
+        },
+        {
+          "who": "p3",
+          "text": "Do we know when it expires?"
+        },
+        {
+          "who": "p1",
+          "text": "On 3 December, so we still have time, but not a lot."
+        },
+        {
+          "who": "p5",
+          "text": "Now about guest checkout. I want to drop it from the first release. Let's pause the work on it."
+        },
+        {
+          "who": "p2",
+          "text": "I am fine with pausing. It saves test effort."
+        },
+        {
+          "who": "p5",
+          "text": "I have a feeling it hurts us, but I need data first."
+        },
+        {
+          "who": "p1",
+          "text": "We pause it. Bring the data next time."
+        },
+        {
+          "who": "p3",
+          "text": "What about points expiry? Do we have an answer from finance?"
+        },
+        {
+          "who": "p1",
+          "text": "No answer yet. I will ask them again this week."
+        },
+        {
+          "who": "p1",
+          "text": "Okay. Next week we meet again."
+        }
+      ]
+    },
+    {
+      "key": "a3",
+      "project": "A",
+      "n": 3,
+      "day": 14,
+      "title": "Payment provider change",
+      "lang": "en",
+      "overview": "The team talks about the payment provider and the store gate. A new provider is chosen. The crash work becomes the top item.",
+      "keyPoints": [
+        "Payment provider is changed",
+        "Crash work is now the top item",
+        "Push certificate cannot move yet",
+        "Beta test is being planned",
+        "Terms of service page needs an update"
+      ],
+      "decisions": [
+        "Move to Tarnbridge Pay; Quillpay stays only for old subscriptions"
+      ],
+      "actions": [
+        {
+          "task": "Migrate receipts to Tarnbridge",
+          "owner": "p2",
+          "due": "20 February",
+          "done": false
+        },
+        {
+          "task": "Fix the Android 11 crash",
+          "owner": "p2",
+          "due": "28 January",
+          "done": false
+        },
+        {
+          "task": "Renew the push certificate",
+          "owner": "p1",
+          "due": "30 January",
+          "done": false
+        },
+        {
+          "task": "Update the terms of service page",
+          "owner": "p3",
+          "due": "15 February",
+          "done": false
+        },
+        {
+          "task": "Plan the beta test",
+          "owner": "p5",
+          "due": "10 February",
+          "done": false
+        }
+      ],
+      "openQuestions": [
+        "How long do loyalty points last?",
+        "Does the new provider need a new contract review?"
+      ],
+      "say": [
+        {
+          "who": "p1",
+          "text": "Today we talk about payments. Priyanka has news from Quillpay."
+        },
+        {
+          "who": "p3",
+          "text": "Quillpay sent a new price list. The fee goes from 1.8 percent to 2.9 percent from 1 March."
+        },
+        {
+          "who": "p1",
+          "text": "That changes the business case. Tobias, what is the alternative?"
+        },
+        {
+          "who": "p2",
+          "text": "Tarnbridge Pay. Their fee is 1.9 percent, and their SDK has a ready receipt module. Migration is about three weeks of work."
+        },
+        {
+          "who": "p5",
+          "text": "Will it delay the launch?"
+        },
+        {
+          "who": "p2",
+          "text": "Not if we start now. I would say we move to Tarnbridge and keep Quillpay only for old subscriptions."
+        },
+        {
+          "who": "p1",
+          "text": "Then the decision is to move to Tarnbridge Pay. Tobias owns the migration."
+        },
+        {
+          "who": "p3",
+          "text": "I need to update the terms of service page for the new provider too."
+        },
+        {
+          "who": "p2",
+          "text": "Back to the store submission. The crash rate on Android 11 is 2.8 percent, and our store gate in the checklist is 1 percent."
+        },
+        {
+          "who": "p1",
+          "text": "Then the crash fix is the top item. Tobias, please make it your first task."
+        },
+        {
+          "who": "p1",
+          "text": "About the push certificate. I tried to log in to the Brightline portal, and it is locked until 20 November after a failed login."
+        },
+        {
+          "who": "p3",
+          "text": "So we cannot renew it before then."
+        },
+        {
+          "who": "p1",
+          "text": "Right. I will try again after the lock ends."
+        },
+        {
+          "who": "p5",
+          "text": "For the beta test, I want 200 users. I will prepare the invitations."
+        },
+        {
+          "who": "p1",
+          "text": "Good. Please also finish the icons, Sunniva."
+        },
+        {
+          "who": "p5",
+          "text": "Yes, 34 of 40 are done now."
+        }
+      ]
+    },
+    {
+      "key": "a4",
+      "project": "A",
+      "n": 4,
+      "day": 21,
+      "title": "Guest checkout and sandbox keys",
+      "lang": "en",
+      "overview": "The team settles guest checkout with data. Payment testing and the certificate still wait on outside parties. Legal review is still running.",
+      "keyPoints": [
+        "Guest checkout stays out of the first release",
+        "Payment testing waits on the provider",
+        "Certificate renewal needs a document",
+        "Crash rate is falling but still high",
+        "Points expiry is still unanswered"
+      ],
+      "decisions": ["Guest checkout stays out of the first release"],
+      "actions": [
+        {
+          "task": "Write the refund policy text",
+          "owner": "p5",
+          "due": "this week",
+          "done": false
+        },
+        {
+          "task": "Follow up with Tarnbridge twice a week",
+          "owner": "p2",
+          "due": "ongoing",
+          "done": false
+        },
+        {
+          "task": "Renew the push certificate",
+          "owner": "p1",
+          "due": "30 January",
+          "done": false
+        },
+        {
+          "task": "Get legal sign-off on the privacy label",
+          "owner": "p3",
+          "due": "2 February",
+          "done": false
+        },
+        {
+          "task": "Confirm points expiry with finance",
+          "owner": "p1",
+          "due": "next week",
+          "done": false
+        },
+        {
+          "task": "Pay the contractor invoice",
+          "owner": "p1",
+          "due": "this week",
+          "done": false
+        },
+        {
+          "task": "Migrate receipts to Tarnbridge",
+          "owner": "p2",
+          "due": "20 February",
+          "done": false
+        }
+      ],
+      "openQuestions": [
+        "How long do loyalty points last?",
+        "Is the privacy label ready in time for the store?"
+      ],
+      "say": [
+        {
+          "who": "p1",
+          "text": "Let's start with guest checkout. Sunniva, you promised numbers."
+        },
+        {
+          "who": "p5",
+          "text": "Here they are. Guest checkout orders have a 31 percent refund rate, and orders with an account have 9 percent. That costs real money."
+        },
+        {
+          "who": "p3",
+          "text": "That is a strong number. It also means more privacy work, because we keep data for people without accounts."
+        },
+        {
+          "who": "p1",
+          "text": "Then guest checkout stays out of the first release. Sunniva will write the refund policy text."
+        },
+        {
+          "who": "p5",
+          "text": "Yes. I will write it this week."
+        },
+        {
+          "who": "p2",
+          "text": "On Tarnbridge, I have bad news. The sandbox keys will only arrive on 19 November, so I cannot test receipts before that."
+        },
+        {
+          "who": "p1",
+          "text": "That is a risk for the submission. Please follow up with them twice a week."
+        },
+        {
+          "who": "p3",
+          "text": "About the push certificate. Brightline says the account admin left the company, and they need a signed letter from a director."
+        },
+        {
+          "who": "p1",
+          "text": "I will ask our director for the letter."
+        },
+        {
+          "who": "p3",
+          "text": "The privacy label is still in the legal queue. They say it is the second item now."
+        },
+        {
+          "who": "p1",
+          "text": "And finance? Did they answer the points expiry question?"
+        },
+        {
+          "who": "p3",
+          "text": "Not yet. They said maybe next week."
+        },
+        {
+          "who": "p2",
+          "text": "The crash on Android 11 is down to 1.9 percent after my first fix, but it is still above the gate."
+        },
+        {
+          "who": "p1",
+          "text": "Okay. Keep going."
+        },
+        {
+          "who": "p1",
+          "text": "We also need to pay the icon contractor invoice. I will ask accounts."
+        }
+      ]
+    },
+    {
+      "key": "a5",
+      "project": "A",
+      "n": 5,
+      "day": 28,
+      "title": "Launch date review",
+      "lang": "en",
+      "overview": "The team moves the launch date and the budget. Roles change, and the payment plan changes again. Many items are still open.",
+      "keyPoints": [
+        "Launch moves to 2 May",
+        "Budget rises to 165k",
+        "Priyanka takes over QA",
+        "Both payment providers will run together for a while",
+        "Several items are still open"
+      ],
+      "decisions": [
+        "Run Quillpay and Tarnbridge in parallel until 30 April",
+        "Launch on 2 May"
+      ],
+      "actions": [
+        {
+          "task": "Renew the push certificate",
+          "owner": "p1",
+          "due": "Monday",
+          "done": false
+        },
+        {
+          "task": "Fix the Android 11 crash",
+          "owner": "p3",
+          "due": "15 March",
+          "done": false
+        },
+        {
+          "task": "Confirm points expiry with finance",
+          "owner": "p1",
+          "due": "this week",
+          "done": false
+        },
+        {
+          "task": "Migrate receipts to Tarnbridge",
+          "owner": "p2",
+          "due": "after production keys",
+          "done": false
+        },
+        {
+          "task": "Pay the contractor invoice",
+          "owner": "p1",
+          "due": "today",
+          "done": false
+        },
+        {
+          "task": "Plan the beta test",
+          "owner": "p5",
+          "due": "after the crash fix",
+          "done": false
+        },
+        {
+          "task": "Update the terms of service page",
+          "owner": "p3",
+          "due": "15 March",
+          "done": false
+        },
+        {
+          "task": "Write the refund policy text",
+          "owner": "p5",
+          "due": "this week",
+          "done": true
+        }
+      ],
+      "openQuestions": [
+        "How long do loyalty points last?",
+        "Can two payment providers run side by side without double charges?"
+      ],
+      "say": [
+        {
+          "who": "p1",
+          "text": "We need to talk about the launch date. With the late sandbox keys and the crash work, 14 March is not realistic."
+        },
+        {
+          "who": "p2",
+          "text": "I agree. I suggest 2 May. That gives us time for a proper beta."
+        },
+        {
+          "who": "p3",
+          "text": "And the budget? We paid for the provider change and for more test work."
+        },
+        {
+          "who": "p1",
+          "text": "The new budget is 165k. I got approval yesterday."
+        },
+        {
+          "who": "p1",
+          "text": "One more change. Priyanka takes over as QA lead, and Tobias focuses on the Tarnbridge integration."
+        },
+        {
+          "who": "p3",
+          "text": "Fine. I will start by reviewing the open crash list."
+        },
+        {
+          "who": "p2",
+          "text": "For payments, my plan is to run Quillpay and Tarnbridge in parallel until 30 April, then cut over."
+        },
+        {
+          "who": "p1",
+          "text": "Then the decision is a parallel run until 30 April."
+        },
+        {
+          "who": "p5",
+          "text": "The icon contractor stopped work because the invoice of 4,800 is still unpaid. Only 36 icons are done."
+        },
+        {
+          "who": "p1",
+          "text": "I will fix the invoice today."
+        },
+        {
+          "who": "p3",
+          "text": "The push certificate is still open. The signed letter is with our director."
+        },
+        {
+          "who": "p1",
+          "text": "He will sign on Monday. Then I send it to Brightline."
+        },
+        {
+          "who": "p3",
+          "text": "The points expiry is still open. Finance says it is either 18 or 24 months, and the liability figure of 410k depends on it."
+        },
+        {
+          "who": "p1",
+          "text": "That is a big difference. I need that answer before launch."
+        },
+        {
+          "who": "p5",
+          "text": "The beta test needs 200 users. I will send invitations after the crash fix."
+        },
+        {
+          "who": "p2",
+          "text": "Receipts migration is 60 percent done. It waits for the production keys."
+        },
+        {
+          "who": "p1",
+          "text": "Good. Next meeting in two weeks."
+        }
+      ]
+    },
+    {
+      "key": "b1",
+      "project": "B",
+      "n": 1,
+      "day": 0,
+      "title": "Início do projeto RotaViva",
+      "lang": "pt",
+      "overview": "A rede decide trocar as planilhas de entrega por um sistema de rotas. Define-se um piloto, o patrocinador e a data de início.",
+      "keyPoints": [
+        "O projeto substitui as planilhas de rotas das lojas",
+        "Piloto planejado em três lojas",
+        "Início do piloto marcado para fevereiro",
+        "Rogério é o patrocinador",
+        "Custo mensal do sistema já estimado"
+      ],
+      "decisions": [
+        "Piloto em três lojas: Centro, Vila Nova e Serra",
+        "Início do piloto em 3 de fevereiro"
+      ],
+      "actions": [
+        {
+          "task": "Levantar a lista de bairros",
+          "owner": "p7",
+          "due": "esta semana",
+          "done": true
+        },
+        {
+          "task": "Comprar 18 tablets",
+          "owner": "p7",
+          "due": "dezembro",
+          "done": false
+        },
+        {
+          "task": "Treinar os motoboys",
+          "owner": "p6",
+          "due": "antes do piloto",
+          "done": false
+        }
+      ],
+      "openQuestions": ["Quem paga o seguro dos tablets?"],
+      "say": [
+        {
+          "who": "p6",
+          "text": "Bom dia pessoal. Hoje a gente começa o projeto do RotaViva, que vai trocar as planilhas de entrega por um sistema de rotas."
+        },
+        {
+          "who": "p7",
+          "text": "Eu já falei com o fornecedor. O custo é 4.200 reais por mês para todas as lojas."
+        },
+        {
+          "who": "p8",
+          "text": "Pelo financeiro tá ok, dentro do orçamento do ano. Só preciso do contrato assinado até o fim do mês."
+        },
+        {
+          "who": "p6",
+          "text": "Perfeito. Eu sou o patrocinador do projeto e a Cássia cuida da parte técnica."
+        },
+        {
+          "who": "p7",
+          "text": "Sobre o piloto, eu sugiro três lojas: Centro, Vila Nova e Serra. Assim a gente pega bairros diferentes."
+        },
+        {
+          "who": "p6",
+          "text": "Concordo, três lojas. E quando começa?"
+        },
+        {
+          "who": "p7",
+          "text": "Dá para começar em 3 de fevereiro, se os equipamentos chegarem em dezembro."
+        },
+        {
+          "who": "p8",
+          "text": "Quantos equipamentos a gente precisa?"
+        },
+        {
+          "who": "p7",
+          "text": "Dezoito tablets, um para cada motoboy do piloto."
+        },
+        {
+          "who": "p6",
+          "text": "Ótimo. Os motoboys precisam de treinamento antes do piloto."
+        },
+        {
+          "who": "p7",
+          "text": "Isso. Eu levanto a lista de bairros esta semana, que já ajuda no treinamento."
+        },
+        {
+          "who": "p8",
+          "text": "E o seguro dos tablets? Alguém já pensou nisso?"
+        },
+        {
+          "who": "p6",
+          "text": "Boa pergunta. Vamos deixar em aberto por enquanto."
+        },
+        {
+          "who": "p7",
+          "text": "Anotado."
+        },
+        {
+          "who": "p6",
+          "text": "Então a gente se vê daqui a dez dias."
+        }
+      ]
+    },
+    {
+      "key": "b2",
+      "project": "B",
+      "n": 2,
+      "day": 10,
+      "title": "Equipamentos e modo offline",
+      "lang": "pt",
+      "overview": "A equipe revisa a compra dos equipamentos e o escopo do piloto. Surge a ideia de um modo sem internet. O piloto é reduzido.",
+      "keyPoints": [
+        "A entrega dos tablets completos ainda não aconteceu",
+        "O piloto passa a ter menos lojas",
+        "Proposta de um modo sem internet no aplicativo",
+        "O seguro dos equipamentos segue sem resposta"
+      ],
+      "decisions": ["Piloto reduzido para uma loja, a do Centro"],
+      "actions": [
+        {
+          "task": "Comprar 18 tablets",
+          "owner": "p7",
+          "due": "dezembro",
+          "done": false
+        },
+        {
+          "task": "Treinar os motoboys",
+          "owner": "p6",
+          "due": "antes do piloto",
+          "done": false
+        },
+        {
+          "task": "Cobrar a seguradora sobre o seguro dos tablets",
+          "owner": "p8",
+          "due": "esta semana",
+          "done": false
+        }
+      ],
+      "openQuestions": ["Quem paga o seguro dos tablets?"],
+      "say": [
+        {
+          "who": "p7",
+          "text": "Pessoal, tenho um problema. Os 18 tablets chegaram sem o suporte de moto, e o fornecedor só entrega os suportes em 9 de dezembro."
+        },
+        {
+          "who": "p6",
+          "text": "Sem suporte não dá para usar na moto. Isso atrasa tudo?"
+        },
+        {
+          "who": "p7",
+          "text": "Atrasa o piloto em três lojas. Eu proponho começar só com a loja do Centro."
+        },
+        {
+          "who": "p8",
+          "text": "Concordo. Uma loja só também reduz o risco."
+        },
+        {
+          "who": "p6",
+          "text": "Então piloto só no Centro por enquanto."
+        },
+        {
+          "who": "p7",
+          "text": "Outra coisa. Eu quero que o aplicativo funcione offline. Sem esse modo eu não aprovo a entrada nas lojas."
+        },
+        {
+          "who": "p6",
+          "text": "Por que offline? Qual é o problema?"
+        },
+        {
+          "who": "p7",
+          "text": "Eu explico melhor na próxima, preciso dos números primeiro."
+        },
+        {
+          "who": "p8",
+          "text": "E o seguro? Eu liguei para a seguradora e ainda não tenho resposta."
+        },
+        {
+          "who": "p6",
+          "text": "Heitor, cobra de novo, por favor."
+        },
+        {
+          "who": "p8",
+          "text": "Vou cobrar essa semana."
+        },
+        {
+          "who": "p7",
+          "text": "O treinamento dos motoboys eu deixo com o Rogério, certo?"
+        },
+        {
+          "who": "p6",
+          "text": "Isso, eu falo com o líder dos motoboys."
+        },
+        {
+          "who": "p8",
+          "text": "Posso ver o contrato com o fornecedor? Quero conferir as multas."
+        },
+        {
+          "who": "p7",
+          "text": "Mando hoje por e-mail."
+        },
+        {
+          "who": "p6",
+          "text": "Fechado. A gente se encontra daqui a dez dias."
+        }
+      ]
+    },
+    {
+      "key": "b3",
+      "project": "B",
+      "n": 3,
+      "day": 20,
+      "title": "Orçamento e conectividade",
+      "lang": "pt",
+      "overview": "O grupo discute o motivo do modo sem internet e o orçamento. Uma parte do orçamento está parada. O piloto é ampliado.",
+      "keyPoints": [
+        "O modo sem internet ganha apoio com dados",
+        "Parte do orçamento aguarda uma etapa externa",
+        "O piloto é ampliado para mais uma loja",
+        "O seguro dos tablets continua sem solução"
+      ],
+      "decisions": [
+        "Piloto em duas lojas: Centro e Vila Nova",
+        "Modo offline entra como requisito do piloto"
+      ],
+      "actions": [
+        {
+          "task": "Pedir ao fornecedor uma data para o modo offline",
+          "owner": "p7",
+          "due": "hoje",
+          "done": false
+        },
+        {
+          "task": "Cobrar a seguradora sobre o seguro dos tablets",
+          "owner": "p8",
+          "due": "esta semana",
+          "done": false
+        },
+        {
+          "task": "Treinar os motoboys",
+          "owner": "p6",
+          "due": "antes do piloto",
+          "done": false
+        }
+      ],
+      "openQuestions": [
+        "Quem faz o laudo dos tablets?",
+        "Quem paga o seguro dos tablets?"
+      ],
+      "say": [
+        {
+          "who": "p7",
+          "text": "Trouxe os números do offline. Em 22 por cento das entregas do bairro da Serra o celular fica sem sinal, e o motoboy perde a rota."
+        },
+        {
+          "who": "p6",
+          "text": "Isso é muita coisa. Então o offline vira requisito."
+        },
+        {
+          "who": "p7",
+          "text": "Sim, e é por isso que eu insisti nesse ponto. Vou pedir ao fornecedor uma data."
+        },
+        {
+          "who": "p8",
+          "text": "Tenho uma notícia ruim. O orçamento de equipamentos está congelado até a auditoria de 15 de janeiro."
+        },
+        {
+          "who": "p6",
+          "text": "Então não dá para comprar nada novo antes disso."
+        },
+        {
+          "who": "p8",
+          "text": "Só o que já foi pedido. Os 18 tablets já estavam pagos."
+        },
+        {
+          "who": "p7",
+          "text": "Com os tablets pagos, eu consigo montar duas lojas. Centro e Vila Nova."
+        },
+        {
+          "who": "p6",
+          "text": "Então o piloto vai para duas lojas."
+        },
+        {
+          "who": "p8",
+          "text": "E o seguro. A seguradora quer um laudo de cada tablet, e o valor segurado seria 1.900 reais por tablet."
+        },
+        {
+          "who": "p6",
+          "text": "Quem faz o laudo?"
+        },
+        {
+          "who": "p8",
+          "text": "Ninguém sabe ainda. O fornecedor diz que não faz."
+        },
+        {
+          "who": "p6",
+          "text": "Então continua em aberto."
+        },
+        {
+          "who": "p7",
+          "text": "Eu preciso também de uma data para o modo offline. Sem isso o piloto não vale."
+        },
+        {
+          "who": "p6",
+          "text": "Cobra o fornecedor, Cássia."
+        },
+        {
+          "who": "p7",
+          "text": "Cobro hoje."
+        },
+        {
+          "who": "p8",
+          "text": "Eu sigo com a seguradora."
+        }
+      ]
+    },
+    {
+      "key": "b4",
+      "project": "B",
+      "n": 4,
+      "day": 35,
+      "title": "Revisão do piloto e troca de fornecedor",
+      "lang": "pt",
+      "overview": "A equipe revisa o calendário e o contrato. O projeto muda de fornecedor, de patrocinador e de data. Um ponto sobre o seguro continua aberto.",
+      "keyPoints": [
+        "Nova data para o início do piloto",
+        "Mudança no patrocinador do projeto",
+        "Mudança de fornecedor e de custo mensal",
+        "O treinamento dos motoboys depende de terceiros",
+        "O seguro segue sem decisão"
+      ],
+      "decisions": [
+        "Fornecedor passa a ser a Trilhar",
+        "Início do piloto em 21 de março"
+      ],
+      "actions": [
+        {
+          "task": "Assinar o contrato com a Trilhar",
+          "owner": "p8",
+          "due": "semana que vem",
+          "done": false
+        },
+        {
+          "task": "Enviar o aviso formal aos motoboys",
+          "owner": "p6",
+          "due": "amanhã",
+          "done": false
+        },
+        {
+          "task": "Cobrar a seguradora sobre o seguro dos tablets",
+          "owner": "p8",
+          "due": "esta semana",
+          "done": false
+        }
+      ],
+      "openQuestions": ["Quem faz o laudo dos tablets?"],
+      "say": [
+        {
+          "who": "p6",
+          "text": "Pessoal, mudança grande. A RotaViva só entrega o modo offline em junho, então a gente vai para a Trilhar."
+        },
+        {
+          "who": "p7",
+          "text": "A Trilhar já tem offline pronto. Eu testei uma semana, e funcionou bem na Serra."
+        },
+        {
+          "who": "p8",
+          "text": "O custo é 6.800 reais por mês, bem mais caro que os 4.200 da RotaViva."
+        },
+        {
+          "who": "p6",
+          "text": "Aceito o custo, porque offline é requisito. Outra mudança: o Heitor assume como patrocinador do projeto, e eu fico com as operações novas."
+        },
+        {
+          "who": "p8",
+          "text": "Combinado, eu assumo."
+        },
+        {
+          "who": "p7",
+          "text": "E a data do piloto? Com a troca eu só consigo 21 de março."
+        },
+        {
+          "who": "p6",
+          "text": "Tudo bem. Mas ainda tem o treinamento dos motoboys."
+        },
+        {
+          "who": "p6",
+          "text": "O sindicato pediu um aviso formal com 30 dias de antecedência para mudar o sistema de rotas. Então o treinamento só pode começar depois."
+        },
+        {
+          "who": "p7",
+          "text": "Então o aviso precisa sair já."
+        },
+        {
+          "who": "p6",
+          "text": "Eu mando o aviso amanhã."
+        },
+        {
+          "who": "p8",
+          "text": "Sobre o seguro, ainda nada. A seguradora aceita o laudo de qualquer perito, mas ninguém contratou um."
+        },
+        {
+          "who": "p6",
+          "text": "Então continua aberto."
+        },
+        {
+          "who": "p7",
+          "text": "Eu também preciso de um contrato novo com a Trilhar."
+        },
+        {
+          "who": "p8",
+          "text": "Eu assino na semana que vem."
+        },
+        {
+          "who": "p7",
+          "text": "Combinado."
+        }
+      ]
+    },
+    {
+      "key": "c1",
+      "project": "C",
+      "n": 1,
+      "day": 0,
+      "title": "Warehouse migration kickoff",
+      "lang": "en",
+      "overview": "The team plans to move analytics from the old warehouse to a cloud one. They fix a cutover date, an owner and a log policy.",
+      "keyPoints": [
+        "Move from Datamere to Pellucid planned",
+        "Cutover target in mid February",
+        "Raw logs kept for a short period",
+        "Leopold leads the migration",
+        "Basic support tier chosen"
+      ],
+      "decisions": ["Cutover on 15 February", "Keep raw logs for 90 days"],
+      "actions": [
+        {
+          "task": "Count the dashboards that use custom functions",
+          "owner": "p5",
+          "due": "this week",
+          "done": false
+        },
+        {
+          "task": "Draft the data map",
+          "owner": "p3",
+          "due": "next week",
+          "done": false
+        }
+      ],
+      "openQuestions": ["Is one cloud region enough?"],
+      "say": [
+        {
+          "who": "p4",
+          "text": "Welcome. We move our analytics from Datamere to Pellucid."
+        },
+        {
+          "who": "p5",
+          "text": "Leopold, you own the contract, right?"
+        },
+        {
+          "who": "p4",
+          "text": "Yes, I own the contract and I lead the migration."
+        },
+        {
+          "who": "p5",
+          "text": "What is the target date for the cutover?"
+        },
+        {
+          "who": "p4",
+          "text": "15 February. That is before the finance quarter close."
+        },
+        {
+          "who": "p3",
+          "text": "I need to know where the data lives. Is it all in one region?"
+        },
+        {
+          "who": "p4",
+          "text": "For now, yes. Pellucid has a Dublin region available today."
+        },
+        {
+          "who": "p3",
+          "text": "I will check the rules. What about the logs?"
+        },
+        {
+          "who": "p4",
+          "text": "We keep raw logs for 90 days. After that they are deleted."
+        },
+        {
+          "who": "p5",
+          "text": "Ninety days is short for the finance team, but fine for a start."
+        },
+        {
+          "who": "p4",
+          "text": "Support tier: we take the basic tier. It costs 18k per month in total with storage."
+        },
+        {
+          "who": "p3",
+          "text": "Basic support has no phone line. Is that a problem?"
+        },
+        {
+          "who": "p4",
+          "text": "Not for now. We can upgrade later."
+        },
+        {
+          "who": "p5",
+          "text": "I will count the dashboards that use custom SQL functions. Those are the hard part."
+        },
+        {
+          "who": "p4",
+          "text": "Good. Priyanka, please draft a data map."
+        },
+        {
+          "who": "p3",
+          "text": "Yes, by next week."
+        }
+      ]
+    },
+    {
+      "key": "c2",
+      "project": "C",
+      "n": 2,
+      "day": 9,
+      "title": "Dashboards and security ideas",
+      "lang": "en",
+      "overview": "Sunniva reports on the dashboard work. The team talks about log retention and an encryption idea. The cutover plan stays under review.",
+      "keyPoints": [
+        "Dashboard rewrite is only partly done",
+        "Log retention is extended",
+        "A new encryption idea is raised",
+        "Cutover plan is under review"
+      ],
+      "decisions": ["Keep raw logs for 180 days"],
+      "actions": [
+        {
+          "task": "Rewrite the dashboards that use custom functions",
+          "owner": "p5",
+          "due": "end of month",
+          "done": false
+        },
+        {
+          "task": "Draft the data map",
+          "owner": "p3",
+          "due": "last week",
+          "done": true
+        },
+        {
+          "task": "Test the nightly load time",
+          "owner": "p4",
+          "due": "this week",
+          "done": false
+        }
+      ],
+      "openQuestions": ["Do we need encryption for sensitive tables?"],
+      "say": [
+        {
+          "who": "p5",
+          "text": "I counted. Fourteen finance dashboards use a custom SQL function. I rewrote only 9 of 23 queries behind them so far."
+        },
+        {
+          "who": "p4",
+          "text": "That is slow. Can the function be copied into Pellucid?"
+        },
+        {
+          "who": "p5",
+          "text": "Not as is. The syntax is different, so every query needs a manual change."
+        },
+        {
+          "who": "p3",
+          "text": "Finance told me they want raw logs for longer, for audits."
+        },
+        {
+          "who": "p4",
+          "text": "Then we extend retention. I propose 180 days."
+        },
+        {
+          "who": "p5",
+          "text": "That works for audits."
+        },
+        {
+          "who": "p3",
+          "text": "Another point. I want column-level encryption for sensitive tables. We should plan it now."
+        },
+        {
+          "who": "p4",
+          "text": "Why now? It adds work to the cutover."
+        },
+        {
+          "who": "p3",
+          "text": "I will bring details next time. I just want it on the list."
+        },
+        {
+          "who": "p4",
+          "text": "Okay, it goes on the list as a proposal."
+        },
+        {
+          "who": "p4",
+          "text": "Is the data map ready?"
+        },
+        {
+          "who": "p3",
+          "text": "Yes, I sent it yesterday."
+        },
+        {
+          "who": "p4",
+          "text": "Thanks. I will test the nightly load time this week."
+        },
+        {
+          "who": "p5",
+          "text": "Should we move the cutover date?"
+        },
+        {
+          "who": "p4",
+          "text": "Not yet. We wait for the load test."
+        },
+        {
+          "who": "p3",
+          "text": "Fine."
+        }
+      ]
+    },
+    {
+      "key": "c3",
+      "project": "C",
+      "n": 3,
+      "day": 21,
+      "title": "Security review and region",
+      "lang": "en",
+      "overview": "Priyanka reports on the security review. A region rule is discussed, and the encryption proposal is approved. The cutover date moves.",
+      "keyPoints": [
+        "Security review gives new rules",
+        "Encryption proposal is approved",
+        "Region choice is reviewed",
+        "Cutover date is moved",
+        "Old license is raised"
+      ],
+      "decisions": [
+        "Column-level encryption is required for sensitive tables",
+        "Move the cutover date to 9 April"
+      ],
+      "actions": [
+        {
+          "task": "Rewrite the dashboards that use custom functions",
+          "owner": "p5",
+          "due": "end of month",
+          "done": false
+        },
+        {
+          "task": "Enable column-level encryption",
+          "owner": "p3",
+          "due": "March",
+          "done": false
+        },
+        {
+          "task": "Ask Pellucid about the Frankfurt region",
+          "owner": "p4",
+          "due": "this week",
+          "done": false
+        }
+      ],
+      "openQuestions": ["Can Datamere give a short extension?"],
+      "say": [
+        {
+          "who": "p3",
+          "text": "The security review is done. First, the encryption. The October audit found three tables with national ids in plain text. That is why I want column-level encryption."
+        },
+        {
+          "who": "p4",
+          "text": "Priyanka, three tables is serious. Approved, we do it."
+        },
+        {
+          "who": "p5",
+          "text": "Does this slow the dashboards?"
+        },
+        {
+          "who": "p3",
+          "text": "A little, but the finance queries only read masked values."
+        },
+        {
+          "who": "p3",
+          "text": "Second, the region. Our rules say data must stay in the Frankfurt region."
+        },
+        {
+          "who": "p4",
+          "text": "I told you Dublin earlier. I need to ask Pellucid."
+        },
+        {
+          "who": "p3",
+          "text": "They offer Frankfurt only from 12 March, so we cannot cut over before that."
+        },
+        {
+          "who": "p4",
+          "text": "Then 15 February is dead. I propose 9 April."
+        },
+        {
+          "who": "p5",
+          "text": "April is better for me too. The dashboard rewrite goes slowly."
+        },
+        {
+          "who": "p4",
+          "text": "Okay, the new date is 9 April."
+        },
+        {
+          "who": "p5",
+          "text": "I will keep rewriting. Thirteen of 23 are done now."
+        },
+        {
+          "who": "p4",
+          "text": "We should also think about the Datamere license. It ends soon."
+        },
+        {
+          "who": "p3",
+          "text": "What is the end date?"
+        },
+        {
+          "who": "p4",
+          "text": "It renews on 1 April, and the notice period is 60 days."
+        },
+        {
+          "who": "p5",
+          "text": "Then we are already past the notice date for an exit."
+        },
+        {
+          "who": "p4",
+          "text": "Yes. I will ask Datamere for a short extension, but I have no price yet."
+        },
+        {
+          "who": "p3",
+          "text": "Keep me posted."
+        }
+      ]
+    },
+    {
+      "key": "c4",
+      "project": "C",
+      "n": 4,
+      "day": 30,
+      "title": "Load time and plan review",
+      "lang": "en",
+      "overview": "The group reviews load performance and the plan. The migration changes owner and support tier. The old license question is still open.",
+      "keyPoints": [
+        "Nightly load is too slow",
+        "Retention policy is changed again",
+        "Migration lead changes",
+        "Support tier is upgraded",
+        "Old license is not settled"
+      ],
+      "decisions": [
+        "Keep raw logs for 120 days with an archive after that",
+        "Upgrade to the premium support tier"
+      ],
+      "actions": [
+        {
+          "task": "Speed up the nightly load",
+          "owner": "p4",
+          "due": "end of month",
+          "done": false
+        },
+        {
+          "task": "Rewrite the remaining dashboards",
+          "owner": "p5",
+          "due": "early April",
+          "done": false
+        },
+        {
+          "task": "Get a price for the Datamere extension",
+          "owner": "p4",
+          "due": "20 March",
+          "done": false
+        }
+      ],
+      "openQuestions": ["What does the Datamere extension cost?"],
+      "say": [
+        {
+          "who": "p4",
+          "text": "The nightly load takes 7 hours, and our limit is 4. So the finance dashboards cannot go live on the new warehouse yet."
+        },
+        {
+          "who": "p5",
+          "text": "Which part is slow?"
+        },
+        {
+          "who": "p4",
+          "text": "The join on the orders table. I will try partitioning."
+        },
+        {
+          "who": "p3",
+          "text": "Costs went up too. Encryption and the extra storage push us above plan."
+        },
+        {
+          "who": "p4",
+          "text": "Retention at 180 days is expensive. I propose 120 days, and an archive after that."
+        },
+        {
+          "who": "p5",
+          "text": "An archive is fine for audits."
+        },
+        {
+          "who": "p3",
+          "text": "Agreed."
+        },
+        {
+          "who": "p4",
+          "text": "Also, the basic support tier is not enough. We had two incidents last week and no phone line."
+        },
+        {
+          "who": "p3",
+          "text": "So we upgrade to premium. The monthly cost goes from 18k to 26k."
+        },
+        {
+          "who": "p4",
+          "text": "Right. And I will step back from migration lead. I move to the platform team, and Sunniva takes over."
+        },
+        {
+          "who": "p5",
+          "text": "Okay, I accept. I need Priyanka's help for the dashboards."
+        },
+        {
+          "who": "p3",
+          "text": "Sure."
+        },
+        {
+          "who": "p5",
+          "text": "Seventeen of 23 are done."
+        },
+        {
+          "who": "p4",
+          "text": "Last point: the Datamere license. It renews on 1 April."
+        },
+        {
+          "who": "p3",
+          "text": "Did you get a price for the extension?"
+        },
+        {
+          "who": "p4",
+          "text": "No. Datamere will not give a price before 20 March."
+        },
+        {
+          "who": "p5",
+          "text": "So we cannot plan the budget."
+        },
+        {
+          "who": "p4",
+          "text": "Correct. It stays open."
+        }
+      ]
+    }
+  ],
+  "questions": [
+    {
+      "id": "hd01",
+      "scope": {
+        "kind": "folder",
+        "project": "A"
+      },
+      "control": false,
+      "lang": "en",
+      "turns": [
+        {
+          "kind": "list",
+          "text": "What is still open on the loyalty app relaunch?",
+          "groups": [
+            ["push certificate"],
+            ["android 11 crash"],
+            ["privacy label"],
+            ["points last"],
+            ["migrate receipts"]
+          ],
+          "mustNot": [
+            "test devices",
+            "crash dashboard",
+            "release notes",
+            "refund policy"
+          ],
+          "meetings": ["a2", "a3", "a4", "a5"],
+          "minCov": 0.6
+        },
+        {
+          "kind": "why",
+          "text": "Why are these still sitting open?",
+          "groups": [
+            ["locked until 20 november", "brightline portal"],
+            ["signed letter"],
+            ["two android 11 phones"],
+            ["invoice"]
+          ],
+          "mustNot": [],
+          "meetings": ["a2", "a3", "a4", "a5"],
+          "minCov": 0.5
+        }
+      ]
+    },
+    {
+      "id": "hd02",
+      "scope": {
+        "kind": "all"
+      },
+      "control": false,
+      "lang": "en",
+      "turns": [
+        {
+          "kind": "list",
+          "text": "Across everything we recorded, which loyalty app tasks are not finished?",
+          "groups": [
+            ["push certificate"],
+            ["android 11 crash"],
+            ["privacy label"],
+            ["points last"],
+            ["migrate receipts"]
+          ],
+          "mustNot": [
+            "test devices",
+            "crash dashboard",
+            "release notes",
+            "refund policy"
+          ],
+          "meetings": ["a2", "a3", "a4", "a5"],
+          "minCov": 0.6
+        }
+      ]
+    },
+    {
+      "id": "hd03",
+      "scope": {
+        "kind": "folder",
+        "project": "A"
+      },
+      "control": false,
+      "lang": "en",
+      "turns": [
+        {
+          "kind": "fact",
+          "text": "Who owns the Tarnbridge migration?",
+          "groups": [["tobias"]],
+          "mustNot": [],
+          "meetings": ["a3"],
+          "minCov": 1
+        },
+        {
+          "kind": "blocker",
+          "text": "And what is blocking the app store submission?",
+          "groups": [["twelve days"], ["2.8 percent"], ["sandbox keys"]],
+          "mustNot": [],
+          "meetings": ["a2", "a3", "a4"],
+          "minCov": 0.67
+        }
+      ]
+    },
+    {
+      "id": "hd04",
+      "scope": {
+        "kind": "folder",
+        "project": "A"
+      },
+      "control": false,
+      "lang": "en",
+      "turns": [
+        {
+          "kind": "blocker",
+          "text": "What is stopping the push certificate renewal?",
+          "groups": [
+            ["locked until 20 november", "brightline portal"],
+            ["signed letter"]
+          ],
+          "mustNot": [],
+          "meetings": ["a3", "a4"],
+          "minCov": 0.5
+        }
+      ]
+    },
+    {
+      "id": "hd05",
+      "scope": {
+        "kind": "folder",
+        "project": "A"
+      },
+      "control": false,
+      "lang": "en",
+      "turns": [
+        {
+          "kind": "evolve",
+          "text": "How did the payment provider decision change over the weeks?",
+          "groups": [["keep quillpay"], ["move to tarnbridge"], ["parallel"]],
+          "mustNot": [],
+          "meetings": ["a1", "a3", "a5"],
+          "minCov": 0.67
+        }
+      ]
+    },
+    {
+      "id": "hd06",
+      "scope": {
+        "kind": "folder",
+        "project": "A"
+      },
+      "control": false,
+      "lang": "en",
+      "turns": [
+        {
+          "kind": "fact",
+          "text": "What happened to guest checkout in the end?",
+          "groups": [["out of the first release"]],
+          "mustNot": [],
+          "meetings": ["a4"],
+          "minCov": 1
+        },
+        {
+          "kind": "pushed",
+          "text": "Who pushed to drop it, and what was the reason?",
+          "groups": [["sunniva"], ["31 percent"]],
+          "mustNot": [],
+          "meetings": ["a4"],
+          "minCov": 0.5
+        }
+      ]
+    },
+    {
+      "id": "hd07",
+      "scope": {
+        "kind": "folder",
+        "project": "A"
+      },
+      "control": false,
+      "lang": "en",
+      "turns": [
+        {
+          "kind": "changed",
+          "text": "What is different between the first and the last meeting of the loyalty project?",
+          "groups": [
+            ["2 may", "14 march"],
+            ["165k", "120k"],
+            ["priyanka", "qa lead"],
+            ["tarnbridge", "quillpay"]
+          ],
+          "mustNot": [],
+          "meetings": ["a1", "a5"],
+          "minCov": 0.5
+        }
+      ]
+    },
+    {
+      "id": "hd08",
+      "scope": {
+        "kind": "folder",
+        "project": "A"
+      },
+      "control": false,
+      "lang": "en",
+      "turns": [
+        {
+          "kind": "unresolved",
+          "text": "Is there anything about the points expiry that nobody can answer yet?",
+          "groups": [["18 or 24", "24 months"], ["410k"]],
+          "mustNot": [],
+          "meetings": ["a5"],
+          "minCov": 0.5
+        }
+      ]
+    },
+    {
+      "id": "hd09",
+      "scope": {
+        "kind": "meeting",
+        "key": "a5"
+      },
+      "control": false,
+      "lang": "en",
+      "turns": [
+        {
+          "kind": "list",
+          "text": "From the last loyalty meeting, what is left to do?",
+          "groups": [
+            ["push certificate"],
+            ["points expiry"],
+            ["invoice"],
+            ["migrate receipts"]
+          ],
+          "mustNot": ["refund policy"],
+          "meetings": ["a5"],
+          "minCov": 0.6
+        }
+      ]
+    },
+    {
+      "id": "hd10",
+      "scope": {
+        "kind": "folder",
+        "project": "B"
+      },
+      "control": false,
+      "lang": "pt",
+      "turns": [
+        {
+          "kind": "fact",
+          "text": "Quantos tablets o projeto precisa para o piloto?",
+          "groups": [["dezoito"]],
+          "mustNot": [],
+          "meetings": ["b1"],
+          "minCov": 1
+        },
+        {
+          "kind": "blocker",
+          "text": "O que atrasou o piloto?",
+          "groups": [["9 de dezembro"], ["15 de janeiro"], ["30 dias"]],
+          "mustNot": [],
+          "meetings": ["b2", "b3", "b4"],
+          "minCov": 0.67
+        }
+      ]
+    },
+    {
+      "id": "hd11",
+      "scope": {
+        "kind": "folder",
+        "project": "B"
+      },
+      "control": false,
+      "lang": "pt",
+      "turns": [
+        {
+          "kind": "evolve",
+          "text": "Como a decisão sobre o número de lojas do piloto mudou?",
+          "groups": [
+            ["tres lojas"],
+            ["so no centro", "uma loja"],
+            ["duas lojas"]
+          ],
+          "mustNot": [],
+          "meetings": ["b1", "b2", "b3"],
+          "minCov": 0.67
+        }
+      ]
+    },
+    {
+      "id": "hd12",
+      "scope": {
+        "kind": "folder",
+        "project": "B"
+      },
+      "control": false,
+      "lang": "pt",
+      "turns": [
+        {
+          "kind": "pushed",
+          "text": "Quem insistiu no modo offline e por quê?",
+          "groups": [["cassia"], ["22 por cento"]],
+          "mustNot": [],
+          "meetings": ["b3"],
+          "minCov": 0.5
+        }
+      ]
+    },
+    {
+      "id": "hd13",
+      "scope": {
+        "kind": "folder",
+        "project": "B"
+      },
+      "control": false,
+      "lang": "pt",
+      "turns": [
+        {
+          "kind": "changed",
+          "text": "O que mudou entre a primeira e a última reunião desse projeto?",
+          "groups": [
+            ["21 de marco", "3 de fevereiro"],
+            ["trilhar", "rotaviva"],
+            ["6.800", "4.200"],
+            ["heitor", "rogerio"]
+          ],
+          "mustNot": [],
+          "meetings": ["b1", "b4"],
+          "minCov": 0.5
+        }
+      ]
+    },
+    {
+      "id": "hd14",
+      "scope": {
+        "kind": "folder",
+        "project": "B"
+      },
+      "control": false,
+      "lang": "pt",
+      "turns": [
+        {
+          "kind": "unresolved",
+          "text": "Ainda tem algum ponto sem solução sobre o seguro?",
+          "groups": [["laudo"], ["1.900"]],
+          "mustNot": [],
+          "meetings": ["b3", "b4"],
+          "minCov": 0.5
+        }
+      ]
+    },
+    {
+      "id": "hd15",
+      "scope": {
+        "kind": "folder",
+        "project": "C"
+      },
+      "control": false,
+      "lang": "en",
+      "turns": [
+        {
+          "kind": "fact",
+          "text": "Who owns the Pellucid contract?",
+          "groups": [["leopold"]],
+          "mustNot": [],
+          "meetings": ["c1"],
+          "minCov": 1
+        },
+        {
+          "kind": "blocker",
+          "text": "What held back the finance dashboards from going live?",
+          "groups": [["9 of 23"], ["12 march"], ["7 hours"]],
+          "mustNot": [],
+          "meetings": ["c2", "c3", "c4"],
+          "minCov": 0.67
+        }
+      ]
+    },
+    {
+      "id": "hd16",
+      "scope": {
+        "kind": "folder",
+        "project": "C"
+      },
+      "control": false,
+      "lang": "en",
+      "turns": [
+        {
+          "kind": "evolve",
+          "text": "How did the raw log retention rule move over time?",
+          "groups": [["90 days"], ["180 days"], ["120 days"]],
+          "mustNot": [],
+          "meetings": ["c1", "c2", "c4"],
+          "minCov": 0.67
+        }
+      ]
+    },
+    {
+      "id": "hd17",
+      "scope": {
+        "kind": "folder",
+        "project": "C"
+      },
+      "control": false,
+      "lang": "en",
+      "turns": [
+        {
+          "kind": "pushed",
+          "text": "Who wanted column-level encryption, and what drove it?",
+          "groups": [["priyanka"], ["national ids"]],
+          "mustNot": [],
+          "meetings": ["c3"],
+          "minCov": 0.5
+        }
+      ]
+    },
+    {
+      "id": "hd18",
+      "scope": {
+        "kind": "folder",
+        "project": "C"
+      },
+      "control": false,
+      "lang": "en",
+      "turns": [
+        {
+          "kind": "changed",
+          "text": "How does the plan at the end compare to the plan at the start of the warehouse project?",
+          "groups": [
+            ["9 april", "15 february"],
+            ["26k", "18k"],
+            ["sunniva", "leopold"],
+            ["premium", "basic"]
+          ],
+          "mustNot": [],
+          "meetings": ["c1", "c4"],
+          "minCov": 0.5
+        }
+      ]
+    },
+    {
+      "id": "hd19",
+      "scope": {
+        "kind": "folder",
+        "project": "C"
+      },
+      "control": false,
+      "lang": "en",
+      "turns": [
+        {
+          "kind": "unresolved",
+          "text": "Is the old warehouse license settled?",
+          "groups": [["20 march"], ["1 april"]],
+          "mustNot": [],
+          "meetings": ["c4"],
+          "minCov": 0.5
+        }
+      ]
+    },
+    {
+      "id": "hd20",
+      "scope": {
+        "kind": "all"
+      },
+      "control": false,
+      "lang": "en",
+      "turns": [
+        {
+          "kind": "pushed",
+          "text": "Who argued for removing guest checkout and what evidence did they give?",
+          "groups": [["sunniva"], ["31 percent"]],
+          "mustNot": [],
+          "meetings": ["a4"],
+          "minCov": 0.5
+        }
+      ]
+    },
+    {
+      "id": "hd21",
+      "scope": {
+        "kind": "all"
+      },
+      "control": false,
+      "lang": "en",
+      "turns": [
+        {
+          "kind": "evolve",
+          "text": "Walk me through how the payment provider choice changed for the loyalty app.",
+          "groups": [["keep quillpay"], ["move to tarnbridge"], ["parallel"]],
+          "mustNot": [],
+          "meetings": ["a1", "a3", "a5"],
+          "minCov": 0.67
+        }
+      ]
+    },
+    {
+      "id": "hd22",
+      "scope": {
+        "kind": "all"
+      },
+      "control": false,
+      "lang": "en",
+      "turns": [
+        {
+          "kind": "blocker",
+          "text": "Why were the finance dashboards not moved to the new cloud warehouse sooner?",
+          "groups": [["9 of 23"], ["12 march"], ["7 hours"]],
+          "mustNot": [],
+          "meetings": ["c2", "c3", "c4"],
+          "minCov": 0.67
+        }
+      ]
+    },
+    {
+      "id": "hd23",
+      "scope": {
+        "kind": "all"
+      },
+      "control": false,
+      "lang": "pt",
+      "turns": [
+        {
+          "kind": "blocker",
+          "text": "O que segurou a entrada do sistema de rotas das entregas nas lojas?",
+          "groups": [["9 de dezembro"], ["15 de janeiro"], ["30 dias"]],
+          "mustNot": [],
+          "meetings": ["b2", "b3", "b4"],
+          "minCov": 0.67
+        }
+      ]
+    },
+    {
+      "id": "hd24",
+      "scope": {
+        "kind": "all"
+      },
+      "control": false,
+      "lang": "pt",
+      "turns": [
+        {
+          "kind": "evolve",
+          "text": "Quantas lojas entraram no piloto das entregas, e como isso mudou?",
+          "groups": [
+            ["tres lojas"],
+            ["so no centro", "uma loja"],
+            ["duas lojas"]
+          ],
+          "mustNot": [],
+          "meetings": ["b1", "b2", "b3"],
+          "minCov": 0.67
+        }
+      ]
+    },
+    {
+      "id": "hd25",
+      "scope": {
+        "kind": "all"
+      },
+      "control": false,
+      "lang": "pt",
+      "turns": [
+        {
+          "kind": "unresolved",
+          "text": "O seguro dos tablets de entrega já foi resolvido?",
+          "groups": [["laudo"], ["1.900"]],
+          "mustNot": [],
+          "meetings": ["b3", "b4"],
+          "minCov": 0.5
+        }
+      ]
+    },
+    {
+      "id": "hd26",
+      "scope": {
+        "kind": "folder",
+        "project": "A"
+      },
+      "control": false,
+      "lang": "en",
+      "turns": [
+        {
+          "kind": "list",
+          "text": "Give me the open tasks for the loyalty relaunch.",
+          "groups": [
+            ["push certificate"],
+            ["android 11 crash"],
+            ["privacy label"],
+            ["points last"],
+            ["migrate receipts"]
+          ],
+          "mustNot": [
+            "test devices",
+            "crash dashboard",
+            "release notes",
+            "refund policy"
+          ],
+          "meetings": ["a2", "a3", "a4", "a5"],
+          "minCov": 0.6
+        }
+      ]
+    },
+    {
+      "id": "hd27",
+      "scope": {
+        "kind": "meeting",
+        "key": "a1"
+      },
+      "control": true,
+      "lang": "en",
+      "turns": [
+        {
+          "kind": "fact",
+          "text": "How much money did the team plan for the relaunch in the first meeting?",
+          "groups": [["120k"]],
+          "mustNot": [],
+          "meetings": ["a1"],
+          "minCov": 1
+        }
+      ]
+    },
+    {
+      "id": "hd28",
+      "scope": {
+        "kind": "meeting",
+        "key": "b1"
+      },
+      "control": true,
+      "lang": "pt",
+      "turns": [
+        {
+          "kind": "fact",
+          "text": "Qual era o custo mensal do sistema no começo?",
+          "groups": [["4.200"]],
+          "mustNot": [],
+          "meetings": ["b1"],
+          "minCov": 1
+        }
+      ]
+    },
+    {
+      "id": "hd29",
+      "scope": {
+        "kind": "meeting",
+        "key": "c3"
+      },
+      "control": true,
+      "lang": "en",
+      "turns": [
+        {
+          "kind": "fact",
+          "text": "In which region must the data stay?",
+          "groups": [["frankfurt"]],
+          "mustNot": [],
+          "meetings": ["c3"],
+          "minCov": 1
+        }
+      ]
+    },
+    {
+      "id": "hd30",
+      "scope": {
+        "kind": "meeting",
+        "key": "a1"
+      },
+      "control": true,
+      "lang": "en",
+      "turns": [
+        {
+          "kind": "fact",
+          "text": "Which payment provider did the team keep at the start?",
+          "groups": [["quillpay"]],
+          "mustNot": [],
+          "meetings": ["a1"],
+          "minCov": 1
+        }
+      ]
+    }
+  ]
+}
