@@ -256,12 +256,13 @@ DECISION:
 5. Write proposals never target the live meeting. Reason: its ids are not final. Segments are rewritten by the final pass (`specs/live-chat.md`, section 8).
 6. The router call is skipped in live mode when the question has no write verb. DECISION to save latency: live mode uses intent `lookup` directly. ASSUMPTION; the eval compares both.
 7. The chat model and the ASR model are different workers. The live chat already runs this way (`specs/live-chat.md`, section 6, memory numbers).
+8. Owner decision 2026-11-02: the live chat merges into Ask (P5) only after Ask answers at least as well as the live chat does today ("Merge after the Ask style fix"). Until then the live chat keeps its own code path. Cloud models are allowed in the live chat since #410 (`specs/live-chat.md:74`).
 
 ```mermaid
 flowchart TD
   IN(["Input: question in the live view, scope = this meeting, live=true"]) --> L0
-  L0["0 GATE [CODE]<br/>in: settings, model<br/>out: ok or typed error"]
-  L0 -->|"no model or no key"| LX1(["EXIT error block"])
+  L0["0 GATE [CODE]<br/>in: settings, model<br/>out: ok or typed error; cloud allowed since #410 (specs/live-chat.md:74)"]
+  L0 -->|"no model, no key or setting off"| LX1(["EXIT error block"])
   L0 -->|ok| L0B["0b PREFETCH [CODE]<br/>in: folder, compact history<br/>out: folder block F"]
   L0B --> L1["1 ROUTER skipped [CODE]<br/>intent = lookup"]
   L1 --> L3A["3a get_live_tail [CODE]<br/>in: live store (memory)<br/>out: lines L1..Lm"]
@@ -2022,7 +2023,7 @@ Sources for this section: https://docs.langchain.com/oss/javascript/langgraph/ag
 | D18 (was Q9) | Keep chats for now. Later one global retention knob on the Ask page. Threads cascade with their meeting or folder. Context window handling is specified in 2.8. | 2.8, 4.2 |
 | D19 | UI for P2 (2026-11-01, replaces D5 for P2): a main-nav Ask page with a scope picker (Everything, folder, meeting) and a thread list; a global `Control+Option+K` hotkey (a setting) that opens a floating bubble from anywhere, with the scope taken from the Meetings selection and a guard so that dictation starts only when K does not follow within about 150 ms; a folder Ask tab on the folder Overview; the Everything scope with search wider. The in-app Cmd+K palette is dropped. | 11.6, 9.1 (P2) |
 | D20 | Ask clarifies and synthesizes big scopes (2026-11-02): a code-only clarify block (person, folder, intent ambiguity; setting on by default; one for each question, never twice in a row) with chips and "Answer anyway"; map-reduce synthesis when a folder or Everything digest does not fit the window; labels carry through the notes, so the cite check is unchanged. | 11.8 |
-| D21 | Ask researches (2026-11-02, owner request, build comes after this spec): for a question that needs digging ("what are the open items", then "why are they open?"), a LangGraph.js graph repeats search, observe and reflect. Nodes: scope, plan, act, observe, reflect, synthesize, cite_check, not_found. Code owns the stop rules (`MAX_ITER` 4 local and 6 cloud, stalled after 2 rounds with nothing new, no repeat of a tool with the same arguments, the call cap 16, the deadline, `recursionLimit`). `cite_check` is the last node and no edge skips it. Step text streams with `streamMode: "custom"`. The checkpointer is `NodeSqliteSaver`. A simple fact finishes in round 1. Owner decisions 2026-11-02: default on; one model for all nodes; trail line under research answers; clarify stays end-turn; checkpoints of finished turns are deleted, failed ones kept; bars of 11.9.14 approved with research latency on E2B p50 at most 15 s and p95 at most 30 s. Spec and the digging eval baseline come first. | 11.9 |
+| D21 | Ask researches (2026-11-02, owner request, build comes after this spec): for a question that needs digging ("what are the open items", then "why are they open?"), a LangGraph.js graph repeats search, observe and reflect. Nodes: scope, plan, act, observe, reflect, synthesize, cite_check, not_found. Code owns the stop rules (`MAX_ITER` 4 local and 6 cloud, stalled after 2 rounds with nothing new, no repeat of a tool with the same arguments, the call cap 16, the deadline, `recursionLimit`). `cite_check` is the last node and no edge skips it. Step text streams with `streamMode: "custom"`. The checkpointer is `NodeSqliteSaver`. A simple fact finishes in round 1. Owner decisions 2026-11-02: default on; one model for all nodes; trail line under research answers; clarify stays end-turn; checkpoints of finished turns are deleted, failed ones kept; bars of 11.9.14 approved with research latency on E2B p50 at most 15 s and p95 at most 30 s. Spec and the digging eval baseline come first. Owner note 2026-11-02: the live chat merges into Ask (P5) only after Ask answers at least as well as the live chat does today (2.4 point 8). | 11.9, 2.4 |
 
 ### 12.2 Open questions
 
