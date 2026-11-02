@@ -52,8 +52,6 @@ export const WINDOW_MAX_CHARS = 1500;
 export const LIST_SOURCES_MAX = 30;
 /** Items in a list block, at most. */
 export const LIST_BLOCK_MAX = 50;
-/** A hit counts for the spread of a search at this rerank score or above. */
-const SPREAD_FLOOR = 0.5;
 /** Extra transcript chunks that one meeting keeps next to its best chunk. */
 const EXTRA_CHUNKS = 2;
 /** Candidates that go to the reranker when `ctx.rerank` is set. */
@@ -75,7 +73,6 @@ interface ToolOutput {
   blocks: ChatBlock[];
   degraded?: ToolResult["degraded"];
   topScore?: number | null;
-  spread?: number | null;
 }
 
 export interface ToolDef<A = unknown> {
@@ -715,20 +712,12 @@ const searchChunks: ToolDef<z.infer<typeof searchChunksArgs>> = {
     const scores = res.hits
       .map((h) => h.rerankScore)
       .filter((x): x is number => typeof x === "number");
-    // How many meetings hold a passage that the reranker finds relevant: a
-    // question about one fact has one, a story across meetings has several (11.9.17).
-    const strong = new Set(
-      res.hits
-        .filter((h) => (h.rerankScore ?? 0) >= SPREAD_FLOOR)
-        .map((h) => h.meetingId),
-    );
     return {
       rows: labels.length,
       labels,
       blocks: [],
       degraded: null,
       topScore: scores.length > 0 ? Math.max(...scores) : null,
-      spread: strong.size,
     };
   },
 };
@@ -1441,7 +1430,6 @@ export async function runTool(
     blocks: out.blocks,
     degraded: out.degraded ?? null,
     topScore: out.topScore ?? null,
-    spread: out.spread ?? null,
     ms: Math.round(performance.now() - t0),
   };
 }

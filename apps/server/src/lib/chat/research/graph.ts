@@ -659,11 +659,6 @@ export function buildResearchGraph(t: Turn, checkpoint: boolean) {
     if (s.path === "broad") return { go: "synthesize" };
     if (!t.loopDone(s.iteration)) return { go: "act" };
     if (t.blockKind()) return { go: "blocks" };
-    // The evidence spans several meetings: a story, not a fact (11.9.17).
-    if (t.spreadEscalation()) {
-      t.mode = "research";
-      return { mode: "research", maxIter, ...planResearch() };
-    }
     const floor = await t.floorStage();
     if (floor.kind === "exit") return leave(floor.exit, "reflect");
     g.jobs = [floor.job];
@@ -772,10 +767,8 @@ export function buildResearchGraph(t: Turn, checkpoint: boolean) {
       reflect: "reflect",
       not_found: "not_found",
     })
-    .addConditionalEdges("reflect", routeOrFan, {
+    .addConditionalEdges("reflect", route, {
       act: "act",
-      scout: "scout",
-      worker: "worker",
       blocks: "blocks",
       synthesize: "synthesize",
       cite_check: "cite_check",

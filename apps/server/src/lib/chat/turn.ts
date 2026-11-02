@@ -104,8 +104,6 @@ import {
 
 /** A runaway guard: no turn makes more LLM calls than this (spec 2.2). */
 export const HARD_CAP_CALLS = 16;
-/** A fast turn whose search spans this many meetings becomes a research turn (11.9.17). */
-export const SPREAD_MIN = 4;
 /** The thin-hit rule: fewer search rows than this adds the summary. */
 const THIN_ROWS = 3;
 /**
@@ -995,24 +993,6 @@ export class Turn {
       return "blocks";
     }
     return null;
-  }
-
-  /**
-   * After a fast turn found text with one search: does the evidence span
-   * several meetings (11.9.17)? Then the question is a story and not a fact.
-   * Code only, no model call. The step records the spread for the eval.
-   */
-  spreadEscalation(): boolean {
-    const started = Date.now();
-    const search = this.results.find((r) => r.tool === "search_chunks");
-    if (!search || search.spread == null) return false;
-    this.step("route", `spread:${search.spread}`, started, search.spread);
-    const min = this.input.spreadMin ?? SPREAD_MIN;
-    return (
-      this.input.settings.research &&
-      this.mode === "fast" &&
-      search.spread >= min
-    );
   }
 
   /** The start of the research path: no route call, the leads come from code (11.9.5). */

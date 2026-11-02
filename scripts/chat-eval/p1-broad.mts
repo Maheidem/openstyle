@@ -13,7 +13,7 @@
 
 import type { ChatMessage } from "@openstyle/validations";
 import { mean, normalize } from "./keys.mts";
-import { checkCites, spreadOpt } from "./p1-score.mts";
+import { checkCites } from "./p1-score.mts";
 import type { Corpus, Fact, Lang, Meeting, Scope } from "./types.mts";
 
 export type BroadKind = "overview" | "details" | "story" | "onboarding";
@@ -403,7 +403,6 @@ export async function runBroad(env: BroadEnv, q: BroadQ): Promise<BroadRow[]> {
         signal,
         now: corpus.todayMs,
         allowProposals: false,
-        ...spreadOpt(),
       });
       llm.finish("succeeded");
       const nf = res.blocks.find((b) => b.kind === "not_found");

@@ -73,7 +73,6 @@ import {
   nativeOutcome,
   scoreProdSlots,
   scoreToolArgs,
-  spreadOpt,
 } from "./p1-score.mts";
 import { runThread, summarize as summarizeThreads } from "./p1-threads.mts";
 import { gradesFor, loadChunks } from "./retrieval.mts";
@@ -780,8 +779,6 @@ interface E2eRow {
   native: string;
   /** The turn ran in research mode (code trigger or the model's dig_deeper call). */
   research?: boolean;
-  /** Meetings with a strong hit in the first search (11.9.17), else null. */
-  spread?: number | null;
   tool: string | null;
   toolOk: boolean;
   argsOk: boolean;
@@ -859,7 +856,6 @@ async function partE2e(env: Env, M: Record<string, number>): Promise<PartOut> {
         now: corpus.todayMs,
         allowProposals: true,
         ...(floor !== undefined ? { scoreFloor: floor } : {}),
-        ...spreadOpt(),
       });
       llm.finish("succeeded");
       const wall = performance.now() - t0;
