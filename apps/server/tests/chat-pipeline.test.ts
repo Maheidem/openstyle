@@ -946,4 +946,71 @@ describe("synthesis: broad questions", () => {
     expect(r.trace.steps.some((s) => s.name === "rules:synthesis")).toBe(true);
     expect(r.blocks.filter((b) => b.kind === "text").length).toBeGreaterThan(1);
   });
+
+  it("after a not_found, a short 'Really?' gives an overview, a question with a topic stays a lookup", async () => {
+    addSummaryFor("m1", SUMMARY);
+    retrieveMock.mockResolvedValue(ok([hit(1, "m1", 0.95)]));
+    const mk = {
+      thread_id: "t",
+      trace: null,
+      model_id: null,
+      provider: null,
+      ms: null,
+      created_at: 0,
+    };
+    const history: ChatMessage[] = [
+      {
+        ...mk,
+        id: 1,
+        role: "user",
+        content: "What is the budget for Mars?",
+        blocks: [],
+        cites: [],
+      },
+      {
+        ...mk,
+        id: 2,
+        role: "assistant",
+        content: "",
+        blocks: [
+          {
+            kind: "not_found",
+            scope: { kind: "meeting", id: "m1" },
+            reason: "no_sources",
+            nearest: [],
+            wider: null,
+          },
+        ],
+        cites: [],
+      },
+    ];
+    const a = fakeLlm({
+      native: NO_CALL,
+      structured: {
+        chatAnswer: [answer("The team met for the security review.", ["S1"])],
+      },
+    });
+    const r1 = await runScope(
+      { kind: "meeting", id: "m1" },
+      "Really?",
+      a.llm,
+      history,
+    );
+    expect(r1.trace.steps.some((s) => s.name === "rules:synthesis")).toBe(true);
+    const b = fakeLlm({
+      native: NO_CALL,
+      structured: {
+        chatAnswer: [answer("The security review is on December 4.", ["S1"])],
+      },
+    });
+    const r2 = await runScope(
+      { kind: "meeting", id: "m1" },
+      "And when is the security review?",
+      b.llm,
+      history,
+    );
+    expect(r2.trace.steps.some((s) => s.name === "rules:synthesis")).toBe(
+      false,
+    );
+  });
 });

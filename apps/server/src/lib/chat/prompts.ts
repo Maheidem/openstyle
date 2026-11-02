@@ -12,8 +12,8 @@ export const ROUTER_MAX_TOKENS = 24;
 export const SLOT_MAX_TOKENS = 150;
 export const NATIVE_MAX_TOKENS = 200;
 export const ANSWER_MAX_TOKENS = 500;
-/** A lead paragraph plus up to 6 bullets with cites needs more room (synthesis, owner decision 2026-11-01). */
-export const SYNTH_MAX_TOKENS = 900;
+/** A lead paragraph plus up to 6 bullets with cites needs more room: E4B writes indented JSON and hit 900 tokens (synthesis, 2026-11-01). */
+export const SYNTH_MAX_TOKENS = 1500;
 
 const INTENT_LINES = `lookup: asks for ONE specific fact: an amount, a number, a name, or what was decided about one topic. "What did we decide on the database?"
 who_said: asks WHO said, proposed, approved or will do something. "Who proposed the pilot?" "Who will write the rollback plan?"
@@ -69,7 +69,7 @@ export const SYNTH_SCHEMA: StepSchema<{
 };
 
 export const ANSWER_SYSTEM = `You answer a question about meeting notes. Use ONLY the numbered sources.
-Write 1 to 3 short sentences in the language of the question. State the answer first.
+Write 1 to 3 short sentences in the language of the question. State the answer first. Answer every part of the question (for example both the person and the date).
 One sentence states one fact. Put the labels of the sources that show the fact in "cites", for example ["S2"].
 When the sources show several separate facts that answer the question, put them in "bullets", one fact for each bullet, with their own "cites". Else leave "bullets" empty.
 Copy names, numbers and dates exactly as the sources write them. Write the full name of a person (first and last name) when the sources have it.
