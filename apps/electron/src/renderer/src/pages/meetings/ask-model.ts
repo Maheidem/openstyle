@@ -33,7 +33,13 @@ export function formatTimestamp(ms: number): string {
 
 /** One part of the trail sentence. The UI writes the words with `t()`. */
 export interface TraceSummaryPart {
-  key: "searched" | "readSummary" | "readTranscript" | "listed" | "meetings";
+  key:
+    | "searched"
+    | "readSummary"
+    | "readTranscript"
+    | "listed"
+    | "meetings"
+    | "mapReduce";
   count: number;
 }
 
@@ -43,6 +49,7 @@ const TRACE_ORDER: TraceSummaryPart["key"][] = [
   "readTranscript",
   "listed",
   "meetings",
+  "mapReduce",
 ];
 
 /**
@@ -75,6 +82,9 @@ export function summarizeTrace(trace: ChatTrace | null): TraceSummaryPart[] {
         break;
       case "list_meetings":
         add("meetings", step.rows ?? 0);
+        break;
+      case "map_reduce":
+        add("mapReduce", step.rows ?? 0);
         break;
       default:
         break;
@@ -218,6 +228,24 @@ export function answerBlocks(message: ChatMessage): ChatBlock[] {
   return [{ kind: "text", text: message.content, cites: [] }];
 }
 
+/** The body of a turn. "Answer anyway" adds `no_clarify` (D20). */
+export type AskTurn = { question: string; no_clarify?: true };
+
+/** A chip sends its `ask` as a new question of the same thread. */
+export function clarifyPickTurn(ask: string): AskTurn {
+  return { question: ask };
+}
+
+/** "Answer anyway": the first question again, with no clarifying question. */
+export function clarifyAnywayTurn(question: string): AskTurn {
+  return { question, no_clarify: true };
+}
+
+/** The setting `chat_clarify`: a missing row means on. Only "false" turns it off. */
+export function clarifyEnabled(raw: string | undefined): boolean {
+  return raw !== "false";
+}
+
 /**
  * The title of a thread in the list: the first question, on one line, cut at
  * 60 characters. An empty title gives null and the UI writes a fallback.
@@ -351,4 +379,19 @@ export function askErrorView(
     }
   }
   return { key: "errFailed", action: "retry" };
+}
+
+/** The fixed words of a running turn's stage (D20). The UI writes them with `t()`. */
+export function progressKey(
+  progress:
+    | { stage: "searching" | "reading" | "answering"; count: number | null }
+    | null
+    | undefined,
+): { key: string; count: number } | null {
+  if (!progress) return null;
+  const count = progress.count ?? 0;
+  if (progress.stage === "answering") {
+    return { key: "meetings.ask.step.answering", count };
+  }
+  return { key: `meetings.ask.step.${progress.stage}`, count };
 }

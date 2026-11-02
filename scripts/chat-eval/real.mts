@@ -34,6 +34,8 @@ export interface RealTurn {
   cites: number;
   repeat: boolean;
   notFound: boolean;
+  /** The `why` of a clarify block (D20), else null. A clarify turn is not an answer. */
+  clarify: string | null;
   /** At least 2 sentences, at least 1 cite, no repeat, not "not found". */
   pass: boolean;
   /** Steps of the pipeline, names only (no owner text). */
@@ -61,6 +63,8 @@ function score(
     content.trim() !== ""
       ? content
       : blocks.flatMap((b) => (b.kind === "text" ? [b.text] : [])).join(" ");
+  const clarifyBlock = blocks.find((b) => b.kind === "clarify");
+  const clarify = clarifyBlock?.kind === "clarify" ? clarifyBlock.why : null;
   const sentences = countSentences(text);
   const repeat = !notFound && isRepeat(text, earlier);
   return {
@@ -69,7 +73,9 @@ function score(
     cites,
     repeat,
     notFound,
-    pass: !notFound && sentences >= 2 && cites >= 1 && !repeat,
+    clarify,
+    pass:
+      clarify === null && !notFound && sentences >= 2 && cites >= 1 && !repeat,
     answer: text,
   };
 }
@@ -86,6 +92,7 @@ interface MsgRow {
 export async function runReal(opts: {
   db: string;
   threads: string[];
+  extra?: string[];
   label: string;
 }): Promise<void> {
   const dir = scratchDir("real");
@@ -103,9 +110,34 @@ export async function runReal(opts: {
   ]);
   process.env.OPENSTYLE_MLX_RERANK_WORKER ??=
     process.env.OPENSTYLE_MLX_LLM_WORKER;
-  const out: { before: RealTurn[]; after: RealTurn[] } = {
+  const out: { before: RealTurn[]; after: RealTurn[]; extra: RealTurn[] } = {
     before: [],
     after: [],
+    extra: [],
+  };
+  const runOne = async (
+    scope: { kind: "all" },
+    question: string,
+    history: ChatMessage[],
+    noClarify = false,
+  ) => {
+    const signal = AbortSignal.timeout(180_000);
+    const llm = await llmMod.createChatLlm(db, {
+      threadId: "real-extra",
+      signal,
+    });
+    const res = await pipeline.runChatTurn({
+      db,
+      scope,
+      question,
+      history,
+      settings: settings.readChatSettings(),
+      llm,
+      signal,
+      ...(noClarify ? { noClarify: true } : {}),
+    });
+    llm.finish("succeeded");
+    return res;
   };
   try {
     for (const prefix of opts.threads) {
@@ -223,6 +255,59 @@ export async function runReal(opts: {
         );
       }
     }
+    // New ambiguous-style questions at Everything: the first turn, then the
+    // first chip as the next question (a clarify turn only).
+    for (const [i, q] of (opts.extra ?? []).entries()) {
+      const all = { kind: "all" as const };
+      const mkRow = (turn: number, res: Awaited<ReturnType<typeof runOne>>) =>
+        score(
+          {
+            thread: `extra${i + 1}`,
+            turn,
+            scope: "all",
+            steps: res.trace.steps
+              .map(
+                (x: { stage: string; name: string }) => `${x.stage}:${x.name}`,
+              )
+              .join(" > "),
+          },
+          res.content,
+          res.blocks,
+          res.cites.length,
+          [],
+        );
+      const first = await runOne(all, q, []);
+      const r1 = mkRow(1, first);
+      out.extra.push(r1);
+      const block = first.blocks.find((b) => b.kind === "clarify");
+      if (block?.kind === "clarify") {
+        const mk = {
+          thread_id: "real-extra",
+          trace: null,
+          model_id: null,
+          provider: null,
+          ms: null,
+          created_at: 0,
+        };
+        const chip = block.options[0];
+        if (chip) {
+          const hist: ChatMessage[] = [
+            { ...mk, id: 1, role: "user", content: q, blocks: [], cites: [] },
+            {
+              ...mk,
+              id: 2,
+              role: "assistant",
+              content: first.content,
+              blocks: first.blocks,
+              cites: first.cites,
+            },
+          ];
+          out.extra.push(mkRow(2, await runOne(all, chip.ask, hist)));
+        }
+        // "Answer anyway" for the same question.
+        out.extra.push(mkRow(3, await runOne(all, q, [], true)));
+      }
+    }
     mkdirSync(REAL_OUT, { recursive: true, mode: 0o700 });
     const file = join(REAL_OUT, `${opts.label}-${Date.now()}.json`);
     writeFileSync(file, JSON.stringify(out, null, 1), { mode: 0o600 });
@@ -233,7 +318,7 @@ export async function runReal(opts: {
       );
       for (const r of rows)
         console.log(
-          `${name} ${r.thread} ${r.turn} ${r.scope} sentences=${r.sentences} cites=${r.cites} repeat=${r.repeat ? "yes" : "no"} not_found=${r.notFound ? "yes" : "no"} ${r.pass ? "PASS" : "FAIL"}`,
+          `${name} ${r.thread} ${r.turn} ${r.scope} clarify=${r.clarify ?? "no"} sentences=${r.sentences} cites=${r.cites} repeat=${r.repeat ? "yes" : "no"} not_found=${r.notFound ? "yes" : "no"} ${r.pass ? "PASS" : "FAIL"}`,
         );
     }
     console.log(`\nresult file (private): ${file}`);

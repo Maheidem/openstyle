@@ -79,6 +79,7 @@ A remote chat LLM (llama.cpp, oMLX or any OpenAI-compatible server): set `CHAT_E
 | `slots` | `slotZod` + `slotSystem` (step `chatSlots`) with the gold intent; dates by code (`datesFromQuestion`); accuracy per intent and per arg key. `p1-score.mts` maps corpus ids to production ids |
 | `e2e` | `runChatTurn` on the 190 questions, fresh `createChatLlm` per turn, `allowProposals`, history = gold answers. Answer accuracy per type, list F1, cite precision and recall, cite validity (checked against the DB), not-found accuracy, false not-found, tool choice, tool + args, write proposals, router share, native call outcome, calls, latency, RSS, sources dropped, direct writes (data hash before and after) |
 | `a0` | Compares the A0 question ids of the saved `a0-*.json` with the gold set. Same ids: the A0 numbers apply. Else run `pnpm chat-eval a0` in its own process |
+| `clarify` | Only with `--only clarify`. The clarify block (D20) and the map-reduce synthesis. See the section "Clarify and map-reduce" below. Needs the model for the chip follow-ups and the map-reduce items |
 | `scale` | Only with `--scale N` (or `--only scale`, N=256): retrieve latency at N times the corpus. Slow. It adds the distractor corpora to the same DB, so it runs last |
 | `bars` | The table of pass bars from the runs of the same invocation. A part that did not run shows NOT RUN |
 
@@ -129,6 +130,28 @@ Spec 11.6.6. `pnpm chat-eval p1 --set p2 --only router,e2e,threads,widen,bars` r
 
 Run it on the desktop first (`CHAT_EVAL_BASE_URL`), then confirm on the Mac with the GPU lock. The default parts of `--set p2` include `widen`; `--only widen` runs it on the gold set too.
 
+### Clarify and map-reduce (`--only clarify`, D20)
+
+`pnpm chat-eval p1 --only clarify,bars [--no-mlflow]` (not in the default parts; run it last, not with `scale`). Code: `p1-clarify.mts` (items, keys, runners), `clarify-corpus.mts` (extra data), `partClarify` in `p1-run.mts`. MLflow run `p1-clarify` in `openstyle-lab-chat-agent-p1`. The base corpus and both hashes stay the same: the extra data is loaded into the scratch DB on top of the base corpus, inside this part only.
+
+Extra fictional data (built by code, no random numbers, ids with the prefix `cl-`):
+- Folders "Harbor Mobile" and "Harbor Web" (4 meetings each, with summaries). The base corpus has "Harbor Pricing", so "Harbor" names three folders.
+- "Marta Reis" (speaks only in Harbor Mobile and Long Program) and "Marta Lacerda" (only in Harbor Web). The base corpus already has Ana Silvestre / Ana Brandt and Carlos Medeiros / Carlos Okafor.
+- Folder "Long Program": 72 meetings, 2 days apart. Each summary holds a cost (5 digits), a supplier name and, for every third meeting, a tester count. All tokens are unique. The first 24 meetings are "early", the last 24 are "late".
+
+Clarify items (27; `CHAT_EVAL_IDS=cl01,nc04` picks single items). Key = function, no judge:
+- 10 should-ask items: scope ("What is the latest on Harbor?", PT too), intent ("status?", "what about it?", "tell me more" at Everything, no history), person ("What did Marta/Ana/Carlos say ...").
+- 17 should-not-ask items: full folder name, full person name, a fixed-scope question where one person fits, a vague question at a fixed scope, a vague question with an earlier question in the thread, specific questions, and a second question after a clarify block.
+- The first block of the turn must be `clarify` with the right `why` (should-ask) or must not be `clarify`. The detector is code and the pipeline returns before any model call, so the first turn needs no model. When the detector fires, the real `runChatTurn` is run too.
+- Chips: every `option.ask` is sent as the next turn with the clarify block in the history. It must not return `clarify` again. For items with `chips: "all"` it must not be `not_found` either.
+- Metrics: precision, recall (per `why`), false-clarify rate (false clarify of the should-not items), right `why`, chips ok.
+
+False-clarify rate on the existing questions: the detector alone (no model) over the 190 gold questions, the 42 broad turns and the 90 thread turns, with scope and history. It prints the count and up to 10 samples for the base corpus and again with the extra data. Measured on 2026-11-02 (no model): gold 1 of 190 (the write question "Una Ana S. e Anna Silvestri em uma só pessoa." at Everything, a person clarify on a first name), broad 0 of 42, threads 0 of 90.
+
+Map-reduce items (3, scope = folder Long Program): "Give me the story of Long Program.", "What were the key decisions across the program?", "Catch me up on the whole program from the first review.". An item passes when the trace has a `map_reduce` step, no invalid cite (`checkCites`), no text block without a cite, no `not_found`, and the answer names at least one fact of an early meeting and one of a late meeting. Reported: coverage of all facts and of the early and late thirds, the share of answers with the `map_reduce` step, and `sources_dropped` per answer (a map-reduce that works drops none of the digest). There is no switch to turn map-reduce off: compare with the `sources_dropped` number of an older commit.
+
+No new bars: thresholds are the owner's to set (`BARS` stays as it is).
+
 ### Broad questions (Ask synthesis, `--only broad`)
 
 `pnpm chat-eval p1 --only broad,bars [--no-mlflow]` runs 29 broad threads (42 turns) from `buildBroad` in `p1-broad.mts`: meeting, folder and Everything scopes, EN and PT, and 8 threads with an elaboration follow-up ("gimme details", "Tell me more", "How did it start?"). It is not in the default parts and not in the gold hash. Keys are made by code from the fictional summaries and facts. A turn passes when:
@@ -143,7 +166,7 @@ Run it on the desktop first (`CHAT_EVAL_BASE_URL`), then confirm on the Mac with
 
 ### Real threads (private, `pnpm chat-eval real`)
 
-`pnpm chat-eval real --db <copy.db> --threads <id prefix>,<id prefix> --label after` copies a read-only copy of the owner's DB to `/tmp/chatp0/run/real`, replays the QUESTIONS of the threads through the real pipeline with the default model of that DB (new answers go back as history), deletes the scratch copy, and prints numbers only (sentences, cites, repeat, not found). The answer texts go only to `~/Library/Application Support/Openstyle-eval/chat-real/<label>-<time>.json` (before and after; "before" is what the DB stores). Never commit those texts, never log them to MLflow. Needs the GPU lock and the worker env of the P1 section.
+`pnpm chat-eval real --db <copy.db> --threads <id prefix>,<id prefix> --label after` copies a read-only copy of the owner's DB to `/tmp/chatp0/run/real`, replays the QUESTIONS of the threads through the real pipeline with the default model of that DB (new answers go back as history), deletes the scratch copy, and prints numbers only (sentences, cites, repeat, not found). The answer texts go only to `~/Library/Application Support/Openstyle-eval/chat-real/<label>-<time>.json` (before and after; "before" is what the DB stores). Never commit those texts, never log them to MLflow. Needs the GPU lock and the worker env of the P1 section. `--extra "q1|q2"` adds new questions at scope Everything (D20): the first turn, then the first chip, then the same question with `no_clarify`; the output has a `clarify=` column. A second copy of the DB with the setting `chat_clarify` = `false` gives the answers without a clarify question (the "before" of those questions).
 
 ### Multi-turn threads (P1.2, `--only threads`)
 

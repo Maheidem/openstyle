@@ -320,6 +320,8 @@
       "searchWiderDesc": "Se Ask non trova nulla, può offrire una ricerca più ampia. Non lo fa mai da solo.",
       "searchWiderAsk": "Chiedimelo",
       "searchWiderOff": "Non offrire",
+      "clarify": "Fai domande di chiarimento",
+      "clarifyDesc": "Quando una domanda non è chiara, Ask può prima fare una breve domanda con chip di risposta.",
       "nativeTools": "Usa le chiamate di strumenti native del modello locale",
       "nativeToolsDesc": "Si applica al prossimo avvio del modello.",
       "unmeasured": "non misurato",
@@ -1361,10 +1363,27 @@
         "call_cap": "Ho raggiunto il limite di ricerca per questa domanda.",
         "model_error": "Il modello non è riuscito a rispondere.",
         "nothing_new": "Non ho altri fatti su questo nelle fonti.",
-        "noSourcesAll": "Non ho trovato nulla su questo in nessuna riunione."
+        "noSourcesAll": "Non ho trovato nulla su questo in nessuna riunione.",
+        "searchedMeeting": "Ho cercato in questa riunione.",
+        "searchedFolder_one": "Ho cercato in {{count}} riunione di questa cartella.",
+        "searchedFolder_other": "Ho cercato in {{count}} riunioni di questa cartella.",
+        "searchedAll_one": "Ho cercato in {{count}} riunione in tutto.",
+        "searchedAll_other": "Ho cercato in {{count}} riunioni in tutto."
       },
       "nearest": "Fonti più vicine",
       "readOnly": "Ask non può ancora modificare i dati. Legge solo le tue riunioni.",
+      "clarify": {
+        "scope": "\"{{subject}}\" è in più di una cartella. Quale intendi?",
+        "scopeAny": "Questo è in più di una cartella. Quale intendi?",
+        "person": "Quale {{subject}} intendi?",
+        "personAny": "Quale persona intendi?",
+        "intent": "Cosa vuoi sapere sulle tue riunioni?",
+        "anyway": "Rispondi comunque",
+        "summary": "Riepilogo",
+        "decisions": "Decisioni",
+        "next_steps": "Prossimi passi",
+        "open_questions": "Domande aperte"
+      },
       "trailTitle": "Come l'ho trovato",
       "trailNone": "Nessuna fonte è stata letta.",
       "trail": {
@@ -1377,7 +1396,9 @@
         "listed_one": "ha elencato {{count}} voce",
         "listed_other": "ha elencato {{count}} voci",
         "meetings_one": "ha elencato {{count}} riunione",
-        "meetings_other": "ha elencato {{count}} riunioni"
+        "meetings_other": "ha elencato {{count}} riunioni",
+        "mapReduce_one": "{{count}} riassunto di riunione accorciato",
+        "mapReduce_other": "{{count}} riassunti di riunioni accorciati"
       },
       "trailDropped_one": "{{count}} fonte esclusa",
       "trailDropped_other": "{{count}} fonti escluse",
@@ -1401,6 +1422,15 @@
         "empty": "Fai una domanda su tutte le tue riunioni. Chiedi legge trascrizioni e riassunti.",
         "placeholder": "Chiedi su tutte le riunioni",
         "threads": "Chat su tutte le riunioni"
+      },
+      "scopeSize_one": "{{count}} riunione · le risposte citano solo queste",
+      "scopeSize_other": "{{count}} riunioni · le risposte citano solo queste",
+      "step": {
+        "searching_one": "Cerco in {{count}} riunione…",
+        "searching_other": "Cerco in {{count}} riunioni…",
+        "reading_one": "Leggo {{count}} riunione…",
+        "reading_other": "Leggo {{count}} riunioni…",
+        "answering": "Scrivo la risposta…"
       }
     }
   },

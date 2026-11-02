@@ -22,6 +22,7 @@ import { zValidator } from "@hono/zod-validator";
 import { createAppLogger, errorMessage } from "@openstyle/utils";
 import {
   type ChatMessage,
+  type ChatProgress,
   chatAskSchema,
   chatCreateThreadSchema,
   chatScopeSchema,
@@ -33,6 +34,7 @@ import { runChatTurn } from "../lib/chat/pipeline.js";
 import { readChatSettings } from "../lib/chat/settings.js";
 import {
   appendMessage,
+  countScopeMeetings,
   createThread,
   getThread,
   lastWidenOffer,
@@ -53,6 +55,9 @@ const running = new Set<string>();
  * does not stop when the client leaves (P1.2). A client that comes back reads
  * the failure here, because no answer was saved. The next question clears it.
  */
+/** The stage of each running turn, for the client to poll (D20, spec 11.8). */
+const progress = new Map<string, ChatProgress>();
+
 const lastFailure = new Map<string, { reason: string }>();
 
 const listQuerySchema = z
@@ -81,6 +86,16 @@ const chat = new Hono()
     );
     return c.json({ threads: listThreads(getDb(), scope) });
   })
+  .get("/scope-size", zValidator("query", listQuerySchema), (c) => {
+    const q = c.req.valid("query");
+    const scope =
+      q.meeting_id !== undefined
+        ? { kind: "meeting" as const, id: q.meeting_id }
+        : q.folder_id !== undefined
+          ? { kind: "folder" as const, id: q.folder_id }
+          : { kind: "all" as const };
+    return c.json({ meetings: countScopeMeetings(getDb(), scope) });
+  })
   .post("/threads", zValidator("json", chatCreateThreadSchema), (c) => {
     const { scope } = c.req.valid("json");
     const thread = createThread(getDb(), scope);
@@ -97,6 +112,7 @@ const chat = new Hono()
       thread,
       messages: listMessages(db, thread.id),
       pending: running.has(thread.id),
+      progress: progress.get(thread.id) ?? null,
       failure: lastFailure.get(thread.id) ?? null,
     });
   })
@@ -169,6 +185,9 @@ const chat = new Hono()
             settings,
             llm,
             signal,
+            onProgress: (p) => progress.set(thread.id, p),
+            // A widen turn is an explicit request: it never gets a question back.
+            ...(body.no_clarify || body.widen ? { noClarify: true } : {}),
           });
           const assistant = appendMessage(db, thread.id, {
             role: "assistant",
@@ -198,6 +217,7 @@ const chat = new Hono()
         }
       } finally {
         running.delete(thread.id);
+        progress.delete(thread.id);
       }
     },
   );

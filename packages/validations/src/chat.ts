@@ -112,6 +112,31 @@ export const chatBlockSchema = z.discriminatedUnion("kind", [
    * (spec 9.1). The renderer says so with `t()`.
    */
   z.object({ kind: z.literal("read_only") }),
+  /**
+   * One short question before the answer (spec 11.8, D20). Code finds the
+   * ambiguity; the renderer writes the question with `t()` from `why` and
+   * `subject`. A chip sends `option.ask` as the next question of the thread.
+   * "Answer anyway" sends the first question again with `no_clarify`.
+   */
+  z.object({
+    kind: z.literal("clarify"),
+    why: z.enum(["scope", "intent", "person"]),
+    /** The name the question has in common with the options (a folder word or a first name). */
+    subject: z.string().nullable(),
+    options: z
+      .array(
+        z.object({
+          /** The chip text. For an intent chip it is the English fallback of `key`. */
+          label: z.string(),
+          /** summary, decisions, next_steps or open_questions (intent chips), else null. */
+          key: z.string().nullable(),
+          /** The full question that the chip sends. */
+          ask: z.string().min(1).max(CHAT_QUESTION_MAX_CHARS),
+        }),
+      )
+      .min(2)
+      .max(6),
+  }),
   z.object({
     kind: z.literal("not_found"),
     scope: chatScopeSchema,
@@ -127,6 +152,8 @@ export const chatBlockSchema = z.discriminatedUnion("kind", [
     ]),
     /** The nearest sources, shown as links. */
     nearest: z.array(chatCiteSchema),
+    /** How many meetings the search covered ("Searched N meetings"). Absent in old messages. */
+    searched: z.number().int().optional(),
     /**
      * The one wider scope that the user may ask for (spec 6.3, D16). Code sets
      * it. It is absent when the scope is A or the setting turns the offer off.
@@ -206,6 +233,8 @@ export const chatAskSchema = z
   .object({
     question: z.string().trim().min(1).max(CHAT_QUESTION_MAX_CHARS).optional(),
     widen: z.literal(true).optional(),
+    /** "Answer anyway": the turn does not ask a clarifying question (D20). */
+    no_clarify: z.literal(true).optional(),
   })
   .refine((v) => (v.question === undefined) !== (v.widen === undefined), {
     message: "Pass exactly one of question and widen",
@@ -234,12 +263,24 @@ export const chatAskReplySchema = z.object({
 });
 export type ChatAskReply = z.infer<typeof chatAskReplySchema>;
 
+/**
+ * What a running turn does now (D20, spec 11.8). The client polls it while a
+ * turn runs. `count` is the meetings that the stage covers, or null.
+ */
+export const chatProgressSchema = z.object({
+  stage: z.enum(["searching", "reading", "answering"]),
+  count: z.number().int().nullable(),
+});
+export type ChatProgress = z.infer<typeof chatProgressSchema>;
+
 /** The reply of `GET /api/chat/threads/:id`. */
 export const chatThreadDetailSchema = z.object({
   thread: chatThreadSchema,
   messages: z.array(chatMessageSchema),
   /** True while a turn of this thread runs on the server (P1.2). */
   pending: z.boolean(),
+  /** The stage of the running turn, else null. */
+  progress: chatProgressSchema.nullable().optional(),
   /** The last turn failed and saved no answer (the client was gone). */
   failure: z.object({ reason: z.string() }).nullable(),
 });

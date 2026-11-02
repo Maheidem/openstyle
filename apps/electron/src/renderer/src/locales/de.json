@@ -320,6 +320,8 @@
       "searchWiderDesc": "Wenn Ask nichts findet, kann es eine breitere Suche anbieten. Es tut das nie allein.",
       "searchWiderAsk": "Mich fragen",
       "searchWiderOff": "Nicht anbieten",
+      "clarify": "Rückfragen stellen",
+      "clarifyDesc": "Wenn eine Frage unklar ist, kann Ask zuerst eine kurze Rückfrage mit Antwort-Chips stellen.",
       "nativeTools": "Native Werkzeugaufrufe des lokalen Modells nutzen",
       "nativeToolsDesc": "Gilt ab dem nächsten Start des Modells.",
       "unmeasured": "nicht gemessen",
@@ -1362,10 +1364,27 @@
         "call_cap": "Ich habe die Suchgrenze für diese Frage erreicht.",
         "model_error": "Das Modell konnte nicht antworten.",
         "nothing_new": "Dazu habe ich in den Quellen keine weiteren Fakten.",
-        "noSourcesAll": "Dazu habe ich in keinem Meeting etwas gefunden."
+        "noSourcesAll": "Dazu habe ich in keinem Meeting etwas gefunden.",
+        "searchedMeeting": "Dieses Meeting durchsucht.",
+        "searchedFolder_one": "{{count}} Meeting in diesem Ordner durchsucht.",
+        "searchedFolder_other": "{{count}} Meetings in diesem Ordner durchsucht.",
+        "searchedAll_one": "{{count}} Meeting in allem durchsucht.",
+        "searchedAll_other": "{{count}} Meetings in allem durchsucht."
       },
       "nearest": "Nächste Quellen",
       "readOnly": "Ask kann noch keine Daten ändern. Es liest nur deine Meetings.",
+      "clarify": {
+        "scope": "\"{{subject}}\" ist in mehr als einem Ordner. Welchen meinst du?",
+        "scopeAny": "Das ist in mehr als einem Ordner. Welchen meinst du?",
+        "person": "Welche Person namens {{subject}} meinst du?",
+        "personAny": "Welche Person meinst du?",
+        "intent": "Was willst du über deine Meetings wissen?",
+        "anyway": "Trotzdem antworten",
+        "summary": "Zusammenfassung",
+        "decisions": "Entscheidungen",
+        "next_steps": "Nächste Schritte",
+        "open_questions": "Offene Fragen"
+      },
       "trailTitle": "So habe ich das gefunden",
       "trailNone": "Es wurden keine Quellen gelesen.",
       "trail": {
@@ -1378,7 +1397,9 @@
         "listed_one": "{{count}} Eintrag aufgelistet",
         "listed_other": "{{count}} Einträge aufgelistet",
         "meetings_one": "{{count}} Meeting aufgelistet",
-        "meetings_other": "{{count}} Meetings aufgelistet"
+        "meetings_other": "{{count}} Meetings aufgelistet",
+        "mapReduce_one": "{{count}} Meeting-Zusammenfassung gekürzt",
+        "mapReduce_other": "{{count}} Meeting-Zusammenfassungen gekürzt"
       },
       "trailDropped_one": "{{count}} Quelle ausgelassen",
       "trailDropped_other": "{{count}} Quellen ausgelassen",
@@ -1402,6 +1423,15 @@
         "empty": "Stellen Sie eine Frage zu allen Ihren Meetings. Fragen liest Transkripte und Zusammenfassungen.",
         "placeholder": "Zu allen Meetings fragen",
         "threads": "Chats zu allen Meetings"
+      },
+      "scopeSize_one": "{{count}} Meeting · Antworten zitieren nur diese",
+      "scopeSize_other": "{{count}} Meetings · Antworten zitieren nur diese",
+      "step": {
+        "searching_one": "Suche in {{count}} Meeting…",
+        "searching_other": "Suche in {{count}} Meetings…",
+        "reading_one": "Lese {{count}} Meeting…",
+        "reading_other": "Lese {{count}} Meetings…",
+        "answering": "Schreibe die Antwort…"
       }
     }
   },

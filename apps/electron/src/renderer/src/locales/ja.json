@@ -320,6 +320,8 @@
       "searchWiderDesc": "Ask が何も見つけられないとき、広い範囲での検索を提案できます。自動では行いません。",
       "searchWiderAsk": "確認する",
       "searchWiderOff": "提案しない",
+      "clarify": "確認の質問をする",
+      "clarifyDesc": "質問があいまいなとき、Ask は先に回答チップ付きの短い質問をすることがあります。",
       "nativeTools": "ローカルモデルのネイティブなツール呼び出しを使う",
       "nativeToolsDesc": "次回のモデル起動時に反映されます。",
       "unmeasured": "未計測",
@@ -1354,10 +1356,25 @@
         "call_cap": "この質問の検索上限に達しました。",
         "model_error": "モデルが回答に失敗しました。",
         "nothing_new": "ソースには、これに関するこれ以上の情報はありません。",
-        "noSourcesAll": "どの会議にもこれに関する情報は見つかりませんでした。"
+        "noSourcesAll": "どの会議にもこれに関する情報は見つかりませんでした。",
+        "searchedMeeting": "この会議を検索しました。",
+        "searchedFolder_other": "このフォルダの会議 {{count}} 件を検索しました。",
+        "searchedAll_other": "すべての会議 {{count}} 件を検索しました。"
       },
       "nearest": "最も近いソース",
       "readOnly": "Ask はまだデータを変更できません。会議を読むだけです。",
+      "clarify": {
+        "scope": "「{{subject}}」は複数のフォルダにあります。どれですか？",
+        "scopeAny": "これは複数のフォルダにあります。どれですか？",
+        "person": "どの{{subject}}さんですか？",
+        "personAny": "どの人ですか？",
+        "intent": "ミーティングについて何を知りたいですか？",
+        "anyway": "そのまま回答",
+        "summary": "要約",
+        "decisions": "決定事項",
+        "next_steps": "次のステップ",
+        "open_questions": "未解決の質問"
+      },
       "trailTitle": "調べた手順",
       "trailNone": "読み込んだソースはありません。",
       "trail": {
@@ -1365,7 +1382,8 @@
         "readSummary_other": "要約を {{count}} 件読み込み",
         "readTranscript_other": "文字起こしを {{count}} か所読み込み",
         "listed_other": "{{count}} 件の項目を一覧化",
-        "meetings_other": "{{count}} 件の会議を一覧化"
+        "meetings_other": "{{count}} 件の会議を一覧化",
+        "mapReduce_other": "{{count}} 件の会議要約を短縮"
       },
       "trailDropped_other": "{{count}} 件のソースを除外",
       "scopeFolder": "このフォルダー: {{name}}",
@@ -1388,6 +1406,12 @@
         "empty": "すべての会議について質問してください。文字起こしと要約を読んで答えます。",
         "placeholder": "すべての会議について質問",
         "threads": "すべての会議のチャット"
+      },
+      "scopeSize_other": "会議 {{count}} 件 · 回答はこれらだけを引用します",
+      "step": {
+        "searching_other": "{{count}} 件の会議を検索中…",
+        "reading_other": "{{count}} 件の会議を読み込み中…",
+        "answering": "回答を作成中…"
       }
     }
   },

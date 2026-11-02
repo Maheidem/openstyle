@@ -84,6 +84,8 @@ function describeBlock(b: ChatBlock): string {
       return "said that the chat does not change data";
     case "not_found":
       return "found nothing";
+    case "clarify":
+      return "asked a clarifying question";
   }
 }
 

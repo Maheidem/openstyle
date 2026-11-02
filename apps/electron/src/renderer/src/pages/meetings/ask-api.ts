@@ -10,6 +10,7 @@ import type {
   ChatThreadDetail,
 } from "@openstyle/validations";
 import { getClient } from "@renderer/lib/api";
+import type { AskTurn } from "./ask-model";
 
 export class AskRequestError extends Error {
   constructor(
@@ -44,6 +45,20 @@ export async function fetchThreads(scope: ChatScope): Promise<ChatThread[]> {
   return (body as { threads: ChatThread[] }).threads;
 }
 
+/** How many meetings the scope covers (the scope line, D20). */
+export async function fetchScopeSize(scope: ChatScope): Promise<number> {
+  const query =
+    scope.kind === "meeting"
+      ? { meeting_id: scope.id }
+      : scope.kind === "folder"
+        ? { folder_id: scope.id }
+        : { all: "1" as const };
+  const res = await getClient().api.chat["scope-size"].$get({ query });
+  if (!res.ok) throw await failureOf(res);
+  const body: unknown = await res.json();
+  return (body as { meetings: number }).meetings;
+}
+
 export async function fetchThread(id: string): Promise<ChatThreadDetail> {
   const res = await getClient().api.chat.threads[":id"].$get({
     param: { id },
@@ -60,10 +75,13 @@ export async function createThread(scope: ChatScope): Promise<ChatThread> {
   return (body as { thread: ChatThread }).thread;
 }
 
-/** A new question, or `widen` to ask the last question again at the wider scope. */
+/**
+ * A new question, or `widen` to ask the last question again at the wider
+ * scope. `no_clarify` is "Answer anyway": the turn asks no clarifying question.
+ */
 export async function postQuestion(
   threadId: string,
-  turn: { question: string } | { widen: true },
+  turn: AskTurn | { widen: true },
 ): Promise<ChatAskReply> {
   const res = await getClient().api.chat.threads[":id"].messages.$post({
     param: { id: threadId },

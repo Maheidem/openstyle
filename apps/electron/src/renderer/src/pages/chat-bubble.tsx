@@ -5,22 +5,32 @@ import type {
 } from "@openstyle/validations";
 import { Button } from "@renderer/components/ui/button";
 import { Textarea } from "@renderer/components/ui/textarea";
+import { queryKeys } from "@renderer/lib/query";
 import { cn } from "@renderer/lib/utils";
 import type { ChatBubbleShown } from "@shared/chat-bubble";
+import { useQuery } from "@tanstack/react-query";
 import { MessageSquareText, X } from "lucide-react";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import {
   AskRequestError,
   createThread,
+  fetchThread,
   postQuestion,
 } from "./meetings/ask-api";
-import { AskAnswer, type CiteActions } from "./meetings/ask-blocks";
+import {
+  AskAnswer,
+  type CiteActions,
+  type ClarifyActions,
+} from "./meetings/ask-blocks";
 import {
   ASK_WARMING_AFTER_MS,
   askErrorView,
   checkQuestion,
   citeTarget,
+  clarifyAnywayTurn,
+  clarifyPickTurn,
+  progressKey,
   widenedScope,
   widerOffer,
 } from "./meetings/ask-model";
@@ -154,7 +164,7 @@ export default function ChatBubblePage(): React.JSX.Element {
     setErrorKey(view.key);
   };
 
-  const send = async (raw: string): Promise<void> => {
+  const send = async (raw: string, anyway = false): Promise<void> => {
     const check = checkQuestion(raw);
     if (!check.ok || busy) return;
     setErrorKey(null);
@@ -169,7 +179,10 @@ export default function ChatBubblePage(): React.JSX.Element {
         setThreadId(id);
         setThreadScope(scope);
       }
-      const reply = await postQuestion(id, { question: check.text });
+      const reply = await postQuestion(
+        id,
+        anyway ? clarifyAnywayTurn(check.text) : clarifyPickTurn(check.text),
+      );
       setAnswer(reply.assistant);
     } catch (err) {
       fail(err);
@@ -194,6 +207,7 @@ export default function ChatBubblePage(): React.JSX.Element {
   };
 
   const actions: CiteActions = {
+    showTitle: threadScope.kind !== "meeting",
     resolve: (cite) => citeTarget(cite, null, null),
     open: (target) => {
       if (target.kind === "meeting") {
@@ -211,12 +225,36 @@ export default function ChatBubblePage(): React.JSX.Element {
       : t("meetings.ask.searchedFolder", { name: nameOf(used) });
   };
 
+  // "Answer anyway" asks the question of the clarify turn again.
+  const clarifyActions: ClarifyActions = {
+    pick: (ask) => void send(ask),
+    anyway: () => {
+      if (question) void send(question, true);
+    },
+  };
+
+  // While a turn runs the thread says which stage it is in (D20).
+  const { data: running } = useQuery({
+    queryKey: queryKeys.chat.thread(threadId ?? ""),
+    queryFn: () => fetchThread(threadId ?? ""),
+    enabled: busy && threadId !== null,
+    refetchInterval: 1000,
+  });
+  const step = progressKey(running?.progress);
+  const statusText = step
+    ? t(step.key, { count: step.count })
+    : slow
+      ? t("meetings.ask.warming")
+      : t("meetings.ask.thinking");
+
   const check = checkQuestion(input);
   const canWiden = !busy && answer !== null && widerOffer(answer) !== null;
 
   return (
     <main
       ref={rootRef}
+      role="dialog"
+      aria-modal="true"
       aria-label={t("ask.bubble.label")}
       data-testid="chat-bubble"
       data-scope={scope.kind === "all" ? "all" : `${scope.kind}:${scope.id}`}
@@ -284,8 +322,7 @@ export default function ChatBubblePage(): React.JSX.Element {
         className={cn("text-muted-foreground text-[12px]", !busy && "sr-only")}
         data-testid="chat-bubble-status"
       >
-        {busy &&
-          (slow ? t("meetings.ask.warming") : t("meetings.ask.thinking"))}
+        {busy && statusText}
       </div>
 
       {question !== null && (
@@ -318,6 +355,7 @@ export default function ChatBubblePage(): React.JSX.Element {
             actions={actions}
             scopeNote={scopeNote()}
             {...(canWiden ? { onWiden: () => void widenAnswer() } : {})}
+            {...(!busy ? { onClarify: clarifyActions } : {})}
           />
         </div>
       )}

@@ -20,6 +20,7 @@ import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { SETTINGS_KEYS } from "../../../shared/settings-keys";
+import { clarifyEnabled } from "./meetings/ask-model";
 import { useTimeoutSetting } from "./use-timeout-setting";
 
 /** The settings row of `settings.tsx`. The page gives it, so the two files do not import each other. */
@@ -181,6 +182,7 @@ export function AskSettingsPanel({
   // A missing row means the default. Only "false" turns these two away from it.
   const [searchWider, setSearchWider] = useState<"true" | "false">("true");
   const [nativeTools, setNativeTools] = useState(true);
+  const [clarify, setClarify] = useState(true);
 
   useEffect(() => {
     if (!settings) return;
@@ -192,6 +194,7 @@ export function AskSettingsPanel({
       settings[SETTINGS_KEYS.chatSearchWider] === "false" ? "false" : "true",
     );
     setNativeTools(settings[SETTINGS_KEYS.chatNativeTools] !== "false");
+    setClarify(clarifyEnabled(settings[SETTINGS_KEYS.chatClarify]));
   }, [settings, applyRounds, applySourceBudget, applyK, applyDeadline]);
 
   const save = (key: string, value: string): void => {
@@ -277,6 +280,20 @@ export function AskSettingsPanel({
             </SelectItem>
           </SelectContent>
         </Select>
+      </Row>
+      <Row
+        label={t("settings.ask.clarify")}
+        desc={t("settings.ask.clarifyDesc")}
+      >
+        <Switch
+          checked={clarify}
+          onCheckedChange={(on) => {
+            setClarify(on);
+            save(SETTINGS_KEYS.chatClarify, String(on));
+          }}
+          aria-label={t("settings.ask.clarify")}
+          data-testid="settings-ask-clarify"
+        />
       </Row>
       <Row label={t("settings.ask.hotkey")} desc={t("settings.ask.hotkeyDesc")}>
         <HotkeyRecorderControl

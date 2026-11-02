@@ -21,6 +21,19 @@ import {
 export interface CiteActions {
   resolve: (cite: ChatCite) => CiteTarget;
   open: (target: CiteTarget) => void;
+  /** Folder and Everything scope: the chip shows the meeting title too (D20 design gap G1). */
+  showTitle?: boolean;
+}
+
+/**
+ * What a clarify chip does (D20). The last answer gets it while no turn runs.
+ * Without it the block is answered: the chips are muted and disabled.
+ */
+export interface ClarifyActions {
+  /** A chip sends its `ask` as the next question of the same thread. */
+  pick: (ask: string) => void;
+  /** "Answer anyway" sends the first question again with `no_clarify`. */
+  anyway: () => void;
 }
 
 /** A cite chip: a real button. Its name has the title and the time. */
@@ -58,7 +71,17 @@ function CiteChip({
         "disabled:cursor-not-allowed disabled:opacity-60",
       )}
     >
-      {view.label} · {visible}
+      <span>{view.label}</span>
+      {actions.showTitle && !removed && (
+        <>
+          {" · "}
+          <span className="inline-block max-w-[11rem] truncate align-bottom">
+            {title}
+          </span>
+        </>
+      )}
+      {" · "}
+      {visible}
     </button>
   );
 }
@@ -132,11 +155,13 @@ function Block({
   cites,
   actions,
   onWiden,
+  clarify,
 }: {
   block: ChatBlock;
   cites: ChatCite[];
   actions: CiteActions;
   onWiden?: (wider: ChatWider) => void;
+  clarify?: ClarifyActions;
 }): React.JSX.Element | null {
   const { t } = useTranslation();
   switch (block.kind) {
@@ -206,7 +231,10 @@ function Block({
       );
     case "not_found":
       return (
-        <div data-testid="meeting-ask-block-not-found">
+        <div
+          className="border-border bg-muted/40 flex flex-col gap-1 rounded-lg border border-dashed p-3"
+          data-testid="meeting-ask-block-not-found"
+        >
           <p className="m-0">
             {t(
               block.reason === "no_sources"
@@ -218,6 +246,22 @@ function Block({
                 : `meetings.ask.notFound.${block.reason}`,
             )}
           </p>
+          {block.searched !== undefined && (
+            <p
+              className="text-muted-foreground m-0 text-[11.5px]"
+              data-testid="meeting-ask-searched"
+            >
+              {block.scope.kind === "meeting"
+                ? t("meetings.ask.notFound.searchedMeeting")
+                : block.scope.kind === "folder"
+                  ? t("meetings.ask.notFound.searchedFolder", {
+                      count: block.searched,
+                    })
+                  : t("meetings.ask.notFound.searchedAll", {
+                      count: block.searched,
+                    })}
+            </p>
+          )}
           {block.wider && onWiden && (
             <div className="mt-2 flex flex-col items-start gap-1">
               <p className="text-muted-foreground m-0 text-[11.5px]">
@@ -253,6 +297,55 @@ function Block({
           {t("meetings.ask.readOnly")}
         </p>
       );
+    case "clarify": {
+      const answered = clarify === undefined;
+      const question =
+        block.why === "intent"
+          ? t("meetings.ask.clarify.intent")
+          : block.subject
+            ? t(`meetings.ask.clarify.${block.why}`, {
+                subject: block.subject,
+              })
+            : t(
+                block.why === "scope"
+                  ? "meetings.ask.clarify.scopeAny"
+                  : "meetings.ask.clarify.personAny",
+              );
+      return (
+        <div
+          data-testid="meeting-ask-block-clarify"
+          data-answered={answered ? "true" : "false"}
+          className={cn(answered && "opacity-60")}
+        >
+          <p className="m-0">{question}</p>
+          <div className="mt-2 flex flex-wrap gap-1.5">
+            {block.options.map((o) => (
+              <Button
+                key={o.ask}
+                variant="outline"
+                size="sm"
+                className="h-auto max-w-full py-1 whitespace-normal"
+                disabled={answered}
+                onClick={() => clarify?.pick(o.ask)}
+                data-testid="meeting-ask-clarify-option"
+              >
+                {o.key ? t(`meetings.ask.clarify.${o.key}`) : o.label}
+              </Button>
+            ))}
+            <Button
+              variant="ghost"
+              size="sm"
+              className="text-muted-foreground h-auto py-1"
+              disabled={answered}
+              onClick={() => clarify?.anyway()}
+              data-testid="meeting-ask-clarify-anyway"
+            >
+              {t("meetings.ask.clarify.anyway")}
+            </Button>
+          </div>
+        </div>
+      );
+    }
     default:
       return null;
   }
@@ -314,10 +407,13 @@ export function AskAnswer({
   message,
   actions,
   onWiden,
+  onClarify,
   scopeNote,
 }: {
   message: ChatMessage;
   actions: CiteActions;
+  /** Set on the last answer only, while no turn runs. */
+  onClarify?: ClarifyActions;
   /** Set on the last answer only: the user may ask one step wider. */
   onWiden?: (wider: ChatWider) => void;
   /** "Searched in: ..." when the answer came from a wider scope. */
@@ -345,6 +441,7 @@ export function AskAnswer({
             cites={message.cites}
             actions={actions}
             {...(onWiden ? { onWiden } : {})}
+            {...(onClarify ? { clarify: onClarify } : {})}
           />
         ),
       )}

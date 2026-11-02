@@ -320,6 +320,8 @@
       "searchWiderDesc": "Si Ask no encuentra nada, puede ofrecer una búsqueda más amplia. Nunca lo hace solo.",
       "searchWiderAsk": "Preguntarme",
       "searchWiderOff": "No ofrecer",
+      "clarify": "Hacer preguntas aclaratorias",
+      "clarifyDesc": "Cuando una pregunta no es clara, Ask puede hacer primero una pregunta corta con chips de respuesta.",
       "nativeTools": "Usar llamadas de herramientas nativas del modelo local",
       "nativeToolsDesc": "Se aplica en el próximo inicio del modelo.",
       "unmeasured": "sin medir",
@@ -1362,10 +1364,27 @@
         "call_cap": "Llegué al límite de búsquedas para esta pregunta.",
         "model_error": "El modelo no pudo responder.",
         "nothing_new": "No tengo más datos sobre esto en las fuentes.",
-        "noSourcesAll": "No encontré nada sobre esto en ninguna reunión."
+        "noSourcesAll": "No encontré nada sobre esto en ninguna reunión.",
+        "searchedMeeting": "Se buscó en esta reunión.",
+        "searchedFolder_one": "Se buscó en {{count}} reunión de esta carpeta.",
+        "searchedFolder_other": "Se buscó en {{count}} reuniones de esta carpeta.",
+        "searchedAll_one": "Se buscó en {{count}} reunión de todo.",
+        "searchedAll_other": "Se buscó en {{count}} reuniones de todo."
       },
       "nearest": "Fuentes más cercanas",
       "readOnly": "Ask aún no puede cambiar datos. Solo lee tus reuniones.",
+      "clarify": {
+        "scope": "\"{{subject}}\" está en más de una carpeta. ¿Cuál quieres decir?",
+        "scopeAny": "Esto está en más de una carpeta. ¿Cuál quieres decir?",
+        "person": "¿A qué {{subject}} te refieres?",
+        "personAny": "¿A qué persona te refieres?",
+        "intent": "¿Qué quieres saber de tus reuniones?",
+        "anyway": "Responder de todos modos",
+        "summary": "Resumen",
+        "decisions": "Decisiones",
+        "next_steps": "Próximos pasos",
+        "open_questions": "Preguntas abiertas"
+      },
       "trailTitle": "Cómo lo encontré",
       "trailNone": "No se leyó ninguna fuente.",
       "trail": {
@@ -1378,7 +1397,9 @@
         "listed_one": "listó {{count}} elemento",
         "listed_other": "listó {{count}} elementos",
         "meetings_one": "listó {{count}} reunión",
-        "meetings_other": "listó {{count}} reuniones"
+        "meetings_other": "listó {{count}} reuniones",
+        "mapReduce_one": "{{count}} resumen de reunión acortado",
+        "mapReduce_other": "{{count}} resúmenes de reuniones acortados"
       },
       "trailDropped_one": "{{count}} fuente omitida",
       "trailDropped_other": "{{count}} fuentes omitidas",
@@ -1402,6 +1423,15 @@
         "empty": "Haz una pregunta sobre todas tus reuniones. Preguntar lee sus transcripciones y resúmenes.",
         "placeholder": "Pregunta sobre todas las reuniones",
         "threads": "Chats sobre todas las reuniones"
+      },
+      "scopeSize_one": "{{count}} reunión · las respuestas citan solo estas",
+      "scopeSize_other": "{{count}} reuniones · las respuestas citan solo estas",
+      "step": {
+        "searching_one": "Buscando en {{count}} reunión…",
+        "searching_other": "Buscando en {{count}} reuniones…",
+        "reading_one": "Leyendo {{count}} reunión…",
+        "reading_other": "Leyendo {{count}} reuniones…",
+        "answering": "Escribiendo la respuesta…"
       }
     }
   },

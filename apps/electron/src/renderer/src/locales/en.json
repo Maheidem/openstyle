@@ -371,6 +371,8 @@
       "searchWiderDesc": "When Ask finds nothing, it can offer to search a wider scope. It never does this alone.",
       "searchWiderAsk": "Ask me",
       "searchWiderOff": "Do not offer",
+      "clarify": "Ask clarifying questions",
+      "clarifyDesc": "When a question is unclear, Ask can first ask one short question with answer chips.",
       "nativeTools": "Use native tool calls of the local model",
       "nativeToolsDesc": "Applies at the next start of the model.",
       "unmeasured": "unmeasured",
@@ -1695,10 +1697,27 @@
         "call_cap": "I reached the search limit for this question.",
         "model_error": "The model failed to answer.",
         "nothing_new": "I have no more facts about this in the sources.",
-        "noSourcesAll": "I found nothing about this in any meeting."
+        "noSourcesAll": "I found nothing about this in any meeting.",
+        "searchedMeeting": "Searched this meeting.",
+        "searchedFolder_one": "Searched {{count}} meeting in this folder.",
+        "searchedFolder_other": "Searched {{count}} meetings in this folder.",
+        "searchedAll_one": "Searched {{count}} meeting in everything.",
+        "searchedAll_other": "Searched {{count}} meetings in everything."
       },
       "nearest": "Nearest sources",
       "readOnly": "Ask cannot change data yet. It can only read your meetings.",
+      "clarify": {
+        "scope": "\"{{subject}}\" is in more than one folder. Which one do you mean?",
+        "scopeAny": "This is in more than one folder. Which one do you mean?",
+        "person": "Which {{subject}} do you mean?",
+        "personAny": "Which person do you mean?",
+        "intent": "What do you want to know about your meetings?",
+        "anyway": "Answer anyway",
+        "summary": "Summary",
+        "decisions": "Decisions",
+        "next_steps": "Next steps",
+        "open_questions": "Open questions"
+      },
       "trailTitle": "How I found this",
       "trailNone": "No sources were read.",
       "trail": {
@@ -1711,7 +1730,9 @@
         "listed_one": "listed {{count}} item",
         "listed_other": "listed {{count}} items",
         "meetings_one": "listed {{count}} meeting",
-        "meetings_other": "listed {{count}} meetings"
+        "meetings_other": "listed {{count}} meetings",
+        "mapReduce_one": "shortened {{count}} meeting summary",
+        "mapReduce_other": "shortened {{count}} meeting summaries"
       },
       "trailDropped_one": "{{count}} source left out",
       "trailDropped_other": "{{count}} sources left out",
@@ -1735,6 +1756,15 @@
         "empty": "Ask a question about all your meetings. Ask reads their transcripts and summaries.",
         "placeholder": "Ask about all meetings",
         "threads": "Chats about all meetings"
+      },
+      "scopeSize_one": "{{count}} meeting · answers cite only these",
+      "scopeSize_other": "{{count}} meetings · answers cite only these",
+      "step": {
+        "searching_one": "Searching {{count}} meeting…",
+        "searching_other": "Searching {{count}} meetings…",
+        "reading_one": "Reading {{count}} meeting…",
+        "reading_other": "Reading {{count}} meetings…",
+        "answering": "Writing the answer…"
       }
     }
   },

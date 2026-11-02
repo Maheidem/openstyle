@@ -12,6 +12,9 @@ import {
   citesForLabels,
   citeTarget,
   citeView,
+  clarifyAnywayTurn,
+  clarifyEnabled,
+  clarifyPickTurn,
   danglingQuestion,
   formatTimestamp,
   mergeMessages,
@@ -423,5 +426,48 @@ describe("scope (spec 11.6)", () => {
       key: "errWiden",
       action: "none",
     });
+  });
+});
+
+describe("clarify turns (D20)", () => {
+  it("a chip sends its ask as a plain question", () => {
+    expect(
+      clarifyPickTurn('When is the review? (in the folder "Harbor")'),
+    ).toEqual({ question: 'When is the review? (in the folder "Harbor")' });
+    expect("no_clarify" in clarifyPickTurn("x")).toBe(false);
+  });
+
+  it("Answer anyway sends the question again with no_clarify", () => {
+    expect(clarifyAnywayTurn("status?")).toEqual({
+      question: "status?",
+      no_clarify: true,
+    });
+  });
+
+  it("the setting is on unless the row says false", () => {
+    expect(clarifyEnabled(undefined)).toBe(true);
+    expect(clarifyEnabled("true")).toBe(true);
+    expect(clarifyEnabled("")).toBe(true);
+    expect(clarifyEnabled("false")).toBe(false);
+  });
+
+  it("a clarify message with no text still gives its block", () => {
+    const block = {
+      kind: "clarify" as const,
+      why: "intent" as const,
+      subject: null,
+      options: [
+        { label: "Summary", key: "summary", ask: "Give me a summary." },
+        { label: "Decisions", key: "decisions", ask: "What was decided?" },
+      ],
+    };
+    const m = {
+      id: "m1",
+      role: "assistant",
+      content: "",
+      blocks: [block],
+      cites: [],
+    } as unknown as ChatMessage;
+    expect(answerBlocks(m)).toEqual([block]);
   });
 });

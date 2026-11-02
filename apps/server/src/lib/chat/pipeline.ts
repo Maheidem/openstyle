@@ -3,6 +3,7 @@ import type {
   ChatBlock,
   ChatCite,
   ChatMessage,
+  ChatProgress,
   ChatScope,
   ChatTrace,
   ChatTraceStep,
@@ -31,14 +32,17 @@ import {
   tidyCites,
   withoutTold,
 } from "./cites.js";
+import { detectClarify, isGlobalQuestion } from "./clarify.js";
 import {
   assembleAnswerInput,
   compactHistory,
   type HistoryTurn,
   halveBudget,
   renderHistory,
+  renderSource,
 } from "./context.js";
 import type { ChatLlm } from "./llm.js";
+import { mapNotes } from "./mapreduce.js";
 import {
   asksDecisions,
   asksElaboration,
@@ -81,7 +85,7 @@ import {
 } from "./prompts.js";
 import { proposalFor } from "./proposals.js";
 import type { ChatSettings } from "./settings.js";
-import { nextWider } from "./store.js";
+import { countScopeMeetings, nextWider } from "./store.js";
 import { countMentions, runTool, summaryDigest } from "./tools.js";
 import {
   type Intent,
@@ -137,6 +141,10 @@ export interface ChatTurnInput {
   now?: number;
   /** Eval only: a write question gives a proposal. Nothing is applied in any case. */
   allowProposals?: boolean;
+  /** Called when the turn enters a new stage (D20): the route keeps it for the client to poll. */
+  onProgress?: (p: ChatProgress) => void;
+  /** "Answer anyway": no clarifying question for this turn (D20). */
+  noClarify?: boolean;
   /** Override of `SCORE_FLOOR` (the eval measures it). */
   scoreFloor?: number;
 }
@@ -256,6 +264,10 @@ export async function runChatTurn(input: ChatTurnInput): Promise<TurnResult> {
     ms: Date.now() - t0,
   });
 
+  const progress = (p: ChatProgress): void => input.onProgress?.(p);
+  const scopeMeetings = countScopeMeetings(db, turnScope);
+  progress({ stage: "searching", count: scopeMeetings });
+
   const nearest = (): ChatCite[] =>
     sources
       .all()
@@ -274,6 +286,7 @@ export async function runChatTurn(input: ChatTurnInput): Promise<TurnResult> {
           scope,
           reason,
           nearest: nearest(),
+          searched: scopeMeetings,
           wider:
             reason === "nothing_new"
               ? null
@@ -297,6 +310,23 @@ export async function runChatTurn(input: ChatTurnInput): Promise<TurnResult> {
     if (llm.calls() >= HARD_CAP_CALLS) return "call_cap";
     return null;
   };
+
+  // Stage 0a: a clarifying question (D20). Code only, no LLM call.
+  if (settings.clarify && !input.noClarify) {
+    const started = Date.now();
+    const lastAssistant = input.history.findLast((m) => m.role === "assistant");
+    const block = detectClarify({
+      db,
+      scope: turnScope,
+      question,
+      lastAssistantBlocks: lastAssistant?.blocks ?? [],
+      hasEarlierQuestion: input.history.some((m) => m.role === "user"),
+    });
+    if (block) {
+      step("gate", `clarify:${block.why}`, started, block.options.length);
+      return finish([block], [], "");
+    }
+  }
 
   // Stage 0b: prefetch. The closed choices are built by code (spec 2.3).
   const choices: Choices = buildChoices(
@@ -374,6 +404,7 @@ export async function runChatTurn(input: ChatTurnInput): Promise<TurnResult> {
       historyDropped = assembled.historyTurnsDropped;
       sourceTokens = assembled.parts.sources;
       const started = Date.now();
+      progress({ stage: "answering", count: null });
       let parsed: AnswerSentence[];
       try {
         const user = answerUser({
@@ -615,13 +646,18 @@ export async function runChatTurn(input: ChatTurnInput): Promise<TurnResult> {
         return null;
       }
     };
-    const digest = (ids?: string[]) => {
+    let digestIds: string[] | undefined;
+    let digestLabels: string[] = [];
+    const digest = (ids?: string[], budgetTokens?: number, quiet = false) => {
       const t = Date.now();
+      digestIds = ids;
       const r = summaryDigest(ctx, {
         ...(ids ? { meetingIds: ids } : {}),
-        budgetTokens: Math.floor(settings.sourceBudget * 0.6),
+        budgetTokens: budgetTokens ?? Math.floor(settings.sourceBudget * 0.6),
         ...(more ? { told: seenMeetings } : {}),
       });
+      digestLabels = r.labels;
+      if (quiet) return;
       toolCalls.push({
         tool: r.tool,
         args: { meetings: ids?.length ?? "scope" },
@@ -657,7 +693,11 @@ export async function runChatTurn(input: ChatTurnInput): Promise<TurnResult> {
             .filter(Boolean),
         ),
       ].slice(0, 6);
-      if (ids.length > 0) digest(ids);
+      // A question with no topic ("an overview of everything") reads every
+      // meeting: the map-reduce below shortens what does not fit (D20).
+      // Only a first question: a follow-up ("tell me more") stays on the topic of the thread.
+      if (turns.length === 0 && isGlobalQuestion(question)) digest();
+      else if (ids.length > 0) digest(ids);
     }
     const why = stopReason();
     if (why) return notFound(why);
@@ -678,12 +718,174 @@ export async function runChatTurn(input: ChatTurnInput): Promise<TurnResult> {
       seen.has(seenKey(x.meetingId, x.kind, x.itemId, x.startMs, x.text));
     const spoken = (x: Source) =>
       x.kind === "transcript" || x.kind === "window";
-    const ranked = [
-      ...all.filter((x) => !isSeen(x) && !spoken(x)),
-      ...all.filter((x) => !isSeen(x) && spoken(x)),
-      ...all.filter((x) => isSeen(x) && !spoken(x)),
-      ...all.filter((x) => isSeen(x) && spoken(x)),
-    ];
+    const rankSources = () => {
+      const now = sources.all().filter((x) => x.kind !== "folder");
+      return [
+        ...now.filter((x) => !isSeen(x) && !spoken(x)),
+        ...now.filter((x) => !isSeen(x) && spoken(x)),
+        ...now.filter((x) => isSeen(x) && !spoken(x)),
+        ...now.filter((x) => isSeen(x) && spoken(x)),
+      ];
+    };
+    let ranked = rankSources();
+    let mapped: { from: string; to: string; n: number } | null = null;
+    let mappedLabels = new Set<string>();
+    // Map-reduce (D20): the digest of a folder or of Everything does not fit
+    // the window, so the oldest meetings would drop. Map: shorten the full
+    // summaries in groups, each note keeps its label. Reduce: the synthesis
+    // answer below reads the notes.
+    if (turnScope.kind !== "meeting" && digestLabels.length >= 6) {
+      // The digest shrinks every meeting to one line when the budget is
+      // short, and that loses the facts. Map-reduce runs when the FULL
+      // summaries do not fit the digest budget.
+      const digestBudget = Math.floor(settings.sourceBudget * 0.6);
+      // Measure the full digest on a scratch source map: the labels of the
+      // real map stay as they are when nothing needs to be shortened.
+      const scratch = new SourceMap();
+      summaryDigest(
+        { ...ctx, sources: scratch },
+        {
+          ...(digestIds ? { meetingIds: digestIds } : {}),
+          budgetTokens: 1_000_000,
+        },
+      );
+      const fullTokens = scratch
+        .all()
+        .reduce((n, x) => n + estimatePromptTokens(renderSource(x)) + 1, 0);
+      if (fullTokens > digestBudget) {
+        sources.remove(digestLabels);
+        digest(digestIds, 1_000_000, true);
+        const full = digestLabels
+          .map((l) => sources.get(l))
+          .filter((x): x is Source => x !== undefined);
+
+        progress({ stage: "reading", count: full.length });
+        const t = Date.now();
+        const cap = settings.sourceBudget;
+        const win = llm.contextWindow;
+        const groupTokens = Math.max(
+          1000,
+          Math.min(
+            Math.floor(cap * 0.7),
+            win === null ? Number.POSITIVE_INFINITY : win - 2400,
+          ),
+        );
+        // The notes together fill about 60% of the source budget.
+        // Each source also costs its title and date (about 28 tokens).
+        const noteChars = Math.max(
+          80,
+          Math.min(
+            420,
+            Math.floor(((cap * 0.6) / Math.max(1, full.length) - 28) * 4),
+          ),
+        );
+        const m = await mapNotes({
+          sources: full,
+          question,
+          llm,
+          signal,
+          groupTokens,
+          noteChars,
+          stop: stopReason,
+        });
+        step(
+          "tool",
+          "map_reduce",
+          t,
+          m.sources,
+          `Reading ${m.sources} meetings in ${m.groups} groups; ${m.calls} calls; ${m.fallback} code cuts (error ${m.why.error}, missing ${m.why.missing}, unsafe ${m.why.unsafe})${m.firstError ? `; ${m.firstError}` : ""}`,
+        );
+        if (m.stopped) return notFound(m.stopped as never);
+        const days = full
+          .map((x) => x.startedAt)
+          .filter((x): x is number => x !== null)
+          .sort((a, b) => a - b);
+        const day = (ms: number | undefined) =>
+          ms === undefined ? "" : new Date(ms).toISOString().slice(0, 10);
+        mapped = { from: day(days[0]), to: day(days.at(-1)), n: full.length };
+        mappedLabels = new Set(full.map((x) => x.label));
+      }
+      ranked = rankSources();
+    }
+    if (mapped) {
+      // Reduce in date slices (D20): one answer for each third of the period,
+      // so the late meetings get bullets too (a model that reads 72 notes
+      // writes about the first ones). Each slice has its own cite check.
+      // Only the shortened digest sources, in date order (a "more details"
+      // turn ranks unseen sources first, which mixes the order).
+      const summaries = ranked
+        .filter((x) => x.kind === "summary" && mappedLabels.has(x.label))
+        .sort((a, b) => (a.startedAt ?? 0) - (b.startedAt ?? 0));
+      // At most 4 slices; each one fits the source budget when it can.
+      const total = summaries.reduce(
+        (n, x) => n + estimatePromptTokens(renderSource(x)) + 1,
+        0,
+      );
+      const parts = Math.min(
+        4,
+        Math.max(
+          1,
+          Math.ceil(summaries.length / 24),
+          Math.ceil(total / Math.max(1, settings.sourceBudget - 800)),
+        ),
+      );
+      const size = Math.ceil(summaries.length / parts);
+      const slices = Array.from({ length: parts }, (_, i) =>
+        summaries.slice(i * size, (i + 1) * size),
+      ).filter((x) => x.length > 0);
+      const results: TurnResult[] = [];
+      for (const [i, slice] of slices.entries()) {
+        const day = (x: Source | undefined) =>
+          x?.startedAt == null
+            ? ""
+            : new Date(x.startedAt).toISOString().slice(0, 10);
+        const r = await answerStage({
+          ranked: slice,
+          synth: true,
+          focus: `these are ${slice.length} meetings from ${day(slice[0])} to ${day(slice.at(-1))}, part ${i + 1} of ${slices.length} of a longer story; ${i === 0 ? "the lead says what the whole folder is about in one sentence; " : "write only bullets; "}one bullet for each important fact, in date order, with its date`,
+        });
+        results.push(r);
+        // The deadline or the call cap after a slice: keep the good slices.
+        if (i < slices.length - 1) {
+          const stop = stopReason();
+          if (stop) {
+            if (
+              !results.some(
+                (x) => !x.blocks.some((b) => b.kind === "not_found"),
+              )
+            )
+              return notFound(stop);
+            break;
+          }
+        }
+      }
+      const good = results.filter(
+        (r) => !r.blocks.some((b) => b.kind === "not_found"),
+      );
+      if (good.length === 0) return results.at(-1) ?? notFound("no_sources");
+      const blocks: ChatBlock[] = [];
+      const cites = new Map<string, ChatCite>();
+      for (const [i, r] of good.entries()) {
+        for (const b of r.blocks) {
+          blocks.push(i > 0 && b.kind === "text" ? { ...b, bullet: true } : b);
+        }
+        for (const c of r.cites) cites.set(c.label, c);
+      }
+      const content = answerContent(
+        blocks.flatMap((b) =>
+          b.kind === "text"
+            ? [
+                {
+                  text: b.text,
+                  cites: b.cites,
+                  ...(b.bullet ? { bullet: true } : {}),
+                },
+              ]
+            : [],
+        ),
+      );
+      return finish(blocks, [...cites.values()], content);
+    }
     return answerStage({
       ranked,
       synth: true,

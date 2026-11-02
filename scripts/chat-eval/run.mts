@@ -172,13 +172,15 @@ async function main() {
     };
     const db = arg("db");
     const threads = (arg("threads") ?? "").split(",").filter(Boolean);
-    if (!db || threads.length === 0)
+    // `--extra "q1|q2"`: new questions at scope Everything (the clarify check, D20).
+    const extra = (arg("extra") ?? "").split("|").filter(Boolean);
+    if (!db || (threads.length === 0 && extra.length === 0))
       throw new Error(
-        "usage: pnpm chat-eval real --db <copy.db> --threads <id>,<id> [--label x]",
+        'usage: pnpm chat-eval real --db <copy.db> --threads <id>,<id> [--extra "q1|q2"] [--label x]',
       );
     await takeLock("chat-eval-real", 45);
     try {
-      await runReal({ db, threads, label: arg("label") ?? "run" });
+      await runReal({ db, threads, extra, label: arg("label") ?? "run" });
     } finally {
       releaseLock();
       unqueue();
