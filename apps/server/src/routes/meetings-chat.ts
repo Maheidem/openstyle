@@ -32,6 +32,7 @@ import {
 import {
   buildChatContext,
   type ChatSource,
+  RETRIEVE_WAIT_MS,
 } from "../lib/meetings/live/chat-context.js";
 import {
   CHAT_SYSTEM_PROMPT,
@@ -148,12 +149,15 @@ const meetingsChat = new Hono()
               window - resolved.maxOutputTokens - FIXED_TOKENS,
             );
       const live = getLive(id)?.lines ?? [];
-      const context = await buildChatContext(db, {
-        meetingId: id,
-        question,
-        live,
-        budgetTokens: budget,
-      });
+      const context = await withDeadline(
+        buildChatContext(db, {
+          meetingId: id,
+          question,
+          live,
+          budgetTokens: budget,
+        }),
+        RETRIEVE_WAIT_MS + LANE_SLACK_MS,
+      );
       const user = `SOURCES:\n${context.sources || "(none)"}\n\nQUESTION: ${question}`;
       const promptTokens =
         estimatePromptTokens(CHAT_SYSTEM_PROMPT) +
@@ -167,10 +171,13 @@ const meetingsChat = new Hono()
       }
 
       const cold = chatsAnswered === 0;
-      const model = await createChatModel(resolved.provider, resolved.modelId, {
-        task: "liveChat",
-        sampling: resolved.samplingParams,
-      });
+      const model = await withDeadline(
+        createChatModel(resolved.provider, resolved.modelId, {
+          task: "liveChat",
+          sampling: resolved.samplingParams,
+        }),
+        COLD_TIMEOUT_MS + LANE_SLACK_MS,
+      );
       const timeoutMs = cold ? COLD_TIMEOUT_MS : resolved.timeoutMs;
       const callModel = (): Promise<string> =>
         withLlmLane(

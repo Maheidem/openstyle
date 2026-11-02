@@ -181,4 +181,19 @@ describe("POST /api/meetings/:id/chat with a cloud model", () => {
     expect(res.status).toBe(502);
     expect((await res.json()).error).toMatch(/API key/);
   });
+
+  it("ends with an error when the model never answers", async () => {
+    vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
+    try {
+      generate.mockImplementation(() => new Promise(() => {}));
+      const pending = ask();
+      // The first call is cold: 120 s, plus 15 s for the lane.
+      await vi.advanceTimersByTimeAsync(136_000);
+      const res = await pending;
+      expect(res.status).toBe(502);
+      expect((await res.json()).error).toMatch(/No answer within/);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
 });
