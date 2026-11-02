@@ -111,8 +111,11 @@ for (const theme of ["Light", "Dark"] as const) {
     // Turn 1: the open items. A list answers it, with no model call.
     const first = await send(page, Q_LIST);
     const list = await answerAt(page, first);
-    await expect(list.getByTestId("meeting-ask-block-list")).toBeVisible();
+    await expect(
+      list.getByTestId("meeting-ask-block-list").first(),
+    ).toBeVisible();
     // Turn 2: "why are these open?" digs. Three leads, one for each item.
+    fake.spreadMeetings = true;
     fake.reflectScript = ["next_lead", "next_lead", "stop"];
     fake.reflectDelayMs = 1500;
     const reflectBefore = fake.ofKind("chat_reflect").length;
@@ -124,13 +127,19 @@ for (const theme of ["Light", "Dark"] as const) {
     await shoot(page, `research-step-text-${theme.toLowerCase()}.png`);
     const turn = await answerAt(page, second);
     fake.reflectDelayMs = 0;
+    fake.spreadMeetings = false;
     expect(fake.ofKind("chat_reflect").length).toBeGreaterThan(reflectBefore);
     // The answer has bullets, and the cites come from more than one meeting.
     expect(
       await turn.getByTestId("meeting-ask-block-text").count(),
     ).toBeGreaterThanOrEqual(3);
+    // Every chip names its meeting at folder scope (design gap G1).
     const chips = turn.getByTestId("meeting-ask-cite");
     expect(await chips.count()).toBeGreaterThanOrEqual(2);
+    const titles = new Set(
+      (await chips.allInnerTexts()).map((t) => t.split("·")[1]?.trim()),
+    );
+    expect(titles.size).toBeGreaterThanOrEqual(2);
     // The trail line: built from fields, under the answer.
     const trail = turn.getByTestId("meeting-ask-research-trail");
     await expect(trail).toBeVisible();
@@ -171,6 +180,9 @@ test("leaving the Ask page during a research turn keeps the turn", async () => {
   await page.waitForTimeout(1500);
   await page.goto("app://renderer/ask");
   await expect(page.getByTestId("ask-page")).toBeVisible({ timeout: 15_000 });
+  await page.getByRole("radio", { name: "A folder" }).click();
+  await page.getByTestId("ask-pick-folder").click();
+  await page.getByRole("option", { name: "Orchid project" }).click();
   fake.reflectDelayMs = 0;
   const turn = await answerAt(page, second);
   await expect(turn.getByTestId("meeting-ask-research-trail")).toBeVisible({

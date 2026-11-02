@@ -255,11 +255,7 @@ export function seedLeads(t: Turn): Lead[] {
 
 // ---- Strategies (node `act`) ----
 
-function order(
-  t: Turn,
-  lead: Lead,
-  evidence: readonly Evidence[],
-): Strategy[] {
+function order(t: Turn, lead: Lead, evidence: readonly Evidence[]): Strategy[] {
   if (lead.list) return ["list_open", "search", "other_meetings", "summary"];
   if (t.turnScope.kind === "meeting") return ["search", "summary", "window"];
   // A search that found nothing (a question with no topic word scores under

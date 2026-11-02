@@ -408,9 +408,22 @@ export function buildResearchGraph(t: Turn, checkpoint: boolean) {
       t.step("research", `reflect:${r?.next ?? "stop"}`, started, null, null);
       decision = r;
     }
-    // Rule 7: reflect said stop and the evidence is not empty.
-    if (reflectOn && g.last && (decision?.next ?? "stop") === "stop") {
+    // Rule 7: reflect said stop (or failed: an error means `stop`) and the
+    // evidence is not empty.
+    if (
+      reflectOn &&
+      g.last &&
+      (decision === null || decision.next === "stop")
+    ) {
       if (hasEvidence) return endLoop(s, "enough", leads, "synthesize");
+    }
+    // A lead with no evidence does not close because the model says so: its
+    // other strategies still run (code owns the loop).
+    if (
+      decision?.next === "next_lead" &&
+      !s.evidence.some((e) => e.leadId === lead.id)
+    ) {
+      decision = null;
     }
     let nextLeads = leads;
     if (decision?.next === "next_lead") {

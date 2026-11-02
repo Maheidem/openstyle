@@ -477,6 +477,8 @@ function words(s: string): string[] {
 interface ParsedSource {
   label: string;
   text: string;
+  /** The meeting title of the source line, "" when the line has none. */
+  title: string;
 }
 
 /** The `[S1] Title, 2026-10-12: text` lines of the SOURCES block. */
@@ -485,10 +487,15 @@ export function parseSources(user: string): ParsedSource[] {
   const out: ParsedSource[] = [];
   for (const line of block.split("\n")) {
     const m =
-      /^\[(S\d+)\] (?:.*?, )?\d{4}-\d{2}-\d{2}(?: \d{2}:\d{2})?: (.*)$/.exec(
+      /^\[(S\d+)\] (?:(.*?), )?\d{4}-\d{2}-\d{2}(?: \d{2}:\d{2})?: (.*)$/.exec(
         line,
       );
-    if (m) out.push({ label: m[1] as string, text: m[2] as string });
+    if (m)
+      out.push({
+        label: m[1] as string,
+        title: (m[2] as string | undefined) ?? "",
+        text: m[3] as string,
+      });
   }
   return out;
 }
@@ -518,6 +525,12 @@ export class FakeAskLlm {
   stepDelayMs = 0;
   /** Waits this long before each answer call (ms). It keeps a turn running. */
   answerDelayMs = 0;
+  /**
+   * When true, a synthesis answer cites one source of each meeting before it
+   * takes a second source of the same meeting (D21: a research answer reads
+   * several meetings).
+   */
+  spreadMeetings = false;
   /** Waits this long before each reflect call of the research loop (ms): the step text of a research turn (D21). */
   reflectDelayMs = 0;
   /**
@@ -836,7 +849,16 @@ export class FakeAskLlm {
         this.text(res, JSON.stringify({ lead: [], bullets: [] }));
         return;
       }
-      const picks = rest.slice(0, 3);
+      const picks = this.spreadMeetings
+        ? [
+            ...rest.filter(
+              (s, i) =>
+                s.title !== first.title &&
+                rest.findIndex((x) => x.title === s.title) === i,
+            ),
+            ...rest,
+          ].slice(0, 3)
+        : rest.slice(0, 3);
       // The schema asks for 2 bullets at least: repeat the first source when needed.
       while (picks.length < 2) picks.push(first);
       this.text(
