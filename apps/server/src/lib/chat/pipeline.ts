@@ -38,6 +38,7 @@ import {
   type HistoryTurn,
   halveBudget,
   renderHistory,
+  renderSource,
 } from "./context.js";
 import type { ChatLlm } from "./llm.js";
 import { mapNotes } from "./mapreduce.js";
@@ -720,28 +721,27 @@ export async function runChatTurn(input: ChatTurnInput): Promise<TurnResult> {
     // the window, so the oldest meetings would drop. Map: shorten the full
     // summaries in groups, each note keeps its label. Reduce: the synthesis
     // answer below reads the notes.
-    if (turnScope.kind !== "meeting" && digestLabels.length >= 4) {
-      const dry = assembleAnswerInput({
-        system: SYNTH_SYSTEM,
-        question,
-        history: turns,
-        sources: ranked,
-        budgetTokens: settings.sourceBudget,
-        windowTokens: llm.contextWindow,
-        maxOutputTokens: SYNTH_MAX_TOKENS,
-        fixedTokens:
-          estimatePromptTokens(SYNTH_SYSTEM) + estimatePromptTokens(toldPrompt),
-      });
-      const overflow = dry.droppedLabels.filter((l) =>
-        digestLabels.includes(l),
+    if (turnScope.kind !== "meeting" && digestLabels.length >= 6) {
+      // The digest shrinks every meeting to one line when the budget is
+      // short, and that loses the facts. Map-reduce runs when the FULL
+      // summaries do not fit the digest budget.
+      const digestBudget = Math.floor(settings.sourceBudget * 0.6);
+      const labelsNow = digestLabels;
+      sources.remove(labelsNow);
+      digest(digestIds, 1_000_000);
+      const full = digestLabels
+        .map((l) => sources.get(l))
+        .filter((x): x is Source => x !== undefined);
+      const fullTokens = full.reduce(
+        (n, x) => n + estimatePromptTokens(renderSource(x)) + 1,
+        0,
       );
-      if (overflow.length > 0) {
-        const t = Date.now();
+      if (fullTokens <= digestBudget) {
+        // Everything fits: the normal digest holds the same full text.
         sources.remove(digestLabels);
-        digest(digestIds, 1_000_000);
-        const full = digestLabels
-          .map((l) => sources.get(l))
-          .filter((x): x is Source => x !== undefined);
+        digest(digestIds);
+      } else {
+        const t = Date.now();
         const cap = settings.sourceBudget;
         const win = llm.contextWindow;
         const groupTokens = Math.max(
@@ -773,8 +773,8 @@ export async function runChatTurn(input: ChatTurnInput): Promise<TurnResult> {
           `Reading ${m.sources} meetings in ${m.groups} groups; ${m.calls} calls; ${m.fallback} code cuts`,
         );
         if (m.stopped) return notFound(m.stopped as never);
-        ranked = rankSources();
       }
+      ranked = rankSources();
     }
     return answerStage({
       ranked,
