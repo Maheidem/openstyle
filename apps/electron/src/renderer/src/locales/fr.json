@@ -333,7 +333,9 @@
       "numberStripped": "Chiffres seulement. {{dropped}} retiré, le champ affiche {{value}}.",
       "hotkey": "Raccourci global",
       "hotkeyDesc": "Ouvre une petite fenêtre de question depuis n'importe quelle app. Si elle commence par les touches de dictée, la dictée ne démarre que si cette touche ne suit pas dans les 150 ms.",
-      "hotkeyConflict": "Choisissez une combinaison avec une touche qui n'est pas un raccourci de dictée."
+      "hotkeyConflict": "Choisissez une combinaison avec une touche qui n'est pas un raccourci de dictée.",
+      "research": "Mode recherche",
+      "researchDesc": "Pour les questions qui demandent d’enquêter, Ask cherche plusieurs fois dans plusieurs réunions avant de répondre. Un fait simple garde une réponse rapide."
     }
   },
   "today": {
@@ -1435,7 +1437,26 @@
         "searching_other": "Recherche dans {{count}} réunions…",
         "reading_one": "Lecture de {{count}} réunion…",
         "reading_other": "Lecture de {{count}} réunions…",
-        "answering": "Rédaction de la réponse…"
+        "answering": "Rédaction de la réponse…",
+        "researching_one": "Recherche de la réponse, tour {{round}} sur {{max}}…",
+        "researching_other": "Recherche : raison {{lead}} sur {{leads}}, tour {{round}} sur {{max}}…"
+      },
+      "trailResearch": {
+        "meetings_one": "Cherché dans {{count}} réunion",
+        "meetings_other": "Cherché dans {{count}} réunions",
+        "searches_one": "{{count}} recherche",
+        "searches_other": "{{count}} recherches",
+        "notFound": "introuvable : {{what}}",
+        "rounds": "Recherche : {{iterations}} tours sur {{max}}.",
+        "stop": {
+          "enough": "Arrêt : les sources répondent à la question.",
+          "max_iter": "Arrêt : limite de {{max}} tours.",
+          "stalled": "Arrêt : deux recherches de suite n’ont rien trouvé de nouveau.",
+          "call_cap": "Arrêt : limite d’appels au modèle.",
+          "deadline": "Arrêt : limite de temps.",
+          "no_leads": "Arrêt : toutes les parties ont été cherchées.",
+          "error": "Arrêt : une erreur."
+        }
       }
     }
   },

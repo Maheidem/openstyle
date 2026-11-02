@@ -333,7 +333,9 @@
       "numberStripped": "数字のみ。{{dropped}} を除外し、{{value}} と表示しています。",
       "hotkey": "グローバルショートカット",
       "hotkeyDesc": "どのアプリからでも小さな質問ウィンドウを開きます。音声入力のキーで始まる場合、150 ミリ秒以内にこのキーが続かないときだけ音声入力が始まります。",
-      "hotkeyConflict": "音声入力のショートカットではない、キー付きの組み合わせを選んでください。"
+      "hotkeyConflict": "音声入力のショートカットではない、キー付きの組み合わせを選んでください。",
+      "research": "リサーチモード",
+      "researchDesc": "掘り下げが必要な質問では、Ask は答える前に複数の会議を何度も検索します。単純な事実はこれまでどおり速く答えます。"
     }
   },
   "today": {
@@ -1415,7 +1417,24 @@
       "step": {
         "searching_other": "{{count}} 件の会議を検索中…",
         "reading_other": "{{count}} 件の会議を読み込み中…",
-        "answering": "回答を作成中…"
+        "answering": "回答を作成中…",
+        "researching_one": "答えを探しています（{{round}}/{{max}} ラウンド）…",
+        "researching_other": "探しています：理由 {{lead}}/{{leads}}、{{round}}/{{max}} ラウンド…"
+      },
+      "trailResearch": {
+        "meetings_other": "{{count}} 件の会議を調べました",
+        "searches_other": "{{count}} 回検索",
+        "notFound": "見つからなかったもの：{{what}}",
+        "rounds": "リサーチ：{{iterations}}/{{max}} ラウンド。",
+        "stop": {
+          "enough": "停止：ソースが質問に答えています。",
+          "max_iter": "停止：{{max}} ラウンドの上限です。",
+          "stalled": "停止：2 回続けて新しい情報がありませんでした。",
+          "call_cap": "停止：モデル呼び出しの上限です。",
+          "deadline": "停止：時間切れです。",
+          "no_leads": "停止：すべての部分を検索しました。",
+          "error": "停止：エラーです。"
+        }
       }
     }
   },

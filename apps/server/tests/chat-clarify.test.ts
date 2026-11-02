@@ -28,6 +28,7 @@ const SETTINGS: ChatSettings = {
   deadlineMs: 60_000,
   searchWider: true,
   clarify: true,
+  research: false,
   nativeTools: true,
   enabled: true,
 };

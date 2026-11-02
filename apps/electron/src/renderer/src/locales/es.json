@@ -333,7 +333,9 @@
       "numberStripped": "Solo dígitos. Se quitó {{dropped}}, el campo muestra {{value}}.",
       "hotkey": "Atajo global",
       "hotkeyDesc": "Abre una ventana pequeña de Preguntar desde cualquier app. Si empieza con las teclas de dictado, el dictado solo empieza si esta tecla no llega en 150 ms.",
-      "hotkeyConflict": "Elige una combinación con una tecla que no sea un atajo de dictado."
+      "hotkeyConflict": "Elige una combinación con una tecla que no sea un atajo de dictado.",
+      "research": "Modo de investigación",
+      "researchDesc": "Para preguntas que piden investigar, Ask busca varias veces en varias reuniones antes de responder. Un dato simple sigue con respuesta rápida."
     }
   },
   "today": {
@@ -1435,7 +1437,26 @@
         "searching_other": "Buscando en {{count}} reuniones…",
         "reading_one": "Leyendo {{count}} reunión…",
         "reading_other": "Leyendo {{count}} reuniones…",
-        "answering": "Escribiendo la respuesta…"
+        "answering": "Escribiendo la respuesta…",
+        "researching_one": "Buscando la respuesta, ronda {{round}} de {{max}}…",
+        "researching_other": "Buscando: motivo {{lead}} de {{leads}}, ronda {{round}} de {{max}}…"
+      },
+      "trailResearch": {
+        "meetings_one": "Busqué en {{count}} reunión",
+        "meetings_other": "Busqué en {{count}} reuniones",
+        "searches_one": "{{count}} búsqueda",
+        "searches_other": "{{count}} búsquedas",
+        "notFound": "no encontrado: {{what}}",
+        "rounds": "Investigación: {{iterations}} de {{max}} rondas.",
+        "stop": {
+          "enough": "Se detuvo: las fuentes responden la pregunta.",
+          "max_iter": "Se detuvo: límite de {{max}} rondas.",
+          "stalled": "Se detuvo: dos búsquedas seguidas no hallaron nada nuevo.",
+          "call_cap": "Se detuvo: límite de llamadas al modelo.",
+          "deadline": "Se detuvo: límite de tiempo.",
+          "no_leads": "Se detuvo: se buscaron todas las partes.",
+          "error": "Se detuvo: un error."
+        }
       }
     }
   },

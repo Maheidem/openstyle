@@ -268,7 +268,7 @@ export function AskPanel({
   const busy = working || serverPending;
   const step = progressKey(detail?.progress);
   const statusText = step
-    ? t(step.key, { count: step.count })
+    ? t(step.key, { count: step.count, ...step.vars })
     : slow
       ? t("meetings.ask.warming")
       : t("meetings.ask.thinking");

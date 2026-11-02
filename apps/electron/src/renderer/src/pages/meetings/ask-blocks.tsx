@@ -14,6 +14,8 @@ import {
   type CiteTarget,
   citesForLabels,
   citeView,
+  notFoundLeads,
+  researchTrail,
   summarizeTrace,
 } from "./ask-model";
 
@@ -422,6 +424,7 @@ export function AskAnswer({
   const { t } = useTranslation();
   const blocks = answerBlocks(message);
   const parts = summarizeTrace(message.trace);
+  const research = researchTrail(message.trace);
   const dropped = message.trace?.sources_dropped.length ?? 0;
   return (
     <div className="flex flex-col gap-2" data-testid="meeting-ask-answer">
@@ -453,6 +456,28 @@ export function AskAnswer({
           {scopeNote}
         </p>
       )}
+      {research && (
+        <p
+          className="text-muted-foreground m-0 text-[12.5px]"
+          data-testid="meeting-ask-research-trail"
+        >
+          {[
+            t("meetings.ask.trailResearch.meetings", {
+              count: research.meetings,
+            }),
+            t("meetings.ask.trailResearch.searches", {
+              count: research.searches,
+            }),
+            ...(research.open_leads.length > 0
+              ? [
+                  t("meetings.ask.trailResearch.notFound", {
+                    what: notFoundLeads(research),
+                  }),
+                ]
+              : []),
+          ].join(" · ")}
+        </p>
+      )}
       {message.trace && (
         <details
           className="text-muted-foreground text-[11.5px]"
@@ -476,6 +501,17 @@ export function AskAnswer({
               </>
             )}
           </p>
+          {research && (
+            <p className="m-0 mt-1" data-testid="meeting-ask-research-details">
+              {t("meetings.ask.trailResearch.rounds", {
+                iterations: research.iterations,
+                max: research.max_iter,
+              })}{" "}
+              {t(`meetings.ask.trailResearch.stop.${research.done}`, {
+                max: research.max_iter,
+              })}
+            </p>
+          )}
         </details>
       )}
     </div>

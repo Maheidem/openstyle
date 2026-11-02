@@ -242,7 +242,7 @@ export default function ChatBubblePage(): React.JSX.Element {
   });
   const step = progressKey(running?.progress);
   const statusText = step
-    ? t(step.key, { count: step.count })
+    ? t(step.key, { count: step.count, ...step.vars })
     : slow
       ? t("meetings.ask.warming")
       : t("meetings.ask.thinking");

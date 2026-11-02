@@ -333,7 +333,9 @@
       "numberStripped": "Nur Ziffern. {{dropped}} entfernt, das Feld zeigt {{value}}.",
       "hotkey": "Globales Tastenkürzel",
       "hotkeyDesc": "Öffnet aus jeder App ein kleines Fragen-Fenster. Beginnt es mit den Diktiertasten, startet das Diktat nur, wenn diese Taste nicht innerhalb von 150 ms folgt.",
-      "hotkeyConflict": "Wählen Sie eine Kombination mit einer Taste, die kein Diktierkürzel ist."
+      "hotkeyConflict": "Wählen Sie eine Kombination mit einer Taste, die kein Diktierkürzel ist.",
+      "research": "Recherchemodus",
+      "researchDesc": "Bei Fragen, die Nachforschung brauchen, sucht Ask mehrfach in mehreren Besprechungen, bevor es antwortet. Ein einfacher Fakt bekommt weiter eine schnelle Antwort."
     }
   },
   "today": {
@@ -1435,7 +1437,26 @@
         "searching_other": "Suche in {{count}} Meetings…",
         "reading_one": "Lese {{count}} Meeting…",
         "reading_other": "Lese {{count}} Meetings…",
-        "answering": "Schreibe die Antwort…"
+        "answering": "Schreibe die Antwort…",
+        "researching_one": "Suche die Antwort, Runde {{round}} von {{max}}…",
+        "researching_other": "Suche: Grund {{lead}} von {{leads}}, Runde {{round}} von {{max}}…"
+      },
+      "trailResearch": {
+        "meetings_one": "In {{count}} Besprechung gesucht",
+        "meetings_other": "In {{count}} Besprechungen gesucht",
+        "searches_one": "{{count}} Suche",
+        "searches_other": "{{count}} Suchen",
+        "notFound": "nicht gefunden: {{what}}",
+        "rounds": "Recherche: {{iterations}} von {{max}} Runden.",
+        "stop": {
+          "enough": "Gestoppt: Die Quellen beantworten die Frage.",
+          "max_iter": "Gestoppt: Grenze von {{max}} Runden.",
+          "stalled": "Gestoppt: Zwei Suchen nacheinander fanden nichts Neues.",
+          "call_cap": "Gestoppt: Grenze der Modellaufrufe.",
+          "deadline": "Gestoppt: Zeitgrenze.",
+          "no_leads": "Gestoppt: Alle Teile wurden durchsucht.",
+          "error": "Gestoppt: ein Fehler."
+        }
       }
     }
   },

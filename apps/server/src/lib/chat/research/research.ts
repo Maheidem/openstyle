@@ -306,7 +306,7 @@ export function chooseCalls(
   return null;
 }
 
-function leadQuery(t: Turn, lead: Lead): string {
+function leadQuery(lead: Lead): string {
   return lead.text.slice(0, 200);
 }
 
@@ -321,7 +321,7 @@ function buildCalls(
     case "list_open":
       return listCalls(t.input.question);
     case "search":
-      return [{ tool: "search_chunks", args: { query: leadQuery(t, lead) } }];
+      return [{ tool: "search_chunks", args: { query: leadQuery(lead) } }];
     case "rephrase": {
       const q = run.requested?.query.trim() ?? "";
       return q === "" ? null : [{ tool: "search_chunks", args: { query: q } }];
@@ -336,7 +336,7 @@ function buildCalls(
         {
           tool: "search_chunks",
           args: {
-            query: leadQuery(t, lead),
+            query: leadQuery(lead),
             meeting_ids: unread.slice(0, 200),
             k: 4,
           },
