@@ -169,7 +169,8 @@ const chat = new Hono()
             settings,
             llm,
             signal,
-            ...(body.no_clarify ? { noClarify: true } : {}),
+            // A widen turn is an explicit request: it never gets a question back.
+            ...(body.no_clarify || body.widen ? { noClarify: true } : {}),
           });
           const assistant = appendMessage(db, thread.id, {
             role: "assistant",
