@@ -178,16 +178,19 @@ export function buildResearchGraph(t: Turn, checkpoint: boolean) {
   ): Promise<Update> => {
     g.last = null;
     const leads = s.leads;
+    // Leads that close in this step (no call left, or the cap of acts): they
+    // cost no loop turn, so the next lead runs in the same `act`.
+    const closed: Lead[] = [];
     // The first open lead that still has a call to make.
     for (const [i, lead] of leads.entries()) {
       if (lead.status !== "open") continue;
-      if (lead.acts >= PER_LEAD_ACTS) {
-        return { leads: [{ ...lead, status: "dropped" }], go: "observe" };
-      }
-      const pick = chooseCalls(t, g.loop, lead, s.evidence);
+      const pick =
+        lead.acts >= PER_LEAD_ACTS
+          ? null
+          : chooseCalls(t, g.loop, lead, s.evidence);
       if (!pick) {
-        // Every strategy of this lead ran: the lead closes.
-        return { leads: [{ ...lead, status: "dropped" }], go: "observe" };
+        closed.push({ ...lead, status: "dropped" });
+        continue;
       }
       emit(config, {
         iteration: s.iteration + 1,
@@ -220,12 +223,12 @@ export function buildResearchGraph(t: Turn, checkpoint: boolean) {
       };
       g.loop.requested = null;
       return {
-        leads: [{ ...lead, acts: lead.acts + 1 }],
+        leads: [...closed, { ...lead, acts: lead.acts + 1 }],
         iteration: s.iteration + 1,
         go: "observe",
       };
     }
-    return { go: "observe" };
+    return { leads: closed, go: "observe" };
   };
 
   const act = async (

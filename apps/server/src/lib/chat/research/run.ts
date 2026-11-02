@@ -5,6 +5,7 @@ import type { ChatTurnInput } from "../pipeline.js";
 import { type Exit, Turn } from "../turn.js";
 import type { TurnResult } from "../types.js";
 import { MAX_ITER } from "./research.js";
+import { researchTrigger } from "./trigger.js";
 
 // Runs one Ask turn through the graph (specs/meeting-chat-agent.md 11.9.3).
 // LangGraph loads with a dynamic `import()` on the first turn, after the four
@@ -12,14 +13,24 @@ import { MAX_ITER } from "./research.js";
 // bundling fault breaks Ask only.
 
 /**
- * Super-steps that a turn may take before `GraphRecursionError` (11.9.6).
- * One loop turn is 3 super-steps (`act`, `observe`, `reflect`); the fixed
- * nodes and the answer retries are 12. The stop rules fire long before this
- * limit, so the error means a bug.
+ * Super-steps that a turn may take before `GraphRecursionError` (11.9.6). A
+ * research turn: one loop turn is 3 super-steps (`act`, `observe`,
+ * `reflect`); the fixed nodes and the answer retries are 12, so the limit is
+ * `3 x MAX_ITER + 12`. The stop rules fire long before it: the error means a
+ * bug. A fast turn has rounds of `act`, `observe` and `reflect` as well, and
+ * up to 4 answer slices of a map-reduce, so it gets more room.
  */
 function recursionLimit(t: Turn): number {
-  const iter = t.input.llm.isLocal ? MAX_ITER.local : MAX_ITER.cloud;
-  return Math.max(3 * iter + 12, 3 * t.input.settings.rounds + 80);
+  const { question, history, settings, llm } = t.input;
+  const research = researchTrigger({
+    question,
+    history,
+    enabled: settings.research,
+  });
+  if (research) {
+    return 3 * (llm.isLocal ? MAX_ITER.local : MAX_ITER.cloud) + 12;
+  }
+  return 3 * settings.rounds + 80;
 }
 
 /** True when the chat run has a row in `llm_runs`, which a checkpoint needs. */
