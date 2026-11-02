@@ -23,7 +23,12 @@ import {
 } from "./clarify-corpus.mts";
 import { buildCorpus } from "./corpus.mts";
 import { buildDigAddon, digAsCorpus } from "./dig-corpus.mts";
-import { buildHeldoutAddon, buildHeldoutDig } from "./dig-heldout.mts";
+import {
+  buildHeldoutAddon,
+  buildHeldoutDig,
+  DIG_SETS,
+  type DigSetName,
+} from "./dig-heldout.mts";
 import { buildP2, buildThreads } from "./gold.mts";
 import {
   mean,
@@ -68,6 +73,7 @@ import {
   nativeOutcome,
   scoreProdSlots,
   scoreToolArgs,
+  spreadOpt,
 } from "./p1-score.mts";
 import { runThread, summarize as summarizeThreads } from "./p1-threads.mts";
 import { gradesFor, loadChunks } from "./retrieval.mts";
@@ -772,6 +778,10 @@ interface E2eRow {
   ms: number;
   routeMs: number;
   native: string;
+  /** The turn ran in research mode (code trigger or the model's dig_deeper call). */
+  research?: boolean;
+  /** Meetings with a strong hit in the first search (11.9.17), else null. */
+  spread?: number | null;
   tool: string | null;
   toolOk: boolean;
   argsOk: boolean;
@@ -849,6 +859,7 @@ async function partE2e(env: Env, M: Record<string, number>): Promise<PartOut> {
         now: corpus.todayMs,
         allowProposals: true,
         ...(floor !== undefined ? { scoreFloor: floor } : {}),
+        ...spreadOpt(),
       });
       llm.finish("succeeded");
       const wall = performance.now() - t0;
@@ -910,6 +921,12 @@ async function partE2e(env: Env, M: Record<string, number>): Promise<PartOut> {
         ms: wall,
         routeMs,
         native: nativeOutcome(stepNames),
+        research: res.trace.research !== undefined,
+        spread:
+          Number(
+            stepNames.find((n) => n.startsWith("spread:"))?.slice(7) ??
+              Number.NaN,
+          ) || null,
         tool,
         toolOk,
         argsOk: sa.pass,
@@ -1098,6 +1115,9 @@ async function partE2e(env: Env, M: Record<string, number>): Promise<PartOut> {
         ? 0
         : natives.filter((r) => r.native === k).length / natives.length;
   metrics["native.attempts"] = natives.length;
+  // Questions of the gold set are lookups: a research turn here is a false trigger (11.9.17).
+  metrics["research.share"] =
+    rows.filter((r) => r.research).length / Math.max(1, rows.length);
   // Calls, latency, RAM, dropped.
   metrics["calls.mean"] = mean(rows.map((r) => r.calls));
   metrics["calls.max"] = Math.max(...rows.map((r) => r.calls));
@@ -1322,8 +1342,9 @@ async function partDig(env: Env, M: Record<string, number>): Promise<PartOut> {
   const { corpus, stack, maps } = env;
   // The extra data is loaded on top of the base corpus (its ids start with dg-).
   // CHAT_EVAL_DIG_SET=heldout: the blind held-out set (dig-heldout.mts).
-  const heldout = process.env.CHAT_EVAL_DIG_SET === "heldout";
-  const addon = heldout ? buildHeldoutAddon() : buildDigAddon();
+  const setName = process.env.CHAT_EVAL_DIG_SET as DigSetName | undefined;
+  const heldout = setName !== undefined && setName in DIG_SETS;
+  const addon = heldout ? buildHeldoutAddon(setName) : buildDigAddon();
   loadCorpus(stack, digAsCorpus(corpus, addon));
   // Item cites of the dig meetings are known by the same key function.
   const digMaps = buildIdMaps(
@@ -1334,7 +1355,7 @@ async function partDig(env: Env, M: Record<string, number>): Promise<PartOut> {
   env.log(`dig: loaded ${addon.meetings.length} extra meetings`);
   const only = process.env.CHAT_EVAL_IDS?.split(",");
   const qs = spread(
-    (heldout ? buildHeldoutDig() : buildDig()).filter(
+    (heldout ? buildHeldoutDig(setName) : buildDig()).filter(
       (q) => !only || only.includes(q.id),
     ),
     env.opts.limit,
@@ -1429,9 +1450,9 @@ async function partDig(env: Env, M: Record<string, number>): Promise<PartOut> {
     text,
     data: { rows, metrics: m },
     run: {
-      name: heldout ? "p1-dig-heldout" : "p1-dig",
+      name: heldout ? `p1-dig-${setName}` : "p1-dig",
       params: { turns: m.turns, history: "real answers" },
-      tags: baseTags(env, heldout ? "dig-heldout" : "dig"),
+      tags: baseTags(env, heldout ? `dig-${setName}` : "dig"),
       metrics: m,
     },
   };

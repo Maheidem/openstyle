@@ -1,0 +1,2277 @@
+{
+  "people": [
+    {
+      "key": "p1",
+      "first": "Hannelore",
+      "last": "Voss",
+      "asr": "Hanna Lore Foss"
+    },
+    {
+      "key": "p2",
+      "first": "Rashid",
+      "last": "Okafor",
+      "asr": "Rasheed Okafour"
+    },
+    {
+      "key": "p3",
+      "first": "Mei-Ling",
+      "last": "Tran",
+      "asr": "May Ling Train"
+    },
+    {
+      "key": "p4",
+      "first": "Callum",
+      "last": "Draycott",
+      "asr": "Callum Dray Cot"
+    },
+    {
+      "key": "p5",
+      "first": "Wendell",
+      "last": "Achterberg",
+      "asr": "Wendel Acterberg"
+    },
+    {
+      "key": "p6",
+      "first": "Tamsin",
+      "last": "Ruddock",
+      "asr": "Tamson Rudock"
+    },
+    {
+      "key": "p7",
+      "first": "Valdemar",
+      "last": "Siqueira",
+      "asr": "Valdemar Sikeira"
+    },
+    {
+      "key": "p8",
+      "first": "Joselito",
+      "last": "Tavares",
+      "asr": "Zoselito Tavarez"
+    }
+  ],
+  "projects": [
+    {
+      "key": "A",
+      "name": "Harrowgate Online Booking",
+      "lang": "en"
+    },
+    {
+      "key": "B",
+      "name": "Migração dos Registros Escolares",
+      "lang": "pt"
+    },
+    {
+      "key": "C",
+      "name": "Spokewell Fleet Upgrade",
+      "lang": "en"
+    }
+  ],
+  "meetings": [
+    {
+      "key": "a1",
+      "project": "A",
+      "n": 1,
+      "day": 0,
+      "title": "Booking project kickoff",
+      "lang": "en",
+      "overview": "The team kicked off the online booking project for the clinic network. They agreed scope, the vendor and a first go-live target. Several tasks were handed out.",
+      "keyPoints": [
+        "Vendor is Calloway Soft",
+        "All 12 clinics go live on April 8",
+        "Budget set at 180k",
+        "Waitlist idea raised and parked",
+        "Text reminders planned"
+      ],
+      "decisions": [
+        "Go live at all 12 clinics on April 8",
+        "Sign the vendor contract with Calloway Soft"
+      ],
+      "actions": [
+        {
+          "task": "Register the sender name for text reminders",
+          "owner": "p2",
+          "due": "Jan 20",
+          "done": false
+        },
+        {
+          "task": "Build the insurance eligibility check",
+          "owner": "p2",
+          "due": "Feb 10",
+          "done": false
+        },
+        {
+          "task": "Write the patient consent text",
+          "owner": "p1",
+          "due": "Jan 30",
+          "done": false
+        },
+        {
+          "task": "Sign the vendor contract",
+          "owner": "p4",
+          "due": "Jan 15",
+          "done": true
+        },
+        {
+          "task": "Register the booking domain name",
+          "owner": "p2",
+          "due": "Jan 12",
+          "done": true
+        }
+      ],
+      "openQuestions": ["Do we need booking forms in other languages?"],
+      "say": [
+        {
+          "who": "p1",
+          "text": "Thanks everyone. This is the kickoff for online booking at Harrowgate. The goal is simple: patients book, move and cancel visits without calling."
+        },
+        {
+          "who": "p4",
+          "text": "The vendor contract with Calloway Soft is ready. I will sign it this week, then we have a vendor."
+        },
+        {
+          "who": "p3",
+          "text": "Front desks take around 400 calls a day across the network. If we cut half of that, staff get time back for patients."
+        },
+        {
+          "who": "p2",
+          "text": "I can take the technical side. I already registered the booking domain name, so that is done."
+        },
+        {
+          "who": "p1",
+          "text": "The budget is 180k for the first year. I want to go live at all 12 clinics on April 8, the same day."
+        },
+        {
+          "who": "p3",
+          "text": "April 8 is tight but fine for me. The clinics are quiet that week."
+        },
+        {
+          "who": "p2",
+          "text": "Patients will get a text reminder the day before. For that we need a registered sender name, so I will start that request."
+        },
+        {
+          "who": "p1",
+          "text": "Good. We also need the insurance eligibility check, so the system tells the patient if the visit is covered."
+        },
+        {
+          "who": "p2",
+          "text": "That one is the big integration. I will start with the payer interface and see how far I get by Feb 10."
+        },
+        {
+          "who": "p3",
+          "text": "One idea from the desks: a waitlist, so a freed slot goes to the next person. I do not know how hard it is."
+        },
+        {
+          "who": "p1",
+          "text": "Park the waitlist for now. We will come back after the basics."
+        },
+        {
+          "who": "p4",
+          "text": "Also patients must accept a consent text before they book. Someone needs to write it."
+        },
+        {
+          "who": "p1",
+          "text": "I will write the consent text and send it to legal by Jan 30."
+        },
+        {
+          "who": "p3",
+          "text": "What about patients who do not speak English? Many in the east clinics prefer Spanish or Somali."
+        },
+        {
+          "who": "p1",
+          "text": "Good question. Let us keep it as an open question for the next meeting."
+        }
+      ]
+    },
+    {
+      "key": "a2",
+      "project": "A",
+      "n": 2,
+      "day": 7,
+      "title": "Insurance and reminders review",
+      "lang": "en",
+      "overview": "The team reviewed progress on reminders, insurance checks and the consent text. Some items are waiting on outside parties. The group agreed to start the work on the language forms.",
+      "keyPoints": [
+        "Reminder sender name still not registered",
+        "Insurance check waiting on an outside party",
+        "Consent text sent to counsel",
+        "Front desk training to be planned",
+        "Waitlist raised again"
+      ],
+      "decisions": ["Build forms in Spanish and Somali first"],
+      "actions": [
+        {
+          "task": "Get the reminder sender name registered",
+          "owner": "p2",
+          "due": "Jan 27",
+          "done": false
+        },
+        {
+          "task": "Get a payer sandbox key for the eligibility check",
+          "owner": "p2",
+          "due": "Feb 17",
+          "done": false
+        },
+        {
+          "task": "Get legal approval for the consent text",
+          "owner": "p1",
+          "due": "Feb 3",
+          "done": false
+        },
+        {
+          "task": "Build Spanish and Somali booking forms",
+          "owner": "p2",
+          "due": "Feb 20",
+          "done": false
+        },
+        {
+          "task": "Order kiosk tablets for the clinics",
+          "owner": "p3",
+          "due": "Jan 31",
+          "done": true
+        }
+      ],
+      "openQuestions": ["Who pays for the translation of the forms?"],
+      "say": [
+        {
+          "who": "p1",
+          "text": "Quick status round. The sender name for the reminders first, Rashid."
+        },
+        {
+          "who": "p2",
+          "text": "Not registered yet. The request needs a signature from the board treasurer, and she is on leave until March 3."
+        },
+        {
+          "who": "p1",
+          "text": "Understood. What about the insurance side?"
+        },
+        {
+          "who": "p2",
+          "text": "The payer is NorthStar Mutual. They only give us sandbox keys after we sign a data sharing agreement, and their lawyers say that takes 30 days."
+        },
+        {
+          "who": "p4",
+          "text": "I can push on the legal side with them. Send me the draft."
+        },
+        {
+          "who": "p1",
+          "text": "The consent text went to counsel Bram Oyelaran last week. He wants it under 300 words, so I have to cut it down."
+        },
+        {
+          "who": "p3",
+          "text": "The kiosk tablets arrived at all clinics, so that item is done. Front desk staff still need training before the pilot."
+        },
+        {
+          "who": "p1",
+          "text": "Mei-Ling, can you plan the training sessions? Two hours per clinic should be enough."
+        },
+        {
+          "who": "p3",
+          "text": "Yes, I will draft a plan by Feb 24. Also, I still think the waitlist should be in the first release."
+        },
+        {
+          "who": "p1",
+          "text": "We said we park it. Let us keep that for now."
+        },
+        {
+          "who": "p4",
+          "text": "About the language question from last time. The east clinics need Spanish and Somali forms."
+        },
+        {
+          "who": "p2",
+          "text": "I can build both forms in the vendor tool. The translation text must come from somebody else."
+        },
+        {
+          "who": "p1",
+          "text": "Then we start with Spanish and Somali and ask who pays for the translation."
+        },
+        {
+          "who": "p3",
+          "text": "Finance said maybe the clinic budget. Nobody confirmed it."
+        },
+        {
+          "who": "p1",
+          "text": "OK. We write that as an open question."
+        }
+      ]
+    },
+    {
+      "key": "a3",
+      "project": "A",
+      "n": 3,
+      "day": 14,
+      "title": "Pilot plan and record migration",
+      "lang": "en",
+      "overview": "The team turned the rollout into a pilot first. New items came up around old records and the phone line. Reminders are still not moving.",
+      "keyPoints": [
+        "Rollout changed to a pilot",
+        "Old appointment records need to move",
+        "Phone line cutover discussed",
+        "Reminder sender request rejected once",
+        "Pediatric calendars debated"
+      ],
+      "decisions": [
+        "Pilot at 3 clinics on April 8, the other 9 clinics in June",
+        "Keep the waitlist for phase 2"
+      ],
+      "actions": [
+        {
+          "task": "Fix and resubmit the sender request for reminders",
+          "owner": "p2",
+          "due": "Feb 24",
+          "done": false
+        },
+        {
+          "task": "Get the insurance lookup passing in the sandbox",
+          "owner": "p2",
+          "due": "Mar 3",
+          "done": false
+        },
+        {
+          "task": "Migrate the old appointment records into the new system",
+          "owner": "p2",
+          "due": "Mar 10",
+          "done": false
+        },
+        {
+          "task": "Write the phone line cutover script",
+          "owner": "p4",
+          "due": "Mar 17",
+          "done": false
+        },
+        {
+          "task": "Finish the front desk training plan",
+          "owner": "p3",
+          "due": "Mar 10",
+          "done": false
+        }
+      ],
+      "openQuestions": [
+        "Should the pediatric clinics get separate calendars?",
+        "Which clinics join the pilot first?"
+      ],
+      "say": [
+        {
+          "who": "p1",
+          "text": "Vendor call yesterday. Calloway Soft says 12 clinics at the same time is too much for their support team."
+        },
+        {
+          "who": "p4",
+          "text": "So they proposed a pilot first. Three clinics on April 8, and the other nine in June."
+        },
+        {
+          "who": "p1",
+          "text": "I agree. We take a pilot at 3 clinics on April 8 and the rest in June."
+        },
+        {
+          "who": "p2",
+          "text": "Good for me. Now the reminders. The carrier rejected our sender request because the tax id on the form did not match their file."
+        },
+        {
+          "who": "p1",
+          "text": "So we resubmit it with the right tax id."
+        },
+        {
+          "who": "p2",
+          "text": "Yes, I need the number from finance first. Also, the insurance lookup in the sandbox is not passing yet."
+        },
+        {
+          "who": "p3",
+          "text": "New topic. We must move the old appointment records into the new system. The front desks use them every day."
+        },
+        {
+          "who": "p2",
+          "text": "I can do it, but I need a plan. I will take it with a due date of March 10."
+        },
+        {
+          "who": "p4",
+          "text": "Another item is the phone line. When patients call the old number, we need a script that tells them about the new booking site. I will write the cutover script."
+        },
+        {
+          "who": "p3",
+          "text": "The pediatric clinics do not agree on the calendar layout. Three want separate calendars and two want to share with the general clinic."
+        },
+        {
+          "who": "p1",
+          "text": "That needs a decision, but not today."
+        },
+        {
+          "who": "p1",
+          "text": "On the consent text, counsel now says the state privacy rule changes on April 1, and he wants to wait for the final wording."
+        },
+        {
+          "who": "p3",
+          "text": "So the legal sign-off is waiting again."
+        },
+        {
+          "who": "p1",
+          "text": "Yes. I will chase him next week."
+        },
+        {
+          "who": "p4",
+          "text": "Should the waitlist stay out? Mei-Ling asked again."
+        },
+        {
+          "who": "p1",
+          "text": "It goes to phase 2 for now."
+        }
+      ]
+    },
+    {
+      "key": "a4",
+      "project": "A",
+      "n": 4,
+      "day": 21,
+      "title": "Waitlist and sandbox problems",
+      "lang": "en",
+      "overview": "The group looked at sandbox problems and brought the waitlist back. Two older items are still waiting. A security test was booked.",
+      "keyPoints": [
+        "Sandbox tests failing",
+        "Waitlist moved into the pilot",
+        "Security test booked",
+        "Record export is limited",
+        "Reminder request goes out again"
+      ],
+      "decisions": ["The waitlist moves into the pilot"],
+      "actions": [
+        {
+          "task": "Resubmit the sender request for reminders with a new name",
+          "owner": "p2",
+          "due": "Mar 17",
+          "done": false
+        },
+        {
+          "task": "Get the insurance lookup passing in the sandbox",
+          "owner": "p2",
+          "due": "Mar 24",
+          "done": false
+        },
+        {
+          "task": "Migrate the old appointment records",
+          "owner": "p2",
+          "due": "Mar 31",
+          "done": false
+        },
+        {
+          "task": "Run the penetration test of the booking site",
+          "owner": "p4",
+          "due": "Mar 28",
+          "done": false
+        },
+        {
+          "task": "Finish the front desk training plan",
+          "owner": "p3",
+          "due": "Mar 10",
+          "done": true
+        }
+      ],
+      "openQuestions": ["Who approves the cost of the Somali forms?"],
+      "say": [
+        {
+          "who": "p1",
+          "text": "Let's start with the sandbox. Rashid?"
+        },
+        {
+          "who": "p2",
+          "text": "The Calloway sandbox returns a 504 error when I send a batch of 200 requests. Their engineer says a fix is due on March 25."
+        },
+        {
+          "who": "p1",
+          "text": "So the insurance lookup waits for that."
+        },
+        {
+          "who": "p2",
+          "text": "Yes. And the sender request: the carrier says the name HARROWGATE is already registered by a clinic in another state. We must choose a new name."
+        },
+        {
+          "who": "p4",
+          "text": "Pick something short. I will ask the board."
+        },
+        {
+          "who": "p2",
+          "text": "On the old appointment records, I tried the export. The old system's export tool breaks after 40,000 rows, and we have 190,000 rows."
+        },
+        {
+          "who": "p1",
+          "text": "So we need another way to pull the data."
+        },
+        {
+          "who": "p4",
+          "text": "I booked the penetration test for the booking site. The tester asks for a stable build first."
+        },
+        {
+          "who": "p3",
+          "text": "Now the waitlist. I want it in the pilot, not in phase 2. Last quarter 212 slots went empty because of late cancellations, and a waitlist would have filled maybe half of them."
+        },
+        {
+          "who": "p1",
+          "text": "That is a strong number. Mei-Ling has pushed for this since the start, so let's do it."
+        },
+        {
+          "who": "p2",
+          "text": "It adds about a week of work for me."
+        },
+        {
+          "who": "p1",
+          "text": "Accepted. The waitlist moves into the pilot."
+        },
+        {
+          "who": "p4",
+          "text": "The phone line cutover script is half done. I will finish after the pen test."
+        },
+        {
+          "who": "p3",
+          "text": "The front desk training plan is done. I sent it to all clinic managers. Also, the agency quoted 1,900 dollars for the Somali forms, and finance has not approved it."
+        },
+        {
+          "who": "p1",
+          "text": "The consent text is still waiting for counsel. Nothing new there."
+        }
+      ]
+    },
+    {
+      "key": "a5",
+      "project": "A",
+      "n": 5,
+      "day": 28,
+      "title": "Pilot readiness check",
+      "lang": "en",
+      "overview": "The final review before the pilot. The pilot start moved again and the plan changed in several places. Many items stay open and the project lead changes.",
+      "keyPoints": [
+        "Pilot start moved to May 13 at 2 clinics",
+        "Budget raised to 214k",
+        "Rashid takes over as project lead",
+        "Text reminders move to Tidewell Messaging",
+        "Insurance lookup still not passing"
+      ],
+      "decisions": [
+        "Pilot moves to May 13 at 2 clinics",
+        "Use Tidewell Messaging for text reminders"
+      ],
+      "actions": [
+        {
+          "task": "Register a sender id with Tidewell Messaging",
+          "owner": "p2",
+          "due": "Apr 20",
+          "done": false
+        },
+        {
+          "task": "Get the insurance lookup passing in the sandbox",
+          "owner": "p2",
+          "due": "Apr 24",
+          "done": false
+        },
+        {
+          "task": "Migrate the old appointment records",
+          "owner": "p2",
+          "due": "Apr 28",
+          "done": false
+        },
+        {
+          "task": "Run the penetration test",
+          "owner": "p4",
+          "due": "Apr 30",
+          "done": false
+        },
+        {
+          "task": "Test the waitlist feature",
+          "owner": "p3",
+          "due": "May 5",
+          "done": false
+        }
+      ],
+      "openQuestions": [
+        "Will the pediatric clinics share one calendar?",
+        "Will counsel sign before the pilot?"
+      ],
+      "say": [
+        {
+          "who": "p4",
+          "text": "Before we start: Hannelore moves to the finance project next week, and Rashid takes over as project lead."
+        },
+        {
+          "who": "p2",
+          "text": "Fine with me. The budget also changes. The vendor asked for extra work on the waitlist, so we are now at 214k."
+        },
+        {
+          "who": "p1",
+          "text": "I signed it off yesterday."
+        },
+        {
+          "who": "p4",
+          "text": "The pilot cannot start on April 8. The new date is May 13, and we start with only 2 clinics."
+        },
+        {
+          "who": "p3",
+          "text": "That is fine for the front desks. They need more time anyway. The training plan is closed, both pilot clinics finished their sessions."
+        },
+        {
+          "who": "p2",
+          "text": "On reminders: we switch to Tidewell Messaging. They need 10 business days to approve a new sender id."
+        },
+        {
+          "who": "p1",
+          "text": "So no reminders at the pilot start?"
+        },
+        {
+          "who": "p2",
+          "text": "Only if they approve on time."
+        },
+        {
+          "who": "p2",
+          "text": "The insurance lookup still does not pass. The billing lead found that 3 of 11 insurance plans use a different member id format."
+        },
+        {
+          "who": "p4",
+          "text": "That needs a mapping table."
+        },
+        {
+          "who": "p2",
+          "text": "For the old appointment records, I found 6,300 duplicate patient records. We must clean them before the import."
+        },
+        {
+          "who": "p3",
+          "text": "The pediatric clinics still want separate calendars. The group of three did not change its mind."
+        },
+        {
+          "who": "p4",
+          "text": "The pen test is booked for April 30. The phone line cutover script comes after."
+        },
+        {
+          "who": "p1",
+          "text": "The legal sign-off is the last one on my list. Counsel signs only after the state rule is final."
+        },
+        {
+          "who": "p3",
+          "text": "The waitlist is built but not tested. I will test it by May 5."
+        }
+      ]
+    },
+    {
+      "key": "b1",
+      "project": "B",
+      "n": 1,
+      "day": 0,
+      "title": "Abertura da migração dos registros",
+      "lang": "pt",
+      "overview": "A reunião abriu o projeto de migração dos registros escolares da rede para o novo sistema. O grupo definiu o escopo, o fornecedor e uma data para desligar o sistema antigo. Várias tarefas foram distribuídas.",
+      "keyPoints": [
+        "Fornecedor escolhido é a Datamar",
+        "A rede tem 48 escolas e cerca de 310 mil registros",
+        "Sistema antigo será desligado em 30 de junho",
+        "Migração das 48 escolas de uma vez",
+        "Congelar o lançamento de notas foi sugerido"
+      ],
+      "decisions": [
+        "Migrar todas as 48 escolas de uma vez",
+        "Desligar o servidor antigo em 30 de junho"
+      ],
+      "actions": [
+        {
+          "task": "Fazer o inventário das escolas",
+          "owner": "p8",
+          "due": "10 de fevereiro",
+          "done": true
+        },
+        {
+          "task": "Fechar o contrato com a Datamar",
+          "owner": "p7",
+          "due": "15 de fevereiro",
+          "done": true
+        },
+        {
+          "task": "Importar o histórico de notas",
+          "owner": "p8",
+          "due": "28 de fevereiro",
+          "done": false
+        },
+        {
+          "task": "Importar as guias de transferência",
+          "owner": "p8",
+          "due": "15 de março",
+          "done": false
+        },
+        {
+          "task": "Organizar o treinamento das secretarias",
+          "owner": "p7",
+          "due": "30 de abril",
+          "done": false
+        }
+      ],
+      "openQuestions": [
+        "O que fazer com os registros de alunos que saíram antes de 2005?"
+      ],
+      "say": [
+        {
+          "who": "p7",
+          "text": "Bom dia a todos. Hoje abrimos a migração dos registros escolares para o novo sistema, o Cadastro Único."
+        },
+        {
+          "who": "p7",
+          "text": "Nossa rede tem 48 escolas e mais ou menos 310 mil registros de alunos."
+        },
+        {
+          "who": "p8",
+          "text": "O inventário das escolas já está pronto. Visitei todas as unidades no mês passado."
+        },
+        {
+          "who": "p7",
+          "text": "O contrato com a Datamar também foi fechado. Então temos fornecedor."
+        },
+        {
+          "who": "p2",
+          "text": "Meu plano é migrar as 48 escolas de uma vez. O servidor antigo desliga no dia 30 de junho."
+        },
+        {
+          "who": "p8",
+          "text": "Prefiro assim, uma data só. Mas o histórico de notas é o item mais pesado."
+        },
+        {
+          "who": "p8",
+          "text": "O sistema antigo exporta as notas em texto, e os acentos quebram na importação. Nomes como João viram caracteres estranhos."
+        },
+        {
+          "who": "p7",
+          "text": "Entendi. Então importar o histórico de notas fica aberto por enquanto."
+        },
+        {
+          "who": "p2",
+          "text": "Também temos as guias de transferência. Cada aluno que muda de escola tem uma."
+        },
+        {
+          "who": "p8",
+          "text": "Eu cuido das guias de transferência também, para março."
+        },
+        {
+          "who": "p7",
+          "text": "As secretárias das escolas precisam de treinamento antes da virada. Eu organizo o treinamento das secretarias."
+        },
+        {
+          "who": "p2",
+          "text": "Uma ideia: congelar o lançamento de notas durante a cópia dos dados. Mas não sei se as escolas aceitam."
+        },
+        {
+          "who": "p7",
+          "text": "Vamos pensar nisso. Fica para a próxima reunião."
+        },
+        {
+          "who": "p8",
+          "text": "E os alunos que saíram antes de 2005? Não sei se devemos guardar esses registros."
+        },
+        {
+          "who": "p7",
+          "text": "Boa pergunta. Fica como pergunta aberta."
+        }
+      ]
+    },
+    {
+      "key": "b2",
+      "project": "B",
+      "n": 2,
+      "day": 10,
+      "title": "Duplicatas e prazo de guarda",
+      "lang": "pt",
+      "overview": "O grupo avaliou os primeiros testes de importação. Surgiram problemas com os dados e o plano de migração mudou. O treinamento das secretarias também foi discutido.",
+      "keyPoints": [
+        "Primeiros testes de importação feitos",
+        "Plano mudou para ondas por região",
+        "Treinamento das secretarias ainda sem data",
+        "Prazo de guarda dos registros antigos sem resposta",
+        "Guias de transferência ainda não importadas"
+      ],
+      "decisions": [
+        "Migrar em três ondas por região em vez de tudo de uma vez"
+      ],
+      "actions": [
+        {
+          "task": "Remover os CPF duplicados dos alunos",
+          "owner": "p8",
+          "due": "20 de março",
+          "done": false
+        },
+        {
+          "task": "Refazer a importação do histórico de notas",
+          "owner": "p8",
+          "due": "5 de abril",
+          "done": false
+        },
+        {
+          "task": "Importar as guias de transferência",
+          "owner": "p8",
+          "due": "30 de março",
+          "done": false
+        },
+        {
+          "task": "Marcar as datas do treinamento das secretarias",
+          "owner": "p7",
+          "due": "15 de abril",
+          "done": false
+        },
+        {
+          "task": "Perguntar ao conselho estadual o prazo de guarda",
+          "owner": "p7",
+          "due": "25 de março",
+          "done": false
+        }
+      ],
+      "openQuestions": ["Quanto tempo devemos guardar os registros antigos?"],
+      "say": [
+        {
+          "who": "p7",
+          "text": "Vamos ver os testes de importação. Joselito, como foi?"
+        },
+        {
+          "who": "p8",
+          "text": "Rodei a primeira importação em três escolas. Achei 6.800 alunos com CPF duplicado no cadastro antigo."
+        },
+        {
+          "who": "p2",
+          "text": "Isso trava a importação. O novo sistema não aceita dois alunos com o mesmo CPF."
+        },
+        {
+          "who": "p8",
+          "text": "Eu preciso limpar essas duplicatas antes. Levo uns quinze dias."
+        },
+        {
+          "who": "p7",
+          "text": "Com isso, acho que migrar as 48 escolas de uma vez é arriscado."
+        },
+        {
+          "who": "p2",
+          "text": "Concordo. Proponho três ondas por região: norte, centro e sul."
+        },
+        {
+          "who": "p7",
+          "text": "Fechado. Três ondas por região."
+        },
+        {
+          "who": "p7",
+          "text": "Sobre o treinamento das secretarias, a Secretaria de Finanças só libera o pagamento dos instrutores depois de 3 de junho."
+        },
+        {
+          "who": "p2",
+          "text": "Então sem instrutor contratado não dá para marcar datas."
+        },
+        {
+          "who": "p7",
+          "text": "Isso mesmo. Vou tentar usar instrutores da própria rede."
+        },
+        {
+          "who": "p8",
+          "text": "As guias de transferência estão paradas. Precisam do histórico de notas pronto antes."
+        },
+        {
+          "who": "p2",
+          "text": "Sobre os registros de quem saiu antes de 2005: a lei fala em prazo de guarda, mas há dúvida se são 20 ou 50 anos."
+        },
+        {
+          "who": "p7",
+          "text": "Vou perguntar ao conselho estadual."
+        },
+        {
+          "who": "p8",
+          "text": "Eles costumam demorar."
+        },
+        {
+          "who": "p7",
+          "text": "Eu sei. Vamos registrar como pergunta aberta."
+        }
+      ]
+    },
+    {
+      "key": "b3",
+      "project": "B",
+      "n": 3,
+      "day": 20,
+      "title": "Ondas e congelamento de notas",
+      "lang": "pt",
+      "overview": "O grupo detalhou as ondas da migração e tratou do congelamento do lançamento de notas. Os testes dependem de um ambiente que ainda não está liberado. O treinamento segue sem solução.",
+      "keyPoints": [
+        "Ondas por região confirmadas",
+        "Congelamento do lançamento de notas aprovado",
+        "Ambiente para testes ainda não liberado",
+        "Treinamento ainda aberto",
+        "Pergunta sobre registros antigos continua sem resposta"
+      ],
+      "decisions": [
+        "Congelar o lançamento de notas durante a cópia de cada onda"
+      ],
+      "actions": [
+        {
+          "task": "Limpar os CPF duplicados",
+          "owner": "p8",
+          "due": "10 de abril",
+          "done": false
+        },
+        {
+          "task": "Refazer a importação do histórico de notas",
+          "owner": "p8",
+          "due": "20 de abril",
+          "done": false
+        },
+        {
+          "task": "Importar as guias de alunos",
+          "owner": "p8",
+          "due": "30 de abril",
+          "done": false
+        },
+        {
+          "task": "Preparar a formação nas escolas rurais",
+          "owner": "p7",
+          "due": "10 de maio",
+          "done": false
+        },
+        {
+          "task": "Avisar as escolas sobre o congelamento de notas",
+          "owner": "p7",
+          "due": "5 de abril",
+          "done": true
+        }
+      ],
+      "openQuestions": [
+        "Quem paga o transporte do treinamento nas escolas rurais?",
+        "Qual o prazo de guarda dos registros antigos?"
+      ],
+      "say": [
+        {
+          "who": "p7",
+          "text": "Hoje quero fechar as ondas e falar do congelamento de notas."
+        },
+        {
+          "who": "p8",
+          "text": "Eu defendo o congelamento desde a primeira reunião. No ano passado, durante a exportação, 1.900 notas foram alteradas depois da cópia, e ninguém percebeu."
+        },
+        {
+          "who": "p7",
+          "text": "Joselito tem razão. Com notas mudando, a cópia nunca fica certa."
+        },
+        {
+          "who": "p2",
+          "text": "Concordo. Congelamos o lançamento durante a cópia de cada onda, por uma semana."
+        },
+        {
+          "who": "p7",
+          "text": "Aprovado. Eu aviso as escolas até 5 de abril e esse item já está feito."
+        },
+        {
+          "who": "p2",
+          "text": "Sobre o histórico de notas: a prefeitura só libera o servidor de testes depois do dia 18 de maio, então não consigo testar a importação completa antes."
+        },
+        {
+          "who": "p8",
+          "text": "Mas dá para testar com um lote pequeno."
+        },
+        {
+          "who": "p2",
+          "text": "Dá, mas não vale como teste final."
+        },
+        {
+          "who": "p7",
+          "text": "No treinamento, temos 14 escolas rurais sem internet. Os instrutores teriam de ir até lá, e isso custa mais."
+        },
+        {
+          "who": "p8",
+          "text": "Podemos fazer a formação em um polo, uma escola central da região."
+        },
+        {
+          "who": "p7",
+          "text": "Boa. Mas ainda falta saber quem paga o transporte."
+        },
+        {
+          "who": "p2",
+          "text": "As ondas ficam assim: norte em 2 de junho, centro em 16 de junho e sul em 30 de junho."
+        },
+        {
+          "who": "p8",
+          "text": "Isso aperta o prazo do servidor antigo."
+        },
+        {
+          "who": "p7",
+          "text": "Vamos ver isso na próxima."
+        },
+        {
+          "who": "p2",
+          "text": "Ainda sem resposta do conselho estadual sobre o prazo de guarda."
+        }
+      ]
+    },
+    {
+      "key": "b4",
+      "project": "B",
+      "n": 4,
+      "day": 30,
+      "title": "Revisão de prontidão",
+      "lang": "pt",
+      "overview": "A última reunião revisou a prontidão da migração. O plano mudou de novo e o prazo do servidor antigo foi movido. Alguns itens seguem abertos.",
+      "keyPoints": [
+        "Primeiro grupo reduzido a 12 escolas",
+        "Servidor antigo será desligado em 15 de setembro",
+        "Fornecedor mudou para a Infoserra",
+        "Total de registros subiu para 340 mil",
+        "Joselito assume a coordenação"
+      ],
+      "decisions": [
+        "Migrar primeiro as 12 escolas do ensino médio",
+        "Desligar o servidor antigo em 15 de setembro"
+      ],
+      "actions": [
+        {
+          "task": "Limpar os CPF duplicados que faltam",
+          "owner": "p8",
+          "due": "15 de julho",
+          "done": false
+        },
+        {
+          "task": "Importar as guias de transferência",
+          "owner": "p8",
+          "due": "30 de julho",
+          "done": false
+        },
+        {
+          "task": "Resolver a formação das secretarias rurais",
+          "owner": "p7",
+          "due": "agosto",
+          "done": false
+        },
+        {
+          "task": "Cobrar resposta do conselho estadual",
+          "owner": "p7",
+          "due": "julho",
+          "done": false
+        },
+        {
+          "task": "Assinar o contrato com a Infoserra",
+          "owner": "p2",
+          "due": "5 de julho",
+          "done": true
+        }
+      ],
+      "openQuestions": [
+        "Os registros de quem saiu antes de 2005 serão guardados por 20 ou 50 anos?"
+      ],
+      "say": [
+        {
+          "who": "p7",
+          "text": "Revisão final. Primeiro, as notícias: a Datamar saiu do projeto e o novo fornecedor é a Infoserra."
+        },
+        {
+          "who": "p2",
+          "text": "O contrato com a Infoserra já foi assinado, então esse item está feito."
+        },
+        {
+          "who": "p7",
+          "text": "A segunda mudança é o plano. Vamos migrar primeiro só as 12 escolas do ensino médio, e o resto depois."
+        },
+        {
+          "who": "p8",
+          "text": "Faz sentido. Com 48 escolas era muita coisa."
+        },
+        {
+          "who": "p7",
+          "text": "O servidor antigo agora desliga em 15 de setembro, não mais em 30 de junho."
+        },
+        {
+          "who": "p2",
+          "text": "A contagem de registros subiu. Agora são 340 mil, porque entraram as matrículas de reforço."
+        },
+        {
+          "who": "p7",
+          "text": "E eu passo a coordenação para o Joselito na semana que vem."
+        },
+        {
+          "who": "p8",
+          "text": "Aceito. A limpeza do CPF duplicado ainda não terminou. Faltam 2.100 casos."
+        },
+        {
+          "who": "p2",
+          "text": "As guias de transferência dependem do formulário novo, e a Infoserra ainda não liberou o modelo da guia."
+        },
+        {
+          "who": "p7",
+          "text": "O treinamento nas escolas rurais continua sem solução, e ainda não sabemos quem paga o transporte."
+        },
+        {
+          "who": "p8",
+          "text": "Para as 12 escolas do ensino médio, a formação pode ser online."
+        },
+        {
+          "who": "p2",
+          "text": "Sobre o prazo de guarda: o conselho estadual respondeu que ainda está avaliando, e não deu data."
+        },
+        {
+          "who": "p7",
+          "text": "Então continua em aberto. A dúvida é entre 20 e 50 anos."
+        },
+        {
+          "who": "p8",
+          "text": "Vamos documentar isso na ata."
+        },
+        {
+          "who": "p7",
+          "text": "Isso. Obrigado a todos."
+        }
+      ]
+    },
+    {
+      "key": "c1",
+      "project": "C",
+      "n": 1,
+      "day": 0,
+      "title": "Fleet upgrade kickoff",
+      "lang": "en",
+      "overview": "The team started the fleet upgrade for the city bike-share. They agreed the size of the new fleet, the supplier and a launch date. The charging approach was set for a first test.",
+      "keyPoints": [
+        "600 e-bikes planned",
+        "Battery cells come from Norvane Cells",
+        "Launch set for June 1",
+        "Ride price 2.50",
+        "Charging at the docks as the base plan"
+      ],
+      "decisions": ["Charge the e-bikes at the docks", "Launch on June 1"],
+      "actions": [
+        {
+          "task": "Survey the pilot routes",
+          "owner": "p6",
+          "due": "Mar 5",
+          "done": true
+        },
+        {
+          "task": "Get an insurance quote",
+          "owner": "p4",
+          "due": "Mar 8",
+          "done": true
+        },
+        {
+          "task": "Update dock firmware for e-bike charging",
+          "owner": "p5",
+          "due": "Mar 20",
+          "done": false
+        },
+        {
+          "task": "Find suppliers for puncture-proof tires",
+          "owner": "p5",
+          "due": "Mar 25",
+          "done": false
+        },
+        {
+          "task": "Update the rider app for e-bikes",
+          "owner": "p6",
+          "due": "Apr 2",
+          "done": false
+        }
+      ],
+      "openQuestions": [
+        "Can the harbor district get sidewalk docks?",
+        "Where can the repair workshop move?"
+      ],
+      "say": [
+        {
+          "who": "p4",
+          "text": "Welcome to the fleet upgrade kickoff. We replace the old bikes with e-bikes across the Spokewell network."
+        },
+        {
+          "who": "p5",
+          "text": "The plan is 600 e-bikes for the first stage. Battery cells come from Norvane Cells."
+        },
+        {
+          "who": "p6",
+          "text": "The city wants launch on June 1. I have the route survey done, so that item is closed."
+        },
+        {
+          "who": "p4",
+          "text": "I got the insurance quote too. It is done and filed."
+        },
+        {
+          "who": "p5",
+          "text": "For charging, the base plan is to charge at the docks. Every dock needs a firmware update for that."
+        },
+        {
+          "who": "p4",
+          "text": "Can the dock firmware be done by March 20?"
+        },
+        {
+          "who": "p5",
+          "text": "I think so. I will own the dock firmware update."
+        },
+        {
+          "who": "p6",
+          "text": "Riders will pay 2.50 per ride for an e-bike. The app must show the battery level, so I take the rider app update."
+        },
+        {
+          "who": "p5",
+          "text": "A nice-to-have: puncture-proof tires. I will look at suppliers, but it costs more per bike."
+        },
+        {
+          "who": "p4",
+          "text": "OK, find suppliers first. We decide later."
+        },
+        {
+          "who": "p6",
+          "text": "The harbor district has no docks yet. The city must allow sidewalk docks there."
+        },
+        {
+          "who": "p4",
+          "text": "That depends on the council. Let's keep it as an open question."
+        },
+        {
+          "who": "p5",
+          "text": "Also the repair workshop is too small for 600 e-bikes."
+        },
+        {
+          "who": "p4",
+          "text": "Noted. We look at it after the battery order."
+        },
+        {
+          "who": "p6",
+          "text": "Agreed."
+        }
+      ]
+    },
+    {
+      "key": "c2",
+      "project": "C",
+      "n": 2,
+      "day": 6,
+      "title": "Battery supply and swap vans",
+      "lang": "en",
+      "overview": "The team reviewed the battery order and changed the charging plan. The supply schedule is slipping. Work on the app and the docks continues.",
+      "keyPoints": [
+        "Battery delivery is late",
+        "Charging plan changed to vans",
+        "Docks work continues",
+        "Tire supplier shortlist ready",
+        "Harbor docks still waiting"
+      ],
+      "decisions": ["Use battery swap vans instead of charging at the docks"],
+      "actions": [
+        {
+          "task": "Update the firmware on the docks",
+          "owner": "p5",
+          "due": "Mar 27",
+          "done": false
+        },
+        {
+          "task": "Buy two swap vans",
+          "owner": "p4",
+          "due": "Apr 10",
+          "done": false
+        },
+        {
+          "task": "Update the app for riders",
+          "owner": "p6",
+          "due": "Apr 9",
+          "done": false
+        },
+        {
+          "task": "Choose the tire supplier",
+          "owner": "p5",
+          "due": "Apr 6",
+          "done": false
+        },
+        {
+          "task": "Check the paperwork for the cells",
+          "owner": "p4",
+          "due": "Mar 30",
+          "done": false
+        }
+      ],
+      "openQuestions": ["Who services the swap vans?"],
+      "say": [
+        {
+          "who": "p4",
+          "text": "Battery status first. The cells from Norvane Cells are late."
+        },
+        {
+          "who": "p5",
+          "text": "Customs holds the shipment. The lithium cells sit at the port with a customs hold since May 2."
+        },
+        {
+          "who": "p4",
+          "text": "How long does the hold last?"
+        },
+        {
+          "who": "p5",
+          "text": "Unknown. Customs says it can take up to three weeks."
+        },
+        {
+          "who": "p5",
+          "text": "Because of this, charging at the docks is a problem. The docks need new power lines in many places."
+        },
+        {
+          "who": "p6",
+          "text": "Then use swap vans. A van brings charged batteries to each dock, and takes the empty ones."
+        },
+        {
+          "who": "p5",
+          "text": "I like it. Fewer power lines, less city work."
+        },
+        {
+          "who": "p4",
+          "text": "Decision: battery swap vans, not charging at the docks. We buy two vans."
+        },
+        {
+          "who": "p6",
+          "text": "The app for riders needs a battery-swap alert. That is more work for me, but fine."
+        },
+        {
+          "who": "p5",
+          "text": "The firmware for the docks is still in progress, since the old plan changed a bit."
+        },
+        {
+          "who": "p4",
+          "text": "The tire supplier shortlist is ready. Three options, prices are close."
+        },
+        {
+          "who": "p6",
+          "text": "I still think we should pick puncture-proof."
+        },
+        {
+          "who": "p4",
+          "text": "We decide next time."
+        },
+        {
+          "who": "p5",
+          "text": "The harbor docks wait for the council."
+        },
+        {
+          "who": "p4",
+          "text": "Yes. Nothing to do there for now."
+        }
+      ]
+    },
+    {
+      "key": "c3",
+      "project": "C",
+      "n": 3,
+      "day": 12,
+      "title": "Tire decision and test results",
+      "lang": "en",
+      "overview": "The group looked at test results for the battery packs and decided the tire question. The workshop plan is still open. The supplier problem continues.",
+      "keyPoints": [
+        "Battery pack test had failures",
+        "Puncture-proof tires approved",
+        "Swap van order placed",
+        "Harbor district permit still waiting",
+        "Launch date under pressure"
+      ],
+      "decisions": ["Buy puncture-proof tires for all e-bikes"],
+      "actions": [
+        {
+          "task": "Test battery packs again after the supplier fix",
+          "owner": "p5",
+          "due": "Apr 20",
+          "done": false
+        },
+        {
+          "task": "Update dock firmware",
+          "owner": "p5",
+          "due": "Apr 22",
+          "done": false
+        },
+        {
+          "task": "Finish the rider app update",
+          "owner": "p6",
+          "due": "Apr 25",
+          "done": false
+        },
+        {
+          "task": "Confirm the swap van service plan",
+          "owner": "p4",
+          "due": "Apr 18",
+          "done": false
+        },
+        {
+          "task": "Order two swap vans",
+          "owner": "p4",
+          "due": "Apr 10",
+          "done": true
+        }
+      ],
+      "openQuestions": ["Where can the repair workshop move?"],
+      "say": [
+        {
+          "who": "p5",
+          "text": "The first battery packs arrived by air. We ran the vibration test, and 3 of 40 packs failed."
+        },
+        {
+          "who": "p4",
+          "text": "That is a second problem on top of the customs hold."
+        },
+        {
+          "who": "p5",
+          "text": "Yes. The supplier says the failures come from the new mounting bracket."
+        },
+        {
+          "who": "p4",
+          "text": "Tamsin, you pushed for puncture-proof tires. Give the reason again."
+        },
+        {
+          "who": "p6",
+          "text": "Last winter we had 340 flat tires in 8 weeks. Each repair costs a van trip and a day without that bike."
+        },
+        {
+          "who": "p4",
+          "text": "That is convincing. Wendell, what is the extra cost?"
+        },
+        {
+          "who": "p5",
+          "text": "About 18 per bike. For 600 bikes that is 10,800."
+        },
+        {
+          "who": "p4",
+          "text": "Approved. We buy puncture-proof tires for all e-bikes."
+        },
+        {
+          "who": "p4",
+          "text": "The swap vans are ordered. That item is done."
+        },
+        {
+          "who": "p6",
+          "text": "The council vote on the harbor docks is scheduled for May 21."
+        },
+        {
+          "who": "p4",
+          "text": "So the harbor district stays open until then."
+        },
+        {
+          "who": "p5",
+          "text": "Dock firmware is not finished. I need the final battery data first."
+        },
+        {
+          "who": "p6",
+          "text": "The rider app is nearly done. I need the final alert texts."
+        },
+        {
+          "who": "p4",
+          "text": "We also need a plan for who services the swap vans. The repair workshop is too small."
+        },
+        {
+          "who": "p6",
+          "text": "I can ask the city for a second workshop."
+        },
+        {
+          "who": "p4",
+          "text": "OK. Please do."
+        }
+      ]
+    },
+    {
+      "key": "c4",
+      "project": "C",
+      "n": 4,
+      "day": 18,
+      "title": "Revised fleet plan",
+      "lang": "en",
+      "overview": "The final review changed the fleet plan again. Size, date and price all moved. Battery supply is still not settled.",
+      "keyPoints": [
+        "Fleet cut to 450 e-bikes",
+        "Launch moved to July 14",
+        "Ride price now 3.10",
+        "Supplier switched to Harlow Cells",
+        "Hybrid swap and charge plan for hubs"
+      ],
+      "decisions": ["Swap at 20 hub docks and charge at the other docks"],
+      "actions": [
+        {
+          "task": "Update dock firmware for hub charging",
+          "owner": "p5",
+          "due": "May 10",
+          "done": false
+        },
+        {
+          "task": "Finish the rider app update",
+          "owner": "p6",
+          "due": "May 12",
+          "done": false
+        },
+        {
+          "task": "Find a second repair workshop",
+          "owner": "p6",
+          "due": "May 15",
+          "done": false
+        },
+        {
+          "task": "Sign the contract with Harlow Cells",
+          "owner": "p4",
+          "due": "May 2",
+          "done": true
+        },
+        {
+          "task": "Retest battery packs from Harlow Cells",
+          "owner": "p5",
+          "due": "June 1",
+          "done": false
+        }
+      ],
+      "openQuestions": ["Will the council allow harbor docks?"],
+      "say": [
+        {
+          "who": "p4",
+          "text": "Big changes today. We cut the fleet to 450 e-bikes in the first stage."
+        },
+        {
+          "who": "p5",
+          "text": "The cause is the battery supply. Norvane Cells moved production to a new plant on March 9, and the first full delivery slips by two months."
+        },
+        {
+          "who": "p4",
+          "text": "So the launch moves from June 1 to July 14."
+        },
+        {
+          "who": "p6",
+          "text": "And the ride price goes up to 3.10. The cost per bike rose."
+        },
+        {
+          "who": "p4",
+          "text": "We also switch supplier. Harlow Cells will deliver the remaining packs. The contract is signed, so that item is done."
+        },
+        {
+          "who": "p5",
+          "text": "With fewer packs, charging changes again. We swap at 20 hub docks and charge at the other docks."
+        },
+        {
+          "who": "p4",
+          "text": "Fine. Hybrid it is."
+        },
+        {
+          "who": "p5",
+          "text": "Dock firmware has to change for the hub charging. That work is still open."
+        },
+        {
+          "who": "p6",
+          "text": "The rider app update is still open, too. I wait for the hub list."
+        },
+        {
+          "who": "p4",
+          "text": "The repair workshop: we still need a second location."
+        },
+        {
+          "who": "p6",
+          "text": "The city offered nothing yet."
+        },
+        {
+          "who": "p4",
+          "text": "The council vote for the harbor docks is on May 21, so it is still open."
+        },
+        {
+          "who": "p5",
+          "text": "The retest of the battery packs from Harlow Cells starts June 1."
+        },
+        {
+          "who": "p4",
+          "text": "Anything else? No. Thanks."
+        },
+        {
+          "who": "p6",
+          "text": "Thanks all."
+        }
+      ]
+    }
+  ],
+  "questions": [
+    {
+      "id": "q01",
+      "scope": {
+        "kind": "folder",
+        "project": "A"
+      },
+      "control": false,
+      "lang": "en",
+      "turns": [
+        {
+          "kind": "list",
+          "text": "what's left to do on the booking project?",
+          "groups": [
+            ["sender name", "sender request"],
+            ["insurance lookup"],
+            ["old appointment records"],
+            ["consent text"],
+            ["cutover script"]
+          ],
+          "mustNot": [
+            "kiosk tablets",
+            "domain name",
+            "vendor contract",
+            "training plan"
+          ],
+          "meetings": ["a1", "a2", "a3", "a4", "a5"],
+          "minCov": 0.6
+        },
+        {
+          "kind": "why",
+          "text": "why are those still sitting there?",
+          "groups": [
+            ["board treasurer"],
+            ["tax id"],
+            ["already registered"],
+            ["data sharing agreement"],
+            ["504 error"]
+          ],
+          "mustNot": [],
+          "meetings": ["a2", "a3", "a4"],
+          "minCov": 0.5
+        }
+      ]
+    },
+    {
+      "id": "q02",
+      "scope": {
+        "kind": "folder",
+        "project": "A"
+      },
+      "control": false,
+      "lang": "en",
+      "turns": [
+        {
+          "kind": "list",
+          "text": "what's still outstanding for the clinic rollout?",
+          "groups": [
+            ["sender name", "sender id"],
+            ["insurance lookup"],
+            ["old appointment records"],
+            ["consent text"],
+            ["pen test", "penetration test"]
+          ],
+          "mustNot": [
+            "kiosk tablets",
+            "domain name",
+            "vendor contract",
+            "training plan"
+          ],
+          "meetings": ["a1", "a2", "a3", "a4", "a5"],
+          "minCov": 0.6
+        },
+        {
+          "kind": "why",
+          "text": "what's holding those up?",
+          "groups": [
+            ["300 words"],
+            ["april 1"],
+            ["40,000 rows"],
+            ["6,300"],
+            ["member id"]
+          ],
+          "mustNot": [],
+          "meetings": ["a2", "a3", "a4", "a5"],
+          "minCov": 0.5
+        }
+      ]
+    },
+    {
+      "id": "q03",
+      "scope": {
+        "kind": "meeting",
+        "key": "a5"
+      },
+      "control": false,
+      "lang": "en",
+      "turns": [
+        {
+          "kind": "list",
+          "text": "what's still not done after this last meeting?",
+          "groups": [
+            ["sender id", "tidewell"],
+            ["insurance lookup"],
+            ["old appointment records"],
+            ["pen test"],
+            ["cutover script"]
+          ],
+          "mustNot": ["training plan"],
+          "meetings": ["a5"],
+          "minCov": 0.6
+        },
+        {
+          "kind": "why",
+          "text": "so why are they stuck?",
+          "groups": [["member id"], ["6,300"], ["10 business days"]],
+          "mustNot": [],
+          "meetings": ["a5"],
+          "minCov": 0.67
+        }
+      ]
+    },
+    {
+      "id": "q04",
+      "scope": {
+        "kind": "all"
+      },
+      "control": false,
+      "lang": "en",
+      "turns": [
+        {
+          "kind": "list",
+          "text": "give me the unfinished stuff on the clinic booking project",
+          "groups": [
+            ["pediatric", "separate calendars"],
+            ["somali"],
+            ["old appointment records"],
+            ["pen test"]
+          ],
+          "mustNot": [
+            "kiosk tablets",
+            "domain name",
+            "vendor contract",
+            "training plan"
+          ],
+          "meetings": ["a1", "a2", "a3", "a4", "a5"],
+          "minCov": 0.6
+        },
+        {
+          "kind": "why",
+          "text": "what's been in the way on those?",
+          "groups": [["1,900 dollars"], ["tax id"], ["6,300"], ["300 words"]],
+          "mustNot": [],
+          "meetings": ["a2", "a3", "a4", "a5"],
+          "minCov": 0.5
+        }
+      ]
+    },
+    {
+      "id": "q05",
+      "scope": {
+        "kind": "folder",
+        "project": "B"
+      },
+      "control": false,
+      "lang": "pt",
+      "turns": [
+        {
+          "kind": "list",
+          "text": "o que ainda falta fazer na migração dos registros?",
+          "groups": [
+            ["historico de notas"],
+            ["guias de transferencia"],
+            ["cpf duplicado"],
+            ["escolas rurais"],
+            ["prazo de guarda"]
+          ],
+          "mustNot": ["inventario das escolas", "contrato com a datamar"],
+          "meetings": ["b1", "b2", "b3", "b4"],
+          "minCov": 0.6
+        },
+        {
+          "kind": "why",
+          "text": "por que esses itens ainda estão parados?",
+          "groups": [
+            ["pagamento dos instrutores"],
+            ["escolas rurais"],
+            ["modelo da guia"]
+          ],
+          "mustNot": [],
+          "meetings": ["b2", "b3", "b4"],
+          "minCov": 0.67
+        }
+      ]
+    },
+    {
+      "id": "q06",
+      "scope": {
+        "kind": "folder",
+        "project": "C"
+      },
+      "control": false,
+      "lang": "en",
+      "turns": [
+        {
+          "kind": "list",
+          "text": "what's left on the e-bike work?",
+          "groups": [
+            ["dock firmware"],
+            ["rider app"],
+            ["repair workshop"],
+            ["retest"]
+          ],
+          "mustNot": ["route survey", "insurance quote"],
+          "meetings": ["c1", "c2", "c3", "c4"],
+          "minCov": 0.6
+        }
+      ]
+    },
+    {
+      "id": "q07",
+      "scope": {
+        "kind": "folder",
+        "project": "A"
+      },
+      "control": false,
+      "lang": "en",
+      "turns": [
+        {
+          "kind": "fact",
+          "text": "which insurance payer are we hooking up to?",
+          "groups": [["northstar"]],
+          "mustNot": [],
+          "meetings": ["a2"],
+          "minCov": 1.0
+        },
+        {
+          "kind": "blocker",
+          "text": "so what's holding up the eligibility lookup?",
+          "groups": [
+            ["data sharing agreement"],
+            ["504 error", "batch of 200"],
+            ["member id"]
+          ],
+          "mustNot": [],
+          "meetings": ["a2", "a4", "a5"],
+          "minCov": 0.67
+        }
+      ]
+    },
+    {
+      "id": "q08",
+      "scope": {
+        "kind": "folder",
+        "project": "A"
+      },
+      "control": false,
+      "lang": "en",
+      "turns": [
+        {
+          "kind": "blocker",
+          "text": "why aren't the text reminders live yet?",
+          "groups": [
+            ["board treasurer", "on leave"],
+            ["tax id"],
+            ["already registered"],
+            ["10 business days"]
+          ],
+          "mustNot": [],
+          "meetings": ["a2", "a3", "a4", "a5"],
+          "minCov": 0.5
+        }
+      ]
+    },
+    {
+      "id": "q09",
+      "scope": {
+        "kind": "folder",
+        "project": "A"
+      },
+      "control": false,
+      "lang": "en",
+      "turns": [
+        {
+          "kind": "evolve",
+          "text": "where did the go-live date end up, and how did it get there?",
+          "groups": [
+            ["april 8", "all 12"],
+            ["3 clinics"],
+            ["may 13", "2 clinics"]
+          ],
+          "mustNot": [],
+          "meetings": ["a1", "a3", "a5"],
+          "minCov": 0.67
+        }
+      ]
+    },
+    {
+      "id": "q10",
+      "scope": {
+        "kind": "folder",
+        "project": "A"
+      },
+      "control": false,
+      "lang": "en",
+      "turns": [
+        {
+          "kind": "pushed",
+          "text": "who wanted the waitlist and what was their argument?",
+          "groups": [["mei-ling"], ["212 slots"]],
+          "mustNot": [],
+          "meetings": ["a4"],
+          "minCov": 1.0
+        }
+      ]
+    },
+    {
+      "id": "q11",
+      "scope": {
+        "kind": "folder",
+        "project": "A"
+      },
+      "control": false,
+      "lang": "en",
+      "turns": [
+        {
+          "kind": "changed",
+          "text": "how is the final meeting different from the first on the booking project?",
+          "groups": [["may 13"], ["214k"], ["takes over"], ["tidewell"]],
+          "mustNot": [],
+          "meetings": ["a1", "a5"],
+          "minCov": 0.5
+        }
+      ]
+    },
+    {
+      "id": "q12",
+      "scope": {
+        "kind": "folder",
+        "project": "A"
+      },
+      "control": false,
+      "lang": "en",
+      "turns": [
+        {
+          "kind": "unresolved",
+          "text": "is the pediatric calendar thing sorted yet?",
+          "groups": [["separate calendars"], ["general clinic"]],
+          "mustNot": [],
+          "meetings": ["a3", "a5"],
+          "minCov": 0.5
+        }
+      ]
+    },
+    {
+      "id": "q13",
+      "scope": {
+        "kind": "folder",
+        "project": "A"
+      },
+      "control": false,
+      "lang": "en",
+      "turns": [
+        {
+          "kind": "fact",
+          "text": "who is the lawyer on the consent text?",
+          "groups": [["bram"]],
+          "mustNot": [],
+          "meetings": ["a2"],
+          "minCov": 1.0
+        },
+        {
+          "kind": "blocker",
+          "text": "why is the consent text still not signed off?",
+          "groups": [["300 words"], ["april 1"]],
+          "mustNot": [],
+          "meetings": ["a2", "a3"],
+          "minCov": 0.5
+        }
+      ]
+    },
+    {
+      "id": "q14",
+      "scope": {
+        "kind": "folder",
+        "project": "B"
+      },
+      "control": false,
+      "lang": "pt",
+      "turns": [
+        {
+          "kind": "evolve",
+          "text": "como o plano de migração das escolas foi mudando ao longo das reuniões?",
+          "groups": [["48 escolas", "uma vez"], ["tres ondas"], ["12 escolas"]],
+          "mustNot": [],
+          "meetings": ["b1", "b2", "b4"],
+          "minCov": 0.67
+        }
+      ]
+    },
+    {
+      "id": "q15",
+      "scope": {
+        "kind": "folder",
+        "project": "B"
+      },
+      "control": false,
+      "lang": "pt",
+      "turns": [
+        {
+          "kind": "pushed",
+          "text": "quem queria congelar o lançamento de notas e por quê?",
+          "groups": [["joselito"], ["1.900 notas"]],
+          "mustNot": [],
+          "meetings": ["b3"],
+          "minCov": 1.0
+        }
+      ]
+    },
+    {
+      "id": "q16",
+      "scope": {
+        "kind": "folder",
+        "project": "B"
+      },
+      "control": false,
+      "lang": "pt",
+      "turns": [
+        {
+          "kind": "changed",
+          "text": "o que está diferente entre a primeira e a última reunião?",
+          "groups": [
+            ["15 de setembro"],
+            ["infoserra"],
+            ["12 escolas"],
+            ["340 mil"]
+          ],
+          "mustNot": [],
+          "meetings": ["b1", "b4"],
+          "minCov": 0.5
+        }
+      ]
+    },
+    {
+      "id": "q17",
+      "scope": {
+        "kind": "folder",
+        "project": "B"
+      },
+      "control": false,
+      "lang": "pt",
+      "turns": [
+        {
+          "kind": "unresolved",
+          "text": "já definiram quanto tempo guardar os registros antigos?",
+          "groups": [["conselho estadual"], ["50 anos"]],
+          "mustNot": [],
+          "meetings": ["b2", "b4"],
+          "minCov": 0.5
+        }
+      ]
+    },
+    {
+      "id": "q18",
+      "scope": {
+        "kind": "folder",
+        "project": "B"
+      },
+      "control": false,
+      "lang": "pt",
+      "turns": [
+        {
+          "kind": "blocker",
+          "text": "o que travou a importação do histórico de notas?",
+          "groups": [["acentos"], ["cpf duplicado"], ["servidor de testes"]],
+          "mustNot": [],
+          "meetings": ["b1", "b2", "b3"],
+          "minCov": 0.67
+        }
+      ]
+    },
+    {
+      "id": "q19",
+      "scope": {
+        "kind": "folder",
+        "project": "C"
+      },
+      "control": false,
+      "lang": "en",
+      "turns": [
+        {
+          "kind": "blocker",
+          "text": "what is slowing down the battery delivery?",
+          "groups": [["customs hold"], ["vibration test"], ["new plant"]],
+          "mustNot": [],
+          "meetings": ["c2", "c3", "c4"],
+          "minCov": 0.67
+        }
+      ]
+    },
+    {
+      "id": "q20",
+      "scope": {
+        "kind": "folder",
+        "project": "C"
+      },
+      "control": false,
+      "lang": "en",
+      "turns": [
+        {
+          "kind": "evolve",
+          "text": "how did the charging plan end up where it is?",
+          "groups": [["charge at the docks"], ["swap vans"], ["20 hub"]],
+          "mustNot": [],
+          "meetings": ["c1", "c2", "c4"],
+          "minCov": 0.67
+        }
+      ]
+    },
+    {
+      "id": "q21",
+      "scope": {
+        "kind": "folder",
+        "project": "C"
+      },
+      "control": false,
+      "lang": "en",
+      "turns": [
+        {
+          "kind": "pushed",
+          "text": "who insisted on the puncture-proof tires and why?",
+          "groups": [["tamsin"], ["340 flat"]],
+          "mustNot": [],
+          "meetings": ["c3"],
+          "minCov": 1.0
+        }
+      ]
+    },
+    {
+      "id": "q22",
+      "scope": {
+        "kind": "folder",
+        "project": "C"
+      },
+      "control": false,
+      "lang": "en",
+      "turns": [
+        {
+          "kind": "changed",
+          "text": "what's different at the end compared to the start for the bike fleet?",
+          "groups": [["450 e-bikes"], ["july 14"], ["3.10"], ["harlow"]],
+          "mustNot": [],
+          "meetings": ["c1", "c4"],
+          "minCov": 0.5
+        }
+      ]
+    },
+    {
+      "id": "q23",
+      "scope": {
+        "kind": "folder",
+        "project": "C"
+      },
+      "control": false,
+      "lang": "en",
+      "turns": [
+        {
+          "kind": "unresolved",
+          "text": "is the harbor dock thing settled?",
+          "groups": [["council vote"], ["may 21"]],
+          "mustNot": [],
+          "meetings": ["c3", "c4"],
+          "minCov": 0.5
+        }
+      ]
+    },
+    {
+      "id": "q24",
+      "scope": {
+        "kind": "all"
+      },
+      "control": false,
+      "lang": "pt",
+      "turns": [
+        {
+          "kind": "blocker",
+          "text": "o que atrasou o treinamento das secretarias?",
+          "groups": [["pagamento dos instrutores"], ["escolas rurais"]],
+          "mustNot": [],
+          "meetings": ["b2", "b3"],
+          "minCov": 0.5
+        }
+      ]
+    },
+    {
+      "id": "q25",
+      "scope": {
+        "kind": "all"
+      },
+      "control": false,
+      "lang": "pt",
+      "turns": [
+        {
+          "kind": "evolve",
+          "text": "como ficou a data para desligar o servidor antigo?",
+          "groups": [["30 de junho"], ["15 de setembro"]],
+          "mustNot": [],
+          "meetings": ["b1", "b4"],
+          "minCov": 1.0
+        }
+      ]
+    },
+    {
+      "id": "q26",
+      "scope": {
+        "kind": "all"
+      },
+      "control": false,
+      "lang": "pt",
+      "turns": [
+        {
+          "kind": "unresolved",
+          "text": "já sabem quem vai pagar o transporte do treinamento nas escolas rurais?",
+          "groups": [["transporte"], ["escolas rurais"]],
+          "mustNot": [],
+          "meetings": ["b3", "b4"],
+          "minCov": 0.5
+        }
+      ]
+    },
+    {
+      "id": "q27",
+      "scope": {
+        "kind": "meeting",
+        "key": "a1"
+      },
+      "control": true,
+      "lang": "en",
+      "turns": [
+        {
+          "kind": "fact",
+          "text": "who is the vendor?",
+          "groups": [["calloway"]],
+          "mustNot": [],
+          "meetings": ["a1"],
+          "minCov": 1.0
+        }
+      ]
+    },
+    {
+      "id": "q28",
+      "scope": {
+        "kind": "folder",
+        "project": "B"
+      },
+      "control": true,
+      "lang": "pt",
+      "turns": [
+        {
+          "kind": "fact",
+          "text": "quantas escolas tem a rede?",
+          "groups": [["48"]],
+          "mustNot": [],
+          "meetings": ["b1"],
+          "minCov": 1.0
+        }
+      ]
+    },
+    {
+      "id": "q29",
+      "scope": {
+        "kind": "folder",
+        "project": "C"
+      },
+      "control": true,
+      "lang": "en",
+      "turns": [
+        {
+          "kind": "fact",
+          "text": "how many e-bikes in the first stage?",
+          "groups": [["600"]],
+          "mustNot": [],
+          "meetings": ["c1"],
+          "minCov": 1.0
+        }
+      ]
+    },
+    {
+      "id": "q30",
+      "scope": {
+        "kind": "folder",
+        "project": "A"
+      },
+      "control": true,
+      "lang": "en",
+      "turns": [
+        {
+          "kind": "fact",
+          "text": "what is the first-year budget?",
+          "groups": [["180k"]],
+          "mustNot": [],
+          "meetings": ["a1"],
+          "minCov": 1.0
+        }
+      ]
+    }
+  ]
+}

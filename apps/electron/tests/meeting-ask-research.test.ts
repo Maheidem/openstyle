@@ -4,6 +4,7 @@ import { expect, type Locator, type Page, test } from "@playwright/test";
 import { type Booted, boot, put, settingValue } from "./helpers/ask-app";
 import {
   BACKLOG_FOLDER_NAME,
+  BACKLOG_TASKS,
   FakeAskLlm,
   seedAskMeetings,
   seedBacklog,
@@ -184,11 +185,16 @@ for (const theme of THEMES) {
     await expect(turn.getByTestId("meeting-ask-list-more").first()).toHaveText(
       /\d+ more items? not shown/,
     );
-    // The best-raised tasks (a to d, raised twice) are in the short list.
+    // The best-raised tasks (the first 4, raised twice) are in the short list.
     const text = await turn.innerText();
-    for (const c of ["a", "b", "c", "d"]) {
-      expect(text).toContain(`Close backlog task number ${c}`);
+    for (const task of BACKLOG_TASKS.slice(0, 4)) {
+      expect(text).toContain(task);
     }
+    // The "more" line is at the end of a long list: scroll to it for the proof.
+    await turn
+      .getByTestId("meeting-ask-show-all")
+      .first()
+      .scrollIntoViewIfNeeded();
     await shoot(page, `list-capped-${theme.toLowerCase()}.png`);
     // "Show all": the same question again, with no cap.
     await turn.getByTestId("meeting-ask-show-all").first().click();

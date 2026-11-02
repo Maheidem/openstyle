@@ -38,6 +38,8 @@ export interface ChatTurnInput {
   noClarify?: boolean;
   /** "Show all": the open-items list is not capped for this turn (11.9.16). */
   showAll?: boolean;
+  /** Eval only: escalate a fast turn to research when its search spans this many meetings. */
+  spreadMin?: number;
   /** Override of `SCORE_FLOOR` (the eval measures it). */
   scoreFloor?: number;
   /** Eval only: `false` runs the research loop with no reflect call (code order of strategies). */

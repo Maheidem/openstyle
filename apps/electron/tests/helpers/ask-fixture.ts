@@ -983,6 +983,35 @@ export const BACKLOG_FOLDER_ID = "ask-folder-backlog";
 export const BACKLOG_FOLDER_NAME = "Backlog sweep";
 /** Open action items of the backlog folder: more than a short list shows. */
 export const BACKLOG_ITEMS = 26;
+/** 26 tasks with different words (equal wording would merge them into one item). */
+export const BACKLOG_TASKS = [
+  "Renew the harbor insurance policy",
+  "Repaint the loading dock lines",
+  "Order spare crane cables",
+  "Replace the broken gate sensor",
+  "Update the visitor badge printer",
+  "Audit the fuel storage permits",
+  "Train the night shift on forklifts",
+  "Fix the leaking cold room door",
+  "Negotiate the pallet supplier contract",
+  "Migrate the shipping labels to the new template",
+  "Survey the east warehouse lighting",
+  "Schedule the fire drill with the city",
+  "Draft the winter staffing plan",
+  "Test the backup generator under load",
+  "Install cameras at the south fence",
+  "Review the customs broker invoices",
+  "Clean the drainage near building four",
+  "Calibrate the weighbridge scale",
+  "Book the annual safety inspection",
+  "Archive the old delivery manifests",
+  "Replace the dock leveler hydraulics",
+  "Publish the driver parking rules",
+  "Refresh the first aid stations",
+  "Label the hazardous goods shelves",
+  "Plan the yard resurfacing work",
+  "Count the returnable crates",
+] as const;
 
 /**
  * A folder with many open items (11.9.16): 5 meetings, 26 distinct action
@@ -1011,10 +1040,7 @@ export function seedBacklog(userDataDir: string): void {
          (meeting_id, markdown, llm_provider, llm_model, created_at, summary_json)
        VALUES (?, NULL, 'server', 'fake-llm', ?, ?)`,
     );
-    const tasks = Array.from(
-      { length: BACKLOG_ITEMS },
-      (_, i) => `Close backlog task number ${String.fromCharCode(97 + i)}`,
-    );
+    const tasks = [...BACKLOG_TASKS];
     for (let m = 0; m < 5; m++) {
       const id = `ask-m-backlog-${m + 1}`;
       const at = BASE + (40 + m * 7) * DAY;

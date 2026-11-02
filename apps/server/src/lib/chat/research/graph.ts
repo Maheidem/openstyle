@@ -14,6 +14,7 @@ import {
 } from "../turn.js";
 import type { TurnResult } from "../types.js";
 import {
+  asksOpenPoints,
   chooseCalls,
   type Done,
   type Evidence,
@@ -29,7 +30,7 @@ import {
   toEvidence,
 } from "./research.js";
 import { type Go, ResearchState, type ResearchStateType } from "./state.js";
-import { asksAcrossMeetings, researchTrigger } from "./trigger.js";
+import { researchTrigger } from "./trigger.js";
 import {
   composeReasons,
   itemWorker,
@@ -167,30 +168,39 @@ export function buildResearchGraph(t: Turn, checkpoint: boolean) {
     };
   };
 
-  const plan = async (s: ResearchStateType): Promise<Update> => {
-    if (s.mode === "research") {
-      t.beginResearch();
-      const leads = seedLeads(t);
-      // Orchestrator-worker (11.9.16): "why are these open?" sends one worker
-      // for each item; "who pushed for it?" scouts the meetings first.
-      if (leads.length > 0 && leads.every((l) => l.origin === "prior_answer")) {
-        g.sends = leads.map(
-          (lead) => new Send("worker", { kind: "item" as const, lead }),
-        );
-        return { leads, path: "research", fan: "items", go: "fanout" };
-      }
-      const first = leads[0];
-      if (
-        first &&
-        first.origin === "question" &&
-        !first.list &&
-        asksAcrossMeetings(t.input.question)
-      ) {
-        return { leads, path: "research", fan: "meetings", go: "scout" };
-      }
-      return { leads, path: "research", go: "act" };
+  /** The research start: leads from code, then the workers or the loop. */
+  const planResearch = (): Update => {
+    t.beginResearch();
+    const leads = seedLeads(t);
+    // Orchestrator-worker (11.9.17): "why are these open?" sends one worker
+    // for each item; any other digging question scouts the meetings first and
+    // sends one worker for each meeting. The open-points questions keep the loop.
+    if (leads.length > 0 && leads.every((l) => l.origin === "prior_answer")) {
+      g.sends = leads.map(
+        (lead) => new Send("worker", { kind: "item" as const, lead }),
+      );
+      return { leads, path: "research", fan: "items", go: "fanout" };
     }
+    const first = leads[0];
+    if (
+      first &&
+      first.origin === "question" &&
+      !first.list &&
+      !asksOpenPoints(t.input.question)
+    ) {
+      return { leads, path: "research", fan: "meetings", go: "scout" };
+    }
+    return { leads, path: "research", go: "act" };
+  };
+
+  const plan = async (s: ResearchStateType): Promise<Update> => {
+    if (s.mode === "research") return planResearch();
     const r = await t.route();
+    if (r.kind === "dig") {
+      // The model asked to dig (11.9.17): the same graph, research mode.
+      t.mode = "research";
+      return { mode: "research", maxIter, ...planResearch() };
+    }
     if (r.kind === "exit") {
       return r.exit.kind === "result"
         ? { result: r.exit, go: "end" }
@@ -233,15 +243,15 @@ export function buildResearchGraph(t: Turn, checkpoint: boolean) {
       }
       if (seen.size >= max) break;
     }
-    // "What changed between the first and the last meeting": both ends count.
-    const inScope = scopeMeetingIds(t.input.db, t.turnScope);
-    if (
-      /\b(?:first|last|start|end|primeir|ultim|inicio|fim)/iu.test(lead.text)
-    ) {
-      for (const id of [inScope[0], inScope.at(-1)]) {
-        if (id && !seen.has(id) && seen.size < max + 2) {
-          seen.set(id, { title: null, at: null });
-        }
+    // A reason can sit in a meeting that the first search ranked low (a
+    // different wording): the rest of a small scope is read too, oldest and
+    // newest first, so the story has both ends. Only when something was found.
+    if (seen.size > 0) {
+      const inScope = scopeMeetingIds(t.input.db, t.turnScope);
+      const order = [inScope[0], inScope.at(-1), ...inScope];
+      for (const id of order) {
+        if (seen.size >= max) break;
+        if (id && !seen.has(id)) seen.set(id, { title: null, at: null });
       }
     }
     if (seen.size === 0) return { go: "act" };
@@ -649,6 +659,11 @@ export function buildResearchGraph(t: Turn, checkpoint: boolean) {
     if (s.path === "broad") return { go: "synthesize" };
     if (!t.loopDone(s.iteration)) return { go: "act" };
     if (t.blockKind()) return { go: "blocks" };
+    // The evidence spans several meetings: a story, not a fact (11.9.17).
+    if (t.spreadEscalation()) {
+      t.mode = "research";
+      return { mode: "research", maxIter, ...planResearch() };
+    }
     const floor = await t.floorStage();
     if (floor.kind === "exit") return leave(floor.exit, "reflect");
     g.jobs = [floor.job];
@@ -757,8 +772,10 @@ export function buildResearchGraph(t: Turn, checkpoint: boolean) {
       reflect: "reflect",
       not_found: "not_found",
     })
-    .addConditionalEdges("reflect", route, {
+    .addConditionalEdges("reflect", routeOrFan, {
       act: "act",
+      scout: "scout",
+      worker: "worker",
       blocks: "blocks",
       synthesize: "synthesize",
       cite_check: "cite_check",

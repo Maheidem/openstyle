@@ -1133,3 +1133,9 @@ export function evaluateBars(
   const tier = measured["dig.tier"] ?? 2;
   return [...BARS, ...digBars(tier)].map((b) => barRow(b, measured[b.id]));
 }
+
+/** Eval only: `CHAT_EVAL_SPREAD=3` escalates a fast turn to research when its search spans 3 meetings (11.9.17). */
+export function spreadOpt(): { spreadMin?: number } {
+  const v = Number(process.env.CHAT_EVAL_SPREAD);
+  return Number.isFinite(v) && v > 0 ? { spreadMin: v } : {};
+}

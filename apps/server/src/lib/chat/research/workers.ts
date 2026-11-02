@@ -9,6 +9,7 @@ import {
   digItemUser,
   digMeetingUser,
 } from "../prompts.js";
+import { scopeMeetingIds } from "../tools.js";
 import { HARD_CAP_CALLS, SCORE_FLOOR, type Turn } from "../turn.js";
 import type { Source } from "../types.js";
 import { ANSWER_RESERVE, type Lead } from "./research.js";
@@ -186,9 +187,30 @@ export async function itemWorker(t: Turn, lead: Lead): Promise<WorkerRecord> {
     search &&
     (floor <= 0 || search.topScore === null || search.topScore >= floor);
   // The summary line of the item itself shows no reason: it stays out.
-  const picked = strong
+  let picked = strong
     ? pick(t, search.labels, (s) => s.kind === "item" && s.itemId !== null)
     : [];
+  // Search is off or failed (no embedder): the summaries of the item's meeting
+  // and of the newest meetings are the only text there is.
+  if (search?.degraded) {
+    const ids = [
+      ...new Set(
+        [
+          lead.meetingId,
+          ...scopeMeetingIds(t.input.db, t.turnScope).slice(-2),
+        ].filter((x): x is string => !!x),
+      ),
+    ];
+    const labels: string[] = [];
+    for (const id of ids) {
+      const r = await t.run({
+        tool: "get_meeting_summary",
+        args: { meeting_id: id },
+      });
+      if (r) labels.push(...r.labels);
+    }
+    picked = pick(t, labels, (s) => s.kind === "item" && s.itemId !== null);
+  }
   // An item with no summary line of its own cites the closest excerpt.
   let rec = {
     ...base,
@@ -278,7 +300,14 @@ export async function meetingWorker(
     tool: "search_chunks",
     args: { query: query.slice(0, 200), meeting_ids: [meetingId], k: 3 },
   });
-  const picked = search ? pick(t, search.labels) : [];
+  let picked = search ? pick(t, search.labels) : [];
+  if (search?.degraded) {
+    const r = await t.run({
+      tool: "get_meeting_summary",
+      args: { meeting_id: meetingId },
+    });
+    picked = r ? pick(t, r.labels) : [];
+  }
   let rec = base;
   if (picked.length > 0 && !noRoom(t)) {
     try {

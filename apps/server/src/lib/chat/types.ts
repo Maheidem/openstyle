@@ -134,6 +134,8 @@ export interface ToolResult {
   blocks: ChatBlock[];
   /** The reranker score of the best hit (0 to 1), else null. Used for the not-found floor. */
   topScore: number | null;
+  /** Meetings with a hit at or above the score floor (search_chunks), else null. */
+  spread?: number | null;
   /** Set when retrieval was off or failed; structured tools still ran (spec 2.5a). */
   degraded: "search_off" | "search_error" | null;
   ms: number;

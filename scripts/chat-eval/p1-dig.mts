@@ -24,7 +24,7 @@ import {
 } from "./dig-corpus.mts";
 import { mean, normalize } from "./keys.mts";
 import { isRepeat } from "./p1-broad.mts";
-import { checkCites } from "./p1-score.mts";
+import { checkCites, spreadOpt } from "./p1-score.mts";
 import type { Lang, Scope } from "./types.mts";
 
 export type DigKind =
@@ -598,6 +598,7 @@ export async function runDig(env: DigEnv, q: DigQ): Promise<DigRow[]> {
         now: env.corpusTodayMs,
         allowProposals: false,
         onCheckpointMs: (ms) => ckptMs.push(ms),
+        ...spreadOpt(),
         ...(process.env.CHAT_EVAL_REFLECT === "off"
           ? { researchReflect: false }
           : {}),

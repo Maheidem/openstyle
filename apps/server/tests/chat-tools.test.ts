@@ -268,6 +268,27 @@ describe("runTool: validation and scope", () => {
 });
 
 describe("list_action_items", () => {
+  it("rank + limit keeps the best items: the one raised in two meetings first, grouped by meeting (11.9.16)", async () => {
+    const ranked = await runTool(ctxOf(SCOPE_F1), "list_action_items", {
+      status: "all",
+      limit: 2,
+      rank: true,
+    });
+    // The full count stays in the total; only 2 items are shown.
+    expect(ranked.rows).toBe(3);
+    const block = ranked.blocks[0];
+    if (block?.kind !== "list") throw new Error("not a list");
+    expect(block.total).toBe(3);
+    expect(block.items).toHaveLength(2);
+    // The tide chart was raised in m1 and m2: it is kept, with raised = 2.
+    const chart = block.items.find((i) =>
+      i.text.startsWith("Send the tide chart"),
+    );
+    expect(chart?.raised).toBe(2);
+    // Every shown item has its own cite label.
+    expect(block.items.every((i) => i.label !== null)).toBe(true);
+  });
+
   it("lists a folder, groups the same task and reads done marks", async () => {
     const key = actionItemKey("m1", "Send the tide chart to the dock office");
     setActionItemDone(getDb(), "f1", key, true, 5);

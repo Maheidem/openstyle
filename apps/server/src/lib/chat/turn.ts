@@ -11,6 +11,8 @@ import { rerankPairs } from "../mlx-rerank/client.js";
 import {
   buildChoices,
   type Choices,
+  DIG_TOOL_NAME,
+  digToolDef,
   nativeToolDefs,
   validateNativeCall,
   visibleToolNames,
@@ -102,6 +104,8 @@ import {
 
 /** A runaway guard: no turn makes more LLM calls than this (spec 2.2). */
 export const HARD_CAP_CALLS = 16;
+/** A fast turn whose search spans this many meetings becomes a research turn (11.9.17). */
+export const SPREAD_MIN = 4;
 /** The thin-hit rule: fewer search rows than this adds the summary. */
 const THIN_ROWS = 3;
 /**
@@ -544,7 +548,10 @@ export class Turn {
    * deadline), `broad` (the synthesis path) or `tools` (the round loop).
    */
   async route(): Promise<
-    { kind: "exit"; exit: Exit } | { kind: "broad" } | { kind: "tools" }
+    | { kind: "exit"; exit: Exit }
+    | { kind: "broad" }
+    | { kind: "tools" }
+    | { kind: "dig" }
   > {
     const { db, question, llm, signal, settings } = this.input;
     const { turnScope, todayMs, turns } = this;
@@ -569,6 +576,8 @@ export class Turn {
     if (settings.nativeTools && !this.skipNative && !this.first) {
       const started = Date.now();
       const names = visibleToolNames(turnScope.kind, write);
+      // The research tool (11.9.17): offered when research mode is on.
+      const offerDig = settings.research && !write;
       try {
         const r = await llm.nativeCall({
           system: nativeSystem({
@@ -577,12 +586,21 @@ export class Turn {
             lists: choiceLists(choices, write),
             history: this.historyText,
             write,
+            dig: offerDig,
           }),
           messages: [{ role: "user", content: question }],
-          tools: nativeToolDefs(choices, names),
+          tools: [
+            ...nativeToolDefs(choices, names),
+            ...(offerDig ? [digToolDef()] : []),
+          ],
           maxOutputTokens: NATIVE_MAX_TOKENS,
           unitKey: "route/native",
         });
+        if (r.kind === "call" && r.name === DIG_TOOL_NAME && offerDig) {
+          // The model says the question needs digging: the graph switches to research.
+          this.step("route", "native:dig_deeper", started);
+          return { kind: "dig" };
+        }
         if (r.kind === "call") {
           const v = validateNativeCall(r, {
             choices,
@@ -977,6 +995,24 @@ export class Turn {
       return "blocks";
     }
     return null;
+  }
+
+  /**
+   * After a fast turn found text with one search: does the evidence span
+   * several meetings (11.9.17)? Then the question is a story and not a fact.
+   * Code only, no model call. The step records the spread for the eval.
+   */
+  spreadEscalation(): boolean {
+    const started = Date.now();
+    const search = this.results.find((r) => r.tool === "search_chunks");
+    if (!search || search.spread == null) return false;
+    this.step("route", `spread:${search.spread}`, started, search.spread);
+    const min = this.input.spreadMin ?? SPREAD_MIN;
+    return (
+      this.input.settings.research &&
+      this.mode === "fast" &&
+      search.spread >= min
+    );
   }
 
   /** The start of the research path: no route call, the leads come from code (11.9.5). */

@@ -52,23 +52,51 @@ interface Raw {
   }[];
 }
 
-const raw = JSON.parse(
-  readFileSync(
-    fileURLToPath(new URL("./dig-heldout.json", import.meta.url)),
-    "utf8",
-  ),
-) as Raw;
+/**
+ * The blind sets. `heldout` is the first one (it was read for fixes, so it
+ * counts as a dev set now); `dev` may be read and used for decisions; `final`
+ * is read only for the last measure and never tuned on.
+ */
+export const DIG_SETS = {
+  heldout: { file: "dig-heldout.json", prefix: "hd", qid: "hd" },
+  dev: { file: "dig-dev.json", prefix: "hv", qid: "hv" },
+  final: { file: "dig-final.json", prefix: "hf", qid: "hf" },
+} as const;
+export type DigSetName = keyof typeof DIG_SETS;
 
-const folderId = (project: string) => `fld-hd-${project.toLowerCase()}`;
-const meetingId = (key: string) => `hd-${key}`;
-const personId = (key: string) => `hd-${key}`;
+const cache = new Map<string, Raw>();
+function load(set: DigSetName): Raw {
+  const file = DIG_SETS[set].file;
+  let raw = cache.get(file);
+  if (!raw) {
+    raw = JSON.parse(
+      readFileSync(
+        fileURLToPath(new URL(`./${file}`, import.meta.url)),
+        "utf8",
+      ),
+    ) as Raw;
+    cache.set(file, raw);
+  }
+  return raw;
+}
+
+const ids = (set: DigSetName) => {
+  const px = DIG_SETS[set].prefix;
+  return {
+    folderId: (project: string) => `fld-${px}-${project.toLowerCase()}`,
+    meetingId: (key: string) => `${px}-${key}`,
+    personId: (key: string) => `${px}-${key}`,
+  };
+};
 const START: Record<string, number> = {
   A: Date.UTC(2026, 9, 1, 10, 0, 0),
   B: Date.UTC(2026, 9, 8, 10, 0, 0),
   C: Date.UTC(2026, 9, 12, 10, 0, 0),
 };
 
-export function buildHeldoutAddon(): DigAddon {
+export function buildHeldoutAddon(set: DigSetName = "heldout"): DigAddon {
+  const raw = load(set);
+  const { folderId, meetingId, personId } = ids(set);
   const people: Person[] = raw.people.map((p) => ({
     id: personId(p.key),
     first: p.first,
@@ -145,9 +173,12 @@ export function buildHeldoutAddon(): DigAddon {
   return { people, folders, meetings };
 }
 
-export function buildHeldoutDig(): DigQ[] {
+export function buildHeldoutDig(set: DigSetName = "heldout"): DigQ[] {
+  const raw = load(set);
+  const { folderId, meetingId } = ids(set);
+  const qid = DIG_SETS[set].qid;
   return raw.questions.map((q) => ({
-    id: q.id,
+    id: set === "heldout" ? q.id : q.id.replace(/^q/, qid),
     lang: q.lang,
     control: q.control,
     scope:

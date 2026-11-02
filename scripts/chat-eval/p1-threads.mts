@@ -10,7 +10,7 @@
 
 import type { ChatMessage } from "@openstyle/validations";
 import { mean, normalize, scoreAnswer } from "./keys.mts";
-import { answerFromTurn, type IdMaps } from "./p1-score.mts";
+import { answerFromTurn, type IdMaps, spreadOpt } from "./p1-score.mts";
 import type { Corpus, ThreadQ, ThreadTurn } from "./types.mts";
 
 export interface ThreadRow {
@@ -94,6 +94,7 @@ export async function runThread(
         signal,
         now: corpus.todayMs,
         allowProposals: false,
+        ...spreadOpt(),
       });
       llm.finish("succeeded");
       const key = turn.key ?? { kind: "not_found" as const };
