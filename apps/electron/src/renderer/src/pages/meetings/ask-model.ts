@@ -33,7 +33,13 @@ export function formatTimestamp(ms: number): string {
 
 /** One part of the trail sentence. The UI writes the words with `t()`. */
 export interface TraceSummaryPart {
-  key: "searched" | "readSummary" | "readTranscript" | "listed" | "meetings";
+  key:
+    | "searched"
+    | "readSummary"
+    | "readTranscript"
+    | "listed"
+    | "meetings"
+    | "mapReduce";
   count: number;
 }
 
@@ -43,6 +49,7 @@ const TRACE_ORDER: TraceSummaryPart["key"][] = [
   "readTranscript",
   "listed",
   "meetings",
+  "mapReduce",
 ];
 
 /**
@@ -75,6 +82,9 @@ export function summarizeTrace(trace: ChatTrace | null): TraceSummaryPart[] {
         break;
       case "list_meetings":
         add("meetings", step.rows ?? 0);
+        break;
+      case "map_reduce":
+        add("mapReduce", step.rows ?? 0);
         break;
       default:
         break;

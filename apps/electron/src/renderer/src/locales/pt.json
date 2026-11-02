@@ -1391,7 +1391,9 @@
         "listed_one": "listou {{count}} item",
         "listed_other": "listou {{count}} itens",
         "meetings_one": "listou {{count}} reunião",
-        "meetings_other": "listou {{count}} reuniões"
+        "meetings_other": "listou {{count}} reuniões",
+        "mapReduce_one": "{{count}} resumo de reunião encurtado",
+        "mapReduce_other": "{{count}} resumos de reuniões encurtados"
       },
       "trailDropped_one": "{{count}} fonte deixada de fora",
       "trailDropped_other": "{{count}} fontes deixadas de fora",

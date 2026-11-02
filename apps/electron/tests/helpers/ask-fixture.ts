@@ -405,6 +405,7 @@ export interface AskRequest {
     | "chat_slots"
     | "chat_answer"
     | "chat_synthesis"
+    | "chat_map_notes"
     | "other";
   system: string;
   /** The text of the last user message. */
@@ -639,7 +640,8 @@ export class FakeAskLlm {
         : schema === "chat_router" ||
             schema === "chat_slots" ||
             schema === "chat_answer" ||
-            schema === "chat_synthesis"
+            schema === "chat_synthesis" ||
+            schema === "chat_map_notes"
           ? schema
           : "other";
     const record: AskRequest = {
@@ -773,6 +775,19 @@ export class FakeAskLlm {
       );
       return;
     }
+    if (kind === "chat_map_notes") {
+      // The map step of a big scope (D20): one short note for each source,
+      // with its label. The note is the first sentence of the source.
+      record.answered = "chat_map_notes";
+      const notes = [
+        ...user.matchAll(/^\[(S\d+)\] [^:]*?\d{4}-\d{2}-\d{2}: (.*)$/gm),
+      ].map((m) => ({
+        label: m[1] as string,
+        note: (m[2] as string).split(". ")[0]?.slice(0, 140) ?? "",
+      }));
+      this.text(res, JSON.stringify({ notes }));
+      return;
+    }
     if (kind === "chat_synthesis") {
       // A broad question: a lead sentence from the first source and one bullet
       // for each of the next three sources, each cited with its own label.
@@ -809,5 +824,80 @@ export class FakeAskLlm {
     }
     // Anything else: a harmless empty object.
     this.text(res, "{}");
+  }
+}
+
+export const LONG_FOLDER_ID = "ask-folder-long";
+export const LONG_FOLDER_NAME = "Long program";
+export const TWIN_FOLDER_ID = "ask-folder-harbor-crane";
+export const TWIN_FOLDER_NAME = "Harbor crane";
+/** Meetings of the big folder. Each summary is long, so the full digest does not fit the budget. */
+export const LONG_MEETINGS = 30;
+
+/**
+ * Clarify and map-reduce data (D20). A second folder whose name shares the word
+ * "Harbor" with "Harbor pricing", and a folder of 30 meetings with long
+ * summaries. Call it after `seedAskMeetings(dir, { extra: true })`.
+ */
+export function seedClarifyExtras(userDataDir: string): void {
+  const db = new DatabaseSync(join(userDataDir, "freestyle.db"));
+  try {
+    db.exec("PRAGMA busy_timeout = 5000");
+    const now = Date.now();
+    const folder = db.prepare(
+      `INSERT INTO meeting_folders (id, name, description, created_at, updated_at)
+       VALUES (?, ?, NULL, ?, ?)`,
+    );
+    folder.run(TWIN_FOLDER_ID, TWIN_FOLDER_NAME, now, now);
+    folder.run(LONG_FOLDER_ID, LONG_FOLDER_NAME, now, now);
+    const meeting = db.prepare(
+      `INSERT INTO meetings
+         (id, title, started_at, ended_at, duration_ms, status, audio_dir,
+          stt_provider, stt_model, language, folder_id, created_at)
+       VALUES (?, ?, ?, ?, 600000, 'summarized', NULL, 'local-mlx', 'fake-stt',
+               'en', ?, ?)`,
+    );
+    const summary = db.prepare(
+      `INSERT INTO meeting_summaries
+         (meeting_id, markdown, llm_provider, llm_model, created_at, summary_json)
+       VALUES (?, NULL, 'server', 'fake-llm', ?, ?)`,
+    );
+    const add = (
+      id: string,
+      title: string,
+      at: number,
+      folderId: string,
+      n: number,
+    ) => {
+      meeting.run(id, title, at, at + 600_000, folderId, at);
+      const filler =
+        "The group went through the schedule, the staffing, the vendor list and the risk log in detail. ";
+      summary.run(
+        id,
+        now,
+        JSON.stringify({
+          overview: `Step ${n} of the long program covered the Quartz${n} milestone. ${filler.repeat(3)}`,
+          keyPoints: [
+            `The Quartz${n} budget is ${2000 + n} dollars. ${filler.repeat(2)}`,
+            `Person${n} owns the Quartz${n} delivery. ${filler.repeat(2)}`,
+          ],
+          decisions: [`Ship Quartz${n} in week ${n}.`],
+          actionItems: [],
+          openQuestions: [],
+        }),
+      );
+    };
+    add("ask-m-twin", "Crane yard visit", BASE + 3 * DAY, TWIN_FOLDER_ID, 0);
+    for (let i = 1; i <= LONG_MEETINGS; i++) {
+      add(
+        `ask-m-long-${i}`,
+        `Program step ${i}`,
+        BASE + (20 + i) * DAY,
+        LONG_FOLDER_ID,
+        i,
+      );
+    }
+  } finally {
+    db.close();
   }
 }

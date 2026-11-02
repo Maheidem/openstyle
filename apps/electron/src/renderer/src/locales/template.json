@@ -1710,7 +1710,9 @@
         "listed_one": "listed {{count}} item",
         "listed_other": "listed {{count}} items",
         "meetings_one": "listed {{count}} meeting",
-        "meetings_other": "listed {{count}} meetings"
+        "meetings_other": "listed {{count}} meetings",
+        "mapReduce_one": "shortened {{count}} meeting summary",
+        "mapReduce_other": "shortened {{count}} meeting summaries"
       },
       "trailDropped_one": "{{count}} source left out",
       "trailDropped_other": "{{count}} sources left out",

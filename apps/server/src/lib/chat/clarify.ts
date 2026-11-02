@@ -117,7 +117,9 @@ function folderAmbiguity(
   const top = scored.filter((x) => x.shared.length === best);
   // A folder that matches more words than the others is the clear pick.
   if (top.length < 2) return null;
-  const subject = top[0]?.shared[0] ?? null;
+  const word = top[0]?.shared[0] ?? null;
+  const subject =
+    word === null ? null : word.charAt(0).toUpperCase() + word.slice(1);
   return {
     kind: "clarify",
     why: "scope",

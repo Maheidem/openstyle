@@ -1391,7 +1391,9 @@
         "listed_one": "ha elencato {{count}} voce",
         "listed_other": "ha elencato {{count}} voci",
         "meetings_one": "ha elencato {{count}} riunione",
-        "meetings_other": "ha elencato {{count}} riunioni"
+        "meetings_other": "ha elencato {{count}} riunioni",
+        "mapReduce_one": "{{count}} riassunto di riunione accorciato",
+        "mapReduce_other": "{{count}} riassunti di riunioni accorciati"
       },
       "trailDropped_one": "{{count}} fonte esclusa",
       "trailDropped_other": "{{count}} fonti escluse",

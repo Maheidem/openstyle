@@ -1379,7 +1379,8 @@
         "readSummary_other": "要約を {{count}} 件読み込み",
         "readTranscript_other": "文字起こしを {{count}} か所読み込み",
         "listed_other": "{{count}} 件の項目を一覧化",
-        "meetings_other": "{{count}} 件の会議を一覧化"
+        "meetings_other": "{{count}} 件の会議を一覧化",
+        "mapReduce_other": "{{count}} 件の会議要約を短縮"
       },
       "trailDropped_other": "{{count}} 件のソースを除外",
       "scopeFolder": "このフォルダー: {{name}}",

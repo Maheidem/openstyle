@@ -1392,7 +1392,9 @@
         "listed_one": "listó {{count}} elemento",
         "listed_other": "listó {{count}} elementos",
         "meetings_one": "listó {{count}} reunión",
-        "meetings_other": "listó {{count}} reuniones"
+        "meetings_other": "listó {{count}} reuniones",
+        "mapReduce_one": "{{count}} resumen de reunión acortado",
+        "mapReduce_other": "{{count}} resúmenes de reuniones acortados"
       },
       "trailDropped_one": "{{count}} fuente omitida",
       "trailDropped_other": "{{count}} fuentes omitidas",
