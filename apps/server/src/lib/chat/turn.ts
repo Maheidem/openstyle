@@ -947,16 +947,8 @@ export class Turn {
     return round >= this.input.settings.rounds;
   }
 
-  /**
-   * After the loop: the block answers (list, count, status). Returns an exit,
-   * `status_text` (a status block with no bullets: the summaries answer, and
-   * the counts stay as the last block) or null when text sources answer.
-   */
-  blocksStage():
-    | { kind: "exit"; exit: Exit }
-    | { kind: "status_text"; blocks: ChatBlock[] }
-    | null {
-    const { question } = this.input;
+  /** What the block answer of the loop is: counts only, or a block list. */
+  blockKind(): "status_text" | "blocks" | null {
     const block = this.blockResult();
     const first = this.first as Call;
     // A status without saved text has no bullets (owner report 2026-11-01). The
@@ -966,32 +958,41 @@ export class Turn {
       block.tool === "folder_status" &&
       block.blocks.every((b) => b.kind === "status" && b.bullets.length === 0)
     ) {
-      return { kind: "status_text", blocks: block.blocks };
+      return "status_text";
     }
     if (block && (BLOCK_TOOLS.has(first.tool) || !this.textMaterial())) {
-      let blocks = block.blocks;
-      if (asksForCount(question)) {
-        blocks = blocks.map((b) =>
-          b.kind === "list" ? { kind: "count", n: b.total, what: b.list } : b,
-        );
-      }
-      const labels = new Set<string>();
-      for (const b of block.blocks) {
-        if (b.kind === "list") {
-          for (const it of b.items) if (it.label) labels.add(it.label);
-        }
-      }
-      for (const l of block.labels) labels.add(l);
-      const cites = [...labels]
-        .slice(0, BLOCK_CITES)
-        .map((l) => this.sources.toCite(l))
-        .filter((c): c is ChatCite => c !== null);
-      return {
-        kind: "exit",
-        exit: done(this.finish(blocks, cites, "")),
-      };
+      return "blocks";
     }
     return null;
+  }
+
+  /** `status_text`: the status blocks that stay as the last block of the answer. */
+  statusBlocks(): ChatBlock[] {
+    return this.blockResult()?.blocks ?? [];
+  }
+
+  /** `blocks`: the list, count or status answer. No model text (spec 2.2). */
+  blocksResult(): Exit {
+    const { question } = this.input;
+    const block = this.blockResult() as ToolResult;
+    let blocks = block.blocks;
+    if (asksForCount(question)) {
+      blocks = blocks.map((b) =>
+        b.kind === "list" ? { kind: "count", n: b.total, what: b.list } : b,
+      );
+    }
+    const labels = new Set<string>();
+    for (const b of block.blocks) {
+      if (b.kind === "list") {
+        for (const it of b.items) if (it.label) labels.add(it.label);
+      }
+    }
+    for (const l of block.labels) labels.add(l);
+    const cites = [...labels]
+      .slice(0, BLOCK_CITES)
+      .map((l) => this.sources.toCite(l))
+      .filter((c): c is ChatCite => c !== null);
+    return done(this.finish(blocks, cites, ""));
   }
 
   /** The text that a status turn gets, or its counts alone when the text fails. */
