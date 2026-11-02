@@ -5,6 +5,7 @@ import type {
 } from "@openstyle/validations";
 import { DragSpacer } from "@renderer/components/drag-spacer";
 import { Button } from "@renderer/components/ui/button";
+import { usePersistentState } from "@renderer/hooks/use-persistent-state";
 import { getClient } from "@renderer/lib/api";
 import {
   configQueryOptions,
@@ -18,7 +19,8 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { Navigate, useSearchParams } from "react-router";
 import { SETTINGS_KEYS } from "../../../../shared/settings-keys";
-import { BatchProgressCard, batchKey, useMeetingBatch } from "./batch";
+import { BatchProgressCard, useMeetingBatch } from "./batch";
+import { isBatchShown } from "./batch-model";
 import { MeetingDetailView } from "./detail";
 import { EnhancePromptDialog } from "./enhance-prompt-dialog";
 import { FolderPanel } from "./folder-panel";
@@ -212,11 +214,14 @@ export default function MeetingsPage(): React.JSX.Element {
   // The batch queue (specs/meeting-folder-batch.md). A finished batch stays
   // in the rail until the user closes it or a new batch starts.
   const batch = useMeetingBatch(enabled);
-  const [closedBatch, setClosedBatch] = useState<string | null>(null);
-  const showBatch =
-    batch.state !== undefined &&
-    batch.state.total > 0 &&
-    (batch.state.active || closedBatch !== batchKey(batch.state));
+  // The id of the closed batch lives in localStorage: the page unmounts on a
+  // tab change, and a plain useState brought the finished box back.
+  const [closedBatch, setClosedBatch] = usePersistentState<string>(
+    "openstyle.meetings.closedBatch",
+    "",
+    (value): value is string => typeof value === "string",
+  );
+  const showBatch = isBatchShown(batch.state, closedBatch);
   const folderGroup = groups.get(selectedFolderId);
   // biome-ignore lint/correctness/useExhaustiveDependencies: run when the rows load
   useEffect(() => {
@@ -433,9 +438,7 @@ export default function MeetingsPage(): React.JSX.Element {
               <BatchProgressCard
                 state={batch.state}
                 onCancel={() => void batch.cancel()}
-                onClose={() =>
-                  batch.state && setClosedBatch(batchKey(batch.state))
-                }
+                onClose={() => batch.state && setClosedBatch(batch.state.id)}
               />
             )}
             {(folderData.isError || listFailed) && (

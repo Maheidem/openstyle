@@ -112,6 +112,24 @@ describe("batch queue", () => {
     });
   });
 
+  it("keeps one id for a batch and gives a new batch a new id", async () => {
+    const w = world();
+    const q = createBatchQueue(w.deps);
+    const first = q.enqueue(["a"], "transcribe", true).id;
+    await flush();
+    // Adding to a running batch keeps the id.
+    expect(q.enqueue(["b"], "transcribe", true).id).toBe(first);
+    w.finish("a");
+    await flush();
+    w.finish("b");
+    await q.idle();
+    expect(q.state().id).toBe(first);
+    // A new batch with the same counts is still another batch.
+    const second = q.enqueue(["c", "d"], "transcribe", true).id;
+    expect(second).not.toBe(first);
+    expect(second.length).toBeGreaterThan(0);
+  });
+
   it("counts a run that failed or did part of its work as failed, never as done", async () => {
     const w = world({
       outcome: (id) =>
