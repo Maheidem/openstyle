@@ -255,9 +255,10 @@ export class Turn {
   readonly scopeMeetings: number;
   readonly historyText: string;
   readonly scopeLine: string;
-  readonly toldPrompt: string;
-  readonly told: string[];
-  readonly excludeTold: boolean;
+  toldPrompt: string;
+  told: string[];
+  excludeTold: boolean;
+  private readonly toldTexts: string[];
   readonly write: boolean;
   readonly plain: boolean;
   readonly skipNative: boolean;
@@ -338,6 +339,7 @@ export class Turn {
       .filter((m) => m.role === "assistant" && m.content.trim() !== "")
       .slice(-3)
       .map((m) => m.content);
+    this.toldTexts = toldTexts;
     const prevQuestion = this.turns.at(-1)?.question ?? null;
     // A broad question after a broad answer, or "more details": the thread
     // already told some facts. They are not told again (owner report 2026-11-01).
@@ -980,6 +982,20 @@ export class Turn {
   /** The start of the research path: no route call, the leads come from code (11.9.5). */
   beginResearch(): void {
     const started = Date.now();
+    // A follow-up that digs ("what blocked it?") answers the new question: the
+    // facts of the earlier answer are told already and stay out of this one.
+    if (
+      this.toldTexts.length > 0 &&
+      !this.excludeTold &&
+      isDependentFollowUp(this.input.question)
+    ) {
+      this.excludeTold = true;
+      this.told = this.toldTexts.flatMap(sentencesOf);
+      this.toldPrompt = this.toldTexts
+        .slice(-2)
+        .map((t) => (t.length > 600 ? `${t.slice(0, 600)}...` : t))
+        .join("\n");
+    }
     this.router = "default";
     this.intent = "lookup";
     this.prepare();

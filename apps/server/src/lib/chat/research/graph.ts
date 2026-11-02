@@ -369,7 +369,12 @@ export function buildResearchGraph(t: Turn, checkpoint: boolean) {
     config: LangGraphRunnableConfig,
   ): Promise<Update> => {
     // The first question asked for the open items: a list answers it.
-    if (g.last?.strategy === "list_open" && t.blockResult()) {
+    const last = g.last;
+    if (
+      last?.strategy === "list_open" &&
+      s.leads.find((l) => l.id === last.leadId)?.list &&
+      t.blockResult()
+    ) {
       return endLoop(s, "enough", s.leads, "blocks");
     }
     // A lead at its cap of acts closes.
@@ -390,15 +395,17 @@ export function buildResearchGraph(t: Turn, checkpoint: boolean) {
     if (stop)
       return endLoop(s, stop, leads, hasEvidence ? "synthesize" : "not_found");
 
-    const lead = leads.find((l) => l.status === "open") as Lead;
+    // The lead that the last `act` worked on, else the first open lead.
+    const lead = (leads.find(
+      (l) => l.id === g.last?.leadId && l.status === "open",
+    ) ?? leads.find((l) => l.status === "open")) as Lead;
     let decision: { next: ReflectNext; query: string } | null = null;
     // No call ran in this turn (a lead closed): nothing new to judge.
     if (reflectOn && g.last) {
-      const idx = leads.indexOf(lead) + 1;
       emit(config, {
         iteration: s.iteration,
         max_iter: maxIter,
-        lead_index: idx,
+        lead_index: leads.indexOf(lead) + 1,
         leads: leads.length,
       });
       const started = Date.now();
@@ -408,31 +415,40 @@ export function buildResearchGraph(t: Turn, checkpoint: boolean) {
       t.step("research", `reflect:${r?.next ?? "stop"}`, started, null, null);
       decision = r;
     }
-    // Rule 7: reflect said stop (or failed: an error means `stop`) and the
-    // evidence is not empty.
-    if (
-      reflectOn &&
-      g.last &&
-      (decision === null || decision.next === "stop")
-    ) {
-      if (hasEvidence) return endLoop(s, "enough", leads, "synthesize");
-    }
-    // A lead with no evidence does not close because the model says so: its
-    // other strategies still run (code owns the loop).
-    if (
-      decision?.next === "next_lead" &&
-      !s.evidence.some((e) => e.leadId === lead.id)
-    ) {
-      decision = null;
-    }
-    let nextLeads = leads;
-    if (decision?.next === "next_lead") {
-      nextLeads = leads.map((l) =>
-        l.id === lead.id ? ({ ...l, status: "done" } as Lead) : l,
+    // Rule 7: reflect said stop (or failed: an error means `stop`). A lead with
+    // no evidence does not close because the model says so: its other
+    // strategies still run (code owns the loop). With evidence, `stop` ends
+    // the loop when no other open lead lacks evidence; else it closes this lead
+    // and the next lead runs.
+    const stopSaid =
+      reflectOn && g.last && (decision === null || decision.next === "stop");
+    const leadHasEvidence = s.evidence.some((e) => e.leadId === lead.id);
+    let closeLead = decision?.next === "next_lead";
+    if (stopSaid && leadHasEvidence) {
+      const waiting = leads.some(
+        (l) =>
+          l.status === "open" &&
+          l.id !== lead.id &&
+          !s.evidence.some((e) => e.leadId === l.id),
       );
+      if (!waiting) return endLoop(s, "enough", leads, "synthesize");
+      closeLead = true;
     }
-    g.loop.requested = decision;
-    return { leads: nextLeads, next: decision?.next ?? null, go: "act" };
+    if (!leadHasEvidence) {
+      closeLead = false;
+      if (decision?.next === "next_lead" || stopSaid) decision = null;
+    }
+    const nextLeads = closeLead
+      ? leads.map((l) =>
+          l.id === lead.id ? ({ ...l, status: "done" } as Lead) : l,
+        )
+      : leads;
+    g.loop.requested = closeLead ? null : decision;
+    return {
+      leads: nextLeads,
+      next: closeLead ? "next_lead" : (decision?.next ?? null),
+      go: "act",
+    };
   };
 
   const reflect = async (

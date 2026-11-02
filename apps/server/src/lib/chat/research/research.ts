@@ -9,7 +9,7 @@ import {
   reflectUser,
 } from "../prompts.js";
 import { scopeMeetingIds } from "../tools.js";
-import { type Call, HARD_CAP_CALLS, SCORE_FLOOR, type Turn } from "../turn.js";
+import { type Call, HARD_CAP_CALLS, type Turn } from "../turn.js";
 import type { Source } from "../types.js";
 import { asksReason } from "./trigger.js";
 
@@ -108,6 +108,9 @@ const OPEN_ITEMS_RE = new RegExp(
   ].join("|"),
   "u",
 );
+/** "unresolved" in the 7 UI languages (accents are folded). */
+const UNRESOLVED_RE =
+  /\b(?:unresolved|outstanding|nao resolvid[oa]s?|sem resolver|sin resolver|irresuelt[oa]s?|ungeloest|non resolu[es]?|irrisolt[oaie])\b/u;
 const ITEM_WORDS_RE =
   /\b(?:items?|actions?|tasks?|todos?|acoes|acao|tarefas?|itens|aufgaben?|taches?|tache|compiti|compito|tareas?)\b/u;
 const QUESTION_WORDS_RE =
@@ -194,23 +197,37 @@ export function argsKey(call: Call): string {
 
 // ---- Leads (node `plan`) ----
 
-/** The items of the list blocks of the last answer (11.9.5, node `plan` point 1). */
+/**
+ * The items of the list blocks of the last answer (11.9.5, node `plan` point
+ * 1). A list at Everything holds the items of every project: the items whose
+ * text or meeting title shares words with the thread's questions come first.
+ */
 function priorItems(
   history: readonly ChatMessage[],
+  topic: string,
 ): { text: string; meetingId: string | null }[] {
   const last = history.findLast((m) => m.role === "assistant");
   if (!last) return [];
-  const items: { text: string; meetingId: string | null }[] = [];
+  const items: { text: string; meetingId: string | null; score: number }[] = [];
+  const words = [...wordsOf(topic)].filter((w) => w.length >= 4);
   for (const b of last.blocks as ChatBlock[]) {
     if (b.kind !== "list") continue;
     for (const it of b.items) {
       const text = it.text.trim();
-      if (text !== "" && !items.some((x) => x.text === text)) {
-        items.push({ text, meetingId: it.meeting_id });
-      }
+      if (text === "" || items.some((x) => x.text === text)) continue;
+      const hay = wordsOf(`${text} ${it.meeting_title ?? ""}`);
+      items.push({
+        text,
+        meetingId: it.meeting_id,
+        score: words.filter((w) => hay.has(w)).length,
+      });
     }
   }
-  return items;
+  // A stable sort: items with the same score keep the order of the list.
+  return items
+    .map((x, i) => ({ x, i }))
+    .sort((a, b) => b.x.score - a.x.score || a.i - b.i)
+    .map(({ x }) => ({ text: x.text, meetingId: x.meetingId }));
 }
 
 /** Code seeds the leads. No model call. */
@@ -220,7 +237,10 @@ export function seedLeads(t: Turn): Lead[] {
   // Only a question with an earlier turn can lean on it ("this project" is not a follow-up).
   const dependent = t.turns.length > 0 && isDependentFollowUp(question);
   if (dependent && asksReason(question)) {
-    const items = priorItems(history).slice(0, max);
+    const items = priorItems(
+      history,
+      [...t.priorQuestions, question].join(" "),
+    ).slice(0, max);
     if (items.length > 0) {
       return items.map((it, i) => ({
         id: `L${i + 1}`,
@@ -257,7 +277,19 @@ export function seedLeads(t: Turn): Lead[] {
 
 function order(t: Turn, lead: Lead, evidence: readonly Evidence[]): Strategy[] {
   if (lead.list) return ["list_open", "search", "other_meetings", "summary"];
-  if (t.turnScope.kind === "meeting") return ["search", "summary", "window"];
+  // "Is anything still unresolved about X?": the open questions of the scope
+  // are evidence too. At Everything they would drown the answer.
+  const openish =
+    lead.origin === "question" &&
+    t.turnScope.kind !== "all" &&
+    (OPEN_ITEMS_RE.test(fold(t.input.question)) ||
+      UNRESOLVED_RE.test(fold(t.input.question)));
+  if (t.turnScope.kind === "meeting") {
+    return openish
+      ? ["search", "list_open", "summary", "window"]
+      : ["search", "summary", "window"];
+  }
+  if (openish) return ["search", "list_open", "other_meetings", "summary"];
   // A search that found nothing (a question with no topic word scores under
   // the floor): the summaries of the meetings come before the wider search.
   if (!evidence.some((e) => e.leadId === lead.id)) {
@@ -291,7 +323,14 @@ export function chooseCalls(
   evidence: readonly Evidence[],
 ): Pick | null {
   const used = run.usedBy(lead.id);
-  const asked = run.requested ? REQUESTED[run.requested.next] : null;
+  // The model's word picks the strategy only when the lead has evidence to
+  // judge (or it gives better search words). With none, the code order runs.
+  const hasEvidence = evidence.some((e) => e.leadId === lead.id);
+  const request = run.requested;
+  const asked =
+    request && (hasEvidence || request.next === "rephrase")
+      ? REQUESTED[request.next]
+      : null;
   const candidates: Strategy[] = [
     ...(asked && !used.has(asked) ? [asked] : []),
     ...order(t, lead, evidence),
@@ -423,8 +462,6 @@ export function toEvidence(
     score,
   };
 }
-
-export { SCORE_FLOOR };
 
 // ---- Reflect ----
 
