@@ -83,6 +83,18 @@ const INTENT_OPTIONS: ClarifyBlock["options"] = [
   },
 ];
 
+/** Two chips with the same question are one chip. */
+function dedupeByAsk(
+  options: ClarifyBlock["options"],
+): ClarifyBlock["options"] {
+  const seen = new Set<string>();
+  return options.filter((o) => {
+    if (seen.has(o.ask)) return false;
+    seen.add(o.ask);
+    return true;
+  });
+}
+
 /** (a) The scope is Everything and the question names a word that several folders share. */
 function folderAmbiguity(
   db: DatabaseSync,
@@ -153,18 +165,23 @@ function personAmbiguity(
     // A full name in the question settles it.
     if (names.some((n) => qNorm.includes(` ${normalizeText(n)} `))) continue;
     const re = new RegExp(`\\b${first}\\b`, "iu");
+    const options = dedupeByAsk(
+      names.map((n) => ({
+        label: n,
+        key: null,
+        // A function keeps "$&" in a name from acting as a pattern.
+        ask: (re.test(question)
+          ? question.trim().replace(re, () => n)
+          : `${question.trim()} (${n})`
+        ).slice(0, 1000),
+      })),
+    ).slice(0, MAX_OPTIONS);
+    if (options.length < 2) continue;
     return {
       kind: "clarify",
       why: "person",
       subject: first.charAt(0).toUpperCase() + first.slice(1),
-      options: names.slice(0, MAX_OPTIONS).map((n) => ({
-        label: n,
-        key: null,
-        ask: (re.test(question)
-          ? question.trim().replace(re, n)
-          : `${question.trim()} (${n})`
-        ).slice(0, 1000),
-      })),
+      options,
     };
   }
   return null;

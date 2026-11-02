@@ -142,7 +142,13 @@ export async function mapNotes(args: {
       });
       notes = r.object.notes;
     } catch (e) {
-      if (args.signal.aborted) throw e;
+      if (args.signal.aborted) {
+        // The deadline ends the turn with a block. A client abort throws.
+        const r = args.signal.reason as { name?: string } | undefined;
+        if (r?.name === "TimeoutError")
+          return { ...result, stopped: "deadline" };
+        throw e;
+      }
       failed = true;
       result.firstError ??= ((e as Error).message ?? "error").slice(0, 100);
     }
@@ -155,6 +161,7 @@ export async function mapNotes(args: {
       const note = byLabel.get(s.label);
       const src = original.get(s.label) ?? s.text;
       if (note && noteIsSafe(note, src)) {
+        s.citeText = src;
         s.text = cut(note, args.noteChars);
       } else if (!item.retry && (failed || !note)) {
         again.push(s);

@@ -639,7 +639,7 @@ export async function runChatTurn(input: ChatTurnInput): Promise<TurnResult> {
     };
     let digestIds: string[] | undefined;
     let digestLabels: string[] = [];
-    const digest = (ids?: string[], budgetTokens?: number) => {
+    const digest = (ids?: string[], budgetTokens?: number, quiet = false) => {
       const t = Date.now();
       digestIds = ids;
       const r = summaryDigest(ctx, {
@@ -648,6 +648,7 @@ export async function runChatTurn(input: ChatTurnInput): Promise<TurnResult> {
         ...(more ? { told: seenMeetings } : {}),
       });
       digestLabels = r.labels;
+      if (quiet) return;
       toolCalls.push({
         tool: r.tool,
         args: { meetings: ids?.length ?? "scope" },
@@ -718,6 +719,7 @@ export async function runChatTurn(input: ChatTurnInput): Promise<TurnResult> {
     };
     let ranked = rankSources();
     let mapped: { from: string; to: string; n: number } | null = null;
+    let mappedLabels = new Set<string>();
     // Map-reduce (D20): the digest of a folder or of Everything does not fit
     // the window, so the oldest meetings would drop. Map: shorten the full
     // summaries in groups, each note keeps its label. Reduce: the synthesis
@@ -742,7 +744,7 @@ export async function runChatTurn(input: ChatTurnInput): Promise<TurnResult> {
         .reduce((n, x) => n + estimatePromptTokens(renderSource(x)) + 1, 0);
       if (fullTokens > digestBudget) {
         sources.remove(digestLabels);
-        digest(digestIds, 1_000_000);
+        digest(digestIds, 1_000_000, true);
         const full = digestLabels
           .map((l) => sources.get(l))
           .filter((x): x is Source => x !== undefined);
@@ -790,6 +792,7 @@ export async function runChatTurn(input: ChatTurnInput): Promise<TurnResult> {
         const day = (ms: number | undefined) =>
           ms === undefined ? "" : new Date(ms).toISOString().slice(0, 10);
         mapped = { from: day(days[0]), to: day(days.at(-1)), n: full.length };
+        mappedLabels = new Set(full.map((x) => x.label));
       }
       ranked = rankSources();
     }
@@ -797,8 +800,24 @@ export async function runChatTurn(input: ChatTurnInput): Promise<TurnResult> {
       // Reduce in date slices (D20): one answer for each third of the period,
       // so the late meetings get bullets too (a model that reads 72 notes
       // writes about the first ones). Each slice has its own cite check.
-      const summaries = ranked.filter((x) => x.kind === "summary");
-      const parts = Math.min(3, Math.max(1, Math.ceil(summaries.length / 24)));
+      // Only the shortened digest sources, in date order (a "more details"
+      // turn ranks unseen sources first, which mixes the order).
+      const summaries = ranked
+        .filter((x) => x.kind === "summary" && mappedLabels.has(x.label))
+        .sort((a, b) => (a.startedAt ?? 0) - (b.startedAt ?? 0));
+      // At most 4 slices; each one fits the source budget when it can.
+      const total = summaries.reduce(
+        (n, x) => n + estimatePromptTokens(renderSource(x)) + 1,
+        0,
+      );
+      const parts = Math.min(
+        4,
+        Math.max(
+          1,
+          Math.ceil(summaries.length / 24),
+          Math.ceil(total / Math.max(1, settings.sourceBudget - 800)),
+        ),
+      );
       const size = Math.ceil(summaries.length / parts);
       const slices = Array.from({ length: parts }, (_, i) =>
         summaries.slice(i * size, (i + 1) * size),
@@ -815,8 +834,19 @@ export async function runChatTurn(input: ChatTurnInput): Promise<TurnResult> {
           focus: `these are ${slice.length} meetings from ${day(slice[0])} to ${day(slice.at(-1))}, part ${i + 1} of ${slices.length} of a longer story; ${i === 0 ? "the lead says what the whole folder is about in one sentence; " : "write only bullets; "}one bullet for each important fact, in date order, with its date`,
         });
         results.push(r);
-        const stop = stopReason();
-        if (stop) return notFound(stop);
+        // The deadline or the call cap after a slice: keep the good slices.
+        if (i < slices.length - 1) {
+          const stop = stopReason();
+          if (stop) {
+            if (
+              !results.some(
+                (x) => !x.blocks.some((b) => b.kind === "not_found"),
+              )
+            )
+              return notFound(stop);
+            break;
+          }
+        }
       }
       const good = results.filter(
         (r) => !r.blocks.some((b) => b.kind === "not_found"),

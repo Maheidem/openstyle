@@ -302,6 +302,10 @@ describe("map-reduce synthesis", () => {
     // Every cite points to a real meeting of the folder.
     expect(r.cites.length).toBeGreaterThan(0);
     for (const c of r.cites) expect(c.meeting_id).toMatch(/^b\d+$/);
+    // The cite chip shows the real summary text, not the shortened note.
+    expect(r.cites.some((c) => c.text.includes("of the long program"))).toBe(
+      true,
+    );
   });
 
   it("a note that adds a number falls back to the code cut", async () => {

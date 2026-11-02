@@ -34,6 +34,8 @@ export interface Source {
   itemId: string | null;
   /** The text shown to the model. Chunk hits are cut to 640 characters. */
   text: string;
+  /** The real text for the cite chip, when `text` was shortened by the map step (D20). */
+  citeText?: string;
 }
 
 /** The per-turn source map. Labels are S1..Sn in the order of `add`. */
@@ -97,7 +99,7 @@ export class SourceMap {
       started_at: s.startedAt,
       start_ms: s.startMs,
       item_id: s.itemId,
-      text: s.text.slice(0, 320),
+      text: (s.citeText ?? s.text).slice(0, 320),
     };
   }
 }
