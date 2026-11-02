@@ -1549,6 +1549,14 @@ flowchart TD
 
 LLM calls on the map path: up to 10 map calls, then up to 3 answer attempts for each of up to 3 slices. The clarify path has 0 calls.
 
+**C. Design gaps closed with D20 (owner decision 2026-11-02).**
+
+1. A cite chip names its meeting at folder and Everything scope ("S1 · Title · 02:00", the title is cut with an ellipsis; the full name stays in `aria-label` and the tooltip). At meeting scope the chip stays short.
+2. The scope line shows the number of meetings and "answers cite only these" (`GET /api/chat/scope-size`).
+3. The bubble is `role="dialog"` with `aria-modal` and a label. E2E checks the role and the name.
+4. A running turn shows its step ("Searching N meetings...", "Reading N meetings...", "Writing the answer..."). The server keeps the stage of each running turn (`ChatProgress`, `GET /api/chat/threads/:id` field `progress`); the client polls it every second. No token streaming.
+5. A not-found block is a card with the line "Searched N meetings in this folder" (field `searched` of the block) and the nearest sources.
+
 Eval: the `clarify` part of `pnpm chat-eval p1` (section 8; skill `chat-eval`). Results are in the PR that added D20.
 
 ## 12. Owner decisions and open questions
