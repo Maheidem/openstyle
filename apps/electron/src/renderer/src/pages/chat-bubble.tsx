@@ -15,7 +15,11 @@ import {
   createThread,
   postQuestion,
 } from "./meetings/ask-api";
-import { AskAnswer, type CiteActions } from "./meetings/ask-blocks";
+import {
+  AskAnswer,
+  type CiteActions,
+  type ClarifyActions,
+} from "./meetings/ask-blocks";
 import {
   ASK_WARMING_AFTER_MS,
   askErrorView,
@@ -154,7 +158,7 @@ export default function ChatBubblePage(): React.JSX.Element {
     setErrorKey(view.key);
   };
 
-  const send = async (raw: string): Promise<void> => {
+  const send = async (raw: string, anyway = false): Promise<void> => {
     const check = checkQuestion(raw);
     if (!check.ok || busy) return;
     setErrorKey(null);
@@ -169,7 +173,10 @@ export default function ChatBubblePage(): React.JSX.Element {
         setThreadId(id);
         setThreadScope(scope);
       }
-      const reply = await postQuestion(id, { question: check.text });
+      const reply = await postQuestion(
+        id,
+        anyway ? clarifyAnywayTurn(check.text) : clarifyPickTurn(check.text),
+      );
       setAnswer(reply.assistant);
     } catch (err) {
       fail(err);
@@ -209,6 +216,14 @@ export default function ChatBubblePage(): React.JSX.Element {
     return used.kind === "all"
       ? t("meetings.ask.searchedEverything")
       : t("meetings.ask.searchedFolder", { name: nameOf(used) });
+  };
+
+  // "Answer anyway" asks the question of the clarify turn again.
+  const clarifyActions: ClarifyActions = {
+    pick: (ask) => void send(ask),
+    anyway: () => {
+      if (question) void send(question, true);
+    },
   };
 
   const check = checkQuestion(input);
@@ -318,6 +333,7 @@ export default function ChatBubblePage(): React.JSX.Element {
             actions={actions}
             scopeNote={scopeNote()}
             {...(canWiden ? { onWiden: () => void widenAnswer() } : {})}
+            {...(!busy ? { onClarify: clarifyActions } : {})}
           />
         </div>
       )}

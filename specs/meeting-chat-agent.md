@@ -2,7 +2,7 @@
 
 Status: DRAFT for owner review. Date: 2026-10-31. Base: `main` at `a7083674`.
 Revision 2 (2026-10-31, 09:49): owner answers applied. Section 12.1 lists them as decisions D1 to D4. Revision 3 (10:45): placement decided, D5 (section 11).
-Revision 4 (2026-10-31, 11:10): owner review applied, decisions D6 to D18 (section 12.1). Revision 5 (2026-11-01): decision D19, the P2 surfaces (section 11.6). Name note: `SD8` is decision D8 of `specs/local-semantic-search.md`. `D1` to `D18` are decisions of this spec.
+Revision 4 (2026-10-31, 11:10): owner review applied, decisions D6 to D18 (section 12.1). Revision 5 (2026-11-01): decision D19, the P2 surfaces (section 11.6). Name note: `SD8` is decision D8 of `specs/local-semantic-search.md`. `D1` to `D20` are decisions of this spec.
 Scope of this document: design only. No product code is part of this change.
 Language: ASD-STE100 Simplified Technical English.
 Diagrams follow the rule "Diagram conventions" in `AGENTS.md`. The pipeline diagram (2.2), the live-variant diagram (2.4) and the failure diagrams (2.5a, 2.5b) are written to it. The other diagrams are small single-concern sketches.
@@ -1510,6 +1510,47 @@ A lookup pipeline answers one fact. Owners also ask broad questions: "give me de
 
 Eval: the `broad` part of `pnpm chat-eval p1` (section 8; skill `chat-eval`). The private regression on real threads is `pnpm chat-eval real`.
 
+### 11.8 Clarifying question and map-reduce synthesis (D20, owner request 2026-11-02)
+
+The owner asked whether Ask asks about the scope and whether it synthesizes broad questions. Before D20, Ask never asked a question back. It offered "search wider" only after a `not_found`. A folder with more than about 32 meetings lost its oldest meetings in the digest (`assembleAnswerInput` drops the last-ranked source first, and the digest is in date order).
+
+**A. Clarify block.** The answer block `clarify` (`P/validations/src/chat.ts`) holds a reason (`scope`, `intent`, `person`), a subject, and 2 to 6 options. Each option has a chip label and the full question that the chip sends. The renderer adds the chip "Answer anyway". A chip click posts `option.ask` as a normal question in the same thread. "Answer anyway" posts the first question again with `no_clarify: true`.
+
+Rules (all in code, `S/lib/chat/clarify.ts`; no LLM call, so no latency cost):
+
+1. **Person (c).** A first name in the question matches two or more people (speakers and owners) and no full name is in the question. Any scope.
+2. **Folder (a).** Scope Everything. Two or more folders with meetings share the same topic words with the question, none is named in full, and no folder matches more words than the others. A word in more than half of the folder names is ignored.
+3. **Intent (b).** Scope Everything, no earlier question in the thread, and the question has no topic word (words like "status", "update", "it", "more" are not topics). The chips are summary, decisions, next steps, open questions.
+4. **Limits.** A page that fixes the scope (meeting tab, folder tab) never gets rule 2 or 3. At most one clarify for each question, and never two in a row (the last assistant message must not be a clarify). The setting "Ask clarifying questions" (`chat_clarify`, default on) turns the block off.
+5. **Recall is limited on purpose.** The topic and name words are English plus names. A wrong question costs more than a missed one, so the rules ask only when the evidence is split.
+
+**B. Map-reduce synthesis.** The synthesis path (section 11.7) keeps its sources. When the folder digest, or the digest of Everything, does not fit the source budget and the window (a dry run of `assembleAnswerInput` drops a digest source), code runs a map step first (`S/lib/chat/mapreduce.ts`):
+
+1. The digest is built again with the full summaries. A question over Everything with no topic word ("an overview of everything") digests every meeting, not only the meetings of the top hits.
+2. Sources are cut into groups that fit the window. Each group is one `chatAnswer` call (`MAP_SCHEMA`): one short note for each source, with the label of the source. At most 8 map calls for each turn. The total of all calls stays under the hard cap of 16.
+3. Code checks each note. A note with a number that its source does not hold, a missing note or a failed call gives the code cut of the source text. The note replaces the text of the source; the label, meeting and date stay.
+4. Reduce: the normal synthesis answer reads the notes. The cite check, the cite times and the `dropUnsupported` rule are unchanged. Cites point to real meetings because the labels never change.
+5. Progress: the trace step `map_reduce` says "Reading N meetings in G groups". The route is one request, so the UI shows its normal pending state. Streaming the step text is not built.
+
+```mermaid
+flowchart TD
+  Q["0a [CODE] clarify check: person, folder, intent rules; no LLM call"] -->|"ambiguous, setting on, not twice in a row"| C["EXIT clarify block: question + 2 to 6 chips"]
+  Q -->|"clear, or Answer anyway"| R["1-3 [CODE] route and tools (section 2.2)"]
+  C -->|"chip click: option.ask"| Q
+  R -->|"broad question, folder or Everything"| D["[CODE] digest of the summaries; dry run of assembleAnswerInput"]
+  D -->|"all sources fit"| A["4 [LLM call] synthesis answer, max 3 attempts"]
+  D -->|"a digest source would drop"| M["[LLM call x groups, max 8] map: one note for each source, label kept"]
+  M -->|"bad note, extra number, failed call"| K["[CODE] code cut of the source text"]
+  M -->|"notes valid"| A
+  K --> A
+  A -->|"cite check pass"| OK["EXIT answer: lead + bullets with cites"]
+  A -->|"cite check fails twice, deadline, call cap"| NF["EXIT not_found"]
+```
+
+LLM calls on the map path: up to 8 map calls and up to 3 answer attempts. The clarify path has 0 calls.
+
+Eval: the `clarify` part of `pnpm chat-eval p1` (section 8; skill `chat-eval`). Results are in the PR that added D20.
+
 ## 12. Owner decisions and open questions
 
 ### 12.1 Decisions (owner answers, 2026-10-31 09:49)
@@ -1536,6 +1577,7 @@ Eval: the `broad` part of `pnpm chat-eval p1` (section 8; skill `chat-eval`). Th
 | D17 (was Q10) | The owner labels name pairs by hand on a labelling page (same, different, unsure, skip), from resolver candidates on real meetings, between P2 and P4. Labels stay private. | 8.6 |
 | D18 (was Q9) | Keep chats for now. Later one global retention knob on the Ask page. Threads cascade with their meeting or folder. Context window handling is specified in 2.8. | 2.8, 4.2 |
 | D19 | UI for P2 (2026-11-01, replaces D5 for P2): a main-nav Ask page with a scope picker (Everything, folder, meeting) and a thread list; a global `Control+Option+K` hotkey (a setting) that opens a floating bubble from anywhere, with the scope taken from the Meetings selection and a guard so that dictation starts only when K does not follow within about 150 ms; a folder Ask tab on the folder Overview; the Everything scope with search wider. The in-app Cmd+K palette is dropped. | 11.6, 9.1 (P2) |
+| D20 | Ask clarifies and synthesizes big scopes (2026-11-02): a code-only clarify block (person, folder, intent ambiguity; setting on by default; one for each question, never twice in a row) with chips and "Answer anyway"; map-reduce synthesis when a folder or Everything digest does not fit the window; labels carry through the notes, so the cite check is unchanged. | 11.8 |
 
 ### 12.2 Open questions
 

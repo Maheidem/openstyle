@@ -218,6 +218,24 @@ export function answerBlocks(message: ChatMessage): ChatBlock[] {
   return [{ kind: "text", text: message.content, cites: [] }];
 }
 
+/** The body of a turn. "Answer anyway" adds `no_clarify` (D20). */
+export type AskTurn = { question: string; no_clarify?: true };
+
+/** A chip sends its `ask` as a new question of the same thread. */
+export function clarifyPickTurn(ask: string): AskTurn {
+  return { question: ask };
+}
+
+/** "Answer anyway": the first question again, with no clarifying question. */
+export function clarifyAnywayTurn(question: string): AskTurn {
+  return { question, no_clarify: true };
+}
+
+/** The setting `chat_clarify`: a missing row means on. Only "false" turns it off. */
+export function clarifyEnabled(raw: string | undefined): boolean {
+  return raw !== "false";
+}
+
 /**
  * The title of a thread in the list: the first question, on one line, cut at
  * 60 characters. An empty title gives null and the UI writes a fallback.

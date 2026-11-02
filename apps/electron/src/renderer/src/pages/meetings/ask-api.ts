@@ -10,6 +10,7 @@ import type {
   ChatThreadDetail,
 } from "@openstyle/validations";
 import { getClient } from "@renderer/lib/api";
+import type { AskTurn } from "./ask-model";
 
 export class AskRequestError extends Error {
   constructor(
@@ -60,10 +61,13 @@ export async function createThread(scope: ChatScope): Promise<ChatThread> {
   return (body as { thread: ChatThread }).thread;
 }
 
-/** A new question, or `widen` to ask the last question again at the wider scope. */
+/**
+ * A new question, or `widen` to ask the last question again at the wider
+ * scope. `no_clarify` is "Answer anyway": the turn asks no clarifying question.
+ */
 export async function postQuestion(
   threadId: string,
-  turn: { question: string } | { widen: true },
+  turn: AskTurn | { widen: true },
 ): Promise<ChatAskReply> {
   const res = await getClient().api.chat.threads[":id"].messages.$post({
     param: { id: threadId },

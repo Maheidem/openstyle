@@ -29,7 +29,7 @@ import {
   fetchThreads,
   postQuestion,
 } from "./ask-api";
-import { AskAnswer, type CiteActions } from "./ask-blocks";
+import { AskAnswer, type CiteActions, type ClarifyActions } from "./ask-blocks";
 import {
   ASK_WARMING_AFTER_MS,
   type AskErrorView,
@@ -196,7 +196,7 @@ export function AskPanel({
       err instanceof AskRequestError ? err.reason : null,
     );
 
-  const send = async (raw: string): Promise<void> => {
+  const send = async (raw: string, anyway = false): Promise<void> => {
     const check = checkQuestion(raw);
     if (!check.ok || working || serverPending) return;
     setFailure(null);
@@ -216,7 +216,10 @@ export function AskPanel({
       }
       storeReply(
         threadId,
-        await postQuestion(threadId, { question: check.text }),
+        await postQuestion(
+          threadId,
+          anyway ? clarifyAnywayTurn(check.text) : clarifyPickTurn(check.text),
+        ),
       );
       await queryClient.invalidateQueries({
         queryKey: queryKeys.chat.threads(key),
@@ -273,6 +276,14 @@ export function AskPanel({
   };
 
   const onWiden = (_wider: ChatWider): void => void widen();
+  /** "Answer anyway": the last question of the user, without a clarify turn. */
+  const lastQuestion = messages.findLast((m) => m.role === "user")?.content;
+  const clarifyActions: ClarifyActions = {
+    pick: (ask) => void send(ask),
+    anyway: () => {
+      if (lastQuestion) void send(lastQuestion, true);
+    },
+  };
 
   const newChat = (
     <Button
@@ -337,6 +348,9 @@ export function AskPanel({
                 scopeNote={scopeNote(m)}
                 {...(m.id === lastAssistantId && !busy && widerOffer(m)
                   ? { onWiden }
+                  : {})}
+                {...(m.id === lastAssistantId && !busy
+                  ? { onClarify: clarifyActions }
                   : {})}
               />
             )}
