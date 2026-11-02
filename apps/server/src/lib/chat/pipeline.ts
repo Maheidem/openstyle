@@ -40,6 +40,8 @@ export interface ChatTurnInput {
   scoreFloor?: number;
   /** Eval only: `false` runs the research loop with no reflect call (code order of strategies). */
   researchReflect?: boolean;
+  /** Eval only: called with the time of each checkpoint write, in ms (bar D17). */
+  onCheckpointMs?: (ms: number) => void;
 }
 
 export async function runChatTurn(input: ChatTurnInput): Promise<TurnResult> {

@@ -55,6 +55,34 @@ interface LastRun {
   argsKey: string;
 }
 
+/** A saver that reports the time of each write (the eval measures bar D17). */
+class TimedSaver extends NodeSqliteSaver {
+  constructor(
+    db: ConstructorParameters<typeof NodeSqliteSaver>[0],
+    private readonly report: (ms: number) => void,
+  ) {
+    super(db);
+  }
+
+  override async put(...a: Parameters<NodeSqliteSaver["put"]>) {
+    const started = performance.now();
+    try {
+      return await super.put(...a);
+    } finally {
+      this.report(performance.now() - started);
+    }
+  }
+
+  override async putWrites(...a: Parameters<NodeSqliteSaver["putWrites"]>) {
+    const started = performance.now();
+    try {
+      return await super.putWrites(...a);
+    } finally {
+      this.report(performance.now() - started);
+    }
+  }
+}
+
 export function buildResearchGraph(t: Turn, checkpoint: boolean) {
   // The parts of a turn that are not graph state: the answer jobs and the
   // draft. They hold source objects, which the state never holds.
@@ -515,7 +543,13 @@ export function buildResearchGraph(t: Turn, checkpoint: boolean) {
     })
     .addEdge("not_found", END)
     .compile(
-      checkpoint ? { checkpointer: new NodeSqliteSaver(t.input.db) } : {},
+      checkpoint
+        ? {
+            checkpointer: t.input.onCheckpointMs
+              ? new TimedSaver(t.input.db, t.input.onCheckpointMs)
+              : new NodeSqliteSaver(t.input.db),
+          }
+        : {},
     );
 }
 

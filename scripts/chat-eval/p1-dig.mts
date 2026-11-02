@@ -525,6 +525,8 @@ export interface DigRow {
   trace: string;
   /** The research mode ran for this turn (the trace holds `research`). */
   research: boolean;
+  /** The time of each checkpoint write of the turn, in ms. */
+  ckptMs: number[];
 }
 
 const has = (norm: string, g: string[]): boolean =>
@@ -579,6 +581,7 @@ export async function runDig(env: DigEnv, q: DigQ): Promise<DigRow[]> {
       question: t.text,
     };
     let llm: Awaited<ReturnType<typeof mods.llm.createChatLlm>> | null = null;
+    const ckptMs: number[] = [];
     try {
       llm = await mods.llm.createChatLlm(stack.db, {
         threadId: `eval-${q.id}`,
@@ -594,6 +597,10 @@ export async function runDig(env: DigEnv, q: DigQ): Promise<DigRow[]> {
         signal,
         now: env.corpusTodayMs,
         allowProposals: false,
+        onCheckpointMs: (ms) => ckptMs.push(ms),
+        ...(process.env.CHAT_EVAL_REFLECT === "off"
+          ? { researchReflect: false }
+          : {}),
       });
       llm.finish("succeeded");
       const nf = res.blocks.some((b) => b.kind === "not_found");
@@ -668,6 +675,7 @@ export async function runDig(env: DigEnv, q: DigQ): Promise<DigRow[]> {
           .map((x) => `${x.stage}:${x.name}${x.note ? `(${x.note})` : ""}`)
           .join(" > "),
         research: res.trace.research !== undefined,
+        ckptMs,
       });
       earlier.push(text);
       const mk = {
@@ -724,6 +732,7 @@ export async function runDig(env: DigEnv, q: DigQ): Promise<DigRow[]> {
         answer: "",
         trace: "",
         research: false,
+        ckptMs,
       });
       break;
     }
@@ -774,6 +783,10 @@ export function summarizeDig(rows: DigRow[]): Record<string, number> {
   m.trigger_recall = mean(dig.map((r) => (r.research ? 1 : 0)));
   m.trigger_false_controls = ctl.filter((r) => r.research).length;
   m.trigger_false_setup = setup.filter((r) => r.research).length;
+  m.ckpt_ms_p95 = pctile(
+    rows.flatMap((r) => r.ckptMs),
+    0.95,
+  );
   m.ms_p50 = pctile(
     dig.map((r) => r.ms),
     0.5,

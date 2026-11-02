@@ -1417,6 +1417,7 @@ async function partDig(env: Env, M: Record<string, number>): Promise<PartOut> {
     "trigger_false_gold",
     "trigger_false_broad",
     "trigger_false_controls",
+    "ckpt_ms_p95",
   ])
     M[`dig.${k}`] = m[k] as number;
   return {
