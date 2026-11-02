@@ -1,6 +1,7 @@
 import type { DatabaseSync } from "node:sqlite";
 import type { ChatBlock } from "@openstyle/validations";
 import { normalizeText } from "./cites.js";
+import { looksLikeWrite } from "./prompts.js";
 import { listPeopleInScope } from "./tools.js";
 import type { TurnScope } from "./types.js";
 
@@ -194,6 +195,8 @@ export interface ClarifyInput {
  */
 export function detectClarify(i: ClarifyInput): ClarifyBlock | null {
   if (i.lastAssistantBlocks.some((b) => b.kind === "clarify")) return null;
+  // A change request names its people on purpose ("merge Ana S. and Anna S.").
+  if (looksLikeWrite(i.question)) return null;
   const person = personAmbiguity(i.db, i.scope, i.question);
   if (person) return person;
   if (i.scope.kind !== "all") return null;
