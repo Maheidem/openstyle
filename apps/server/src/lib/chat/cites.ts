@@ -168,6 +168,8 @@ export interface FactToken {
   kind: "number" | "date" | "name" | "quote";
   /** The normalized form that is looked up. */
   norm: string;
+  /** A second form that also counts (a day/month date may be month/day). */
+  alt?: string;
   /** The form that the answer shows, for the retry note. */
   shown: string;
 }
@@ -226,6 +228,23 @@ export function extractFacts(
       return " ";
     });
   };
+  // 04/08/2026 or 4/8: the order day/month or month/day is not known, so both count.
+  rest = rest.replace(
+    /(?<![\d/])(\d{1,2})\/(\d{1,2})(?:\/(\d{2,4}))?(?![\d/])/g,
+    (m, a: string, b: string, y?: string) => {
+      const x = pad(Number(a));
+      const z = pad(Number(b));
+      if (Number(a) > 31 || Number(b) > 31) return m;
+      push({
+        kind: "date",
+        norm: `d:${z}-${x}`,
+        alt: `d:${x}-${z}`,
+        shown: m.trim(),
+      });
+      if (y && y.length === 4) push({ kind: "number", norm: y, shown: y });
+      return " ";
+    },
+  );
   dates(new RegExp(RE_ISO.source, "g"), 2, 3, 1);
   dates(new RegExp(RE_MONTH_DAY.source, "g"), 1, 2);
   dates(new RegExp(RE_DAY_MONTH.source, "g"), 2, 1);
@@ -270,6 +289,8 @@ function sourceHaystack(s: Source): string {
 export interface AnswerSentence {
   text: string;
   cites: string[];
+  /** A bullet of a lead-plus-bullets answer. */
+  bullet?: boolean;
 }
 
 export interface CiteCheck {
@@ -292,6 +313,11 @@ export interface CheckInput {
   allowedMeetingIds: ReadonlySet<string> | "all";
   /** Names of people, meeting titles and folders. */
   knownNames: readonly string[];
+  /**
+   * A sentence with a fact that no source holds is removed and the check goes
+   * on (a broad answer, last attempt: unsupported claims go, never stay).
+   */
+  dropUnsupported?: boolean;
 }
 
 export function checkAnswer(input: CheckInput): CiteCheck {
@@ -334,27 +360,34 @@ export function checkAnswer(input: CheckInput): CiteCheck {
 
     // 3: fact check.
     const cites = valid.map((s) => s.label);
+    const mine: string[] = [];
     for (const fact of extractFacts(sentence.text, input.knownNames)) {
+      const forms = fact.alt ? [fact.norm, fact.alt] : [fact.norm];
+      const held = (hay: string) => forms.some((f) => holds(hay, f));
       const supported =
-        holds(questionHay, fact.norm) ||
-        cites.some((l) => holds(hayOf(sources.get(l) as Source), fact.norm));
+        held(questionHay) ||
+        cites.some((l) => held(hayOf(sources.get(l) as Source)));
       if (supported) continue;
       const other = sources
         .all()
-        .find(
-          (s) =>
-            !cites.includes(s.label) &&
-            inScope(s) &&
-            holds(hayOf(s), fact.norm),
-        );
+        .find((s) => !cites.includes(s.label) && inScope(s) && held(hayOf(s)));
       if (other) {
         cites.push(other.label);
         repaired++;
-      } else if (!unsupported.includes(fact.shown)) {
-        unsupported.push(fact.shown);
+      } else {
+        mine.push(fact.shown);
       }
     }
-    kept.push({ text: sentence.text, cites });
+    if (mine.length > 0 && input.dropUnsupported) {
+      removed++;
+      continue;
+    }
+    for (const f of mine) if (!unsupported.includes(f)) unsupported.push(f);
+    kept.push({
+      text: sentence.text,
+      cites,
+      ...(sentence.bullet ? { bullet: true } : {}),
+    });
   }
 
   return {
@@ -449,6 +482,79 @@ export function repeatedEarlierAnswer(
       return t.question;
   }
   return null;
+}
+
+const jaccardWords = (a: Set<string>, b: Set<string>): number => {
+  if (a.size === 0 || b.size === 0) return 0;
+  let both = 0;
+  for (const w of a) if (b.has(w)) both++;
+  return both / (a.size + b.size - both);
+};
+
+/** Two sentences with this share of the same words say the same thing. */
+const SENTENCE_REPEAT = 0.6;
+
+/**
+ * Splits earlier answer texts into sentences (a bullet marker is not a sentence start).
+ */
+export function sentencesOf(text: string): string[] {
+  return text
+    .split(/\n+|(?<=[.!?。])\s+/u)
+    .map((t) => t.replace(/^\s*[-*•]\s*/, "").trim())
+    .filter((t) => t.length > 0);
+}
+
+/**
+ * Removes the sentences that repeat a fact the thread already told (same
+ * words, Jaccard >= 0.6), and a sentence that repeats an earlier sentence of
+ * the same answer. Returns the sentences that stay. The caller treats an empty
+ * result as a repeat (owner report 2026-11-01: a follow-up gave the same reply).
+ */
+export function dropToldSentences<T extends { text: string }>(
+  sentences: readonly T[],
+  told: readonly string[],
+): T[] {
+  const old = told.map((t) => new Set(foldWords(t)));
+  const kept: { s: T; w: Set<string> }[] = [];
+  for (const s of sentences) {
+    const w = new Set(foldWords(s.text));
+    if (w.size < 3) {
+      kept.push({ s, w });
+      continue;
+    }
+    const dup =
+      old.some((o) => jaccardWords(w, o) >= SENTENCE_REPEAT) ||
+      kept.some((k) => jaccardWords(w, k.w) >= SENTENCE_REPEAT);
+    if (!dup) kept.push({ s, w });
+  }
+  return kept.map((k) => k.s);
+}
+
+/**
+ * The text of a summary source without the clauses that the thread told
+ * already. A clause is a part between "; " or sentence ends. A clause is told
+ * when every date and number in it appears in the told text, or when most of
+ * its words appear in one told sentence. The label of the first clause
+ * ("Key points:") stays. Empty when nothing new is left.
+ */
+export function withoutTold(text: string, told: readonly string[]): string {
+  if (told.length === 0) return text;
+  const toldNorm = normalizeText(told.join(" "), true);
+  const toldWords = told.map((t) => new Set(foldWords(t)));
+  const label = text.match(/^([\p{L} ]{3,24}:)\s+/u)?.[1] ?? "";
+  const body = label ? text.slice(label.length).trim() : text;
+  const clauses = body.split(/;\s+|(?<=[.!?])\s+/u).filter(Boolean);
+  const fresh = clauses.filter((c) => {
+    const nums = extractFacts(c, []).filter(
+      (f) => f.kind === "number" || f.kind === "date",
+    );
+    if (nums.length > 0 && nums.every((f) => holds(toldNorm, f.norm)))
+      return false;
+    const w = new Set(foldWords(c));
+    return !toldWords.some((o) => jaccardWords(w, o) >= 0.5);
+  });
+  if (fresh.length === 0) return "";
+  return `${label ? `${label} ` : ""}${fresh.join("; ")}`;
 }
 
 /**

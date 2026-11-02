@@ -163,8 +163,15 @@ const run = (
   });
 
 const NO_CALL: NativeCallResult = { kind: "none", text: "" };
+// One scripted answer fits both answer schemas: `sentences` for a lookup,
+// `lead` and `bullets` for a broad question.
 const answer = (text: string, cites: string[]) => ({
   sentences: [{ text, cites }],
+  lead: [{ text, cites }],
+  bullets: [
+    { text: `${text} Bullet one.`, cites },
+    { text: `${text} Bullet two.`, cites },
+  ],
 });
 
 beforeAll(() => {
@@ -548,5 +555,462 @@ describe("decisions and next steps read the summary (P1.2)", () => {
       llm,
     );
     expect(r.toolCalls[0]?.tool).toBe("search_chunks");
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Broad questions: a lead paragraph plus cited bullets (owner report 2026-11-01)
+// ---------------------------------------------------------------------------
+
+describe("synthesis: broad questions", () => {
+  const addSummaryFor = (id: string, summary: object) =>
+    getDb()
+      .prepare(
+        "INSERT OR REPLACE INTO meeting_summaries (meeting_id, markdown, summary_json, created_at) VALUES (?, NULL, ?, 1)",
+      )
+      .run(id, JSON.stringify(summary));
+  const SUMMARY = {
+    overview: "The team met for the security review.",
+    keyPoints: [
+      "Kestrel Hosting quoted 52,200 dollars.",
+      "The cutover is set for December 15.",
+    ],
+    decisions: ["Hold the security review on December 4."],
+    actionItems: [{ task: "Send the quote", owner: "Ana", due: null }],
+    openQuestions: ["Who signs the final report?"],
+  };
+  const inFolder = () => {
+    const db = getDb();
+    db.prepare(
+      "INSERT OR REPLACE INTO meeting_folders (id, name, created_at, updated_at) VALUES ('f1', 'Project Atlas', 1, 1)",
+    ).run();
+    db.prepare(
+      "UPDATE meetings SET folder_id = 'f1' WHERE id IN ('m1', 'm2')",
+    ).run();
+  };
+  const runScope = (
+    scope: ChatScope,
+    question: string,
+    llm: ChatLlm,
+    history: ChatMessage[] = [],
+  ) =>
+    runChatTurn({
+      db: getDb(),
+      scope,
+      question,
+      history,
+      settings: SETTINGS,
+      llm,
+      signal: new AbortController().signal,
+      now: TODAY,
+    });
+  const synthAnswer = (
+    lead: [string, string[]],
+    bullets: [string, string[]][],
+  ) => ({
+    lead: [{ text: lead[0], cites: lead[1] }],
+    bullets: bullets.map(([text, cites]) => ({ text, cites })),
+  });
+
+  it("a meeting overview reads all summary sections and the top chunks, and shows lead plus bullets", async () => {
+    addSummaryFor("m1", SUMMARY);
+    retrieveMock.mockResolvedValue(ok([hit(1, "m1", 0.3)]));
+    const { llm, log } = fakeLlm({
+      native: NO_CALL,
+      structured: {
+        chatAnswer: [
+          synthAnswer(
+            ["The team met for the security review.", ["S1"]],
+            [
+              ["Kestrel Hosting quoted 52,200 dollars.", ["S2"]],
+              ["The cutover is set for December 15.", ["S2"]],
+            ],
+          ),
+        ],
+      },
+    });
+    const r = await runScope(
+      { kind: "meeting", id: "m1" },
+      "I need more details about this meeting",
+      llm,
+    );
+    // No native call: code made the calls.
+    expect(log.map((l) => l.step)).toEqual(["chatAnswer"]);
+    expect(r.toolCalls.map((c) => c.tool)).toEqual([
+      "get_meeting_summary",
+      "search_chunks",
+    ]);
+    expect(r.trace.steps.some((s) => s.name === "rules:synthesis")).toBe(true);
+    const texts = r.blocks.filter((b) => b.kind === "text");
+    expect(texts).toHaveLength(3);
+    expect(texts.map((b) => b.kind === "text" && b.bullet === true)).toEqual([
+      false,
+      true,
+      true,
+    ]);
+    expect(r.content).toContain("\n- Kestrel Hosting quoted 52,200 dollars.");
+    // The system text is the synthesis prompt and the sources hold the sections.
+    expect(log[0]?.system).toContain('"bullets" holds');
+    expect(log[0]?.user).toContain("Key points:");
+    expect(log[0]?.user).toContain("Decision: Hold the security review");
+  });
+
+  it("the cite check removes a bullet with an unsupported fact on the last attempt, and keeps the rest", async () => {
+    addSummaryFor("m1", SUMMARY);
+    retrieveMock.mockResolvedValue(ok([hit(1, "m1", 0.3)]));
+    const bad = synthAnswer(
+      ["The team met for the security review.", ["S1"]],
+      [
+        ["Kestrel Hosting quoted 99,999 dollars.", ["S2"]],
+        ["The cutover is set for December 15.", ["S2"]],
+      ],
+    );
+    const { llm } = fakeLlm({
+      native: NO_CALL,
+      structured: { chatAnswer: [bad, bad] },
+    });
+    const r = await runScope(
+      { kind: "meeting", id: "m1" },
+      "Give me an overview of this meeting",
+      llm,
+    );
+    const texts = r.blocks.flatMap((b) => (b.kind === "text" ? [b.text] : []));
+    expect(texts).toContain("The cutover is set for December 15.");
+    expect(texts.join(" ")).not.toContain("99,999");
+  });
+
+  it("a folder story digests each meeting in date order, and a PT-BR date format is checked", async () => {
+    addSummaryFor("m1", SUMMARY);
+    addSummaryFor("m2", {
+      ...SUMMARY,
+      overview: "The team met again.",
+      keyPoints: ["Kestrel Hosting revised the quote to 61,000 dollars."],
+      decisions: [],
+    });
+    inFolder();
+    retrieveMock.mockResolvedValue(ok([]));
+    const { llm, log } = fakeLlm({
+      native: NO_CALL,
+      structured: {
+        chatAnswer: [
+          synthAnswer(
+            ["O projeto começou com a revisão de segurança.", ["S1"]],
+            [
+              ["Em 01/09/2026 a Kestrel Hosting orçou 52,200 dólares.", ["S1"]],
+              ["Em 08/09/2026 a cotação subiu para 61,000 dólares.", ["S2"]],
+            ],
+          ),
+        ],
+      },
+    });
+    const r = await runScope(
+      { kind: "folder", id: "f1" },
+      "Me conta a história desse projeto",
+      llm,
+    );
+    expect(r.toolCalls[0]?.tool).toBe("summary_digest");
+    const user = log[0]?.user ?? "";
+    expect(user.indexOf("Alpha sync")).toBeGreaterThan(-1);
+    expect(user.indexOf("Alpha sync")).toBeLessThan(user.indexOf("Beta sync"));
+    expect(r.blocks.some((b) => b.kind === "not_found")).toBe(false);
+    expect(r.cites.map((c) => c.meeting_id)).toEqual(["m1", "m2"]);
+  });
+
+  it("an empty folder_status (no saved text) is answered from the summaries, with the counts last", async () => {
+    addSummaryFor("m1", SUMMARY);
+    inFolder();
+    retrieveMock.mockResolvedValue(ok([]));
+    const { llm } = fakeLlm({
+      native: {
+        kind: "call",
+        name: "folder_status",
+        args: { folder_id: "f1" },
+      },
+      structured: {
+        chatAnswer: [
+          synthAnswer(
+            ["The team met for the security review.", ["S2"]],
+            [
+              ["Kestrel Hosting quoted 52,200 dollars.", ["S2"]],
+              ["The cutover is set for December 15.", ["S2"]],
+            ],
+          ),
+        ],
+      },
+    });
+    const r = await runScope(
+      { kind: "folder", id: "f1" },
+      "Where do we stand?",
+      llm,
+    );
+    expect(r.blocks.at(-1)?.kind).toBe("status");
+    expect(r.blocks.filter((b) => b.kind === "text").length).toBeGreaterThan(1);
+  });
+
+  it("more details do not tell a fact again, and the sources drop the told clauses", async () => {
+    addSummaryFor("m1", SUMMARY);
+    retrieveMock.mockResolvedValue(ok([hit(1, "m1", 0.3)]));
+    const first = fakeLlm({
+      native: NO_CALL,
+      structured: {
+        chatAnswer: [
+          synthAnswer(
+            ["The team met for the security review.", ["S1"]],
+            [
+              ["Kestrel Hosting quoted 52,200 dollars.", ["S2"]],
+              ["The cutover is set for December 15.", ["S2"]],
+            ],
+          ),
+        ],
+      },
+    });
+    const r1 = await runScope(
+      { kind: "meeting", id: "m1" },
+      "Give me an overview of this meeting",
+      first.llm,
+    );
+    const history: ChatMessage[] = [
+      {
+        id: 1,
+        thread_id: "t",
+        role: "user",
+        content: "Give me an overview of this meeting",
+        blocks: [],
+        cites: [],
+        trace: null,
+        model_id: null,
+        provider: null,
+        ms: null,
+        created_at: 0,
+      },
+      {
+        id: 2,
+        thread_id: "t",
+        role: "assistant",
+        content: r1.content,
+        blocks: r1.blocks,
+        cites: r1.cites,
+        trace: null,
+        model_id: null,
+        provider: null,
+        ms: null,
+        created_at: 0,
+      },
+    ];
+    // The model repeats a told fact and adds one new fact.
+    const second = fakeLlm({
+      native: NO_CALL,
+      structured: {
+        chatAnswer: [
+          synthAnswer(
+            ["Kestrel Hosting quoted 52,200 dollars.", ["S1"]],
+            [
+              ["Who signs the final report is still open.", ["S1"]],
+              ["Hold the security review on December 4.", ["S1"]],
+            ],
+          ),
+        ],
+      },
+    });
+    const r2 = await runScope(
+      { kind: "meeting", id: "m1" },
+      "gimme details",
+      second.llm,
+      history,
+    );
+    const user = second.log[0]?.user ?? "";
+    expect(user).toContain("ALREADY TOLD");
+    // The told clauses are out of the sources: no "52,200" in the SOURCES part.
+    const sourcesPart = user.slice(user.indexOf("SOURCES:"));
+    expect(sourcesPart).not.toContain("52,200");
+    expect(sourcesPart).toContain("Who signs the final report");
+    const texts = r2.blocks.flatMap((b) => (b.kind === "text" ? [b.text] : []));
+    expect(texts.join(" ")).not.toContain("52,200");
+    expect(texts.join(" ")).toContain("final report");
+  });
+
+  it("when the sources hold nothing new, the answer is the nothing_new block with no wider offer", async () => {
+    addSummaryFor("m1", SUMMARY);
+    retrieveMock.mockResolvedValue(ok([]));
+    const told = {
+      lead: [{ text: "The team met for the security review.", cites: ["S1"] }],
+      bullets: [
+        { text: "Kestrel Hosting quoted 52,200 dollars.", cites: ["S2"] },
+        { text: "The cutover is set for December 15.", cites: ["S2"] },
+      ],
+    };
+    const a = fakeLlm({ native: NO_CALL, structured: { chatAnswer: [told] } });
+    const r1 = await runScope(
+      { kind: "meeting", id: "m1" },
+      "Give me an overview of this meeting",
+      a.llm,
+    );
+    const mk = {
+      thread_id: "t",
+      trace: null,
+      model_id: null,
+      provider: null,
+      ms: null,
+      created_at: 0,
+    };
+    const history: ChatMessage[] = [
+      {
+        ...mk,
+        id: 1,
+        role: "user",
+        content: "Give me an overview of this meeting",
+        blocks: [],
+        cites: [],
+      },
+      {
+        ...mk,
+        id: 2,
+        role: "assistant",
+        content: r1.content,
+        blocks: r1.blocks,
+        cites: r1.cites,
+      },
+    ];
+    const b = fakeLlm({
+      native: NO_CALL,
+      structured: { chatAnswer: [told, told] },
+    });
+    const r2 = await runScope(
+      { kind: "meeting", id: "m1" },
+      "Tell me more",
+      b.llm,
+      history,
+    );
+    const nf = r2.blocks.find((x) => x.kind === "not_found");
+    expect(nf?.kind === "not_found" && nf.reason).toBe("nothing_new");
+    expect(nf?.kind === "not_found" && nf.wider).toBeNull();
+  });
+
+  it("'can't you tell me anything' after a not_found gives an overview", async () => {
+    addSummaryFor("m1", SUMMARY);
+    retrieveMock.mockResolvedValue(ok([]));
+    const mk = {
+      thread_id: "t",
+      trace: null,
+      model_id: null,
+      provider: null,
+      ms: null,
+      created_at: 0,
+    };
+    const history: ChatMessage[] = [
+      {
+        ...mk,
+        id: 1,
+        role: "user",
+        content: "What is the budget for Mars?",
+        blocks: [],
+        cites: [],
+      },
+      {
+        ...mk,
+        id: 2,
+        role: "assistant",
+        content: "",
+        blocks: [
+          {
+            kind: "not_found",
+            scope: { kind: "meeting", id: "m1" },
+            reason: "no_sources",
+            nearest: [],
+            wider: null,
+          },
+        ],
+        cites: [],
+      },
+    ];
+    const { llm } = fakeLlm({
+      native: NO_CALL,
+      structured: {
+        chatAnswer: [
+          synthAnswer(
+            ["The team met for the security review.", ["S1"]],
+            [
+              ["Kestrel Hosting quoted 52,200 dollars.", ["S2"]],
+              ["The cutover is set for December 15.", ["S2"]],
+            ],
+          ),
+        ],
+      },
+    });
+    const r = await runScope(
+      { kind: "meeting", id: "m1" },
+      "Cant you tell me anything?",
+      llm,
+      history,
+    );
+    expect(r.trace.steps.some((s) => s.name === "rules:synthesis")).toBe(true);
+    expect(r.blocks.filter((b) => b.kind === "text").length).toBeGreaterThan(1);
+  });
+
+  it("after a not_found, a short 'Really?' gives an overview, a question with a topic stays a lookup", async () => {
+    addSummaryFor("m1", SUMMARY);
+    retrieveMock.mockResolvedValue(ok([hit(1, "m1", 0.95)]));
+    const mk = {
+      thread_id: "t",
+      trace: null,
+      model_id: null,
+      provider: null,
+      ms: null,
+      created_at: 0,
+    };
+    const history: ChatMessage[] = [
+      {
+        ...mk,
+        id: 1,
+        role: "user",
+        content: "What is the budget for Mars?",
+        blocks: [],
+        cites: [],
+      },
+      {
+        ...mk,
+        id: 2,
+        role: "assistant",
+        content: "",
+        blocks: [
+          {
+            kind: "not_found",
+            scope: { kind: "meeting", id: "m1" },
+            reason: "no_sources",
+            nearest: [],
+            wider: null,
+          },
+        ],
+        cites: [],
+      },
+    ];
+    const a = fakeLlm({
+      native: NO_CALL,
+      structured: {
+        chatAnswer: [answer("The team met for the security review.", ["S1"])],
+      },
+    });
+    const r1 = await runScope(
+      { kind: "meeting", id: "m1" },
+      "Really?",
+      a.llm,
+      history,
+    );
+    expect(r1.trace.steps.some((s) => s.name === "rules:synthesis")).toBe(true);
+    const b = fakeLlm({
+      native: NO_CALL,
+      structured: {
+        chatAnswer: [answer("The security review is on December 4.", ["S1"])],
+      },
+    });
+    const r2 = await runScope(
+      { kind: "meeting", id: "m1" },
+      "And when is the security review?",
+      b.llm,
+      history,
+    );
+    expect(r2.trace.steps.some((s) => s.name === "rules:synthesis")).toBe(
+      false,
+    );
   });
 });

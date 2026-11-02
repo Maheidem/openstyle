@@ -1497,6 +1497,19 @@ The gold set and its hash stay as in P0. A new set file adds folder and Everythi
 4. Renderer. One `AskPanel` serves the meeting tab, the folder tab and the Ask page (the thread list is a dropdown in the tabs and a column on the page). The cite chip of a folder tab, the Ask page and the bubble opens the meeting at the cited time (`/meetings?meeting=<id>&at=<ms>`). The bubble has its own page (`chat-bubble.html`) and keeps one thread for its questions until it opens again.
 5. Not covered by an automated test (said plainly): a real press of Control+Option+K, the focus return after Escape in a real session, and the window-end path of the guard in the app (it would start the dictation, which opens the microphone). The guard is tested at unit level on both paths (`chat-guard.test.ts`). The app test drives the "K inside the window" path through the E2E seam `e2e:trigger-chat-hotkey` and checks the state of the main process.
 
+### 11.7 Broad questions: synthesis (owner report 2026-11-01)
+
+A lookup pipeline answers one fact. Owners also ask broad questions: "give me details", "tell me the story of this project", "how did it begin", "an onboarding", "can't you tell me anything". The first answer was one sentence, a follow-up repeated it, and a folder status had no bullets. Decisions of the owner:
+
+1. **Code decides.** `asksSynthesis` (`S/lib/chat/plan.ts`) covers these questions in 7 languages, and the overview question of a meeting (`asksOverview`). A question after a `not_found` that leans on the turn before ("Cant you tell me anything?") also counts. No native or router call runs.
+2. **Sources.** Meeting scope: all summary sections (overview, key points, decisions, action items, open questions) and the top 8 chunks. Folder scope: one source for each meeting in date order (`summaryDigest`, `S/lib/chat/tools.ts`), then 4 chunks. The detail of each meeting (full, gist, one line) is chosen by code to fit 60% of the source budget (section 2.8). Everything scope: the top 8 chunks, then the digest of the (at most 6) meetings of those hits.
+3. **Answer shape.** A lead of 1 to 3 sentences and 2 to 6 bullets (`SYNTH_SCHEMA`, `S/lib/chat/prompts.ts`). Every sentence and every bullet has its own cites. A text block has the optional field `bullet` (`P/validations/src/chat.ts`). A lookup may add `bullets` too. The output cap is 1500 tokens for a broad answer and 500 for a lookup.
+4. **Grounding stays.** The cite check works per sentence as before. On the last attempt of a broad answer a sentence with a fact that no source holds is removed (never kept, never invented). A date written day/month (04/08/2026) counts for the source in either order.
+5. **Elaboration.** "More details", "tell me more", a broad question after a broad answer: the clauses that the thread told are cut from the sources (`withoutTold`), more chunks are read (14 in a meeting), the prompt lists what is told, and a sentence that repeats a told sentence (word overlap 0.6) is removed. When nothing is left the block is `not_found` with the reason `nothing_new` and no wider offer. The #405 repeat guard stays.
+6. **Folder status.** A `folder_status` with no saved text has no bullets: the summaries answer, and the counts are the last block.
+
+Eval: the `broad` part of `pnpm chat-eval p1` (section 8; skill `chat-eval`). The private regression on real threads is `pnpm chat-eval real`.
+
 ## 12. Owner decisions and open questions
 
 ### 12.1 Decisions (owner answers, 2026-10-31 09:49)

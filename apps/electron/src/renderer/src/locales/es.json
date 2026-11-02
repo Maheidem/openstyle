@@ -1361,6 +1361,7 @@
         "deadline": "Tardó demasiado, así que me detuve.",
         "call_cap": "Llegué al límite de búsquedas para esta pregunta.",
         "model_error": "El modelo no pudo responder.",
+        "nothing_new": "No tengo más datos sobre esto en las fuentes.",
         "noSourcesAll": "No encontré nada sobre esto en ninguna reunión."
       },
       "nearest": "Fuentes más cercanas",

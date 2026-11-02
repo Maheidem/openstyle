@@ -5,6 +5,7 @@ import { beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 import {
   listPeopleInScope,
   runTool,
+  summaryDigest,
   ToolRejected,
 } from "../src/lib/chat/tools.js";
 import {
@@ -964,5 +965,56 @@ describe("search_chunks", () => {
     expect(
       await runTool(ctxOf(SCOPE_F1), "search_chunks", { query: "tide" }),
     ).toMatchObject({ rows: 0, degraded: null });
+  });
+});
+
+describe("summaryDigest", () => {
+  it("gives one source for each meeting of the folder in date order, with title and date", () => {
+    const ctx = ctxOf(SCOPE_F1);
+    const r = summaryDigest(ctx, { budgetTokens: 4000 });
+    const all = ctx.sources.all();
+    expect(r.tool).toBe("summary_digest");
+    expect(all.length).toBeGreaterThan(0);
+    expect(all.every((x) => x.kind === "summary" && x.meetingId !== "")).toBe(
+      true,
+    );
+    const days = all.map((x) => x.startedAt ?? 0);
+    expect(days).toEqual([...days].sort((a, b) => a - b));
+    expect(all[0]?.title).toBe("Harbor kickoff");
+  });
+
+  it("a big budget gives the full summary, a tiny budget one line, and the lines still fit", () => {
+    const big = ctxOf(SCOPE_F1);
+    summaryDigest(big, { budgetTokens: 4000 });
+    const full = big.sources.all()[0]?.text ?? "";
+    expect(full).toContain("Overview:");
+    expect(full).toContain("Decisions:");
+    expect(full).toContain("Action items:");
+    expect(full).toContain("Open questions:");
+    const small = ctxOf(SCOPE_F1);
+    summaryDigest(small, { budgetTokens: 1 });
+    const line = small.sources.all()[0]?.text ?? "";
+    expect(line.length).toBeLessThan(full.length);
+    expect(line).not.toContain("Decisions:");
+  });
+
+  it("the meetings the thread told already grow last", () => {
+    const ctx = ctxOf(SCOPE_F1);
+    // Room for one more level on one meeting only.
+    summaryDigest(ctx, { budgetTokens: 120, told: new Set(["m1"]) });
+    const texts = new Map(ctx.sources.all().map((x) => [x.meetingId, x.text]));
+    const others = [...texts.entries()].filter(([id]) => id !== "m1");
+    if (others.length > 0) {
+      const longest = Math.max(...others.map(([, t]) => t.length));
+      expect(longest).toBeGreaterThanOrEqual((texts.get("m1") ?? "").length);
+    }
+  });
+
+  it("only the listed meetings, and none outside the scope", () => {
+    const ctx = ctxOf(SCOPE_ALL);
+    summaryDigest(ctx, { budgetTokens: 4000, meetingIds: ["m1"] });
+    expect(new Set(ctx.sources.all().map((x) => x.meetingId))).toEqual(
+      new Set(["m1"]),
+    );
   });
 });

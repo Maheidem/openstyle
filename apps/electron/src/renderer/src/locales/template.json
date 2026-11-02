@@ -1679,6 +1679,7 @@
         "deadline": "This took too long, so I stopped.",
         "call_cap": "I reached the search limit for this question.",
         "model_error": "The model failed to answer.",
+        "nothing_new": "I have no more facts about this in the sources.",
         "noSourcesAll": "I found nothing about this in any meeting."
       },
       "nearest": "Nearest sources",

@@ -631,6 +631,61 @@ export function barsTable(rows: readonly BarRow[]): string {
  * owner on 2026-10-31) and from spec 8.7. They are never changed here.
  */
 export const BARS: readonly BarDef[] = [
+  // --- Ask synthesis (broad questions, 2026-11-01) ---
+  {
+    id: "broad.cov",
+    bar: "Broad: coverage of the must-mention facts (first turns)",
+    threshold: 0.5,
+    dir: "min",
+    unit: "pct",
+    source: "p1-broad",
+    origin: "Ask synthesis",
+  },
+  {
+    id: "broad.cite_invalid",
+    bar: "Broad: invalid or missing cites shown",
+    threshold: 0,
+    dir: "max",
+    unit: "count",
+    source: "p1-broad",
+    origin: "Ask synthesis, spec 8.7",
+  },
+  {
+    id: "broad.repeats",
+    bar: "Broad: repeated answers in a thread",
+    threshold: 0,
+    dir: "max",
+    unit: "count",
+    source: "p1-broad",
+    origin: "Ask synthesis, #405",
+  },
+  {
+    id: "broad.len_ok",
+    bar: "Broad: answer length in range",
+    threshold: 0.9,
+    dir: "min",
+    unit: "pct",
+    source: "p1-broad",
+    origin: "Ask synthesis",
+  },
+  {
+    id: "broad.not_found",
+    bar: "Broad: not found",
+    threshold: 0.1,
+    dir: "max",
+    unit: "pct",
+    source: "p1-broad",
+    origin: "Ask synthesis",
+  },
+  {
+    id: "broad.fresh",
+    bar: "Broad: elaboration turns with new content",
+    threshold: 0.7,
+    dir: "min",
+    unit: "pct",
+    source: "p1-broad",
+    origin: "Ask synthesis",
+  },
   // --- P0 report section 7 ---
   {
     id: "ret.ndcg",
