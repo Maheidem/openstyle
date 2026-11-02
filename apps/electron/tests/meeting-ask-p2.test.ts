@@ -503,7 +503,8 @@ function defineFake(): void {
     if (fake) {
       expect(fake.ofKind("chat_synthesis").length).toBeGreaterThanOrEqual(1);
       // The sources are one line for each meeting of the folder, in date order.
-      const user = fake.ofKind("chat_synthesis").at(-1)?.user ?? "";
+      const asked = fake.ofKind("chat_synthesis").at(-1)?.user ?? "";
+      const user = asked.slice(asked.indexOf("SOURCES:"));
       expect(user.indexOf("Weekly sync")).toBeGreaterThan(-1);
       expect(user.indexOf("Weekly sync")).toBeLessThan(
         user.indexOf("Vendor review"),

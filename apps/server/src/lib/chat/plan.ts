@@ -364,6 +364,9 @@ const SYNTHESIS_RE = new RegExp(
     "\\btell me (?:everything|anything|something)\\b",
     "\\bcan(?:'?t| ?not| not) you tell me (?:anything|something)\\b",
     "\\bany(?:thing)? (?:you can|at all)\\b",
+    "\\b(?:do you know|is there|have you got) (?:anything|something)\\b",
+    "\\bwhat (?:do|can) you (?:know|tell me)\\b",
+    "\\bsay something\\b",
     // pt
     "\\b(?:me )?(?:conte|conta|fale|fala|explique|explica|resuma|resume) (?:a |toda a |tudo sobre a |sobre a |sobre o |tudo sobre o )?(?:historia|tudo|projeto|trajetoria|linha do tempo)\\b",
     "\\b(?:a )?historia (?:d[oae]|desse|deste|dessa|desta) (?:projeto|pasta|trabalho|equipe)\\b",

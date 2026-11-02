@@ -570,7 +570,10 @@ export async function runChatTurn(input: ChatTurnInput): Promise<TurnResult> {
     !write &&
     (asksSynthesis(question) ||
       asksOverview(question) ||
-      (prevNotFound && isDependentFollowUp(question)));
+      // "Really?", "Nothing?" after a not found: the user wants what the sources do say.
+      (prevNotFound &&
+        isDependentFollowUp(question) &&
+        wordsIn(question) <= 3));
 
   const runSynthesis = async (): Promise<TurnResult> => {
     const started = Date.now();
@@ -1161,6 +1164,12 @@ export async function runChatTurn(input: ChatTurnInput): Promise<TurnResult> {
           : null,
   });
 }
+
+const wordsIn = (q: string): number =>
+  q
+    .trim()
+    .split(/[\s,;:.?!]+/u)
+    .filter(Boolean).length;
 
 /** The plain text of an answer: the lead sentences, then one line for each bullet. */
 function answerContent(sentences: readonly AnswerSentence[]): string {

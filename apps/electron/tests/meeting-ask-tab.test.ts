@@ -577,20 +577,28 @@ function defineScenario(): void {
       });
       await page.screenshot({ path: join(dir, `ask-${name}${suffix}.png`) });
 
-      // 1b. The broad answer: lead paragraph and cited bullets.
-      const bulletsBox = page.getByTestId("meeting-ask-bullets").first();
-      await bulletsBox.evaluate((el) => {
-        const box = el.closest('[data-testid="meeting-ask-messages"]');
-        if (box)
-          box.scrollTop +=
-            el.getBoundingClientRect().top -
-            box.getBoundingClientRect().top -
-            140;
+      // 1b. The broad answer: lead paragraph and cited bullets. A taller
+      // window shows the whole answer in one picture. The size comes back after.
+      const size = await b.app.evaluate(({ BrowserWindow }) => {
+        const win = BrowserWindow.getAllWindows().find((w) =>
+          w.webContents.getURL().includes("app://renderer"),
+        );
+        const [w = 1152, h = 650] = win?.getContentSize() ?? [];
+        win?.setContentSize(w, 1100);
+        return { w, h };
       });
+      const bulletsBox = page.getByTestId("meeting-ask-bullets").first();
+      await bulletsBox.scrollIntoViewIfNeeded();
       await expect(bulletsBox).toBeVisible();
+      await page.waitForTimeout(500);
       await page.screenshot({
         path: join(dir, `ask-broad-${name}${suffix}.png`),
       });
+      await b.app.evaluate(({ BrowserWindow }, s) => {
+        BrowserWindow.getAllWindows()
+          .find((w) => w.webContents.getURL().includes("app://renderer"))
+          ?.setContentSize(s.w, s.h);
+      }, size);
 
       // 2. The write question: the read-only reply is visible.
       const readOnly = page.getByTestId("meeting-ask-block-read-only").first();
