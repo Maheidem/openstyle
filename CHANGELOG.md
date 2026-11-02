@@ -1,5 +1,22 @@
 # Changelog
 
+## 2.25.0-alpha.17
+
+### New Features ✨
+
+#### Chat
+
+- Ask research mode (D21) as a LangGraph graph by @Maheidem in [#412](https://github.com/Maheidem/openstyle/pull/412)
+- Ask clarifying questions and big-folder synthesis by @Maheidem in [#409](https://github.com/Maheidem/openstyle/pull/409)
+
+### Bug Fixes 🐛
+
+- (meetings) Closed batch stays closed, live chat allows cloud, no raw JSON by @Maheidem in [#410](https://github.com/Maheidem/openstyle/pull/410)
+
+### Documentation 📚
+
+- (spec) Ask research mode D21 + digging eval baseline by @Maheidem in [#411](https://github.com/Maheidem/openstyle/pull/411)
+
 ## 2.25.0-alpha.16
 
 ### Bug Fixes 🐛
