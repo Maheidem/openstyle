@@ -11,7 +11,7 @@ import type { Source } from "./types.js";
 // synthesis answer over the shortened sources.
 
 /** Map calls of one turn, at most. A group beyond the cap gets the code cut. */
-export const MAP_CALLS_MAX = 8;
+export const MAP_CALLS_MAX = 10;
 
 export interface MapResult {
   sources: number;
@@ -97,15 +97,23 @@ export async function mapNotes(args: {
     firstError: null,
   };
   const words = Math.max(12, Math.round(args.noteChars / 6));
+  const original = new Map(args.sources.map((s) => [s.label, s.text]));
+  const fallbackFor = (s: Source) => {
+    s.text = cut(original.get(s.label) ?? s.text, args.noteChars);
+    result.fallback++;
+  };
+  // A group that fails (cut at the output cap, or notes missing) is split and
+  // asked again, once. A source with no note after that keeps the code cut.
+  const queue: { group: Source[]; retry: boolean }[] = groups.map((group) => ({
+    group,
+    retry: false,
+  }));
   let g = 0;
-  for (const group of groups) {
+  while (queue.length > 0) {
+    const item = queue.shift() as { group: Source[]; retry: boolean };
+    const group = item.group;
     const why = args.stop();
     if (why) return { ...result, stopped: why };
-    const original = new Map(group.map((s) => [s.label, s.text]));
-    const fallbackFor = (s: Source) => {
-      s.text = cut(original.get(s.label) ?? s.text, args.noteChars);
-      result.fallback++;
-    };
     if (result.calls >= MAP_CALLS_MAX) {
       for (const s of group) fallbackFor(s);
       continue;
@@ -142,15 +150,26 @@ export async function mapNotes(args: {
     const byLabel = new Map(
       notes.map((n) => [n.label.match(/S\d+/)?.[0] ?? n.label, n.note.trim()]),
     );
+    const again: Source[] = [];
     for (const s of group) {
       const note = byLabel.get(s.label);
       const src = original.get(s.label) ?? s.text;
       if (note && noteIsSafe(note, src)) {
         s.text = cut(note, args.noteChars);
+      } else if (!item.retry && (failed || !note)) {
+        again.push(s);
       } else {
         result.why[failed ? "error" : note ? "unsafe" : "missing"]++;
         fallbackFor(s);
       }
+    }
+    if (again.length > 0) {
+      const half = Math.ceil(again.length / 2);
+      queue.unshift(
+        ...[again.slice(0, half), again.slice(half)]
+          .filter((x) => x.length > 0)
+          .map((x) => ({ group: x, retry: true })),
+      );
     }
   }
   return { ...result, stopped: null };

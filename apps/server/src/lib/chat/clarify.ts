@@ -64,22 +64,22 @@ const INTENT_OPTIONS: ClarifyBlock["options"] = [
   {
     label: "Summary",
     key: "summary",
-    ask: "Give me a summary of my recent meetings.",
+    ask: "Give me an overview of my meetings.",
   },
   {
     label: "Decisions",
     key: "decisions",
-    ask: "What decisions were made in my recent meetings?",
+    ask: "List all decisions from my meetings.",
   },
   {
     label: "Next steps",
     key: "next_steps",
-    ask: "What are the next steps from my recent meetings?",
+    ask: "List all open action items.",
   },
   {
     label: "Open questions",
     key: "open_questions",
-    ask: "What questions are still open in my recent meetings?",
+    ask: "List all open questions from my meetings.",
   },
 ];
 
