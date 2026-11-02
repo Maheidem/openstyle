@@ -107,6 +107,19 @@ function scopeSql(scope: TurnScope): { where: string; params: string[] } {
   return { where: "1 = 1", params: [] };
 }
 
+/** The ids of the meetings in the scope of the turn, oldest first. */
+export function scopeMeetingIds(db: DatabaseSync, scope: TurnScope): string[] {
+  const { where, params } = scopeSql(scope);
+  return (
+    db
+      .prepare(
+        `SELECT m.id FROM meetings m WHERE ${where}
+          ORDER BY COALESCE(m.started_at, m.created_at), m.id`,
+      )
+      .all(...params) as { id: string }[]
+  ).map((r) => r.id);
+}
+
 /** True when the meeting is inside the scope of the turn. */
 export function meetingInScope(
   db: DatabaseSync,

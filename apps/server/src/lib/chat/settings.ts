@@ -18,6 +18,8 @@ export interface ChatSettings {
   searchWider: boolean;
   /** The short clarifying question (spec 11.8, D20). On by default. */
   clarify: boolean;
+  /** The research mode for questions that need digging (spec 11.9.9, D21). On by default. */
+  research: boolean;
   /** The router uses native tool calls first. */
   nativeTools: boolean;
   /** The switch of the Ask tab. */
@@ -51,6 +53,7 @@ export function readChatSettings(): ChatSettings {
       ) * 1000,
     searchWider: readSetting(SETTINGS_KEYS.chatSearchWider) !== "false",
     clarify: readSetting(SETTINGS_KEYS.chatClarify) !== "false",
+    research: readSetting(SETTINGS_KEYS.chatResearch) !== "false",
     nativeTools: readSetting(SETTINGS_KEYS.chatNativeTools) !== "false",
     enabled: readSetting(SETTINGS_KEYS.meetingChatEnabled) === "true",
   };

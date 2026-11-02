@@ -38,6 +38,8 @@ export interface ChatTurnInput {
   noClarify?: boolean;
   /** Override of `SCORE_FLOOR` (the eval measures it). */
   scoreFloor?: number;
+  /** Eval only: `false` runs the research loop with no reflect call (code order of strategies). */
+  researchReflect?: boolean;
 }
 
 export async function runChatTurn(input: ChatTurnInput): Promise<TurnResult> {

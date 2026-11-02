@@ -2,6 +2,7 @@ import type {
   ChatBlock,
   ChatCite,
   ChatProgress,
+  ChatResearch,
   ChatTrace,
   ChatTraceStep,
 } from "@openstyle/validations";
@@ -263,6 +264,11 @@ export class Turn {
   readonly summaryKind: "overview" | "decisions" | "steps" | null;
   readonly synthesis: boolean;
 
+  /** Research mode (D21): set by the `scope` node. */
+  mode: "fast" | "research" = "fast";
+  /** What the research loop did, for the trail line. Set when the loop ends. */
+  trail: ChatResearch | null = null;
+
   router: ChatTrace["router"] = "skipped";
   intent: Intent | null = null;
   proposal: TurnResult["proposal"] = null;
@@ -416,6 +422,7 @@ export class Turn {
         sources_dropped: this.sourcesDropped,
         history_turns_dropped: this.historyDropped,
         source_tokens: this.sourceTokens,
+        ...(this.trail ? { research: this.trail } : {}),
       },
       proposal: this.proposal,
       toolCalls: this.toolCalls,
@@ -517,6 +524,17 @@ export class Turn {
     return null;
   }
 
+  /** Stage 0b: prefetch. The closed choices are built by code (spec 2.3). */
+  prepare(): void {
+    this.choices = buildChoices(
+      this.input.db,
+      this.turnScope,
+      this.input.question,
+      this.priorQuestions,
+      this.todayMs,
+    );
+  }
+
   // ---- Stage 1+2: the route. ----
 
   /**
@@ -528,14 +546,7 @@ export class Turn {
   > {
     const { db, question, llm, signal, settings } = this.input;
     const { turnScope, todayMs, turns } = this;
-    // Stage 0b: prefetch. The closed choices are built by code (spec 2.3).
-    this.choices = buildChoices(
-      db,
-      turnScope,
-      question,
-      this.priorQuestions,
-      todayMs,
-    );
+    this.prepare();
     const choices = this.choices;
     if (this.synthesis) {
       this.beginBroad();
@@ -796,7 +807,7 @@ export class Turn {
 
   // ---- Stage 3: tools, in rounds. ----
 
-  private async run(call: Call): Promise<ToolResult | null> {
+  async run(call: Call): Promise<ToolResult | null> {
     const started = Date.now();
     try {
       const r = await runTool(this.ctx, call.tool as never, call.args);
@@ -964,6 +975,35 @@ export class Turn {
       return "blocks";
     }
     return null;
+  }
+
+  /** The start of the research path: no route call, the leads come from code (11.9.5). */
+  beginResearch(): void {
+    const started = Date.now();
+    this.router = "default";
+    this.intent = "lookup";
+    this.prepare();
+    this.step("route", "rules:research", started);
+  }
+
+  /** `blocks` of the research mode: the lists of all list calls, in one answer. */
+  researchBlocks(): Exit {
+    const lists = this.results.filter(
+      (r) => BLOCK_TOOLS.has(r.tool) && r.blocks.length > 0,
+    );
+    const blocks = lists.flatMap((r) => r.blocks);
+    const labels = new Set<string>();
+    for (const b of blocks) {
+      if (b.kind === "list") {
+        for (const it of b.items) if (it.label) labels.add(it.label);
+      }
+    }
+    for (const r of lists) for (const l of r.labels) labels.add(l);
+    const cites = [...labels]
+      .slice(0, BLOCK_CITES)
+      .map((l) => this.sources.toCite(l))
+      .filter((c): c is ChatCite => c !== null);
+    return done(this.finish(blocks, cites, ""));
   }
 
   /** `status_text`: the status blocks that stay as the last block of the answer. */

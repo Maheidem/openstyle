@@ -174,6 +174,7 @@ export const chatTraceStepSchema = z.object({
     "rerank",
     "answer",
     "cite_check",
+    "research",
   ]),
   /** Tool name, router arm ("native", "structured", "default"), or detail. */
   name: z.string(),
@@ -183,7 +184,36 @@ export const chatTraceStepSchema = z.object({
 });
 export type ChatTraceStep = z.infer<typeof chatTraceStepSchema>;
 
+/**
+ * What the research loop did (spec 11.9.7 point 7). The renderer writes the
+ * trail line from these fields with `t()`. No model text is in it.
+ */
+export const chatResearchSchema = z.object({
+  /** Loop turns that ran, and the most that were allowed. */
+  iterations: z.number().int(),
+  max_iter: z.number().int(),
+  /** Meetings that the evidence comes from. */
+  meetings: z.number().int(),
+  /** Tool calls of the loop. */
+  searches: z.number().int(),
+  /** Why the loop ended. */
+  done: z.enum([
+    "enough",
+    "max_iter",
+    "stalled",
+    "call_cap",
+    "deadline",
+    "no_leads",
+    "error",
+  ]),
+  /** The leads that stayed open: what was not found. */
+  open_leads: z.array(z.string()),
+});
+export type ChatResearch = z.infer<typeof chatResearchSchema>;
+
 export const chatTraceSchema = z.object({
+  /** Set when the research mode ran (D21). */
+  research: chatResearchSchema.optional(),
   /** The scope this turn searched (P2). Absent in a message of P1. */
   scope: chatScopeSchema.optional(),
   intent: z.string().nullable(),
@@ -268,8 +298,13 @@ export type ChatAskReply = z.infer<typeof chatAskReplySchema>;
  * turn runs. `count` is the meetings that the stage covers, or null.
  */
 export const chatProgressSchema = z.object({
-  stage: z.enum(["searching", "reading", "answering"]),
+  stage: z.enum(["searching", "reading", "answering", "researching"]),
   count: z.number().int().nullable(),
+  /** Research mode (D21): the loop turn, the most loop turns, the lead and the leads. */
+  iteration: z.number().int().optional(),
+  max_iter: z.number().int().optional(),
+  lead_index: z.number().int().optional(),
+  leads: z.number().int().optional(),
 });
 export type ChatProgress = z.infer<typeof chatProgressSchema>;
 

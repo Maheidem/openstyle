@@ -80,6 +80,8 @@ export const SETTINGS_KEYS = {
   /** Ask page: `"false"` turns the "search wider" offer off. */
   chatSearchWider: "chat_search_wider",
   chatClarify: "chat_clarify",
+  /** Ask page: `"false"` turns the research mode off (spec 11.9.9, D21). A missing row means on. */
+  chatResearch: "chat_research",
   /**
    * Ask page: the router uses the native tool calls of the local worker
    * (spec 2.1 point 6). A missing row means on; only `"false"` turns it off.
