@@ -1417,6 +1417,9 @@
       "widenAsk": "Rien trouvé ici. Chercher plus largement ?",
       "widenFolder": "Chercher dans tout le dossier {{name}}",
       "widenAll": "Tout chercher",
+      "listMore_one": "{{count}} élément de plus non affiché",
+      "listMore_other": "{{count}} éléments de plus non affichés",
+      "showAll": "Tout afficher",
       "errWiden": "Aucune recherche plus large à lancer maintenant.",
       "folder": {
         "title": "Poser une question sur ce dossier",

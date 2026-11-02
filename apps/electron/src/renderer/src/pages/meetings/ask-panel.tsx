@@ -44,6 +44,7 @@ import {
   readSelectedThread,
   rememberSelectedThread,
   scopeKey,
+  showAllTurn,
   threadTitle,
   unsavedQuestion,
   widenedScope,
@@ -212,7 +213,10 @@ export function AskPanel({
       err instanceof AskRequestError ? err.reason : null,
     );
 
-  const send = async (raw: string, anyway = false): Promise<void> => {
+  const send = async (
+    raw: string,
+    mode: "pick" | "anyway" | "all" = "pick",
+  ): Promise<void> => {
     const check = checkQuestion(raw);
     if (!check.ok || working || serverPending) return;
     setFailure(null);
@@ -234,7 +238,11 @@ export function AskPanel({
         threadId,
         await postQuestion(
           threadId,
-          anyway ? clarifyAnywayTurn(check.text) : clarifyPickTurn(check.text),
+          mode === "anyway"
+            ? clarifyAnywayTurn(check.text)
+            : mode === "all"
+              ? showAllTurn(check.text)
+              : clarifyPickTurn(check.text),
         ),
       );
       await queryClient.invalidateQueries({
@@ -303,7 +311,10 @@ export function AskPanel({
   const clarifyActions: ClarifyActions = {
     pick: (ask) => void send(ask),
     anyway: () => {
-      if (lastQuestion) void send(lastQuestion, true);
+      if (lastQuestion) void send(lastQuestion, "anyway");
+    },
+    showAll: () => {
+      if (lastQuestion) void send(lastQuestion, "all");
     },
   };
 

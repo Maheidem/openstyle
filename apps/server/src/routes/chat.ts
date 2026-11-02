@@ -188,6 +188,7 @@ const chat = new Hono()
             onProgress: (p) => progress.set(thread.id, p),
             // A widen turn is an explicit request: it never gets a question back.
             ...(body.no_clarify || body.widen ? { noClarify: true } : {}),
+            ...(body.show_all ? { showAll: true } : {}),
           });
           const assistant = appendMessage(db, thread.id, {
             role: "assistant",

@@ -407,6 +407,8 @@ export interface AskRequest {
     | "chat_synthesis"
     | "chat_map_notes"
     | "chat_reflect"
+    | "chat_dig_item"
+    | "chat_dig_meeting"
     | "other";
   system: string;
   /** The text of the last user message. */
@@ -665,7 +667,9 @@ export class FakeAskLlm {
             schema === "chat_answer" ||
             schema === "chat_synthesis" ||
             schema === "chat_map_notes" ||
-            schema === "chat_reflect"
+            schema === "chat_reflect" ||
+            schema === "chat_dig_item" ||
+            schema === "chat_dig_meeting"
           ? schema
           : "other";
     const record: AskRequest = {
@@ -811,6 +815,28 @@ export class FakeAskLlm {
       this.text(res, JSON.stringify({ next, query: "" }));
       return;
     }
+    if (kind === "chat_dig_item" || kind === "chat_dig_meeting") {
+      // A worker of the research graph (11.9.16): the record is the first
+      // sentence of the first source it was given, so code can check it.
+      record.answered = kind;
+      if (this.reflectDelayMs > 0) {
+        await new Promise((r) => setTimeout(r, this.reflectDelayMs));
+      }
+      const first = [
+        ...user.matchAll(/^\[(S\d+)\] [^:]*?\d{4}-\d{2}-\d{2}\): (.*)$/gm),
+      ][0];
+      const text = (first?.[2] ?? "").split(/(?<=[.!?])\s+/)[0] ?? "";
+      const label = first?.[1] ?? "";
+      this.text(
+        res,
+        JSON.stringify(
+          kind === "chat_dig_item"
+            ? { reasons: [{ reason: text, source: label, quote: text }] }
+            : { who: "", what: text, why: "", source: label, quote: text },
+        ),
+      );
+      return;
+    }
     if (kind === "chat_map_notes") {
       // The map step of a big scope (D20): one short note for each source,
       // with its label. The note is the first sentence of the source.
@@ -946,6 +972,78 @@ export function seedClarifyExtras(userDataDir: string): void {
         BASE + (20 + i) * DAY,
         LONG_FOLDER_ID,
         i,
+      );
+    }
+  } finally {
+    db.close();
+  }
+}
+
+export const BACKLOG_FOLDER_ID = "ask-folder-backlog";
+export const BACKLOG_FOLDER_NAME = "Backlog sweep";
+/** Open action items of the backlog folder: more than a short list shows. */
+export const BACKLOG_ITEMS = 26;
+
+/**
+ * A folder with many open items (11.9.16): 5 meetings, 26 distinct action
+ * items (the first 4 are raised again in a later meeting) and 3 open
+ * questions. The research list shows 8 actions and up to 4 questions, ranked
+ * by how often they were raised, then by recency.
+ */
+export function seedBacklog(userDataDir: string): void {
+  const db = new DatabaseSync(join(userDataDir, "freestyle.db"));
+  try {
+    db.exec("PRAGMA busy_timeout = 5000");
+    const now = Date.now();
+    db.prepare(
+      `INSERT INTO meeting_folders (id, name, description, created_at, updated_at)
+       VALUES (?, ?, NULL, ?, ?)`,
+    ).run(BACKLOG_FOLDER_ID, BACKLOG_FOLDER_NAME, now, now);
+    const meeting = db.prepare(
+      `INSERT INTO meetings
+         (id, title, started_at, ended_at, duration_ms, status, audio_dir,
+          stt_provider, stt_model, language, folder_id, created_at)
+       VALUES (?, ?, ?, ?, 600000, 'summarized', NULL, 'local-mlx', 'fake-stt',
+               'en', ?, ?)`,
+    );
+    const summary = db.prepare(
+      `INSERT INTO meeting_summaries
+         (meeting_id, markdown, llm_provider, llm_model, created_at, summary_json)
+       VALUES (?, NULL, 'server', 'fake-llm', ?, ?)`,
+    );
+    const tasks = Array.from(
+      { length: BACKLOG_ITEMS },
+      (_, i) => `Close backlog task number ${String.fromCharCode(97 + i)}`,
+    );
+    for (let m = 0; m < 5; m++) {
+      const id = `ask-m-backlog-${m + 1}`;
+      const at = BASE + (40 + m * 7) * DAY;
+      meeting.run(
+        id,
+        `Backlog review ${m + 1}`,
+        at,
+        at + 600_000,
+        BACKLOG_FOLDER_ID,
+        at,
+      );
+      // Meeting 1 holds tasks a to f, meeting 2 g to l, and so on; tasks a to d come back in meeting 5.
+      const own = tasks.slice(m * 6, m * 6 + 6);
+      const again = m === 4 ? tasks.slice(0, 4) : [];
+      summary.run(
+        id,
+        now,
+        JSON.stringify({
+          overview: `Review ${m + 1} of the backlog sweep.`,
+          keyPoints: [`The backlog has many open tasks after review ${m + 1}.`],
+          decisions: [],
+          actionItems: [...own, ...again].map((task) => ({
+            task,
+            owner: "Dana Whitfield",
+            due: null,
+          })),
+          openQuestions:
+            m < 3 ? [`Who signs off the backlog scope ${m + 1}?`] : [],
+        }),
       );
     }
   } finally {

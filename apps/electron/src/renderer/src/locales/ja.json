@@ -1400,6 +1400,8 @@
       "widenAsk": "ここには見つかりません。範囲を広げて検索しますか?",
       "widenFolder": "フォルダー {{name}} 全体を検索",
       "widenAll": "すべてを検索",
+      "listMore_other": "他 {{count}} 件は非表示",
+      "showAll": "すべて表示",
       "errWiden": "今は実行できる広範囲の検索がありません。",
       "folder": {
         "title": "このフォルダーについて質問",

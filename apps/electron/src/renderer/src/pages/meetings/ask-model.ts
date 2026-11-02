@@ -247,7 +247,12 @@ export function answerBlocks(message: ChatMessage): ChatBlock[] {
 }
 
 /** The body of a turn. "Answer anyway" adds `no_clarify` (D20). */
-export type AskTurn = { question: string; no_clarify?: true };
+export type AskTurn = {
+  question: string;
+  no_clarify?: true;
+  /** "Show all": the capped open-items list comes back in full (11.9.16). */
+  show_all?: true;
+};
 
 /** A chip sends its `ask` as a new question of the same thread. */
 export function clarifyPickTurn(ask: string): AskTurn {
@@ -257,6 +262,11 @@ export function clarifyPickTurn(ask: string): AskTurn {
 /** "Answer anyway": the first question again, with no clarifying question. */
 export function clarifyAnywayTurn(question: string): AskTurn {
   return { question, no_clarify: true };
+}
+
+/** "Show all": the question of a capped list again, with `show_all`. */
+export function showAllTurn(question: string): AskTurn {
+  return { question, show_all: true };
 }
 
 /** The setting `chat_clarify`: a missing row means on. Only "false" turns it off. */

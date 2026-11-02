@@ -1416,6 +1416,9 @@
       "widenAsk": "Nessun risultato qui. Cercare più in grande?",
       "widenFolder": "Cerca in tutta la cartella {{name}}",
       "widenAll": "Cerca ovunque",
+      "listMore_one": "altro {{count}} elemento non mostrato",
+      "listMore_other": "altri {{count}} elementi non mostrati",
+      "showAll": "Mostra tutti",
       "errWiden": "Ora non c'è una ricerca più ampia da eseguire.",
       "folder": {
         "title": "Chiedi su questa cartella",

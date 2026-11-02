@@ -181,6 +181,21 @@ No new bars: thresholds are the owner's to set (`BARS` stays as it is).
 - The desktop llama.cpp server can need minutes to swap a model: a first request that waits for a long time is a swap, not a hang. Ping it with one small request before a run.
 - `pnpm chat-eval real --db <copy.db> --dig` runs 6 generic digging questions on the 3 folders with the most meetings (named A, B, C in the output). It stops when the chat model is not the local MLX model.
 
+### The blind held-out dig set (`CHAT_EVAL_DIG_SET=heldout`, 2026-11-02, spec 11.9.17)
+
+`CHAT_EVAL_DIG_SET=heldout pnpm chat-eval p1 --only dig` runs 30 questions (35 turns, 4 controls) on a second fictional corpus: 3 projects, 13 meetings, 8 people, ids `hd-*` / `fld-hd-*`, question ids `hd01` to `hd30`. Code: `dig-heldout.mts` (loader), `dig-heldout.json` (data and keys), a test in `dig.test.mts` (every key is in the data). MLflow run `p1-dig-heldout` (tag `chat.arm` = `dig-heldout`).
+
+- It was written by a separate Claude subagent that had NOT seen the research code or the dig questions. It got only the data format and the question kinds (list, why, blocker, evolve, pushed, changed, unresolved). The original set (`dg*`) was tuned on; this one was not.
+- **Never tune on it.** A change that is made after you read its failing rows is not blind any more. Read the aggregate, fix the cause with the ORIGINAL set and generic words, then measure here. When the set has been read for fixes, write a new one the same way (brief for the subagent: schema, kinds, no repo access).
+- The 2026-11-02 baseline of main `e6641d0b` on E2B: original 77.1%, blind 25.9% (trigger recall 37%). The gap is the overfit of #412.
+- To run `main` and a branch side by side use two worktrees (`git worktree add --detach ../x <sha>`, copy `apps/electron/resources/{bin,models}`, own launcher script). Edit the branch while the other one runs.
+
+### Research workers (spec 11.9.17)
+
+The graph has an orchestrator-worker fan-out (`Send`) in `research/graph.ts`, workers in `research/workers.ts`. "Why are these open?" after a list: one `item` worker for each of the top 4 items (5 on cloud). A question that asks who pushed, what changed or what blocked: `scout` searches, then one `meeting` worker for each of the best 4 meetings (6 on cloud). A worker searches, makes ONE `chatDig` call (schema `chat_dig_item` or `chat_dig_meeting`), and code checks the record (`supported`, `aboutItem` in `workers.ts`). Max 2 workers at once on a local model. `CHAT_EVAL_REFLECT` does not touch the workers. Per-worker steps in the trace: `research:worker:item:reason|none`, `research:worker:meeting:record|none`, `research:join:items|meetings`.
+
+The open-items list is capped (8 actions + 4 questions, ranked by how many meetings raised an item, then recency, grouped by meeting) unless the turn has `show_all`. The row of such a turn has the list block with `total` above the shown items.
+
 ### Real threads (private, `pnpm chat-eval real`)
 
 `pnpm chat-eval real --db <copy.db> --threads <id prefix>,<id prefix> --label after` copies a read-only copy of the owner's DB to `/tmp/chatp0/run/real`, replays the QUESTIONS of the threads through the real pipeline with the default model of that DB (new answers go back as history), deletes the scratch copy, and prints numbers only (sentences, cites, repeat, not found). The answer texts go only to `~/Library/Application Support/Openstyle-eval/chat-real/<label>-<time>.json` (before and after; "before" is what the DB stores). Never commit those texts, never log them to MLflow. Needs the GPU lock and the worker env of the P1 section. `--extra "q1|q2"` adds new questions at scope Everything (D20): the first turn, then the first chip, then the same question with `no_clarify`; the output has a `clarify=` column. A second copy of the DB with the setting `chat_clarify` = `false` gives the answers without a clarify question (the "before" of those questions).
