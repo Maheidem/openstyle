@@ -62,6 +62,8 @@ export async function runGraph(input: ChatTurnInput): Promise<TurnResult> {
       {
         configurable: { thread_id: runId },
         recursionLimit: recursionLimit(t),
+        // The workers share one local model: at most 2 run at once (11.9.16).
+        maxConcurrency: input.llm.isLocal ? 2 : 4,
         streamMode: ["custom", "values"],
       },
     );

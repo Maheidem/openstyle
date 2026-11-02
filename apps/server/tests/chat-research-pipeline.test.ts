@@ -196,7 +196,7 @@ describe("the research loop", () => {
       ],
       chatAnswer: [REASONS],
     });
-    const r = await run("Why was the Kestrel contract blocked?", llm);
+    const r = await run("What are the reasons for the Kestrel contract?", llm);
     expect(r.blocks[0]?.kind).toBe("text");
     expect(new Set(r.cites.map((c) => c.meeting_id))).toEqual(
       new Set(["m1", "m2"]),
@@ -237,11 +237,11 @@ describe("the research loop", () => {
     retrieveMock.mockResolvedValue(ok([hit(1, "m1", 0.95)]));
     const { llm } = fakeLlm({
       chatReflect: [
-        { next: "rephrase", query: "Why was the Kestrel contract blocked" },
+        { next: "rephrase", query: "reasons for the Kestrel contract" },
       ],
       chatAnswer: [REASONS],
     });
-    const r = await run("Why was the Kestrel contract blocked?", llm);
+    const r = await run("What are the reasons for the Kestrel contract?", llm);
     const queries = r.toolCalls
       .filter((c) => c.tool === "search_chunks")
       .map((c) => JSON.stringify(c.args));
@@ -254,12 +254,12 @@ describe("the research loop", () => {
       chatReflect: [{ next: "other_meetings", query: "" }],
       chatAnswer: [REASONS],
     });
-    const r = await run("Why was the Kestrel contract blocked?", llm);
+    const r = await run("What are the reasons for the Kestrel contract?", llm);
     expect(r.blocks[0]).toMatchObject({ kind: "not_found" });
     expect(r.trace.research).toMatchObject({
       done: "stalled",
       meetings: 0,
-      open_leads: ["Why was the Kestrel contract blocked?"],
+      open_leads: ["What are the reasons for the Kestrel contract?"],
     });
   });
 
@@ -269,7 +269,7 @@ describe("the research loop", () => {
       chatReflect: [{ next: "stop", query: "" }],
       chatAnswer: [REASONS],
     });
-    const r = await run("Why was the Kestrel contract blocked?", llm);
+    const r = await run("What are the reasons for the Kestrel contract?", llm);
     expect(r.blocks[0]).toMatchObject({ kind: "not_found" });
     expect(r.trace.research?.meetings).toBe(0);
   });
@@ -288,7 +288,7 @@ describe("the research loop", () => {
       ],
       chatAnswer: [REASONS],
     });
-    const r = await run("Why was the Kestrel contract blocked?", llm);
+    const r = await run("What are the reasons for the Kestrel contract?", llm);
     expect(r.trace.research?.searches).toBeLessThanOrEqual(3);
   });
 });
@@ -360,13 +360,31 @@ describe("leads from the last list answer", () => {
     created_at: 0,
   } as unknown as ChatMessage;
 
-  it("each item is a lead; a stop closes a lead while another lead has no evidence", async () => {
-    retrieveMock
-      .mockResolvedValueOnce(ok([hit(1, "m1", 0.95)]))
-      .mockResolvedValueOnce(ok([hit(2, "m2", 0.9)]));
-    const { llm } = fakeLlm({
-      chatReflect: [{ next: "stop", query: "" }],
-      chatAnswer: [REASONS],
+  it("one worker for each item; a reason with a supported quote is shown, an item with none says so (11.9.16)", async () => {
+    retrieveMock.mockResolvedValue(ok([hit(1, "m1", 0.95)]));
+    const { llm, log } = fakeLlm({
+      chatDig: [
+        // item 1: a reason that the chunk of m1 holds
+        {
+          reasons: [
+            {
+              reason: "The vendor sent the quote and legal has not signed.",
+              source: "S1",
+              quote: "Kestrel Hosting sent the quote.",
+            },
+          ],
+        },
+        // item 2: the model invents a quote that no source holds
+        {
+          reasons: [
+            {
+              reason: "Budget freeze until 2027.",
+              source: "S4",
+              quote: "budget freeze until 2027 for everyone",
+            },
+          ],
+        },
+      ],
     });
     const history = [
       {
@@ -379,13 +397,30 @@ describe("leads from the last list answer", () => {
       listAnswer,
     ] as unknown as ChatMessage[];
     const r = await run("Why are these still open?", llm, {}, history);
-    const queries = r.toolCalls
-      .filter((c) => c.tool === "search_chunks")
-      .map((c) => (c.args as { query: string }).query);
-    expect(queries).toHaveLength(2);
-    expect(queries[0]).toBe("Send the quote");
-    expect(queries[1]).toBe("Book the security review");
-    expect(r.trace.research).toMatchObject({ searches: 2, done: "enough" });
+    // No answer call: the bullets are composed by code from the records.
+    expect(log.map((l) => l.step)).toEqual(["chatDig", "chatDig"]);
+    const texts = r.blocks.flatMap((b) => (b.kind === "text" ? [b.text] : []));
+    expect(texts).toHaveLength(2);
+    // The two workers run at the same time: which item gets which script entry is not fixed.
+    expect(
+      texts.filter((x) => x.includes("legal has not signed")),
+    ).toHaveLength(1);
+    expect(texts.filter((x) => x.includes("no reason found"))).toHaveLength(1);
+    expect(texts.some((x) => x.startsWith("Send the quote:"))).toBe(true);
+    expect(texts.some((x) => x.startsWith("Book the security review:"))).toBe(
+      true,
+    );
+    expect(texts.join(" ")).not.toContain("2027");
+    // Every bullet has a cite that exists.
+    for (const b of r.blocks) {
+      if (b.kind === "text") {
+        expect(b.cites.length).toBeGreaterThan(0);
+        for (const l of b.cites) {
+          expect(r.cites.some((c) => c.label === l)).toBe(true);
+        }
+      }
+    }
+    expect(r.trace.research).toMatchObject({ done: "enough" });
   });
 });
 
@@ -427,7 +462,7 @@ describe("checkpoints (11.9.8)", () => {
       },
       { runId: "run-ok" },
     );
-    const r = await run("Why was the Kestrel contract blocked?", llm);
+    const r = await run("What are the reasons for the Kestrel contract?", llm);
     expect(r.blocks[0]?.kind).toBe("text");
     expect(countRows("run-ok")).toBe(0);
   });
@@ -440,7 +475,7 @@ describe("checkpoints (11.9.8)", () => {
       { runId: "run-bad", failAnswer: true },
     );
     await expect(
-      run("Why was the Kestrel contract blocked?", llm),
+      run("What are the reasons for the Kestrel contract?", llm),
     ).rejects.toThrow("the model server is gone");
     expect(countRows("run-bad")).toBeGreaterThan(0);
   });

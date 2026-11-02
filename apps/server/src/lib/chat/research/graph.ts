@@ -1,9 +1,10 @@
 import type { LangGraphRunnableConfig } from "@langchain/langgraph";
-import { END, START, StateGraph } from "@langchain/langgraph";
+import { END, Send, START, StateGraph } from "@langchain/langgraph";
 import type { ChatBlock, ChatProgress } from "@openstyle/validations";
 import { NodeSqliteSaver } from "../../llm/workflow/checkpoint-saver.js";
 import type { AnswerSentence } from "../cites.js";
 import type { ReflectNext } from "../prompts.js";
+import { scopeMeetingIds } from "../tools.js";
 import {
   type AnswerJob,
   type AnswerRun,
@@ -16,6 +17,7 @@ import {
   chooseCalls,
   type Done,
   type Evidence,
+  FAN_MEETINGS,
   type Lead,
   MAX_ITER,
   PER_LEAD_ACTS,
@@ -27,7 +29,14 @@ import {
   toEvidence,
 } from "./research.js";
 import { type Go, ResearchState, type ResearchStateType } from "./state.js";
-import { researchTrigger } from "./trigger.js";
+import { asksAcrossMeetings, researchTrigger } from "./trigger.js";
+import {
+  composeReasons,
+  itemWorker,
+  langOf,
+  meetingWorker,
+  type WorkerRecord,
+} from "./workers.js";
 
 // The Ask turn as a LangGraph graph (specs/meeting-chat-agent.md 11.9.3). The
 // nodes call the stage methods of `Turn` and the research functions. Code owns
@@ -93,6 +102,8 @@ export function buildResearchGraph(t: Turn, checkpoint: boolean) {
     run: null as AnswerRun | null,
     draft: null as AnswerSentence[] | null,
     statusBlocks: null as ChatBlock[] | null,
+    // the workers
+    sends: [] as Send[],
     // research
     loop: new ResearchRun(),
     last: null as LastRun | null,
@@ -159,7 +170,25 @@ export function buildResearchGraph(t: Turn, checkpoint: boolean) {
   const plan = async (s: ResearchStateType): Promise<Update> => {
     if (s.mode === "research") {
       t.beginResearch();
-      return { leads: seedLeads(t), path: "research", go: "act" };
+      const leads = seedLeads(t);
+      // Orchestrator-worker (11.9.16): "why are these open?" sends one worker
+      // for each item; "who pushed for it?" scouts the meetings first.
+      if (leads.length > 0 && leads.every((l) => l.origin === "prior_answer")) {
+        g.sends = leads.map(
+          (lead) => new Send("worker", { kind: "item" as const, lead }),
+        );
+        return { leads, path: "research", fan: "items", go: "fanout" };
+      }
+      const first = leads[0];
+      if (
+        first &&
+        first.origin === "question" &&
+        !first.list &&
+        asksAcrossMeetings(t.input.question)
+      ) {
+        return { leads, path: "research", fan: "meetings", go: "scout" };
+      }
+      return { leads, path: "research", go: "act" };
     }
     const r = await t.route();
     if (r.kind === "exit") {
@@ -168,6 +197,164 @@ export function buildResearchGraph(t: Turn, checkpoint: boolean) {
         : { notFoundReason: r.exit.reason, go: "not_found" };
     }
     return { path: r.kind === "broad" ? "broad" : "tools", go: "act" };
+  };
+
+  // ---- scout, worker, join (11.9.16) ----
+
+  /** `scout`: one search over the scope; the meetings of the best hits get one worker each. */
+  const scout = async (s: ResearchStateType): Promise<Update> => {
+    const lead = s.leads[0] as Lead;
+    const floor = t.input.scoreFloor ?? SCORE_FLOOR;
+    const find = async (query: string) => {
+      const r = await t.run({
+        tool: "search_chunks",
+        args: { query: query.slice(0, 200), k: 16 },
+      });
+      return r && (floor <= 0 || r.topScore === null || r.topScore >= floor)
+        ? r.labels
+            .map((l) => t.sources.get(l))
+            .filter(
+              (x): x is NonNullable<typeof x> => !!x && x.kind !== "folder",
+            )
+        : [];
+    };
+    let hits = await find(lead.text);
+    // A follow-up ("who pushed for it?") may build a weak query: the topic of the
+    // earlier turn (its question and the start of its answer) finds the meetings.
+    const prior = t.priorTurns.at(-1);
+    if (hits.length === 0 && prior) {
+      hits = await find(`${prior.question} ${prior.answer.slice(0, 120)}`);
+    }
+    const max = t.input.llm.isLocal ? FAN_MEETINGS.local : FAN_MEETINGS.cloud;
+    const seen = new Map<string, { title: string | null; at: number | null }>();
+    for (const h of hits) {
+      if (!seen.has(h.meetingId)) {
+        seen.set(h.meetingId, { title: h.title, at: h.startedAt });
+      }
+      if (seen.size >= max) break;
+    }
+    // "What changed between the first and the last meeting": both ends count.
+    const inScope = scopeMeetingIds(t.input.db, t.turnScope);
+    if (
+      /\b(?:first|last|start|end|primeir|ultim|inicio|fim)/iu.test(lead.text)
+    ) {
+      for (const id of [inScope[0], inScope.at(-1)]) {
+        if (id && !seen.has(id) && seen.size < max + 2) {
+          seen.set(id, { title: null, at: null });
+        }
+      }
+    }
+    if (seen.size === 0) return { go: "act" };
+    g.sends = [...seen].map(
+      ([meetingId, m]) =>
+        new Send("worker", {
+          kind: "meeting" as const,
+          meetingId,
+          title: m.title ?? meetingId,
+          lead,
+        }),
+    );
+    return { go: "fanout" };
+  };
+
+  type WorkerInput =
+    | { kind: "item"; lead: Lead }
+    | { kind: "meeting"; meetingId: string; title: string; lead: Lead };
+
+  /** `worker`: one record. A failed worker gives an empty record, never an error. */
+  const worker = async (
+    w: WorkerInput,
+    config: LangGraphRunnableConfig,
+  ): Promise<Update> => {
+    // The status line of the client: "Looking for ..." with the worker count.
+    emit(config, {
+      iteration: 1,
+      max_iter: maxIter,
+      lead_index: w.kind === "item" ? Number(w.lead.id.slice(1)) : 1,
+      leads: g.sends.length,
+    });
+    const rec: WorkerRecord =
+      w.kind === "item"
+        ? await itemWorker(t, w.lead)
+        : await meetingWorker(
+            t,
+            `M:${w.meetingId}`,
+            w.meetingId,
+            w.title,
+            t.input.question,
+            w.lead.text,
+          );
+    return { records: [rec] };
+  };
+
+  /** `join`: the records are in. Compose the bullets (items), or give the verified sources to the answer call (meetings). */
+  const join = (s: ResearchStateType): Update => {
+    const started = Date.now();
+    const lead = s.leads[0] as Lead;
+    const trail = (done: Done, meetings: number) => {
+      t.trail = {
+        iterations: 1,
+        max_iter: maxIter,
+        meetings,
+        searches: s.records.length,
+        done,
+        open_leads: [],
+      };
+    };
+    if (s.fan === "items") {
+      const order = new Map(s.leads.map((l, i) => [l.id, i]));
+      const recs = [...s.records].sort(
+        (a, b) => (order.get(a.key) ?? 0) - (order.get(b.key) ?? 0),
+      );
+      const lang = langOf(
+        `${t.input.question} ${recs.map((r) => r.subject).join(" ")}`,
+      );
+      const { blocks, cites } = composeReasons(t, recs, lang);
+      t.step(
+        "research",
+        "join:items",
+        started,
+        recs.filter((r) => r.why !== "").length,
+        `${recs.length} items`,
+      );
+      if (blocks.length === 0) return { go: "act" };
+      trail("enough", new Set(recs.map((r) => r.meetingId)).size);
+      return { result: t.codeResult(blocks, cites), go: "end" };
+    }
+    // meetings: the verified excerpts are the only sources of the answer
+    const recs = s.records
+      .filter((r) => r.source !== "")
+      .sort((a, b) => (a.startedAt ?? 0) - (b.startedAt ?? 0));
+    t.step("research", "join:meetings", started, recs.length, null);
+    if (recs.length === 0) return { go: "act" };
+    const keep = new Set(recs.map((r) => r.source));
+    t.sources.remove(
+      t.sources
+        .all()
+        .filter((x) => !keep.has(x.label))
+        .map((x) => x.label),
+    );
+    const ranked = t.sources.all().filter((x) => x.kind !== "folder");
+    const day = (r: WorkerRecord) =>
+      r.startedAt === null
+        ? ""
+        : new Date(r.startedAt).toISOString().slice(0, 10);
+    const notes = recs
+      .map(
+        (r) =>
+          `${day(r)} [${r.source}]: ${[r.who && `who: ${r.who}`, r.what && `what: ${r.what}`, r.why && `why: ${r.why}`].filter(Boolean).join("; ")}`,
+      )
+      .join(" | ");
+    g.jobs = [
+      {
+        ranked,
+        synth: true,
+        focus: `answer the question from these findings, meeting by meeting, with the date. Name the person and the reason when a finding has them. Findings: ${notes}`,
+      },
+    ];
+    g.merge = false;
+    trail("enough", new Set(recs.map((r) => r.meetingId)).size);
+    return { go: "synthesize", leads: [{ ...lead, status: "done" as const }] };
   };
 
   // ---- act ----
@@ -529,10 +716,16 @@ export function buildResearchGraph(t: Turn, checkpoint: boolean) {
   };
 
   const route = (s: ResearchStateType): string => s.go;
+  /** Edges that can fan out: the workers are Send objects, one for each item or meeting. */
+  const routeOrFan = (s: ResearchStateType): string | Send[] =>
+    s.go === "fanout" ? g.sends : s.go;
 
   return new StateGraph(ResearchState)
     .addNode("scope", scope)
     .addNode("plan", plan)
+    .addNode("scout", scout)
+    .addNode("worker", worker)
+    .addNode("join", join)
     .addNode("act", act)
     .addNode("observe", observe)
     .addNode("reflect", reflect)
@@ -542,9 +735,18 @@ export function buildResearchGraph(t: Turn, checkpoint: boolean) {
     .addNode("not_found", notFound)
     .addEdge(START, "scope")
     .addConditionalEdges("scope", route, { plan: "plan", end: END })
-    .addConditionalEdges("plan", route, {
+    .addConditionalEdges("plan", routeOrFan, {
       act: "act",
+      scout: "scout",
+      worker: "worker",
       not_found: "not_found",
+      end: END,
+    })
+    .addConditionalEdges("scout", routeOrFan, { act: "act", worker: "worker" })
+    .addEdge("worker", "join")
+    .addConditionalEdges("join", route, {
+      act: "act",
+      synthesize: "synthesize",
       end: END,
     })
     .addConditionalEdges("act", route, {

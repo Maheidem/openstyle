@@ -1022,6 +1022,24 @@ export class Turn {
     return done(this.finish(blocks, cites, ""));
   }
 
+  /** A result that code composed (the workers' bullets, 11.9.16). */
+  codeResult(blocks: ChatBlock[], cites: ChatCite[]): Exit {
+    const content = answerContent(
+      blocks.flatMap((b) =>
+        b.kind === "text"
+          ? [
+              {
+                text: b.text,
+                cites: b.cites,
+                ...(b.bullet ? { bullet: true } : {}),
+              },
+            ]
+          : [],
+      ),
+    );
+    return done(this.finish(blocks, cites, content));
+  }
+
   /** `status_text`: the status blocks that stay as the last block of the answer. */
   statusBlocks(): ChatBlock[] {
     return this.blockResult()?.blocks ?? [];

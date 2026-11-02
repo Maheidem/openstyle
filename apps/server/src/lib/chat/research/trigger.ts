@@ -33,6 +33,16 @@ const DIG_RE = new RegExp(
     "\\bhow did .{1,60} (?:change|evolve|develop)\\b",
     "\\bwho (?:pushed|argued|objected|defended|insisted|opposed|drove)\\b",
     "\\bpush(?:ed|ing)? for\\b",
+    "\\bwho (?:wanted|asked for|demanded)\\b",
+    "\\b(?:stopping|holding up|held back|holds? back|delay(?:s|ed|ing)?|prevent(?:s|ed|ing)?)\\b",
+    "\\b(?:nobody|no one) can answer\\b",
+    "\\bnot (?:finished|done|settled|resolved|decided) yet\\b",
+    "\\b(?:is|are) .{1,60} (?:settled|resolved)\\b",
+    "\\b(?:differences?|different|compare[sd]?|comparison) .{0,60}\\b(?:between|first|last|start|end)\\b",
+    "\\bwalk me through how\\b",
+    "\\bhow did .{1,80} (?:move|shift|go)\\b",
+    "\\bwhat(?:'s| is) left\\b",
+    "\\bleft to do\\b",
     // pt
     "\\b(?:por ?que|porque|motivos?|razao|razoes|bloque(?:ou|io|ios|ado|ada|ando)|pendentes?|sem resolver|nao resolvid[oa]s?|nao foi decidid[oa])\\b",
     "\\bem aberto\\b",
@@ -40,6 +50,9 @@ const DIG_RE = new RegExp(
     "\\b(?:como|quando) .{1,60} mudou\\b",
     "\\bquem (?:defendeu|insistiu|se opos|empurrou)\\b",
     "\\bevolu(?:iu|cao)\\b",
+    "\\b(?:atras(?:ou|ado|ada|ar)|segur(?:ou)|trav(?:ou|ado|ada)|impedi(?:u|ndo)|sem solucao|ja foi resolvid[oa]|ainda .{0,20}(?:aberto|resolvid))\\b",
+    "\\bquem (?:queria|pediu)\\b",
+    "\\b(?:diferenca|diferencas) entre\\b",
     // es
     "\\b(?:por que|porque|motivos?|razon|razones|bloque(?:o|ado|ada|os)|pendientes?|sin resolver|irresuelt[oa]s?)\\b",
     "\\b(?:abiert[oa]s?|en curso)\\b",
@@ -79,6 +92,41 @@ const REASON_RE = new RegExp(
   "u",
 );
 const REASON_JA_RE = /なぜ|どうして|理由|ブロック/u;
+
+/** "Who pushed for X", "what changed", "how did X evolve": the workers read one meeting each. */
+const FAN_RE = new RegExp(
+  [
+    "\\bwho (?:pushed|argued|insisted|wanted|asked for|drove|defended|opposed|objected|demanded)\\b",
+    "\\bpush(?:ed|ing)? for\\b",
+    "\\bwhat (?:has )?changed\\b",
+    "\\bchanged between\\b",
+    "\\bhow did .{1,80} (?:change|evolve|move|shift|develop)\\b",
+    "\\b(?:differences?|different) between\\b",
+    "\\bwalk me through how\\b",
+    "\\bevolve[ds]?\\b",
+    "\\b(?:blocked|blockers?|blocking|held back|holding up|stopping|delayed|delay)\\b",
+    "\\bwhy (?:was|were|is|are|did|has|have)\\b",
+    "\\b(?:atras(?:ou|ado|ada)|bloque(?:ou|io|ado|ada)|segurou|travou|impediu)\\b",
+    "\\bpor ?que\\b",
+    "\\bquem (?:defendeu|insistiu|queria|pediu|empurrou)\\b",
+    "\\bo que mudou\\b",
+    "\\b(?:como|quando) .{1,80} mudou\\b",
+    "\\bquien (?:defendio|insistio|queria|propuso|pidio)\\b",
+    "\\bque cambio\\b",
+    "\\bqui a (?:pousse|defendu|insiste|voulu|propose)\\b",
+    "\\bce qui a change\\b",
+    "\\bwer hat (?:gedraengt|argumentiert|darauf bestanden|vorgeschlagen)\\b",
+    "\\bwas hat sich (?:geaendert|veraendert)\\b",
+    "\\bchi ha (?:spinto|difeso|insistito|voluto|proposto)\\b",
+    "\\bcosa (?:e|si e) cambiato\\b",
+  ].join("|"),
+  "u",
+);
+
+/** True when the question asks who pushed, or what changed: one worker for each meeting answers it. */
+export function asksAcrossMeetings(question: string): boolean {
+  return FAN_RE.test(fold(question));
+}
 
 export function hasDiggingWord(question: string): boolean {
   return DIG_RE.test(fold(question)) || DIG_JA_RE.test(question);

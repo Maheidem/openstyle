@@ -20,6 +20,16 @@ import { asksReason } from "./trigger.js";
 
 export const MAX_ITER = { local: 4, cloud: 6 } as const;
 export const MAX_LEADS = { local: 3, cloud: 5 } as const;
+/** "Why are these open?": one worker for each of the top items (11.9.16). */
+export const FAN_ITEMS = { local: 4, cloud: 5 } as const;
+/** Meetings that "who pushed for it?" reads, one worker for each (11.9.16). */
+export const FAN_MEETINGS = { local: 4, cloud: 6 } as const;
+/** The open-items list shows at most this many items (11.9.16). Actions first, then questions. */
+export const LIST_SHOWN = {
+  actions: 8,
+  questions: 4,
+  questionsOnly: 12,
+} as const;
 /** One lead gets at most this many `act` steps. */
 export const PER_LEAD_ACTS = 3;
 /** A new loop turn needs time for the answer: it starts before this share of the deadline. */
@@ -117,14 +127,27 @@ const QUESTION_WORDS_RE =
   /\b(?:questions?|perguntas?|preguntas?|fragen?|domande|domanda)\b/u;
 
 /** The tools of the list strategy: action items and open questions, or the open questions alone. */
-export function listCalls(text: string): Call[] {
+export function listCalls(text: string, showAll = false): Call[] {
   const q = fold(text);
   const questionsOnly = QUESTION_WORDS_RE.test(q) && !ITEM_WORDS_RE.test(q);
+  // A capped list is ranked in the tool (raised often, then recent). "Show all" is not capped.
+  const cap = (n: number) => (showAll ? {} : { limit: n });
   return questionsOnly
-    ? [{ tool: "list_decisions_questions", args: { kind: "open_question" } }]
+    ? [
+        {
+          tool: "list_decisions_questions",
+          args: { kind: "open_question", ...cap(LIST_SHOWN.questionsOnly) },
+        },
+      ]
     : [
-        { tool: "list_action_items", args: { status: "open" } },
-        { tool: "list_decisions_questions", args: { kind: "open_question" } },
+        {
+          tool: "list_action_items",
+          args: { status: "open", ...cap(LIST_SHOWN.actions) },
+        },
+        {
+          tool: "list_decisions_questions",
+          args: { kind: "open_question", ...cap(LIST_SHOWN.questions) },
+        },
       ];
 }
 
@@ -233,14 +256,14 @@ function priorItems(
 /** Code seeds the leads. No model call. */
 export function seedLeads(t: Turn): Lead[] {
   const { question, history } = t.input;
-  const max = t.input.llm.isLocal ? MAX_LEADS.local : MAX_LEADS.cloud;
+  const fan = t.input.llm.isLocal ? FAN_ITEMS.local : FAN_ITEMS.cloud;
   // Only a question with an earlier turn can lean on it ("this project" is not a follow-up).
   const dependent = t.turns.length > 0 && isDependentFollowUp(question);
   if (dependent && asksReason(question)) {
     const items = priorItems(
       history,
       [...t.priorQuestions, question].join(" "),
-    ).slice(0, max);
+    ).slice(0, fan);
     if (items.length > 0) {
       return items.map((it, i) => ({
         id: `L${i + 1}`,
@@ -366,7 +389,7 @@ function buildCalls(
 ): Call[] | null {
   switch (strategy) {
     case "list_open":
-      return listCalls(t.input.question);
+      return listCalls(t.input.question, t.input.showAll === true);
     case "search":
       return [{ tool: "search_chunks", args: { query: leadQuery(lead) } }];
     case "rephrase": {

@@ -36,6 +36,8 @@ export interface ChatTurnInput {
   onProgress?: (p: ChatProgress) => void;
   /** "Answer anyway": no clarifying question for this turn (D20). */
   noClarify?: boolean;
+  /** "Show all": the open-items list is not capped for this turn (11.9.16). */
+  showAll?: boolean;
   /** Override of `SCORE_FLOOR` (the eval measures it). */
   scoreFloor?: number;
   /** Eval only: `false` runs the research loop with no reflect call (code order of strategies). */

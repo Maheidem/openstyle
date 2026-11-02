@@ -11,6 +11,7 @@ import {
   type Step,
   stepSchema,
 } from "./research.js";
+import { recordSchema, type WorkerRecord } from "./workers.js";
 
 // The graph state of one Ask turn (specs/meeting-chat-agent.md 11.9.4). It
 // holds raw data: routing keys, counters, leads, evidence and results. It
@@ -21,6 +22,9 @@ import {
 /** The nodes an edge can pick. */
 export const GO = [
   "plan",
+  "scout",
+  "fanout",
+  "join",
   "act",
   "observe",
   "reflect",
@@ -42,6 +46,15 @@ const mergeByLabel = (cur: Evidence[], next: Evidence[]): Evidence[] => {
   const byLabel = new Map(cur.map((e) => [e.label, e]));
   for (const e of next) byLabel.set(e.label, e);
   return [...byLabel.values()];
+};
+
+const mergeByKey = (
+  cur: WorkerRecord[],
+  next: WorkerRecord[],
+): WorkerRecord[] => {
+  const byKey = new Map(cur.map((r) => [r.key, r]));
+  for (const r of next) byKey.set(r.key, r);
+  return [...byKey.values()];
 };
 
 const append = (cur: Step[], next: Step[]): Step[] => [...cur, ...next];
@@ -74,6 +87,15 @@ export const ResearchState = new StateSchema({
     {
       inputSchema: z.array(stepSchema),
       reducer: append,
+    },
+  ),
+  // the workers (11.9.16): one record for each item or meeting
+  fan: z.enum(["items", "meetings"]).nullable().default(null),
+  records: new ReducedValue(
+    z.array(recordSchema).default(() => []),
+    {
+      inputSchema: z.array(recordSchema),
+      reducer: mergeByKey,
     },
   ),
   iteration: z.number().default(0),

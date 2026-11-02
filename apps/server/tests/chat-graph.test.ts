@@ -72,6 +72,7 @@ describe("the Ask graph", () => {
     expect(into).toEqual([
       "blocks",
       "cite_check",
+      "join",
       "not_found",
       "plan",
       "scope",

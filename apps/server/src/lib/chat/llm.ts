@@ -82,7 +82,7 @@ export interface ChatLlm {
   }): Promise<NativeCallResult>;
   /** Strict JSON stage (router intent, slots, answer). Throws GatewayError. */
   structured<T>(i: {
-    step: "chatRoute" | "chatSlots" | "chatAnswer" | "chatReflect";
+    step: "chatRoute" | "chatSlots" | "chatAnswer" | "chatReflect" | "chatDig";
     unitKey: string;
     schema: StepSchema<T>;
     system: string;
@@ -305,7 +305,12 @@ export async function createChatLlm(
     },
 
     async structured<T>(i: {
-      step: "chatRoute" | "chatSlots" | "chatAnswer" | "chatReflect";
+      step:
+        | "chatRoute"
+        | "chatSlots"
+        | "chatAnswer"
+        | "chatReflect"
+        | "chatDig";
       unitKey: string;
       schema: StepSchema<T>;
       system: string;
