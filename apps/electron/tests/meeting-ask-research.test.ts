@@ -103,7 +103,13 @@ test.afterAll(async () => {
   await fake?.stop();
 });
 
-for (const theme of ["Light", "Dark"] as const) {
+// CI runs the light theme only (the E2E step has a 10 minute limit). With an
+// evidence folder both themes run, and each one saves its screenshots.
+const THEMES = EVIDENCE_DIR
+  ? (["Light", "Dark"] as const)
+  : (["Light"] as const);
+
+for (const theme of THEMES) {
   test(`research question (${theme}): step text, a trail line and a cited answer from several meetings`, async () => {
     test.setTimeout(150_000);
     await setTheme(page, theme);
