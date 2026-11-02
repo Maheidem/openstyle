@@ -320,6 +320,8 @@
       "searchWiderDesc": "Quand Ask ne trouve rien, il peut proposer une recherche plus large. Il ne le fait jamais seul.",
       "searchWiderAsk": "Me demander",
       "searchWiderOff": "Ne pas proposer",
+      "clarify": "Poser des questions de précision",
+      "clarifyDesc": "Quand une question n'est pas claire, Ask peut d'abord poser une courte question avec des puces de réponse.",
       "nativeTools": "Utiliser les appels d'outils natifs du modèle local",
       "nativeToolsDesc": "S'applique au prochain démarrage du modèle.",
       "unmeasured": "non mesuré",
@@ -1366,6 +1368,18 @@
       },
       "nearest": "Sources les plus proches",
       "readOnly": "Ask ne peut pas encore modifier de données. Il lit seulement vos réunions.",
+      "clarify": {
+        "scope": "\"{{subject}}\" est dans plus d'un dossier. Lequel voulez-vous dire ?",
+        "scopeAny": "Cela est dans plus d'un dossier. Lequel voulez-vous dire ?",
+        "person": "De quel {{subject}} parlez-vous ?",
+        "personAny": "De quelle personne parlez-vous ?",
+        "intent": "Que voulez-vous savoir sur vos réunions ?",
+        "anyway": "Répondre quand même",
+        "summary": "Résumé",
+        "decisions": "Décisions",
+        "next_steps": "Prochaines étapes",
+        "open_questions": "Questions ouvertes"
+      },
       "trailTitle": "Comment j'ai trouvé cela",
       "trailNone": "Aucune source n'a été lue.",
       "trail": {

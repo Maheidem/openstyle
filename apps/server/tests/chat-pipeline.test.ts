@@ -33,6 +33,7 @@ const SETTINGS: ChatSettings = {
   k: 8,
   deadlineMs: 60_000,
   searchWider: true,
+  clarify: true,
   nativeTools: true,
   enabled: true,
 };

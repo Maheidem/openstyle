@@ -320,6 +320,8 @@
       "searchWiderDesc": "Se Ask non trova nulla, può offrire una ricerca più ampia. Non lo fa mai da solo.",
       "searchWiderAsk": "Chiedimelo",
       "searchWiderOff": "Non offrire",
+      "clarify": "Fai domande di chiarimento",
+      "clarifyDesc": "Quando una domanda non è chiara, Ask può prima fare una breve domanda con chip di risposta.",
       "nativeTools": "Usa le chiamate di strumenti native del modello locale",
       "nativeToolsDesc": "Si applica al prossimo avvio del modello.",
       "unmeasured": "non misurato",
@@ -1365,6 +1367,18 @@
       },
       "nearest": "Fonti più vicine",
       "readOnly": "Ask non può ancora modificare i dati. Legge solo le tue riunioni.",
+      "clarify": {
+        "scope": "\"{{subject}}\" è in più di una cartella. Quale intendi?",
+        "scopeAny": "Questo è in più di una cartella. Quale intendi?",
+        "person": "Quale {{subject}} intendi?",
+        "personAny": "Quale persona intendi?",
+        "intent": "Cosa vuoi sapere sulle tue riunioni?",
+        "anyway": "Rispondi comunque",
+        "summary": "Riepilogo",
+        "decisions": "Decisioni",
+        "next_steps": "Prossimi passi",
+        "open_questions": "Domande aperte"
+      },
       "trailTitle": "Come l'ho trovato",
       "trailNone": "Nessuna fonte è stata letta.",
       "trail": {

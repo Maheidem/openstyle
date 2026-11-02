@@ -371,6 +371,8 @@
       "searchWiderDesc": "When Ask finds nothing, it can offer to search a wider scope. It never does this alone.",
       "searchWiderAsk": "Ask me",
       "searchWiderOff": "Do not offer",
+      "clarify": "Ask clarifying questions",
+      "clarifyDesc": "When a question is unclear, Ask can first ask one short question with answer chips.",
       "nativeTools": "Use native tool calls of the local model",
       "nativeToolsDesc": "Applies at the next start of the model.",
       "unmeasured": "unmeasured",
@@ -1699,6 +1701,18 @@
       },
       "nearest": "Nearest sources",
       "readOnly": "Ask cannot change data yet. It can only read your meetings.",
+      "clarify": {
+        "scope": "\"{{subject}}\" is in more than one folder. Which one do you mean?",
+        "scopeAny": "This is in more than one folder. Which one do you mean?",
+        "person": "Which {{subject}} do you mean?",
+        "personAny": "Which person do you mean?",
+        "intent": "What do you want to know about your meetings?",
+        "anyway": "Answer anyway",
+        "summary": "Summary",
+        "decisions": "Decisions",
+        "next_steps": "Next steps",
+        "open_questions": "Open questions"
+      },
       "trailTitle": "How I found this",
       "trailNone": "No sources were read.",
       "trail": {

@@ -69,6 +69,7 @@ describe("readChatSettings", () => {
       k: L.k.default,
       deadlineMs: L.deadlineSeconds.default * 1000,
       searchWider: true,
+      clarify: true,
       nativeTools: true,
       enabled: false,
     });

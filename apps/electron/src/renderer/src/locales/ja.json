@@ -320,6 +320,8 @@
       "searchWiderDesc": "Ask が何も見つけられないとき、広い範囲での検索を提案できます。自動では行いません。",
       "searchWiderAsk": "確認する",
       "searchWiderOff": "提案しない",
+      "clarify": "確認の質問をする",
+      "clarifyDesc": "質問があいまいなとき、Ask は先に回答チップ付きの短い質問をすることがあります。",
       "nativeTools": "ローカルモデルのネイティブなツール呼び出しを使う",
       "nativeToolsDesc": "次回のモデル起動時に反映されます。",
       "unmeasured": "未計測",
@@ -1358,6 +1360,18 @@
       },
       "nearest": "最も近いソース",
       "readOnly": "Ask はまだデータを変更できません。会議を読むだけです。",
+      "clarify": {
+        "scope": "「{{subject}}」は複数のフォルダにあります。どれですか？",
+        "scopeAny": "これは複数のフォルダにあります。どれですか？",
+        "person": "どの{{subject}}さんですか？",
+        "personAny": "どの人ですか？",
+        "intent": "ミーティングについて何を知りたいですか？",
+        "anyway": "そのまま回答",
+        "summary": "要約",
+        "decisions": "決定事項",
+        "next_steps": "次のステップ",
+        "open_questions": "未解決の質問"
+      },
       "trailTitle": "調べた手順",
       "trailNone": "読み込んだソースはありません。",
       "trail": {
