@@ -656,3 +656,160 @@ test("barRow formats units", () => {
   assert.equal(who.threshold, ">= 70.0%");
   assert.equal(who.status, "FAIL");
 });
+
+// --- Broad questions (Ask synthesis) -----------------------------------------------
+
+import {
+  asksOverview,
+  asksSynthesis,
+} from "../../apps/server/src/lib/chat/plan.ts";
+import {
+  anchorOf,
+  buildBroad,
+  coverage,
+  isRepeat,
+  summarizeBroad,
+} from "./p1-broad.mts";
+
+test("broad set: 29 threads, 42 turns, EN and PT, three scopes, every key has facts", () => {
+  const qs = buildBroad(corpus);
+  assert.equal(qs.length, 29);
+  const turns = qs.flatMap((q) => q.turns);
+  assert.equal(turns.length, 42);
+  assert.deepEqual(
+    new Set(qs.map((q) => q.scope.kind)),
+    new Set(["meeting", "folder", "all"]),
+  );
+  assert.deepEqual(new Set(qs.map((q) => q.lang)), new Set(["en", "pt"]));
+  for (const t of turns) {
+    assert.ok(
+      t.groups.length >= 3,
+      `${t.text} has ${t.groups.length} must-mention facts`,
+    );
+    assert.ok(t.universe.length >= t.groups.length);
+  }
+  // Elaboration turns come after a first turn.
+  for (const q of qs) {
+    assert.equal(q.turns[0]?.elaboration, false);
+    for (const t of q.turns.slice(1)) assert.equal(t.elaboration, true);
+  }
+});
+
+test("broad set: code classifies every question as a broad question", () => {
+  for (const q of buildBroad(corpus))
+    for (const t of q.turns)
+      assert.ok(asksSynthesis(t.text) || asksOverview(t.text), t.text);
+});
+
+test("broad set: the gold questions are not broad questions", () => {
+  for (const q of gold.questions) {
+    assert.equal(asksSynthesis(q.text), false, q.text);
+    for (const h of q.history) assert.equal(asksSynthesis(h.q), false, h.q);
+  }
+});
+
+test("anchorOf takes the first number or date, else a full name", () => {
+  assert.deepEqual(anchorOf("Kestrel Hosting quoted 59,400 dollars."), [
+    "59400",
+  ]);
+  assert.deepEqual(anchorOf("The cutover is set for December 16."), [
+    "d:12-16",
+  ]);
+  assert.deepEqual(anchorOf("Priya Nandakumar propôs um piloto."), [
+    "Priya Nandakumar",
+  ]);
+  assert.equal(anchorOf("nothing here"), null);
+});
+
+test("coverage counts the groups named, in any language form", () => {
+  const groups = [["59400"], ["d:12-16"], ["billing", "cobrança"]];
+  assert.deepEqual(
+    coverage(
+      "Quote: $59,400. Cutover on 16 de dezembro. We start with cobrança.",
+      groups,
+    ),
+    { hit: 3, of: 3 },
+  );
+  assert.deepEqual(coverage("Nothing useful.", groups), { hit: 0, of: 3 });
+});
+
+test("isRepeat: the same answer, most sentences again, and a new answer", () => {
+  const a =
+    "The team met for Atlas. Kestrel Hosting quoted 52,200 dollars. The cutover is December 15.";
+  assert.equal(isRepeat(a, [a]), true);
+  assert.equal(
+    isRepeat(
+      "Kestrel Hosting quoted 52,200 dollars for the cluster. The cutover is December 15 for all.",
+      [a],
+    ),
+    true,
+  );
+  assert.equal(
+    isRepeat(
+      "Brightwater Networks confirmed the new links by December 20. Who signs the report is open.",
+      [a],
+    ),
+    false,
+  );
+  assert.equal(isRepeat(a, []), false);
+});
+
+test("summarizeBroad rates the rows", () => {
+  const row = (over: Record<string, unknown>) =>
+    ({
+      id: "b01",
+      turn: 1,
+      scope: "meeting",
+      lang: "en",
+      kind: "overview",
+      elaboration: false,
+      question: "q",
+      pass: true,
+      notFound: false,
+      err: null,
+      cov: 1,
+      fresh: 1,
+      citesShown: 3,
+      invalidCites: 0,
+      uncited: 0,
+      repeat: false,
+      lenOk: true,
+      blocks: 5,
+      bullets: 4,
+      chars: 400,
+      tool: null,
+      ms: 1,
+      answer: "a",
+      trace: "",
+      ...over,
+    }) as never;
+  const m = summarizeBroad([
+    row({}),
+    row({
+      elaboration: true,
+      pass: false,
+      notFound: true,
+      repeat: true,
+      invalidCites: 1,
+    }),
+  ]);
+  assert.equal(m.turns, 2);
+  assert.equal(m.pass, 0.5);
+  assert.equal(m.repeats, 1);
+  assert.equal(m.invalid_cites, 1);
+  assert.equal(m.not_found, 0.5);
+  assert.equal(m.fresh_rate, 0);
+});
+
+test("the broad bars are in the bar table", () => {
+  const ids = BARS.map((b) => b.id);
+  for (const id of [
+    "broad.cov",
+    "broad.cite_invalid",
+    "broad.repeats",
+    "broad.len_ok",
+    "broad.not_found",
+    "broad.fresh",
+  ])
+    assert.ok(ids.includes(id), id);
+});

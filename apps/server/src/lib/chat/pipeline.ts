@@ -17,15 +17,19 @@ import {
   visibleToolNames,
 } from "./choices.js";
 import {
+  type AnswerSentence,
   assignMissingCites,
   checkAnswer,
   citeFromSentences,
+  dropToldSentences,
   failureNote,
   pickCiteTimes,
   refineCiteTimes,
   repeatedEarlierAnswer,
+  sentencesOf,
   stripCiteMarkers,
   tidyCites,
+  withoutTold,
 } from "./cites.js";
 import {
   assembleAnswerInput,
@@ -37,9 +41,11 @@ import {
 import type { ChatLlm } from "./llm.js";
 import {
   asksDecisions,
+  asksElaboration,
   asksForCount,
   asksNextSteps,
   asksOverview,
+  asksSynthesis,
   defaultSlots,
   followUpQuery,
   isDependentFollowUp,
@@ -69,13 +75,17 @@ import {
   ROUTER_SCHEMA,
   ROUTER_SYSTEM,
   SLOT_MAX_TOKENS,
+  SYNTH_MAX_TOKENS,
+  SYNTH_SCHEMA,
+  SYNTH_SYSTEM,
 } from "./prompts.js";
 import { proposalFor } from "./proposals.js";
 import type { ChatSettings } from "./settings.js";
 import { nextWider } from "./store.js";
-import { countMentions, runTool } from "./tools.js";
+import { countMentions, runTool, summaryDigest } from "./tools.js";
 import {
   type Intent,
+  type Source,
   SourceMap,
   type ToolContext,
   type ToolResult,
@@ -264,7 +274,10 @@ export async function runChatTurn(input: ChatTurnInput): Promise<TurnResult> {
           scope,
           reason,
           nearest: nearest(),
-          wider: nextWider(db, scope, settings.searchWider),
+          wider:
+            reason === "nothing_new"
+              ? null
+              : nextWider(db, scope, settings.searchWider),
         },
       ],
       [],
@@ -301,6 +314,224 @@ export async function runChatTurn(input: ChatTurnInput): Promise<TurnResult> {
         ? "one project folder"
         : "all meetings";
 
+  // ---- Stage 4 (a closure: the lookup path and the synthesis path share it). ----
+  const toldTexts = input.history
+    .filter((m) => m.role === "assistant" && m.content.trim() !== "")
+    .slice(-3)
+    .map((m) => m.content);
+  const prevQuestion = turns.at(-1)?.question ?? null;
+  // A broad question after a broad answer, or "more details": the thread
+  // already told some facts. They are not told again (owner report 2026-11-01).
+  const excludeTold =
+    toldTexts.length > 0 &&
+    (asksElaboration(question) ||
+      (prevQuestion !== null && asksSynthesis(prevQuestion)));
+  const told = excludeTold ? toldTexts.flatMap(sentencesOf) : [];
+  const toldPrompt = excludeTold
+    ? toldTexts
+        .slice(-2)
+        .map((t) => (t.length > 600 ? `${t.slice(0, 600)}...` : t))
+        .join("\n")
+    : "";
+
+  const answerStage = async (a: {
+    ranked: Source[];
+    synth: boolean;
+    focus: string | null;
+  }): Promise<TurnResult> => {
+    const { ranked, synth } = a;
+    const allowed = new Set(
+      turnScope.kind === "meeting" && turnScope.id
+        ? [turnScope.id]
+        : ranked.map((s) => s.meetingId),
+    );
+    const knownNames = [
+      ...choices.people.map((p) => p.name),
+      ...choices.meetings.map((m) =>
+        m.text.replace(/\s*\(\d{4}-\d{2}-\d{2}\)$/, ""),
+      ),
+    ];
+    const system = synth ? SYNTH_SYSTEM : ANSWER_SYSTEM;
+    const maxOut = synth ? SYNTH_MAX_TOKENS : ANSWER_MAX_TOKENS;
+    let budget = settings.sourceBudget;
+    let repair: string | null = null;
+    const window = llm.contextWindow;
+    for (let attempt = 1; attempt <= 3; attempt++) {
+      const why = stopReason();
+      if (why) return notFound(why);
+      const assembled = assembleAnswerInput({
+        system,
+        question,
+        history: turns,
+        sources: ranked,
+        budgetTokens: budget,
+        windowTokens: window,
+        maxOutputTokens: maxOut,
+        fixedTokens:
+          estimatePromptTokens(system) + estimatePromptTokens(toldPrompt),
+      });
+      sourcesDropped = assembled.droppedLabels;
+      historyDropped = assembled.historyTurnsDropped;
+      sourceTokens = assembled.parts.sources;
+      const started = Date.now();
+      let parsed: AnswerSentence[];
+      try {
+        const user = answerUser({
+          history: assembled.historyText,
+          sources: assembled.sourcesText,
+          question: a.focus ? `${question}\nFOCUS: ${a.focus}` : question,
+          repair,
+          told: toldPrompt,
+        });
+        const messages = [{ role: "user" as const, content: user }];
+        if (synth) {
+          const r = await llm.structured({
+            step: "chatAnswer",
+            unitKey: attempt === 1 ? "answer" : `answer/retry${attempt - 1}`,
+            schema: SYNTH_SCHEMA,
+            system,
+            messages,
+            maxOutputTokens: maxOut,
+          });
+          parsed = [
+            ...r.object.lead.map((x) => ({ ...x })),
+            ...r.object.bullets.map((x) => ({ ...x, bullet: true })),
+          ];
+        } else {
+          const r = await llm.structured({
+            step: "chatAnswer",
+            unitKey: attempt === 1 ? "answer" : `answer/retry${attempt - 1}`,
+            schema: ANSWER_SCHEMA,
+            system,
+            messages,
+            maxOutputTokens: maxOut,
+          });
+          parsed = [
+            ...r.object.sentences.map((x) => ({ ...x })),
+            ...(r.object.bullets ?? []).map((x) => ({ ...x, bullet: true })),
+          ];
+        }
+        step("answer", `attempt ${attempt}`, started);
+      } catch (e) {
+        const kind = gatewayKind(e);
+        step("answer", `attempt ${attempt}`, started, null, kind || "error");
+        if (signal.aborted) {
+          const why = stopReason();
+          if (why) return notFound(why);
+        }
+        // A cut answer or an overflow: one retry with a smaller source budget (spec 2.5b).
+        if ((kind === "length" || kind === "context_exceeded") && attempt < 3) {
+          budget = halveBudget(budget);
+          continue;
+        }
+        if (kind === "length" || kind === "context_exceeded") {
+          return notFound("model_error");
+        }
+        throw e;
+      }
+      parsed = parsed.filter((x) => x.text.trim() !== "");
+      if (parsed.length === 0) {
+        return notFound(excludeTold && synth ? "nothing_new" : "no_sources");
+      }
+      const started5 = Date.now();
+      for (const sentence of parsed) {
+        sentence.text = stripCiteMarkers(sentence.text);
+      }
+      assignMissingCites(parsed, sources);
+      const check = checkAnswer({
+        sentences: parsed,
+        sources,
+        question,
+        allowedMeetingIds: turnScope.kind === "all" ? "all" : allowed,
+        knownNames,
+        // A broad answer drops a sentence with a fact that no source holds
+        // (last attempt); a lookup answer is retried and then not found.
+        dropUnsupported: synth && attempt >= 2,
+      });
+      step(
+        "cite_check",
+        check.ok ? "pass" : "fail",
+        started5,
+        check.sentences.length,
+        check.ok ? null : failureNote(check),
+      );
+      if (check.ok) {
+        // Facts the thread told already stay out (a follow-up asks for more).
+        if (told.length > 0) {
+          const fresh = dropToldSentences(check.sentences, told);
+          if (fresh.length < check.sentences.length) {
+            step(
+              "answer",
+              `told facts removed: ${check.sentences.length - fresh.length}`,
+              started5,
+            );
+          }
+          check.sentences = fresh;
+          if (fresh.length === 0) {
+            if (attempt >= 2) return notFound("nothing_new");
+            repair =
+              "Your answer repeats facts that the thread told already. Give other facts from the sources. If the sources hold no other fact, return empty lists.";
+            continue;
+          }
+        }
+        // A new question gets a new answer. The same text as an earlier answer to
+        // another question is a repeat (P1.2): one retry, then not found.
+        const repeated = repeatedEarlierAnswer(
+          question,
+          check.sentences.map((s) => s.text).join(" "),
+          turns,
+        );
+        if (repeated !== null) {
+          step(
+            "answer",
+            attempt === 1 ? "repeat: retry" : "repeat: not found",
+            started5,
+          );
+          if (attempt >= 2)
+            return notFound(excludeTold ? "nothing_new" : "no_sources");
+          repair =
+            "Your answer repeats an earlier answer, but this question is new. Answer only the new question. If no source shows it, return an empty sentences list.";
+          continue;
+        }
+        tidyCites(check.sentences, sources);
+        refineCiteTimes(check.sentences, sources);
+        try {
+          await pickCiteTimes(
+            check.sentences,
+            sources,
+            followUpQuery(question, priorTurns),
+            async (q, texts) => {
+              try {
+                return await rerankPairs(q, texts, signal);
+              } catch (e) {
+                if (signal.aborted) throw e;
+                return null;
+              }
+            },
+          );
+        } catch (e) {
+          // A client abort or the deadline during the pick ends the turn as before.
+          if (signal.aborted) {
+            const why = stopReason();
+            if (why) return notFound(why);
+          }
+          throw e;
+        }
+        const cites = citeFromSentences(check.sentences, sources);
+        const blocks: ChatBlock[] = check.sentences.map((s) => ({
+          kind: "text",
+          text: s.text,
+          cites: s.cites,
+          ...(s.bullet ? { bullet: true } : {}),
+        }));
+        return finish(blocks, cites, answerContent(check.sentences));
+      }
+      repair = failureNote(check);
+      if (attempt >= 2) break;
+    }
+    return notFound("cite_check");
+  };
+
   // ---- Stage 1+2: the first tool call (native), or the fallback router. ----
   const write = looksLikeWrite(question);
   const plain =
@@ -328,6 +559,142 @@ export async function runChatTurn(input: ChatTurnInput): Promise<TurnResult> {
             ? "decisions"
             : null
       : null;
+  // ---- Broad questions: overview, details, history, story, onboarding. ----
+  // Code decides (owner decision 2026-11-01). The sources are the summaries
+  // plus the top chunks; the answer is a lead paragraph plus cited bullets.
+  const lastMessage = input.history.at(-1);
+  const prevNotFound =
+    lastMessage?.role === "assistant" &&
+    lastMessage.blocks.some((b) => b.kind === "not_found");
+  const synthesis =
+    !write &&
+    (asksSynthesis(question) ||
+      asksOverview(question) ||
+      // "Really?", "Nothing?" after a not found: the user wants what the sources do say.
+      (prevNotFound &&
+        isDependentFollowUp(question) &&
+        wordsIn(question) <= 3));
+
+  const runSynthesis = async (): Promise<TurnResult> => {
+    const started = Date.now();
+    router = "default";
+    intent = "lookup";
+    step("route", "rules:synthesis", started);
+    const seenKey = (
+      meetingId: string,
+      kind: string,
+      itemId: string | null,
+      startMs: number | null,
+      text: string,
+    ) =>
+      `${meetingId}|${kind}|${itemId ?? ""}|${startMs ?? ""}|${text.slice(0, 60)}`;
+    const seen = new Set<string>();
+    const seenMeetings = new Set<string>();
+    for (const m of input.history) {
+      if (m.role !== "assistant") continue;
+      for (const c of m.cites) {
+        seen.add(seenKey(c.meeting_id, c.kind, c.item_id, c.start_ms, c.text));
+        seenMeetings.add(c.meeting_id);
+      }
+    }
+    const more = excludeTold;
+    const query =
+      more || isDependentFollowUp(question)
+        ? followUpQuery(question, priorTurns)
+        : question.slice(0, 200);
+    const runCall = async (call: Call): Promise<ToolResult | null> => {
+      const t = Date.now();
+      try {
+        const r = await runTool(ctx, call.tool as never, call.args);
+        toolCalls.push({ tool: call.tool, args: call.args, rows: r.rows });
+        step("tool", call.tool, t, r.rows, r.degraded);
+        return r;
+      } catch (e) {
+        toolCalls.push({ tool: call.tool, args: call.args, rows: 0 });
+        step("tool", call.tool, t, 0, (e as Error).message.slice(0, 120));
+        return null;
+      }
+    };
+    const digest = (ids?: string[]) => {
+      const t = Date.now();
+      const r = summaryDigest(ctx, {
+        ...(ids ? { meetingIds: ids } : {}),
+        budgetTokens: Math.floor(settings.sourceBudget * 0.6),
+        ...(more ? { told: seenMeetings } : {}),
+      });
+      toolCalls.push({
+        tool: r.tool,
+        args: { meetings: ids?.length ?? "scope" },
+        rows: r.rows,
+      });
+      step("tool", r.tool, t, r.rows);
+    };
+    if (turnScope.kind === "meeting" && turnScope.id) {
+      await runCall({
+        tool: "get_meeting_summary",
+        args: { meeting_id: turnScope.id },
+      });
+      await runCall({
+        tool: "search_chunks",
+        args: { query, k: more ? 14 : 8 },
+      });
+    } else if (turnScope.kind === "folder") {
+      digest();
+      await runCall({
+        tool: "search_chunks",
+        args: { query, k: more ? 8 : 4 },
+      });
+    } else {
+      await runCall({
+        tool: "search_chunks",
+        args: { query, k: more ? 12 : 8 },
+      });
+      const ids = [
+        ...new Set(
+          sources
+            .all()
+            .map((x) => x.meetingId)
+            .filter(Boolean),
+        ),
+      ].slice(0, 6);
+      if (ids.length > 0) digest(ids);
+    }
+    const why = stopReason();
+    if (why) return notFound(why);
+    // "More details": the facts the thread told stay out of the sources (the
+    // model cannot tell new from told on its own).
+    if (more && told.length > 0) {
+      const drop: string[] = [];
+      for (const x of sources.all()) {
+        const t = withoutTold(x.text, told);
+        if (t === "") drop.push(x.label);
+        else x.text = t;
+      }
+      sources.remove(drop);
+    }
+    const all = sources.all().filter((x) => x.kind !== "folder");
+    if (all.length === 0) return notFound("no_sources");
+    const isSeen = (x: Source) =>
+      seen.has(seenKey(x.meetingId, x.kind, x.itemId, x.startMs, x.text));
+    const spoken = (x: Source) =>
+      x.kind === "transcript" || x.kind === "window";
+    const ranked = [
+      ...all.filter((x) => !isSeen(x) && !spoken(x)),
+      ...all.filter((x) => !isSeen(x) && spoken(x)),
+      ...all.filter((x) => isSeen(x) && !spoken(x)),
+      ...all.filter((x) => isSeen(x) && spoken(x)),
+    ];
+    return answerStage({
+      ranked,
+      synth: true,
+      focus:
+        turnScope.kind === "meeting"
+          ? null
+          : "tell it in date order; write one bullet for each of the most important meetings, with its date",
+    });
+  };
+  if (synthesis) return runSynthesis();
+
   if (summaryKind && turnScope.id) {
     const started = Date.now();
     router = "default";
@@ -677,6 +1044,19 @@ export async function runChatTurn(input: ChatTurnInput): Promise<TurnResult> {
 
   // ---- Block answers: list, count, status. No model text (spec 2.2). ----
   const block = blockResult();
+  // A status without saved text has no bullets (owner report 2026-11-01). The
+  // summaries of the folder answer instead; the counts stay as the last block.
+  if (
+    block &&
+    block.tool === "folder_status" &&
+    block.blocks.every((b) => b.kind === "status" && b.bullets.length === 0)
+  ) {
+    const res = await runSynthesis();
+    if (res.blocks.some((b) => b.kind === "text")) {
+      return { ...res, blocks: [...res.blocks, ...block.blocks] };
+    }
+    return finish(block.blocks, [], "");
+  }
   if (block && (BLOCK_TOOLS.has(first.tool) || !textMaterial())) {
     let blocks = block.blocks;
     if (asksForCount(question)) {
@@ -773,159 +1153,29 @@ export async function runChatTurn(input: ChatTurnInput): Promise<TurnResult> {
     .all()
     .filter((s) => s.kind !== "folder" || block === null);
   if (ranked.length === 0) return notFound("no_sources");
+  return answerStage({
+    ranked,
+    synth: summaryKind !== null,
+    focus:
+      summaryKind === "decisions"
+        ? "the decisions of the meeting: one bullet for each decision"
+        : summaryKind === "steps"
+          ? "the next steps of the meeting: one bullet for each action item, with its owner and due date"
+          : null,
+  });
+}
 
-  const allowed = new Set(
-    turnScope.kind === "meeting" && turnScope.id
-      ? [turnScope.id]
-      : ranked.map((s) => s.meetingId),
-  );
-  const knownNames = [
-    ...choices.people.map((p) => p.name),
-    ...choices.meetings.map((m) =>
-      m.text.replace(/\s*\(\d{4}-\d{2}-\d{2}\)$/, ""),
-    ),
-  ];
+const wordsIn = (q: string): number =>
+  q
+    .trim()
+    .split(/[\s,;:.?!]+/u)
+    .filter(Boolean).length;
 
-  let budget = settings.sourceBudget;
-  let repair: string | null = null;
-  const window = llm.contextWindow;
-  for (let attempt = 1; attempt <= 3; attempt++) {
-    const why = stopReason();
-    if (why) return notFound(why);
-    const assembled = assembleAnswerInput({
-      system: ANSWER_SYSTEM,
-      question,
-      history: turns,
-      sources: ranked,
-      budgetTokens: budget,
-      windowTokens: window,
-      maxOutputTokens: ANSWER_MAX_TOKENS,
-      fixedTokens: estimatePromptTokens(ANSWER_SYSTEM),
-    });
-    sourcesDropped = assembled.droppedLabels;
-    historyDropped = assembled.historyTurnsDropped;
-    sourceTokens = assembled.parts.sources;
-    const started = Date.now();
-    let parsed: { sentences: { text: string; cites: string[] }[] };
-    try {
-      const r = await llm.structured({
-        step: "chatAnswer",
-        unitKey: attempt === 1 ? "answer" : `answer/retry${attempt - 1}`,
-        schema: ANSWER_SCHEMA,
-        system: ANSWER_SYSTEM,
-        messages: [
-          {
-            role: "user",
-            content: answerUser({
-              history: assembled.historyText,
-              sources: assembled.sourcesText,
-              question,
-              repair,
-            }),
-          },
-        ],
-        maxOutputTokens: ANSWER_MAX_TOKENS,
-      });
-      parsed = r.object;
-      step("answer", `attempt ${attempt}`, started);
-    } catch (e) {
-      const kind = gatewayKind(e);
-      step("answer", `attempt ${attempt}`, started, null, kind || "error");
-      if (signal.aborted) {
-        const why = stopReason();
-        if (why) return notFound(why);
-      }
-      // A cut answer or an overflow: one retry with a smaller source budget (spec 2.5b).
-      if ((kind === "length" || kind === "context_exceeded") && attempt < 3) {
-        budget = halveBudget(budget);
-        continue;
-      }
-      if (kind === "length" || kind === "context_exceeded") {
-        return notFound("model_error");
-      }
-      throw e;
-    }
-    if (parsed.sentences.length === 0) {
-      return notFound("no_sources");
-    }
-    const started5 = Date.now();
-    for (const sentence of parsed.sentences) {
-      sentence.text = stripCiteMarkers(sentence.text);
-    }
-    assignMissingCites(parsed.sentences, sources);
-    const check = checkAnswer({
-      sentences: parsed.sentences,
-      sources,
-      question,
-      allowedMeetingIds: turnScope.kind === "all" ? "all" : allowed,
-      knownNames,
-    });
-    step(
-      "cite_check",
-      check.ok ? "pass" : "fail",
-      started5,
-      check.sentences.length,
-      check.ok ? null : failureNote(check),
-    );
-    if (check.ok) {
-      // A new question gets a new answer. The same text as an earlier answer to
-      // another question is a repeat (P1.2): one retry, then not found.
-      const repeated = repeatedEarlierAnswer(
-        question,
-        check.sentences.map((s) => s.text).join(" "),
-        turns,
-      );
-      if (repeated !== null) {
-        step(
-          "answer",
-          attempt === 1 ? "repeat: retry" : "repeat: not found",
-          started5,
-        );
-        if (attempt >= 2) return notFound("no_sources");
-        repair =
-          "Your answer repeats an earlier answer, but this question is new. Answer only the new question. If no source shows it, return an empty sentences list.";
-        continue;
-      }
-      tidyCites(check.sentences, sources);
-      refineCiteTimes(check.sentences, sources);
-      try {
-        await pickCiteTimes(
-          check.sentences,
-          sources,
-          followUpQuery(question, priorTurns),
-          async (q, texts) => {
-            try {
-              return await rerankPairs(q, texts, signal);
-            } catch (e) {
-              if (signal.aborted) throw e;
-              return null;
-            }
-          },
-        );
-      } catch (e) {
-        // A client abort or the deadline during the pick ends the turn as before.
-        if (signal.aborted) {
-          const why = stopReason();
-          if (why) return notFound(why);
-        }
-        throw e;
-      }
-      const cites = citeFromSentences(check.sentences, sources);
-      const blocks: ChatBlock[] = check.sentences.map((s) => ({
-        kind: "text",
-        text: s.text,
-        cites: s.cites,
-      }));
-      return finish(
-        blocks,
-        cites,
-        check.sentences.map((s) => s.text).join(" "),
-      );
-    }
-    repair = failureNote(check);
-    if (attempt >= 2) break;
-  }
-  return notFound("cite_check");
+/** The plain text of an answer: the lead sentences, then one line for each bullet. */
+function answerContent(sentences: readonly AnswerSentence[]): string {
+  const lead = sentences.filter((x) => !x.bullet).map((x) => x.text);
+  const bullets = sentences.filter((x) => x.bullet).map((x) => `- ${x.text}`);
+  return [lead.join(" "), ...bullets].filter(Boolean).join("\n");
 }
 
 /** The closed-choice lists for the native system text. */

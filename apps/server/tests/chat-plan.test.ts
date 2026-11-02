@@ -4,9 +4,11 @@ import { describe, expect, it } from "vitest";
 import type { Choices } from "../src/lib/chat/choices.js";
 import {
   asksDecisions,
+  asksElaboration,
   asksForCount,
   asksNextSteps,
   asksOverview,
+  asksSynthesis,
   defaultSlots,
   followUpQuery,
   isDependentFollowUp,
@@ -603,5 +605,66 @@ describe("refineIntent (P1.1)", () => {
       "who_said",
     );
     expect(refineIntent("Show all decisions", "review", T)).toBe("review");
+  });
+});
+
+describe("broad questions", () => {
+  const BROAD = [
+    "Tell me the story of this project so far. A good and complete onboarding",
+    "Cant you tell me anything?",
+    "gimme details",
+    "I need more details about the whole project",
+    "but how did this project begin? what is the history?",
+    "Tell me everything that happened in this meeting.",
+    "Catch me up on this project.",
+    "What is this project about? Give me the big picture.",
+    "Give me an overview of the Atlas project.",
+    "me conta a história desse projeto",
+    "como esse projeto começou?",
+    "me dá mais detalhes",
+    "Quero um onboarding completo desse projeto",
+    "Me dá uma visão geral do projeto.",
+    "O que já aconteceu nesse projeto?",
+    "Cuéntame la historia del proyecto",
+    "Dame más detalles",
+    "Erzähl mir die Geschichte des Projekts",
+    "Gib mir mehr Details",
+    "Raconte-moi l'histoire du projet",
+    "Donne-moi plus de détails",
+    "Raccontami la storia del progetto",
+    "Dammi più dettagli",
+    "プロジェクトの経緯を教えて",
+    "もっと詳しく教えて",
+  ];
+  const NARROW = [
+    "What did we decide?",
+    "What did we decide on the database?",
+    "Who proposed the pilot?",
+    "When is the launch?",
+    "Why did we pick Postgres?",
+    "List the open tasks of Ana.",
+    "How many meetings did we have?",
+    "What is the budget for the storage cluster?",
+    "Qual foi o valor da cotação?",
+    "Mark the task as done.",
+  ];
+  it.each(BROAD)("%s is a synthesis question", (q) => {
+    expect(asksSynthesis(q) || asksOverview(q)).toBe(true);
+  });
+  it.each(NARROW)("%s stays a lookup", (q) => {
+    expect(asksSynthesis(q)).toBe(false);
+  });
+  it("elaboration is a subset of synthesis", () => {
+    expect(asksElaboration("gimme details")).toBe(true);
+    expect(asksElaboration("Tell me more.")).toBe(true);
+    expect(asksElaboration("Conte mais.")).toBe(true);
+    expect(asksElaboration("Tell me the story of the project")).toBe(false);
+    expect(asksSynthesis("Tell me more.")).toBe(true);
+  });
+  it("the 'What did the team decide?' wording reads the summary decisions", () => {
+    expect(asksDecisions("What did the team decide?")).toBe(true);
+    expect(asksDecisions("What did the team decide about hosting?")).toBe(
+      false,
+    );
   });
 });

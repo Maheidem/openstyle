@@ -258,6 +258,57 @@ function Block({
   }
 }
 
+type TextBlock = Extract<ChatBlock, { kind: "text" }>;
+
+/** The blocks of an answer in order. A run of bullet blocks is one list. */
+type Group =
+  | { kind: "block"; block: ChatBlock }
+  | { kind: "bullets"; blocks: TextBlock[] };
+
+function groupBlocks(blocks: readonly ChatBlock[]): Group[] {
+  const out: Group[] = [];
+  for (const block of blocks) {
+    const last = out.at(-1);
+    if (block.kind === "text" && block.bullet) {
+      if (last?.kind === "bullets") last.blocks.push(block);
+      else out.push({ kind: "bullets", blocks: [block] });
+    } else {
+      out.push({ kind: "block", block });
+    }
+  }
+  return out;
+}
+
+/** The bullets of a lead-plus-bullets answer, each with its own cites. */
+function BulletList({
+  blocks,
+  cites,
+  actions,
+}: {
+  blocks: TextBlock[];
+  cites: ChatCite[];
+  actions: CiteActions;
+}): React.JSX.Element {
+  return (
+    <ul
+      className="m-0 flex list-disc flex-col gap-2 pl-5"
+      data-testid="meeting-ask-bullets"
+    >
+      {blocks.map((b, i) => (
+        <li
+          // Blocks have no id. The list does not change after the answer.
+          key={i}
+          className="break-words"
+          data-testid="meeting-ask-block-text"
+        >
+          <span className="whitespace-pre-wrap">{b.text}</span>
+          <CiteRow cites={citesForLabels(b.cites, cites)} actions={actions} />
+        </li>
+      ))}
+    </ul>
+  );
+}
+
 /** The answer of the assistant: its blocks, then the step trail. */
 export function AskAnswer({
   message,
@@ -278,16 +329,25 @@ export function AskAnswer({
   const dropped = message.trace?.sources_dropped.length ?? 0;
   return (
     <div className="flex flex-col gap-2" data-testid="meeting-ask-answer">
-      {blocks.map((block, i) => (
-        <Block
-          // Blocks have no id. The list does not change after the answer.
-          key={i}
-          block={block}
-          cites={message.cites}
-          actions={actions}
-          {...(onWiden ? { onWiden } : {})}
-        />
-      ))}
+      {groupBlocks(blocks).map((g, i) =>
+        g.kind === "bullets" ? (
+          <BulletList
+            // Groups have no id. The list does not change after the answer.
+            key={i}
+            blocks={g.blocks}
+            cites={message.cites}
+            actions={actions}
+          />
+        ) : (
+          <Block
+            key={i}
+            block={g.block}
+            cites={message.cites}
+            actions={actions}
+            {...(onWiden ? { onWiden } : {})}
+          />
+        ),
+      )}
       {scopeNote && (
         <p
           className="text-muted-foreground m-0 text-[11.5px]"

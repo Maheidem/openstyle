@@ -399,7 +399,13 @@ export function readActionItems(
 export interface AskRequest {
   n: number;
   /** "native" (has tools), a response_format schema name, or "other". */
-  kind: "native" | "chat_router" | "chat_slots" | "chat_answer" | "other";
+  kind:
+    | "native"
+    | "chat_router"
+    | "chat_slots"
+    | "chat_answer"
+    | "chat_synthesis"
+    | "other";
   system: string;
   /** The text of the last user message. */
   user: string;
@@ -632,7 +638,8 @@ export class FakeAskLlm {
         ? "native"
         : schema === "chat_router" ||
             schema === "chat_slots" ||
-            schema === "chat_answer"
+            schema === "chat_answer" ||
+            schema === "chat_synthesis"
           ? schema
           : "other";
     const record: AskRequest = {
@@ -762,6 +769,40 @@ export class FakeAskLlm {
         JSON.stringify({
           found: true,
           sentences: [{ text: sentence, cites: [best.label] }],
+        }),
+      );
+      return;
+    }
+    if (kind === "chat_synthesis") {
+      // A broad question: a lead sentence from the first source and one bullet
+      // for each of the next three sources, each cited with its own label.
+      record.answered = "chat_synthesis";
+      const sources = parseSources(user);
+      const clean = (t: string) => {
+        const body = t.replace(
+          /^(Overview|Decision|Key points|Action item|Open question): /,
+          "",
+        );
+        return body.length > 240
+          ? body.slice(0, 240).replace(/\s+\S*$/, "")
+          : body;
+      };
+      const [first, ...rest] = sources;
+      if (!first) {
+        this.text(res, JSON.stringify({ lead: [], bullets: [] }));
+        return;
+      }
+      const picks = rest.slice(0, 3);
+      // The schema asks for 2 bullets at least: repeat the first source when needed.
+      while (picks.length < 2) picks.push(first);
+      this.text(
+        res,
+        JSON.stringify({
+          lead: [{ text: clean(first.text), cites: [first.label] }],
+          bullets: picks.map((p) => ({
+            text: clean(p.text),
+            cites: [p.label],
+          })),
         }),
       );
       return;

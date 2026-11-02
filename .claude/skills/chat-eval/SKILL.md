@@ -129,6 +129,22 @@ Spec 11.6.6. `pnpm chat-eval p1 --set p2 --only router,e2e,threads,widen,bars` r
 
 Run it on the desktop first (`CHAT_EVAL_BASE_URL`), then confirm on the Mac with the GPU lock. The default parts of `--set p2` include `widen`; `--only widen` runs it on the gold set too.
 
+### Broad questions (Ask synthesis, `--only broad`)
+
+`pnpm chat-eval p1 --only broad,bars [--no-mlflow]` runs 29 broad threads (42 turns) from `buildBroad` in `p1-broad.mts`: meeting, folder and Everything scopes, EN and PT, and 8 threads with an elaboration follow-up ("gimme details", "Tell me more", "How did it start?"). It is not in the default parts and not in the gold hash. Keys are made by code from the fictional summaries and facts. A turn passes when:
+
+- **Coverage:** a first answer names at least 50% (meeting) or 40% (folder, Everything) of its must-mention facts (key points, decisions, one fact per meeting).
+- **Cites:** no invalid cite and no text block without a cite (`checkCites`).
+- **Repeat:** the answer is not a repeat of an earlier answer in the thread (whole text 0.8, or more than half of the sentences at 0.6).
+- **Length:** 2 to 9 text blocks and 100 to 1800 characters (an elaboration: 1 to 9 blocks, 40 characters up).
+- **Elaboration:** gives an answer. After the second answer `nothing_new` is also right.
+
+`CHAT_EVAL_IDS=b01,b09` picks single threads. The rows hold the pipeline steps (`trace`) for debugging. Bars: `broad.*` in `BARS` (coverage 50%, invalid cites 0, repeats 0, length 90%, not found 10%, elaboration with content 70%).
+
+### Real threads (private, `pnpm chat-eval real`)
+
+`pnpm chat-eval real --db <copy.db> --threads <id prefix>,<id prefix> --label after` copies a read-only copy of the owner's DB to `/tmp/chatp0/run/real`, replays the QUESTIONS of the threads through the real pipeline with the default model of that DB (new answers go back as history), deletes the scratch copy, and prints numbers only (sentences, cites, repeat, not found). The answer texts go only to `~/Library/Application Support/Openstyle-eval/chat-real/<label>-<time>.json` (before and after; "before" is what the DB stores). Never commit those texts, never log them to MLflow. Needs the GPU lock and the worker env of the P1 section.
+
 ### Multi-turn threads (P1.2, `--only threads`)
 
 `pnpm chat-eval p1 --only threads --no-mlflow` runs 12 threads (`buildThreads` in `gold.mts`, `p1-threads.mts`) of 4 to 5 turns in one fictional meeting: a fact, "why?", "who said that?", a topic switch and "what was this meeting about?". The REAL answer of each turn is the history of the next turn (the gold set uses gold answers). The threads are not in the gold set, so the gold hash is unchanged. Keys: text keys for fact, switch, speaker and topic (the topic key accepts English and Portuguese words). "Why?" has no key (the corpus has no reasons): it passes when it is not a repeat. A repeat is an answer with a word overlap (Jaccard) of 0.8 or more with an earlier answer to another question. The row table lists tool, cites and answer for each turn. Use it to see a follow-up that searches with a stale query.

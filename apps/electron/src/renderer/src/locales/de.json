@@ -1361,6 +1361,7 @@
         "deadline": "Das dauerte zu lange, darum habe ich abgebrochen.",
         "call_cap": "Ich habe die Suchgrenze für diese Frage erreicht.",
         "model_error": "Das Modell konnte nicht antworten.",
+        "nothing_new": "Dazu habe ich in den Quellen keine weiteren Fakten.",
         "noSourcesAll": "Dazu habe ich in keinem Meeting etwas gefunden."
       },
       "nearest": "Nächste Quellen",

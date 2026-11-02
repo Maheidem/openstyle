@@ -86,6 +86,8 @@ export const chatBlockSchema = z.discriminatedUnion("kind", [
     text: z.string(),
     /** Labels (S1..) of the cites of this paragraph. They match `message.cites`. */
     cites: z.array(z.string()),
+    /** A bullet of a lead-plus-bullets answer. Absent for a plain paragraph. */
+    bullet: z.boolean().optional(),
   }),
   z.object({
     kind: z.literal("list"),
@@ -120,6 +122,8 @@ export const chatBlockSchema = z.discriminatedUnion("kind", [
       "deadline",
       "call_cap",
       "model_error",
+      /** A broad question asked again: the sources hold no fact that the thread did not tell. */
+      "nothing_new",
     ]),
     /** The nearest sources, shown as links. */
     nearest: z.array(chatCiteSchema),

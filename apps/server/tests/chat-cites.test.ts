@@ -5,12 +5,15 @@ import {
   assignMissingCites,
   checkAnswer,
   citeFromSentences,
+  dropToldSentences,
   extractFacts,
   failureNote,
   normalizeText,
   pickCiteTimes,
   repeatedEarlierAnswer,
+  sentencesOf,
   stripCiteMarkers,
+  withoutTold,
 } from "../src/lib/chat/cites.js";
 import { SourceMap } from "../src/lib/chat/types.js";
 
@@ -624,5 +627,106 @@ describe("repeated answer guard (P1.2)", () => {
       repeatedEarlierAnswer("Why?", "Postgres has better JSON support.", turns),
     ).toBeNull();
     expect(repeatedEarlierAnswer("Why?", "Postgres.", turns)).toBeNull();
+  });
+});
+
+describe("broad answers: bullets, dates, told facts", () => {
+  it("a day/month date counts for the source in either order", () => {
+    const f = extractFacts("Em 04/08/2026 a equipe se reuniu.", []);
+    const d = f.find((x) => x.kind === "date");
+    expect(d?.norm).toBe("d:08-04");
+    expect(d?.alt).toBe("d:04-08");
+    expect(f.some((x) => x.kind === "number" && x.norm === "2026")).toBe(true);
+    const map = new SourceMap();
+    map.add({
+      kind: "summary",
+      meetingId: "m1",
+      title: "Alpha",
+      startedAt: Date.UTC(2026, 7, 4),
+      startMs: null,
+      endMs: null,
+      itemId: null,
+      text: "Kickoff of the project.",
+    });
+    const check = checkAnswer({
+      sentences: [{ text: "Em 04/08/2026 foi o kickoff.", cites: ["S1"] }],
+      sources: map,
+      question: "historia",
+      allowedMeetingIds: "all",
+      knownNames: [],
+    });
+    expect(check.ok).toBe(true);
+  });
+
+  it("the bullet flag stays, and dropUnsupported removes only the sentence with the unsupported fact", () => {
+    const map = new SourceMap();
+    map.add({
+      kind: "summary",
+      meetingId: "m1",
+      title: "Alpha",
+      startedAt: D,
+      startMs: null,
+      endMs: null,
+      itemId: null,
+      text: "The quote is 52,200 dollars.",
+    });
+    const sentences = [
+      { text: "The team met.", cites: ["S1"] },
+      { text: "The quote is 52,200 dollars.", cites: ["S1"], bullet: true },
+      { text: "The quote is 99,999 dollars.", cites: ["S1"], bullet: true },
+    ];
+    const input = {
+      sentences,
+      sources: map,
+      question: "q",
+      allowedMeetingIds: "all" as const,
+      knownNames: [],
+    };
+    expect(checkAnswer(input).ok).toBe(false);
+    const dropped = checkAnswer({ ...input, dropUnsupported: true });
+    expect(dropped.ok).toBe(true);
+    expect(dropped.sentences.map((s) => [s.text, s.bullet === true])).toEqual([
+      ["The team met.", false],
+      ["The quote is 52,200 dollars.", true],
+    ]);
+  });
+
+  it("splits earlier answers into sentences and drops a told sentence", () => {
+    const told = sentencesOf(
+      "The team met for Atlas.\n- Kestrel Hosting quoted 52,200 dollars.\n- The cutover is December 15.",
+    );
+    expect(told).toEqual([
+      "The team met for Atlas.",
+      "Kestrel Hosting quoted 52,200 dollars.",
+      "The cutover is December 15.",
+    ]);
+    const fresh = dropToldSentences(
+      [
+        { text: "Kestrel Hosting quoted 52,200 dollars in total." },
+        { text: "Who signs the final report is open." },
+        { text: "Who signs the final report is still open." },
+      ],
+      told,
+    );
+    expect(fresh.map((x) => x.text)).toEqual([
+      "Who signs the final report is open.",
+    ]);
+  });
+
+  it("withoutTold removes the told clauses and keeps the label", () => {
+    const told = [
+      "Kestrel Hosting quoted 52,200 dollars.",
+      "The cutover is set for December 15.",
+    ];
+    expect(
+      withoutTold(
+        "Key points: Kestrel Hosting quoted 52,200 dollars for the cluster; The code freeze is December 17; The cutover is December 15",
+        told,
+      ),
+    ).toBe("Key points: The code freeze is December 17");
+    expect(
+      withoutTold("Overview: Kestrel Hosting quoted 52,200 dollars.", told),
+    ).toBe("");
+    expect(withoutTold("Anything", [])).toBe("Anything");
   });
 });
