@@ -22,6 +22,7 @@ import {
   LONG_PROGRAM_ID,
 } from "./clarify-corpus.mts";
 import { buildCorpus } from "./corpus.mts";
+import { buildDigAddon, digAsCorpus } from "./dig-corpus.mts";
 import { buildP2, buildThreads } from "./gold.mts";
 import {
   mean,
@@ -51,6 +52,7 @@ import {
   summarizeClarify,
   summarizeMap,
 } from "./p1-clarify.mts";
+import { buildDig, type DigRow, runDig, summarizeDig } from "./p1-dig.mts";
 import {
   answerFromTurn,
   barsTable,
@@ -95,6 +97,7 @@ export const PARTS = [
   "threads",
   "widen",
   "broad",
+  "dig",
   "clarify",
   "a0",
   "scale",
@@ -1311,6 +1314,95 @@ async function partBroad(
 }
 
 // ===================================================================================
+// D4b. Digging questions (Ask research mode, D21, 2026-11-02)
+// ===================================================================================
+
+async function partDig(env: Env, M: Record<string, number>): Promise<PartOut> {
+  const { corpus, stack, maps } = env;
+  // The extra data is loaded on top of the base corpus (its ids start with dg-).
+  const addon = buildDigAddon();
+  loadCorpus(stack, digAsCorpus(corpus, addon));
+  // Item cites of the dig meetings are known by the same key function.
+  const digMaps = buildIdMaps(
+    { ...corpus, meetings: addon.meetings },
+    stack.mod.actionItemKey,
+  );
+  for (const m of addon.meetings) await stack.mod.indexMeeting(m.id);
+  env.log(`dig: loaded ${addon.meetings.length} extra meetings`);
+  const only = process.env.CHAT_EVAL_IDS?.split(",");
+  const qs = spread(
+    buildDig().filter((q) => !only || only.includes(q.id)),
+    env.opts.limit,
+  );
+  const known = {
+    meeting: (id: string) =>
+      stack.db.prepare("SELECT 1 FROM meetings WHERE id = ?").get(id) !==
+      undefined,
+    start: (mid: string, s: number) =>
+      stack.db
+        .prepare(
+          "SELECT 1 FROM meeting_segments WHERE meeting_id = ? AND start_ms = ? UNION SELECT 1 FROM meeting_chunks WHERE meeting_id = ? AND start_ms = ?",
+        )
+        .get(mid, s, mid, s) !== undefined,
+    item: (id: string) => maps.prodToItem.has(id) || digMaps.prodToItem.has(id),
+  };
+  const denv = {
+    corpusTodayMs: corpus.todayMs,
+    stack,
+    mods: env.mods,
+    known,
+  };
+  const rows: DigRow[] = [];
+  const par = Math.min(2, Number(process.env.CHAT_EVAL_THREADS_PAR ?? 2) || 2);
+  let next = 0;
+  const worker = async () => {
+    while (next < qs.length) {
+      const q = qs[next++] as (typeof qs)[number];
+      const r = await runDig(denv, q);
+      rows.push(...r);
+      env.log(`dig ${q.id}: ${r.filter((x) => x.pass).length}/${r.length}`);
+    }
+  };
+  await Promise.all(Array.from({ length: Math.min(par, qs.length) }, worker));
+  rows.sort((a, b) => a.id.localeCompare(b.id) || a.turn - b.turn);
+  const m = summarizeDig(rows);
+  let text = `Dig: ${m.questions} questions, ${m.turns} turns (${m["n.meeting"]} meeting, ${m["n.folder"]} folder, ${m["n.all"]} all digging turns; ${m.control_n} control turns). Digging pass ${pct(m.pass as number)}% (second turns ${pct(m.pass_second as number)}%); coverage of the must-mention reasons ${pct(m.cov as number)}%; cross-meeting recall ${pct(m.recall_multi as number)}%; not found ${pct(m.not_found as number)}%; clarify ${pct(m.clarify as number)}%; invalid or missing cites ${m.invalid_cites}; repeats ${m.repeats}; length in range ${pct(m.len_ok as number)}%; errors ${m.errors}. EN ${pct(m["pass.en"] ?? 0)}%, PT ${pct(m["pass.pt"] ?? 0)}%.\n`;
+  text += `Cost of a digging turn: LLM calls mean ${(m.llm_calls_mean as number).toFixed(1)} (p95 ${m.llm_calls_p95}), tool calls mean ${(m.tool_calls_mean as number).toFixed(1)}, latency p50 ${m.ms_p50} ms, p95 ${m.ms_p95} ms. Controls (a simple fact): pass ${pct(m.control_pass as number)}%, LLM calls mean ${(m.control_llm_calls_mean as number).toFixed(1)}, tool calls mean ${(m.control_tool_calls_mean as number).toFixed(1)}, latency p95 ${m.control_ms_p95} ms.\n`;
+  text += `\n| id | turn | scope | lang | kind | pass | cov | recall | cited | blocks | chars | cites bad | repeat | llm | tools | first tool | ms |\n|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|\n`;
+  for (const r of rows)
+    text += `| ${r.id}${r.control ? "c" : ""} | ${r.turn} | ${r.scope} | ${r.lang} | ${r.kind} | ${r.pass ? "ok" : r.err ? "ERR" : r.notFound ? "NOTFOUND" : r.clarify ? "CLARIFY" : "FAIL"} | ${r.covHit}/${r.covOf} | ${r.recall === null ? "-" : r.recall.toFixed(2)} | ${r.citedMeetings} | ${r.blocks} | ${r.chars} | ${r.invalidCites + r.uncited} | ${r.repeat ? "REPEAT" : ""} | ${r.llmCalls} | ${r.toolCalls} | ${r.tool ?? ""} | ${r.ms} |\n`;
+  for (const k of [
+    "pass",
+    "pass_second",
+    "cov",
+    "recall_multi",
+    "not_found",
+    "clarify",
+    "invalid_cites",
+    "repeats",
+    "len_ok",
+    "llm_calls_mean",
+    "tool_calls_mean",
+    "ms_p50",
+    "ms_p95",
+    "control_pass",
+    "control_llm_calls_mean",
+    "control_ms_p95",
+  ])
+    M[`dig.${k}`] = m[k] as number;
+  return {
+    text,
+    data: { rows, metrics: m },
+    run: {
+      name: "p1-dig",
+      params: { turns: m.turns, history: "real answers" },
+      tags: baseTags(env, "dig"),
+      metrics: m,
+    },
+  };
+}
+
+// ===================================================================================
 // D5. Clarify block and map-reduce synthesis (D20, 2026-11-02)
 // ===================================================================================
 
@@ -1807,7 +1899,7 @@ export async function runP1(
       ? opts.only.has(p)
       : p === "scale"
         ? opts.scale > 1
-        : p === "broad" || p === "clarify"
+        : p === "broad" || p === "dig" || p === "clarify"
           ? false
           : p !== "widen" || opts.set === "p2";
   // The P2 questions replace the gold questions. The retrieval queries stay.
@@ -1901,6 +1993,7 @@ export async function runP1(
     want("threads") ||
     want("widen") ||
     want("broad") ||
+    want("dig") ||
     want("clarify") ||
     want("scale")
   ) {
@@ -1951,6 +2044,7 @@ export async function runP1(
     await done("threads", () => partThreads(env, M));
     await done("widen", () => partWiden(env, M));
     await done("broad", () => partBroad(env, M));
+    await done("dig", () => partDig(env, M));
     await done("clarify", () => partClarify(env, M));
     await done("a0", () => partA0(env, M));
     await done("scale", () => partScale(env, M));

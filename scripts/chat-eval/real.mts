@@ -16,6 +16,7 @@ import process from "node:process";
 import type { DatabaseSync } from "node:sqlite";
 import type { ChatBlock, ChatCite, ChatMessage } from "@openstyle/validations";
 import { isRepeat } from "./p1-broad.mts";
+import { answerText } from "./p1-dig.mts";
 import { bootStack, scratchDir } from "./stack.mts";
 
 export const REAL_OUT = join(
@@ -80,6 +81,35 @@ function score(
   };
 }
 
+/**
+ * One turn of a digging thread on the owner's real folders (D21). The folder
+ * has a letter, never a name. The answer text stays in the private file.
+ */
+export interface RealDigTurn extends RealTurn {
+  folder: string;
+  /** Meetings of the folder. */
+  folderMeetings: number;
+  /** Distinct meetings that the answer cites. */
+  citedMeetings: number;
+  llmCalls: number;
+  toolCalls: number;
+  ms: number;
+}
+
+/**
+ * The 6 digging questions (D21), in generic words. Folders A and B get "what
+ * is open, why is it still open"; folder C gets "how did the decisions change,
+ * who pushed and why".
+ */
+export const REAL_DIG_THREADS: readonly (readonly string[])[] = [
+  ["What are the open items in this folder?", "Why are they still open?"],
+  ["What are the open items in this folder?", "Why are they still open?"],
+  [
+    "How did the decisions in this folder change over the meetings?",
+    "Who pushed for the biggest change, and why?",
+  ],
+];
+
 interface MsgRow {
   id: number;
   role: "user" | "assistant";
@@ -93,6 +123,8 @@ export async function runReal(opts: {
   db: string;
   threads: string[];
   extra?: string[];
+  /** Run the 6 digging questions on the 3 largest folders (D21). */
+  dig?: boolean;
   label: string;
 }): Promise<void> {
   const dir = scratchDir("real");
@@ -110,10 +142,16 @@ export async function runReal(opts: {
   ]);
   process.env.OPENSTYLE_MLX_RERANK_WORKER ??=
     process.env.OPENSTYLE_MLX_LLM_WORKER;
-  const out: { before: RealTurn[]; after: RealTurn[]; extra: RealTurn[] } = {
+  const out: {
+    before: RealTurn[];
+    after: RealTurn[];
+    extra: RealTurn[];
+    dig: RealDigTurn[];
+  } = {
     before: [],
     after: [],
     extra: [],
+    dig: [],
   };
   const runOne = async (
     scope: { kind: "all" },
@@ -308,17 +346,120 @@ export async function runReal(opts: {
         out.extra.push(mkRow(3, await runOne(all, q, [], true)));
       }
     }
+    // Digging questions (D21) on the 3 folders with the most meetings.
+    if (opts.dig) {
+      const folders = db
+        .prepare(
+          `SELECT f.id AS id, COUNT(m.id) AS n FROM meeting_folders f
+           JOIN meetings m ON m.folder_id = f.id
+           GROUP BY f.id HAVING n >= 4 ORDER BY n DESC, f.id LIMIT 3`,
+        )
+        .all() as unknown as { id: string; n: number }[];
+      const mk = {
+        trace: null,
+        model_id: null,
+        provider: null,
+        ms: null,
+        created_at: 0,
+      };
+      for (const [fi, f] of folders.entries()) {
+        const letter = String.fromCharCode(65 + fi);
+        const scope = { kind: "folder" as const, id: f.id };
+        const history: ChatMessage[] = [];
+        const earlier: string[] = [];
+        let mid = 1;
+        for (const [ti, q] of (REAL_DIG_THREADS[fi] ?? []).entries()) {
+          const signal = AbortSignal.timeout(300_000);
+          const t0 = Date.now();
+          const llm = await llmMod.createChatLlm(db, {
+            threadId: `real-dig-${letter}`,
+            signal,
+          });
+          // Privacy gate: the owner's meetings go to the local model only.
+          if (llm.provider !== "local-mlx-llm") {
+            llm.finish("cancelled");
+            throw new Error(
+              `dig stops: the chat model is not the local MLX model (${llm.provider})`,
+            );
+          }
+          const res = await pipeline.runChatTurn({
+            db,
+            scope,
+            question: q,
+            history: [...history],
+            settings: settings.readChatSettings(),
+            llm,
+            signal,
+          });
+          llm.finish("succeeded");
+          const text = answerText(res);
+          const row = score(
+            {
+              thread: `dig${letter}`,
+              turn: ti + 1,
+              scope: "folder",
+              steps: res.trace.steps
+                .map(
+                  (x: { stage: string; name: string }) =>
+                    `${x.stage}:${x.name}`,
+                )
+                .join(" > "),
+            },
+            text,
+            res.blocks,
+            res.cites.length,
+            earlier,
+          );
+          const cited = new Set<string>(res.cites.map((c) => c.meeting_id));
+          for (const b of res.blocks)
+            if (b.kind === "list")
+              for (const it of b.items)
+                if (it.meeting_id) cited.add(it.meeting_id);
+          out.dig.push({
+            ...row,
+            folder: letter,
+            folderMeetings: f.n,
+            citedMeetings: cited.size,
+            llmCalls: res.trace.calls,
+            toolCalls: res.toolCalls.length,
+            ms: Date.now() - t0,
+          });
+          earlier.push(text);
+          history.push(
+            {
+              ...mk,
+              thread_id: `real-dig-${letter}`,
+              id: mid++,
+              role: "user",
+              content: q,
+              blocks: [],
+              cites: [],
+            },
+            {
+              ...mk,
+              thread_id: `real-dig-${letter}`,
+              id: mid++,
+              role: "assistant",
+              content: res.content,
+              blocks: res.blocks,
+              cites: res.cites,
+            },
+          );
+        }
+      }
+    }
     mkdirSync(REAL_OUT, { recursive: true, mode: 0o700 });
     const file = join(REAL_OUT, `${opts.label}-${Date.now()}.json`);
     writeFileSync(file, JSON.stringify(out, null, 1), { mode: 0o600 });
     // Numbers only on stdout.
     for (const [name, rows] of Object.entries(out)) {
+      if (rows.length === 0) continue;
       console.log(
         `\n${name}: thread turn scope sentences cites repeat notFound pass`,
       );
       for (const r of rows)
         console.log(
-          `${name} ${r.thread} ${r.turn} ${r.scope} clarify=${r.clarify ?? "no"} sentences=${r.sentences} cites=${r.cites} repeat=${r.repeat ? "yes" : "no"} not_found=${r.notFound ? "yes" : "no"} ${r.pass ? "PASS" : "FAIL"}`,
+          `${name} ${r.thread} ${r.turn} ${r.scope} clarify=${r.clarify ?? "no"} sentences=${r.sentences} cites=${r.cites} repeat=${r.repeat ? "yes" : "no"} not_found=${r.notFound ? "yes" : "no"} ${r.pass ? "PASS" : "FAIL"}${"llmCalls" in r ? ` folder=${(r as RealDigTurn).folder} folder_meetings=${(r as RealDigTurn).folderMeetings} cited_meetings=${(r as RealDigTurn).citedMeetings} llm_calls=${(r as RealDigTurn).llmCalls} tool_calls=${(r as RealDigTurn).toolCalls} ms=${(r as RealDigTurn).ms}` : ""}`,
         );
     }
     console.log(`\nresult file (private): ${file}`);

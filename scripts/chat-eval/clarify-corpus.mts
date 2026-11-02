@@ -125,7 +125,7 @@ const seg = (
 });
 
 /** Lines get consecutive start times and their ids follow the line index. */
-function lines(
+export function lines(
   meetingId: string,
   spec: { text: string; personId: string | null; label: string | null }[],
 ): Segment[] {

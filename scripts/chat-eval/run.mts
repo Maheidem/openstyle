@@ -174,13 +174,21 @@ async function main() {
     const threads = (arg("threads") ?? "").split(",").filter(Boolean);
     // `--extra "q1|q2"`: new questions at scope Everything (the clarify check, D20).
     const extra = (arg("extra") ?? "").split("|").filter(Boolean);
-    if (!db || (threads.length === 0 && extra.length === 0))
+    // `--dig`: the 6 digging questions on the 3 largest folders (D21).
+    const dig = process.argv.includes("--dig");
+    if (!db || (threads.length === 0 && extra.length === 0 && !dig))
       throw new Error(
-        'usage: pnpm chat-eval real --db <copy.db> --threads <id>,<id> [--extra "q1|q2"] [--label x]',
+        'usage: pnpm chat-eval real --db <copy.db> --threads <id>,<id> [--extra "q1|q2"] [--dig] [--label x]',
       );
     await takeLock("chat-eval-real", 45);
     try {
-      await runReal({ db, threads, extra, label: arg("label") ?? "run" });
+      await runReal({
+        db,
+        threads,
+        extra,
+        dig,
+        label: arg("label") ?? "run",
+      });
     } finally {
       releaseLock();
       unqueue();
