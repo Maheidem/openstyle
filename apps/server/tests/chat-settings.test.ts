@@ -54,6 +54,7 @@ const ALL_KEYS = [
   K.chatRetrievalK,
   K.chatDeadlineSeconds,
   K.chatSearchWider,
+  K.chatResearch,
   K.chatNativeTools,
 ];
 
@@ -91,6 +92,11 @@ describe("readChatSettings", () => {
     expect(readChatSettings().searchWider).toBe(false);
     writeSetting(K.chatNativeTools, "false");
     expect(readChatSettings().nativeTools).toBe(false);
+    // Research mode is on until the row says "false" (D21).
+    writeSetting(K.chatResearch, "false");
+    expect(readChatSettings().research).toBe(false);
+    writeSetting(K.chatResearch, "true");
+    expect(readChatSettings().research).toBe(true);
     writeSetting(K.meetingChatEnabled, "true");
     expect(readChatSettings().enabled).toBe(true);
     // A removed row gives the default again.

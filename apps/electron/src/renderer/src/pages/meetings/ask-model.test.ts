@@ -18,8 +18,11 @@ import {
   danglingQuestion,
   formatTimestamp,
   mergeMessages,
+  notFoundLeads,
+  progressKey,
   readSelectedThread,
   rememberSelectedThread,
+  researchTrail,
   sameScope,
   scopeKey,
   scopeOfThread,
@@ -469,5 +472,81 @@ describe("clarify turns (D20)", () => {
       cites: [],
     } as unknown as ChatMessage;
     expect(answerBlocks(m)).toEqual([block]);
+  });
+});
+
+describe("research mode (D21)", () => {
+  const research = {
+    iterations: 3,
+    max_iter: 4,
+    meetings: 3,
+    searches: 4,
+    done: "max_iter" as const,
+    open_leads: [
+      "Confirm the delivery date with Vendor B",
+      "Book the demo room for the launch",
+      "A third lead that is open",
+      "A fourth lead that is open",
+    ],
+  };
+  const trace = (r?: typeof research): ChatTrace => ({
+    intent: "lookup",
+    router: "default",
+    steps: [],
+    calls: 3,
+    sources_dropped: [],
+    history_turns_dropped: 0,
+    source_tokens: 0,
+    ...(r ? { research: r } : {}),
+  });
+
+  it("gives the trail fields only for a research turn", () => {
+    expect(researchTrail(null)).toBeNull();
+    expect(researchTrail(trace())).toBeNull();
+    expect(researchTrail(trace(research))).toEqual(research);
+  });
+
+  it("names at most 3 open leads, each cut short", () => {
+    const text = notFoundLeads(research);
+    expect(text.split("; ")).toHaveLength(3);
+    expect(text).not.toContain("fourth");
+    expect(
+      notFoundLeads({ ...research, open_leads: ["x".repeat(100)] }).length,
+    ).toBeLessThanOrEqual(60);
+    expect(notFoundLeads({ ...research, open_leads: [] })).toBe("");
+  });
+
+  it("writes the step text of a research turn from fields, plural on the leads", () => {
+    expect(
+      progressKey({
+        stage: "researching",
+        count: null,
+        iteration: 2,
+        max_iter: 4,
+        lead_index: 2,
+        leads: 3,
+      }),
+    ).toEqual({
+      key: "meetings.ask.step.researching",
+      count: 3,
+      vars: { round: 2, max: 4, lead: 2, leads: 3 },
+    });
+    expect(
+      progressKey({
+        stage: "researching",
+        count: null,
+        iteration: 1,
+        max_iter: 4,
+      })?.count,
+    ).toBe(1);
+    expect(progressKey({ stage: "answering", count: null })?.key).toBe(
+      "meetings.ask.step.answering",
+    );
+    expect(progressKey({ stage: "searching", count: 5 })).toEqual({
+      key: "meetings.ask.step.searching",
+      count: 5,
+      vars: {},
+    });
+    expect(progressKey(null)).toBeNull();
   });
 });
