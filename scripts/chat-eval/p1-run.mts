@@ -226,6 +226,19 @@ function baseTags(env: Env, arm: string): Record<string, string> {
     ...(process.env.CHAT_EVAL_LEVEL
       ? { arm: process.env.CHAT_EVAL_DIG_ARM?.trim() || "harness" }
       : {}),
+    // D22 spike (2026-11-03): the loop arms name the first call and the ledger.
+    ...(process.env.CHAT_EVAL_LEVEL
+      ? {
+          scorer: "v3",
+          first_call: (process.env.CHAT_EVAL_DIG_ARM ?? "").startsWith("loop")
+            ? process.env.CHAT_EVAL_LOOP_FIRST === "list_meetings"
+              ? "list_meetings"
+              : "search"
+            : "none",
+          ledger:
+            process.env.CHAT_EVAL_DIG_ARM === "loop-ledger" ? "true" : "false",
+        }
+      : {}),
   };
 }
 
@@ -1416,6 +1429,24 @@ async function partDig(env: Env, M: Record<string, number>): Promise<PartOut> {
     known,
     prices: await loadPrices(),
   };
+  // D22 phase 2: the item ledger is built once, at "index time", by the model
+  // under test. Its cost is logged apart from the turns.
+  let ledgerStats: import("./ledger.mts").LedgerStats | null = null;
+  if (process.env.CHAT_EVAL_DIG_ARM === "loop-ledger") {
+    const { buildLedger } = await import("./ledger.mts");
+    ledgerStats = await buildLedger(
+      stack.db,
+      (threadId) =>
+        env.mods.llm.createChatLlm(stack.db, {
+          threadId,
+          signal: AbortSignal.timeout(600_000),
+        }),
+      env.log,
+    );
+    env.log(
+      `ledger: ${ledgerStats.meetings} meetings, ${ledgerStats.items} items, ${ledgerStats.marks} marks (${ledgerStats.quoteOk} quote ok), ${ledgerStats.failed} failed, ${Math.round(ledgerStats.ms / 1000)} s, tokens in ${ledgerStats.tokensIn} out ${ledgerStats.tokensOut}`,
+    );
+  }
   const rows: DigRow[] = [];
   const par = Math.min(2, Number(process.env.CHAT_EVAL_THREADS_PAR ?? 2) || 2);
   let next = 0;
@@ -1448,6 +1479,29 @@ async function partDig(env: Env, M: Record<string, number>): Promise<PartOut> {
   m.trigger_false_broad = broadFalse.length / Math.max(1, broadTexts.length);
   m.trigger_false_gold_n = goldFalse.length;
   m.trigger_false_broad_n = broadFalse.length;
+  if (ledgerStats) {
+    const usd = (await import("./cost.mts")).usdOf(
+      {
+        in: ledgerStats.tokensIn,
+        out: ledgerStats.tokensOut,
+        cached: ledgerStats.tokensCached,
+        cacheWrite: ledgerStats.tokensCacheWrite,
+        reasoning: ledgerStats.tokensReasoning,
+      },
+      denv.prices ?? null,
+    );
+    m.ledger_meetings = ledgerStats.meetings;
+    m.ledger_items = ledgerStats.items;
+    m.ledger_marks = ledgerStats.marks;
+    m.ledger_quote_ok = ledgerStats.marks
+      ? ledgerStats.quoteOk / ledgerStats.marks
+      : 0;
+    m.ledger_failed = ledgerStats.failed;
+    m.ledger_ms = ledgerStats.ms;
+    m.ledger_tokens_in = ledgerStats.tokensIn;
+    m.ledger_tokens_out = ledgerStats.tokensOut;
+    m.ledger_usd = usd;
+  }
   M["dig.tier"] = /e2b/i.test(MODEL_ID) ? 2 : 4;
   M["dig.research_on"] = process.env.CHAT_EVAL_RESEARCH === "off" ? 0 : 1;
   let text = `Dig: ${m.questions} questions, ${m.turns} turns (${m["n.meeting"]} meeting, ${m["n.folder"]} folder, ${m["n.all"]} all digging turns; ${m.control_n} control turns). Digging pass ${pct(m.pass as number)}% (second turns ${pct(m.pass_second as number)}%); coverage of the must-mention reasons ${pct(m.cov as number)}%; cross-meeting recall ${pct(m.recall_multi as number)}%; not found ${pct(m.not_found as number)}%; clarify ${pct(m.clarify as number)}%; invalid or missing cites ${m.invalid_cites}; repeats ${m.repeats}; length in range ${pct(m.len_ok as number)}%; errors ${m.errors}. EN ${pct(m["pass.en"] ?? 0)}%, PT ${pct(m["pass.pt"] ?? 0)}%.\n`;

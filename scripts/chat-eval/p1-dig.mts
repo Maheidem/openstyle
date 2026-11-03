@@ -676,10 +676,16 @@ export async function runDig(env: DigEnv, q: DigQ): Promise<DigRow[]> {
       };
       // L2 and L3: no retrieval, the whole scope is the source (dig-oracle.mts).
       const arm = process.env.CHAT_EVAL_DIG_ARM?.trim();
+      // D22 spike: the tool loop (loop.mts), with or without the item ledger.
       const res =
         arm === "oracle-harness" || arm === "oracle-plain"
           ? await (await import("./dig-oracle.mts")).runOracle(arm, turnInput)
-          : await mods.pipeline.runChatTurn(turnInput);
+          : arm === "loop" || arm === "loop-ledger"
+            ? await (await import("./loop.mts")).runLoop(
+                (await import("./loop.mts")).loopOptsFromEnv(),
+                turnInput,
+              )
+            : await mods.pipeline.runChatTurn(turnInput);
       llm.finish("succeeded");
       const tokens = usageOfRun(stack.db, llm.runId);
       const usd = usdOf(tokens, env.prices ?? null);

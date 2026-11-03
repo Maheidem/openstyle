@@ -1012,7 +1012,7 @@ const listPeople: ToolDef<z.infer<typeof listPeopleArgs>> = {
 // ---------------------------------------------------------------------------
 
 /** The display name of a speaker label, following `merged_into`. */
-function speakerResolver(db: DatabaseSync, meetingId: string) {
+export function speakerResolver(db: DatabaseSync, meetingId: string) {
   const rows = db
     .prepare(
       "SELECT speaker_label, display_name, merged_into FROM meeting_speakers WHERE meeting_id = ?",
