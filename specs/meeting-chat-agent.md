@@ -2,7 +2,7 @@
 
 Status: DRAFT for owner review. Date: 2026-10-31. Base: `main` at `a7083674`.
 Revision 2 (2026-10-31, 09:49): owner answers applied. Section 12.1 lists them as decisions D1 to D4. Revision 3 (10:45): placement decided, D5 (section 11).
-Revision 4 (2026-10-31, 11:10): owner review applied, decisions D6 to D18 (section 12.1). Revision 5 (2026-11-01): decision D19, the P2 surfaces (section 11.6). Revision 6 (2026-11-02): decision D21, research mode, and the digging eval baseline (section 11.9). Revision 9 (2026-11-03, N12 resolved: scorer v3): decision D22 PROPOSED, Ask as a tool loop over a better index, with the Opus ladder answer to N7 (section 11.10). Name note: `SD8` is decision D8 of `specs/local-semantic-search.md`. `D1` to `D22` are decisions of this spec.
+Revision 4 (2026-10-31, 11:10): owner review applied, decisions D6 to D18 (section 12.1). Revision 5 (2026-11-01): decision D19, the P2 surfaces (section 11.6). Revision 6 (2026-11-02): decision D21, research mode, and the digging eval baseline (section 11.9). Revision 9 (2026-11-03, N12 resolved: scorer v3; 14:15 owner answers: N8 to N11 resolved, 10 items open: Q7, Q16, N1 to N4, N6, N13, N14, N15): decision D22 PROPOSED, Ask as a tool loop over a better index, with the Opus ladder answer to N7 (section 11.10). Name note: `SD8` is decision D8 of `specs/local-semantic-search.md`. `D1` to `D22` are decisions of this spec.
 Scope of this document: design only. No product code is part of this change.
 Language: ASD-STE100 Simplified Technical English.
 Diagrams follow the rule "Diagram conventions" in `AGENTS.md`. The pipeline diagram (2.2), the live-variant diagram (2.4) and the failure diagrams (2.5a, 2.5b) are written to it. The other diagrams are small single-concern sketches.
@@ -2150,7 +2150,7 @@ Sources for this section: https://docs.langchain.com/oss/javascript/langgraph/ag
 
 ### 11.10 Ask as a tool loop over a better index (D22, owner request 2026-11-03)
 
-Status: PROPOSED. This section is a design. No product code is part of it. The owner has not approved it (open item N8). Prefixes `S/`, `V/` and `W/` are from section 0.2. Labels are from section 0.1. A name in `monospace` with no path is a name in the code of a build step (it does not exist yet). Base: `main` at `a3f64247`.
+Status: PROPOSED. This section is a design. No product code is part of it. The owner approved phase 1 and phase 2 on 2026-11-03 (N8). Both run eval-only first. D22 stays PROPOSED for the product until the numbers are in. Prefixes `S/`, `V/` and `W/` are from section 0.2. Labels are from section 0.1. A name in `monospace` with no path is a name in the code of a build step (it does not exist yet). Base: `main` at `a3f64247`.
 
 Short names of code in the reports: `PI-LOOP` is `pi-agent-core` 1.4.0, `dist/agent-loop.js`. Cherry Studio paths are under `src/main/` of its repo. `F n.m` means finding m of section n of `F`.
 
@@ -2218,7 +2218,7 @@ D22 changes two earlier statements. Section 2.1 says "a code router and not a to
 |---|---|
 | Point 1: the worker has no tool calling. | The worker has native tools behind a flag: `OPENSTYLE_MLX_LLM_NATIVE_TOOLS=1`, default off (`W:706-722`). The server has a native tool turn (`S/lib/llm/gateway.ts:1487`, `S/lib/chat/llm.ts:76-82`). |
 | Point 2: no measured tool accuracy for E2B. | Still UNKNOWN. Phase 1 measures it (11.10.8). |
-| Point 3: D8, structure by default. | Kept. Code owns the phases and the checks. The model owns only the next tool. Approval of the change is open item N8. |
+| Point 3: D8, structure by default. | Kept. Code owns the phases and the checks. The model owns only the next tool. The owner approved phase 1 and phase 2 for eval only (N8, resolved 2026-11-03). The product change waits for the numbers. |
 | Point 4: simplest solution (https://www.anthropic.com/engineering/building-effective-agents). | A four tool loop is simple. It is less code than the router, the plan, the trigger and the graph together. This is an inference. |
 
 #### 11.10.3 The index
@@ -2273,7 +2273,7 @@ Rules:
 5. **Backfill.** A job writes marks for the meetings that exist. It runs in the background and can resume. The cost is UNKNOWN. Phase 2 measures it (11.10.8).
 6. **No graph store.** The ledger is two SQLite tables. 11.10.7 gives the reason.
 
-Risk, stated plainly: the writer can merge two items, or split one. A small writer model does this more. Same reader and better writer gave +10.6 points in one test (`R-qa` 5). The open item N10 asks who writes the ledger.
+Risk, stated plainly: the writer can merge two items, or split one. A small writer model does this more. Same reader and better writer gave +10.6 points in one test (`R-qa` 5). The app has one model: the model the user selected. That model writes the ledger (N10, resolved 2026-11-03). The ledger quality depends on the selected model. Phase 2 measures it for each model.
 
 ##### 11.10.3.2 Chunk context
 
@@ -2326,7 +2326,7 @@ Why `search` and `read` are two tools and not one (as Cherry `kb_read` with a `p
 
 1. Code runs the gate and the clarify block (D20) as today (`S/lib/chat/clarify.ts`). Clarify ends the turn, and the chip starts the next turn (11.9.8).
 2. Code starts the loop with `generateText` from the AI SDK (`ai` is in `apps/server/package.json:45`). It sets `stopWhen` to the step cap and `prepareStep` for the rules below (https://ai-sdk.dev/docs/agents/loop-control; `R-sdk` 11 points 1 to 4). Each model call goes through the gateway, so the cost log and the MLflow trace stay. How the gateway wraps `generateText` with tools is UNKNOWN: `callToolTurn` runs one tool turn (`S/lib/llm/gateway.ts:1487`). The build step decides between a new gateway function and a loop of `callToolTurn` calls.
-3. **Forced first call.** For a local small model, step 0 has `toolChoice` set to `search` and only `search` active. Reason: small models search too little and guess (https://arxiv.org/abs/2604.04651, `R-small` 1.5; the evidence is for fine-tuned Qwen3, not Gemma). Large models keep `auto`. Which tool the forced call uses is open item N9.
+3. **Forced first call.** For a local small model, step 0 has `toolChoice` set to `search` and only `search` active. Reason: small models search too little and guess (https://arxiv.org/abs/2604.04651, `R-small` 1.5; the evidence is for fine-tuned Qwen3, not Gemma). Large models keep `auto`. Phase 1 measures both forced first calls, `search` and `list_meetings`, for E2B and E4B. The numbers pick one (N9, resolved 2026-11-03).
 4. **Step cap by model size.** E2B 3. E4B 5. Cloud 10. These are the starting values of the owner brief. The sources: E2B has Tau2 24.5% and E4B has 42.2% (https://ai.google.dev/gemma/docs/core/model_card_4, `R-small` 1.1); untrained loops do not beat plain RAG at 3B (Search-R1 table, https://arxiv.org/html/2503.09516, `R-qa` 4.2). A large local model such as Qwen 27B takes the cloud cap. This is an inference. Phase 1 measures the cap on each model.
 5. **Stop.** The loop ends on a reply with no tool call, on the cap, on the call cap or on the deadline. There is no stall rule that routes. A guard may end the loop when two steps in a row add no new source label (the rule of `S/lib/chat/research/research.ts:595-598`, kept as a guard and not as a router).
 6. **The answer is a separate call with tools off.** The local worker answers a request with `tools` and `response_format` together with a 400 (`W:718`). So the last model call cannot be both. After the loop, code makes one structured answer call with the collected sources and no tools. Text that the model writes inside the loop is dropped. Call count: at most the step cap plus 1. For E2B that is 4.
@@ -2401,7 +2401,7 @@ Models. E2B and E4B on the Mac MLX worker. Qwen 27B and Gemma 31B on the desktop
 | T12 | Cost per digging turn, Opus | L0 USD 0.0421; L3 USD 0.1031 | At most USD 0.084 (2 times L0). The number is an inference. |
 | T13 | Every other bar of 8.7, 8.7c, the broad part, the threads part, the clarify part | see 8.7 and 11.6 to 11.9 | No regression with the setting on. |
 
-**The final set.** It runs once, for the winner, in phase 3. Today's rows: Opus 60.0% (`f2fcccb52bd44a8fb17345f4f61def6e`), Qwen 27B 43.3% (`a812da3f53424154933f887c1993fffd`), Gemma family 16.0% to 36.7% (`V3`). The bar is: the winner passes more turns than the same model passes today, and no control fails. A fixed pass rate is not set. The owner said: "we don't need 100% but we need to be better". The final set is slightly exposed: two agents printed summary-level rows (coordinator note, 2026-11-03; plan "Notes for the owner"). Whether to replace it is open item N11. Nobody may read the rows of the final set and nobody may tune on it.
+**The final set.** It runs once, for the winner, in phase 3. Today's rows: Opus 60.0% (`f2fcccb52bd44a8fb17345f4f61def6e`), Qwen 27B 43.3% (`a812da3f53424154933f887c1993fffd`), Gemma family 16.0% to 36.7% (`V3`). The bar is: the winner passes more turns than the same model passes today, and no control fails. A fixed pass rate is not set. The owner said: "we don't need 100% but we need to be better". The final set is slightly exposed: two agents printed summary-level rows (coordinator note, 2026-11-03; plan "Notes for the owner"). The owner keeps the final set as it is (N11, resolved 2026-11-03). The exposure is small: summary-level rows only. No new set is built. Nobody may read the rows of the final set and nobody may tune on it.
 
 **Isolation rules for the writer and the loop.** The ledger writer prompt and the tool descriptions never contain a question, a key or a word taken from a blind set. The tool descriptions are written once and then frozen before the final run. A change after a read of failing dev rows is allowed only if it is a general rule that the owner approves. A trigger-word list is not allowed.
 
@@ -2426,13 +2426,13 @@ Migration of data: the ledger tables are new. They hold nothing until the backfi
 
 Latency. A loop turn is up to cap steps plus one answer call. On E2B a router call takes 200 to 375 ms p50 (`specs/meeting-chat-agent-p0-report.md:285-291`, quoted in 11.9.10). A step with a tool result in the prompt takes longer, because the prompt is longer. The figure is UNKNOWN. The bar is T10. For Opus, L0 p50 is 24.0 s and L3 is 12.8 s (11.10.1). A loop with fewer calls than L0 (mean 3.8) can be faster. This is an inference.
 
-Cost. Opus per digging turn: L0 USD 0.0421, L3 USD 0.1031. A tool loop reads only what it needs. The expected cost is between the two. This is an inference. Bar T12. Local models cost USD 0. The index cost is the writer pass for each meeting. For a cloud writer it is the tokens of one transcript, one summary and the open items of the folder. The figure is UNKNOWN. Phase 2 measures it and prints it per meeting.
+Cost. Opus per digging turn: L0 USD 0.0421, L3 USD 0.1031. A tool loop reads only what it needs. The expected cost is between the two. This is an inference. Bar T12. Local models cost USD 0. The index cost is the writer pass for each meeting. The writer is the selected model. For a cloud model it is the tokens of one transcript, one summary and the open items of the folder. The figure is UNKNOWN. Phase 2 measures it and prints it per meeting and per model.
 
 | Risk or unknown | What the evidence says | Handling |
 |---|---|---|
-| Small models fail at a free tool loop. | BFCL multi-turn: Qwen3-8B 41.75, Qwen3-4B 22.12 (https://gorilla.cs.berkeley.edu/data_overall.csv, `R-small` 1.1). Web search is 12.0 at 8B. No Gemma 4 number exists. Our task has no published number. | Forced first search. Short cap. Code owns stop and answer. Phase 1 measures E2B and E4B before any other work. If E2B fails the bars, E2B keeps the pipeline engine and the loop is for E4B and larger. The owner decides (N8). |
+| Small models fail at a free tool loop. | BFCL multi-turn: Qwen3-8B 41.75, Qwen3-4B 22.12 (https://gorilla.cs.berkeley.edu/data_overall.csv, `R-small` 1.1). Web search is 12.0 at 8B. No Gemma 4 number exists. Our task has no published number. | Forced first search. Short cap. Code owns stop and answer. Phase 1 measures E2B and E4B before any other work. If E2B fails the bars, E2B keeps the pipeline engine and the loop is for E4B and larger. The owner approved phase 1 and phase 2 for eval (N8). The product decision waits for the numbers. |
 | Without the 0.5 floor the loop answers when nothing exists. | The floor came from 33 unanswerable questions: best hit 0.00 to 0.31 against 0.55 to 1.00 for answerable ones (`S/lib/chat/turn.ts:108-116`). | The hint in the tool result carries the score. The answer step and the cite check remove unsupported sentences. Bar T8 measures it. A floor as a hint, not an exit, is the design. |
-| The writer makes a bad ledger. | `R-qa` 5. | Quote check in code. `quote_ok` shown. Phase 2 reports it. N10. |
+| The writer makes a bad ledger. | `R-qa` 5. | Quote check in code. `quote_ok` shown. Phase 2 reports it for each model. N10. |
 | The tool loop lengthens a turn on a weak model. | Cherry has no forced answer at its cap (`toolLoopTermination.ts:104-105`). | We always run the answer call after the cap. |
 | The native tools path in the local runtime is not reliable. | llama.cpp issue 22786: a correct call came back as content (`R-small` 2). The worker flag is off by default (`W:706-722`). | Phase 1 checks on the real servers. A fallback: a structured choice of the next tool, which is the closed choice of 11.9.2 point 6. This keeps the loop and drops the native format. |
 | Tool results fill the window of a small model. | Result cap by model size (11.10.4). | Phase 1 tunes the cap. |
@@ -2447,10 +2447,10 @@ Numbers continue the list of the review page (N1 to N7). Section 12.2 repeats th
 
 | # | Question | Default in this section |
 |---|---|---|
-| N8 | Approve D22: a tool loop that the model drives, with code owning the phases? This reverses the "code router is settled" part of D8 and 2.1. | Approve phase 1 only (eval). Decide after the numbers. |
-| N9 | Is the first forced call always `search`, or `list_meetings`? `list_meetings` is better for "first and last" questions. `search` is the call that small models skip. | `search` for E2B and E4B. The model picks for larger models. |
-| N10 | Who writes the ledger at index time: the local model, or a cloud model if the user chose one? A better writer gives a better ledger (`R-qa` 5). It also sends transcripts to a cloud (D1 allows it as the user's choice). | The model of the Summary task (D6). Cloud only if the user picked cloud. |
-| N11 | The blind final set is slightly exposed. Replace it with a fresh blind set written by agents that saw nothing? | Run the final set once as it is. Build a fresh set in parallel for the next change. |
+| N8 | Approve D22: a tool loop that the model drives, with code owning the phases? This reverses the "code router is settled" part of D8 and 2.1. | RESOLVED 2026-11-03: approve phase 1 AND phase 2, both eval-only first. D22 stays PROPOSED for the product until the numbers are in. |
+| N9 | Is the first forced call always `search`, or `list_meetings`? `list_meetings` is better for "first and last" questions. `search` is the call that small models skip. | RESOLVED 2026-11-03: measure both forced first calls (`search` and `list_meetings`) for E2B and E4B. Pick by numbers. |
+| N10 | Who writes the ledger at index time: the local model, or a cloud model if the user chose one? A better writer gives a better ledger (`R-qa` 5). It also sends transcripts to a cloud (D1 allows it as the user's choice). | RESOLVED 2026-11-03: the app has ONE model, the one the user selected. That model writes the ledger. There is no per-step model setting. The ledger quality depends on the selected model. Phase 2 measures it for each model. |
+| N11 | The blind final set is slightly exposed. Replace it with a fresh blind set written by agents that saw nothing? | RESOLVED 2026-11-03: keep the final set as it is. The exposure is small (summary-level rows only). No new set. |
 | N12 | RESOLVED 2026-11-03. Scorer v3 (PR #414, `c2f285ca`): digging turns allow at most 15 text blocks and 60 to 3000 characters; the colon in `normalize` is a word break; `mustNot` words inside an "Already done:" part do not count. The owner chose all three on 2026-11-03. | Done. The D22 bars use v3. |
 | N13 | After the loop is default, keep the old route for one release behind a setting, or delete it at once? | Keep for one release (P3), delete in P4. |
 | N14 | Change the embedded chunk text to hold title, date and speakers (re-embed everything, reverses S7 of the chunker)? Or add context only to the result? | Result time only. Index time only if phase 2 shows a retrieval gain. |
@@ -2503,10 +2503,10 @@ Sources of this section that are not in the repo: the research reports `R-*` and
 | Q22 | Keep clarify as "end the turn, the chip starts the next turn"? | RESOLVED 2026-11-02: yes, no `interrupt()` in v1. |
 | Q23 | Retention of the checkpoints of a research turn? | RESOLVED 2026-11-02: delete on a finished turn, keep on a failed turn. |
 | N7 | Is the low blind digging pass of small models a limit of the model? | RESOLVED 2026-11-03: the limit is the harness. Opus 5.5 on the blind dev set, scorer v3: 96.8% with the whole project and a plain prompt, 71.0% with today's harness. All 9 failures of the harness are routing failures (11.10.1). |
-| N8 | Approve D22 (tool loop, model picks the next tool, code owns phases)? It reverses the "code router is settled" part of D8 and 2.1. | Approve phase 1 (eval only). Decide after the numbers. |
-| N9 | Is the first forced call `search` or `list_meetings`? | `search` for E2B and E4B. The model picks for larger models. |
-| N10 | Who writes the ledger at index time: the local model, or a cloud model if the user chose one? | The model of the Summary task (D6). Cloud only if the user picked cloud. |
-| N11 | Replace the slightly exposed blind final set with a fresh blind set? | Run the final set once as it is. Build a fresh set in parallel. |
+| N8 | Approve D22 (tool loop, model picks the next tool, code owns phases)? It reverses the "code router is settled" part of D8 and 2.1. | RESOLVED 2026-11-03: approve phase 1 AND phase 2, both eval-only first. D22 stays PROPOSED for the product until the numbers are in. |
+| N9 | Is the first forced call `search` or `list_meetings`? | RESOLVED 2026-11-03: measure both forced first calls (`search` and `list_meetings`) for E2B and E4B. Pick by numbers. |
+| N10 | Who writes the ledger at index time: the local model, or a cloud model if the user chose one? | RESOLVED 2026-11-03: the app has ONE model, the one the user selected. That model writes the ledger. There is no per-step model setting. The ledger quality depends on the selected model. Phase 2 measures it for each model. |
+| N11 | Replace the slightly exposed blind final set with a fresh blind set? | RESOLVED 2026-11-03: keep the final set as it is. Small exposure (summary-level rows only). No new set. |
 | N12 | RESOLVED 2026-11-03. Scorer v3 (PR #414, `c2f285ca`): digging turns allow at most 15 text blocks and 60 to 3000 characters; the colon in `normalize` is a word break; `mustNot` words inside an "Already done:" part do not count. The owner chose all three on 2026-11-03. | Done. The D22 bars use v3. |
 | N13 | After the loop is default: keep the old route for one release, or delete it at once? | Keep for one release, delete in P4. |
 | N14 | Change the embedded chunk text to hold title, date and speakers (re-embed, reverses S7 of the chunker)? | Result time only. Index time only if phase 2 shows a gain. |
