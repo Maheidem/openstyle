@@ -11,7 +11,7 @@ const DEFAULT_CLOUD_URL = "https://service.freestylevoice.com";
 // reports 26). Migrations only run while currentVersion < SCHEMA_VERSION, so a
 // fork migration numbered below that is silently skipped for anyone arriving
 // from upstream. Keep this above the highest upstream version we have seen.
-const SCHEMA_VERSION = 55;
+const SCHEMA_VERSION = 56;
 
 // Legacy default format-rule patterns (used only by pre-v12 migrations below):
 // domain/phrase entries match as substrings of url+title+app; bare words match
@@ -1423,6 +1423,52 @@ function applyMigrations(db: DatabaseSync, currentVersion: number): void {
       );
       CREATE INDEX IF NOT EXISTS idx_chat_messages_thread
         ON chat_messages(thread_id, id);
+    `);
+  }
+
+  if (currentVersion < 56 && tableExists(db, "meetings")) {
+    // The item ledger of the Ask tool loop (specs/meeting-chat-agent.md
+    // 11.10.3.1, D22). One item is one thing across the meetings of a folder.
+    // A mark is one mention in one meeting. Marks are append only. A deleted
+    // meeting removes its marks, and the items it first raised. The table
+    // `ledger_meetings` records which meetings the writer has read, so the
+    // backfill can resume and does not read a meeting with no items twice.
+    db.exec(`
+      CREATE TABLE IF NOT EXISTS ledger_items (
+        id TEXT PRIMARY KEY,
+        folder_id TEXT,
+        kind TEXT NOT NULL CHECK(kind IN ('action','decision','question')),
+        text TEXT NOT NULL,
+        first_meeting_id TEXT NOT NULL REFERENCES meetings(id) ON DELETE CASCADE,
+        created_at INTEGER NOT NULL
+      );
+      CREATE INDEX IF NOT EXISTS idx_ledger_items_folder
+        ON ledger_items(folder_id, created_at);
+      CREATE TABLE IF NOT EXISTS ledger_marks (
+        id TEXT PRIMARY KEY,
+        item_id TEXT NOT NULL REFERENCES ledger_items(id) ON DELETE CASCADE,
+        meeting_id TEXT NOT NULL REFERENCES meetings(id) ON DELETE CASCADE,
+        meeting_date INTEGER NOT NULL,
+        status TEXT NOT NULL CHECK(status IN ('raised','open','done','dropped','changed')),
+        owner TEXT,
+        reason TEXT,
+        blocked_by TEXT,
+        quote TEXT NOT NULL,
+        quote_start_ms INTEGER,
+        quote_ok INTEGER NOT NULL,
+        writer_model TEXT NOT NULL,
+        written_at INTEGER NOT NULL
+      );
+      CREATE INDEX IF NOT EXISTS idx_ledger_marks_item
+        ON ledger_marks(item_id, meeting_date);
+      CREATE INDEX IF NOT EXISTS idx_ledger_marks_meeting
+        ON ledger_marks(meeting_id);
+      CREATE TABLE IF NOT EXISTS ledger_meetings (
+        meeting_id TEXT PRIMARY KEY REFERENCES meetings(id) ON DELETE CASCADE,
+        writer_model TEXT NOT NULL,
+        marks INTEGER NOT NULL,
+        written_at INTEGER NOT NULL
+      );
     `);
   }
 
