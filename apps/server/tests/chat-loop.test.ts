@@ -256,6 +256,22 @@ describe("loop engine", () => {
     expect(r.blocks[0]).toMatchObject({ kind: "not_found" });
   });
 
+  it("a search with only weak hits ends the turn as not found, with no answer call", async () => {
+    retrieveMock.mockResolvedValue({
+      status: "ok",
+      modelId: "x",
+      hits: [hit(1, "m1", 0.2)],
+    });
+    const { llm, seen } = loopLlm(
+      "search",
+      { query: "moon base" },
+      { lead: [{ text: "The moon base opens.", cites: ["S1"] }], bullets: [] },
+    );
+    const r = await run("What about the moon base?", llm);
+    expect(r.blocks[0]).toMatchObject({ kind: "not_found" });
+    expect(seen.answerUser).toHaveLength(0);
+  });
+
   it("list_meetings lists every meeting with no cap", async () => {
     const { llm, seen } = loopLlm(
       "list_meetings",

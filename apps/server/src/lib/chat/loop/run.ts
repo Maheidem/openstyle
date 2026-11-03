@@ -13,7 +13,7 @@ import { assembleAnswerInput } from "../context.js";
 import { parseDates } from "../dates.js";
 import type { ChatTurnInput } from "../pipeline.js";
 import { answerUser } from "../prompts.js";
-import { Turn } from "../turn.js";
+import { SCORE_FLOOR, Turn } from "../turn.js";
 import type { TurnResult } from "../types.js";
 import { TOOL_LINE, TOOLS, type ToolName } from "./definitions.js";
 import { kickLedgerBackfill } from "./ledger.js";
@@ -195,6 +195,39 @@ When you have the facts, stop calling tools and reply with one short line.`;
     // Guard (not a router): two steps in a row with no new source end the loop.
     idle = t.sources.size === before ? idle + 1 : 0;
     if (idle >= 2) break;
+  }
+
+  // ---- Weak evidence (spec 11.10.10, risk T8). ----
+  // The score floor of the pipeline is a hint inside the loop, but it still
+  // ends a turn that has no better evidence: every search was weak, and no
+  // read or item list gave a source. The loop has no other check for a
+  // question that the meetings cannot answer.
+  const floor = input.scoreFloor ?? SCORE_FLOOR;
+  const searchTops = t.results
+    .filter((r) => r.tool === "search_chunks" && r.topScore !== null)
+    .map((r) => r.topScore as number);
+  const otherEvidence = t.toolCalls.some(
+    (c) =>
+      c.tool === "get_meeting_summary" ||
+      c.tool === "get_transcript_window" ||
+      c.tool === "list_action_items" ||
+      c.tool === "list_decisions_questions" ||
+      (c.tool === "list_items" && c.rows > 0),
+  );
+  if (
+    floor > 0 &&
+    searchTops.length > 0 &&
+    Math.max(...searchTops) < floor &&
+    !otherEvidence
+  ) {
+    t.step(
+      "route",
+      "loop:weak_evidence",
+      Date.now(),
+      0,
+      `best score ${Math.max(...searchTops).toFixed(2)}`,
+    );
+    return t.notFound("no_sources");
   }
 
   // ---- The answer: one structured call, tools off (the worker rejects both). ----
