@@ -22,6 +22,15 @@ import {
   LONG_PROGRAM_ID,
 } from "./clarify-corpus.mts";
 import { buildCorpus } from "./corpus.mts";
+import {
+  addUsage,
+  loadPrices,
+  usageLine,
+  usageMetrics,
+  usageOfRun,
+  usdOf,
+  ZERO_USAGE,
+} from "./cost.mts";
 import { buildDigAddon, digAsCorpus } from "./dig-corpus.mts";
 import {
   buildHeldoutAddon,
@@ -210,6 +219,13 @@ function baseTags(env: Env, arm: string): Record<string, string> {
     "chat.embed_model": EMBED_MODEL_ID,
     "chat.arm": arm,
     "chat.set": env.opts.set ?? "gold",
+    // The ladder of the cloud-model study (2026-11-03): L0 to L3 and the dig arm.
+    ...(process.env.CHAT_EVAL_LEVEL
+      ? { level: process.env.CHAT_EVAL_LEVEL }
+      : {}),
+    ...(process.env.CHAT_EVAL_LEVEL
+      ? { arm: process.env.CHAT_EVAL_DIG_ARM?.trim() || "harness" }
+      : {}),
   };
 }
 
@@ -772,6 +788,9 @@ function dataHash(stack: Stack): string {
 }
 
 interface E2eRow {
+  /** Tokens and USD of all LLM calls of the turn (cost.mts). */
+  usage?: import("./cost.mts").Usage;
+  usd?: number;
   id: string;
   type: QuestionType;
   lang: Lang;
@@ -840,6 +859,7 @@ async function partE2e(env: Env, M: Record<string, number>): Promise<PartOut> {
     return r?.e ?? null;
   };
   const rows: E2eRow[] = [];
+  const prices = await loadPrices();
   const only = process.env.CHAT_EVAL_IDS?.split(",");
   const floor = process.env.CHAT_EVAL_FLOOR
     ? Number(process.env.CHAT_EVAL_FLOOR)
@@ -1004,6 +1024,10 @@ async function partE2e(env: Env, M: Record<string, number>): Promise<PartOut> {
         answer: "",
       };
     }
+    if (llm) {
+      row.usage = usageOfRun(stack.db, llm.runId);
+      row.usd = usdOf(row.usage, prices);
+    }
     rows.push(row);
     if (rows.length % 10 === 0) {
       rss.sample();
@@ -1026,6 +1050,14 @@ async function partE2e(env: Env, M: Record<string, number>): Promise<PartOut> {
   metrics.n = rows.length;
   metrics.errors = rows.filter((r) => r.err).length;
   metrics.acc = mean(rows.map((r) => (r.pass ? 1 : 0)));
+  Object.assign(
+    metrics,
+    usageMetrics(
+      rows.reduce((a, r) => addUsage(a, r.usage ?? ZERO_USAGE), ZERO_USAGE),
+      rows.reduce((a, r) => a + (r.usd ?? 0), 0),
+      rows.length,
+    ),
+  );
   const typeLines: string[] = [];
   for (const t of TYPES) {
     const rs = rows.filter((r) => r.type === t);
@@ -1159,7 +1191,7 @@ async function partE2e(env: Env, M: Record<string, number>): Promise<PartOut> {
   const who = rows.filter((r) => r.type === "who_said");
   metrics["acc.who_said"] = mean(who.map((r) => (r.pass ? 1 : 0)));
 
-  let text = `End to end: runChatTurn on ${rows.length} gold questions (default settings from readChatSettings(), allowProposals, now = corpus clock, history = gold answers). ${metrics.errors} turn errors.\n\n`;
+  let text = `End to end: runChatTurn on ${rows.length} gold questions (default settings from readChatSettings(), allowProposals, now = corpus clock, history = gold answers). ${metrics.errors} turn errors. ${usageLine(metrics).replace("per digging turn", "per turn")}\n\n`;
   text += `| type | N | pass | pass % |\n|---|---|---|---|\n${typeLines.join("\n")}\n| all | ${rows.length} | ${rows.filter((r) => r.pass).length} | ${pct(metrics.acc as number)} |\n\n`;
   text += `Answer accuracy lookup + follow-up: ${pct(metrics["acc.lookup_followup"] as number)}% of ${lf.length}; on the A0 subset ${pct(metrics["acc.a0_subset"] as number)}% of ${a22.length}.\n`;
   text += `Not-found accuracy ${pct(metrics["nf.acc"] as number)}% of ${nfRows.length}; false not-found ${pct(metrics["nf.false"] as number)}% (${metrics["nf.false_n"]} of ${answerable.length}).\n`;
@@ -1382,6 +1414,7 @@ async function partDig(env: Env, M: Record<string, number>): Promise<PartOut> {
     stack,
     mods: env.mods,
     known,
+    prices: await loadPrices(),
   };
   const rows: DigRow[] = [];
   const par = Math.min(2, Number(process.env.CHAT_EVAL_THREADS_PAR ?? 2) || 2);
@@ -1419,6 +1452,7 @@ async function partDig(env: Env, M: Record<string, number>): Promise<PartOut> {
   M["dig.research_on"] = process.env.CHAT_EVAL_RESEARCH === "off" ? 0 : 1;
   let text = `Dig: ${m.questions} questions, ${m.turns} turns (${m["n.meeting"]} meeting, ${m["n.folder"]} folder, ${m["n.all"]} all digging turns; ${m.control_n} control turns). Digging pass ${pct(m.pass as number)}% (second turns ${pct(m.pass_second as number)}%); coverage of the must-mention reasons ${pct(m.cov as number)}%; cross-meeting recall ${pct(m.recall_multi as number)}%; not found ${pct(m.not_found as number)}%; clarify ${pct(m.clarify as number)}%; invalid or missing cites ${m.invalid_cites}; repeats ${m.repeats}; length in range ${pct(m.len_ok as number)}%; errors ${m.errors}. EN ${pct(m["pass.en"] ?? 0)}%, PT ${pct(m["pass.pt"] ?? 0)}%.\n`;
   text += `Cost of a digging turn: LLM calls mean ${(m.llm_calls_mean as number).toFixed(1)} (p95 ${m.llm_calls_p95}), tool calls mean ${(m.tool_calls_mean as number).toFixed(1)}, latency p50 ${m.ms_p50} ms, p95 ${m.ms_p95} ms. Controls (a simple fact): pass ${pct(m.control_pass as number)}%, LLM calls mean ${(m.control_llm_calls_mean as number).toFixed(1)}, tool calls mean ${(m.control_tool_calls_mean as number).toFixed(1)}, latency p95 ${m.control_ms_p95} ms.\n`;
+  text += `${usageLine(m as Record<string, number>)}\n`;
   text += `Trigger: recall ${pct(m.trigger_recall as number)}% of the digging turns; false on gold ${m.trigger_false_gold_n} of ${env.gold.questions.length}, on broad turns ${m.trigger_false_broad_n} of ${broadTexts.length}, on controls ${m.trigger_false_controls}.\n`;
   text += `\n| id | turn | scope | lang | kind | pass | cov | recall | cited | blocks | chars | cites bad | repeat | llm | tools | first tool | ms |\n|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|\n`;
   for (const r of rows)

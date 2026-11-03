@@ -6,8 +6,9 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import { buildDigAddon } from "./dig-corpus.mts";
+import { buildHeldoutDig } from "./dig-heldout.mts";
 import { normalize } from "./keys.mts";
-import { buildDig, type DigRow, summarizeDig } from "./p1-dig.mts";
+import { buildDig, type DigRow, summarizeDig, TWO_THIRDS } from "./p1-dig.mts";
 
 const addon = buildDigAddon();
 const qs = buildDig();
@@ -196,3 +197,15 @@ for (const name of ["heldout", "dev", "final"] as const) {
     assert.ok(ha.meetings.every((m) => m.id.startsWith(`${px}-`)));
   });
 }
+
+test("blind dig sets: 2 of 3 groups reach minCov (0.67 is read as two thirds)", () => {
+  // Only the dev and heldout sets are read here. The final set is not opened.
+  for (const set of ["heldout", "dev"] as const)
+    for (const q of buildHeldoutDig(set))
+      for (const t of q.turns) {
+        if (t.groups.length === 3 && t.minCov >= 0.66)
+          assert.ok(2 / 3 >= t.minCov, `${q.id}: 2 of 3 groups must pass`);
+        assert.ok(t.minCov <= 1, q.id);
+      }
+  assert.ok(2 / 3 >= TWO_THIRDS);
+});

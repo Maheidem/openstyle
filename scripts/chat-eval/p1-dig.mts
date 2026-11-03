@@ -17,6 +17,16 @@
 
 import type { ChatMessage } from "@openstyle/validations";
 import {
+  addUsage,
+  evidenceOfRun,
+  type Prices,
+  type TurnEvidence,
+  type Usage,
+  usageOfRun,
+  usdOf,
+  ZERO_USAGE,
+} from "./cost.mts";
+import {
   DIG_CEDAR_ID,
   DIG_LAGOA_ID,
   DIG_ORCHARD_ID,
@@ -63,7 +73,7 @@ const lag = (...n: number[]) => n.map((x) => digMeetingId("lag", x));
 const ced = (...n: number[]) => n.map((x) => digMeetingId("ced", x));
 
 /** Two of three groups (a plain 0.67 would fail 2 of 3 by rounding). */
-const TWO_THIRDS = 2 / 3 - 1e-9;
+export const TWO_THIRDS = 2 / 3 - 1e-9;
 
 const T = (
   kind: DigKind,
@@ -527,6 +537,11 @@ export interface DigRow {
   research: boolean;
   /** The time of each checkpoint write of the turn, in ms. */
   ckptMs: number[];
+  /** Tokens and USD of all LLM calls of the turn (cost.mts). */
+  tokens: Usage;
+  usd: number;
+  /** The call records of the turn and the sources of the answer call. */
+  evidence: TurnEvidence | null;
 }
 
 const has = (norm: string, g: string[]): boolean =>
@@ -560,6 +575,8 @@ export interface DigEnv {
     settings: typeof import("../../apps/server/src/lib/chat/settings.ts");
   };
   known: Parameters<typeof checkCites>[1];
+  /** Prices of the cloud model; null for a local model (USD 0). */
+  prices?: Prices | null;
 }
 
 export async function runDig(env: DigEnv, q: DigQ): Promise<DigRow[]> {
@@ -603,6 +620,9 @@ export async function runDig(env: DigEnv, q: DigQ): Promise<DigRow[]> {
           : {}),
       });
       llm.finish("succeeded");
+      const tokens = usageOfRun(stack.db, llm.runId);
+      const usd = usdOf(tokens, env.prices ?? null);
+      const evidence = evidenceOfRun(stack.db, llm.runId);
       const nf = res.blocks.some((b) => b.kind === "not_found");
       const clarify = res.blocks.some((b) => b.kind === "clarify");
       const text = answerText(res);
@@ -676,6 +696,9 @@ export async function runDig(env: DigEnv, q: DigQ): Promise<DigRow[]> {
           .join(" > "),
         research: res.trace.research !== undefined,
         ckptMs,
+        tokens,
+        usd,
+        evidence,
       });
       earlier.push(text);
       const mk = {
@@ -733,6 +756,11 @@ export async function runDig(env: DigEnv, q: DigQ): Promise<DigRow[]> {
         trace: "",
         research: false,
         ckptMs,
+        tokens: llm ? usageOfRun(stack.db, llm.runId) : ZERO_USAGE,
+        usd: llm
+          ? usdOf(usageOfRun(stack.db, llm.runId), env.prices ?? null)
+          : 0,
+        evidence: llm ? evidenceOfRun(stack.db, llm.runId) : null,
       });
       break;
     }
@@ -795,6 +823,19 @@ export function summarizeDig(rows: DigRow[]): Record<string, number> {
     dig.map((r) => r.ms),
     0.95,
   );
+  // Cost of the run: every turn (controls and setup turns too).
+  const tot = rows.reduce(
+    (a, r) => addUsage(a, r.tokens ?? ZERO_USAGE),
+    ZERO_USAGE,
+  );
+  const usd = rows.reduce((a, r) => a + (r.usd ?? 0), 0);
+  m.tokens_in = tot.in;
+  m.tokens_out = tot.out;
+  m.tokens_cached = tot.cached;
+  m.tokens_cache_write = tot.cacheWrite;
+  m.tokens_reasoning = tot.reasoning;
+  m.usd_total = usd;
+  m.usd_per_turn = dig.length > 0 ? usd / dig.length : 0;
   m.setup_n = setup.length;
   m.setup_pass = mean(setup.map((r) => (r.pass ? 1 : 0)));
   m.control_n = ctl.length;

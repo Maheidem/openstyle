@@ -9,7 +9,12 @@ import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { lines } from "./clarify-corpus.mts";
 import type { DigAddon } from "./dig-corpus.mts";
-import type { DigKind, DigQ, DigTurn } from "./p1-dig.mts";
+import {
+  type DigKind,
+  type DigQ,
+  type DigTurn,
+  TWO_THIRDS,
+} from "./p1-dig.mts";
 import type { Folder, Lang, Meeting, Person } from "./types.mts";
 
 const DAY = 86_400_000;
@@ -194,7 +199,8 @@ export function buildHeldoutDig(set: DigSetName = "heldout"): DigQ[] {
         groups: t.groups,
         mustNot: t.mustNot,
         meetings: t.meetings.map(meetingId),
-        minCov: t.minCov,
+        // The blind keys write 2 of 3 as 0.67, and 2/3 < 0.67. Same guard as the original set.
+        minCov: t.minCov === 0.67 ? TWO_THIRDS : t.minCov,
       }),
     ),
   }));
