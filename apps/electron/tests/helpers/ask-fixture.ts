@@ -409,6 +409,7 @@ export interface AskRequest {
     | "chat_reflect"
     | "chat_dig_item"
     | "chat_dig_meeting"
+    | "chat_loop_answer"
     | "other";
   system: string;
   /** The text of the last user message. */
@@ -546,6 +547,8 @@ export class FakeAskLlm {
    * not-found answer, which the search-wider spec (P2) needs.
    */
   requireOverlap = false;
+  /** The model name of the last request. The reply names it, as a real server does. */
+  private model = "fake-llm";
   private server: Server | undefined;
   private port = 0;
   private sockets = new Set<Socket>();
@@ -593,7 +596,7 @@ export class FakeAskLlm {
         id: "chatcmpl-fake",
         object: "chat.completion",
         created: 1,
-        model: "fake-llm",
+        model: this.model,
         choices: [{ index: 0, message, finish_reason: finish }],
         usage: { prompt_tokens: 100, completion_tokens: 20, total_tokens: 120 },
       }),
@@ -642,6 +645,7 @@ export class FakeAskLlm {
       string,
       unknown
     >;
+    this.model = typeof body.model === "string" ? body.model : "fake-llm";
     const messages = (body.messages ?? []) as {
       role: string;
       content: unknown;
@@ -669,7 +673,8 @@ export class FakeAskLlm {
             schema === "chat_map_notes" ||
             schema === "chat_reflect" ||
             schema === "chat_dig_item" ||
-            schema === "chat_dig_meeting"
+            schema === "chat_dig_meeting" ||
+            schema === "chat_loop_answer"
           ? schema
           : "other";
     const record: AskRequest = {
@@ -683,6 +688,73 @@ export class FakeAskLlm {
     };
     this.requests.push(record);
 
+    if (
+      kind === "native" &&
+      tools.some((n) =>
+        ["list_meetings", "search", "read", "list_items"].includes(n),
+      )
+    ) {
+      // A step of the tool loop (D22): the first step calls the tool that code
+      // forces (one tool is active). A step that holds a tool result stops.
+      const seen = messages.some((m) => m.role === "tool");
+      // A slow step keeps the step text of the loop on the screen.
+      if (this.reflectDelayMs > 0) {
+        await new Promise((r) => setTimeout(r, this.reflectDelayMs));
+      }
+      if (seen) {
+        record.answered = "text";
+        this.text(res, "I have the facts.");
+        return;
+      }
+      const name = tools.includes("search") ? "search" : "list_meetings";
+      record.answered = name;
+      this.toolCall(
+        res,
+        name,
+        name === "search" ? { query: user.slice(0, 200) } : {},
+      );
+      return;
+    }
+    if (kind === "chat_loop_answer") {
+      // The answer of the loop: one lead sentence, copied from the source that
+      // shares most words with the question, cited with its label.
+      const question = questionOf(user);
+      const sources = parseSources(user);
+      record.answered = "chat_loop_answer";
+      if (this.answerDelayMs > 0) {
+        await new Promise((r) => setTimeout(r, this.answerDelayMs));
+      }
+      if (sources.length === 0 || question.includes(NOT_FOUND_MARK)) {
+        this.text(res, JSON.stringify({ lead: [], bullets: [] }));
+        return;
+      }
+      const qw = new Set(words(question));
+      let best = sources[0] as ParsedSource;
+      let bestScore = -1;
+      for (const s of sources) {
+        const score = words(s.text).filter((w) => qw.has(w)).length;
+        if (score > bestScore) {
+          best = s;
+          bestScore = score;
+        }
+      }
+      let sentence = best.text
+        .replace(/^\(speakers: [^)]*\) /, "")
+        .replace(
+          /^(Overview|Decision|Key points|Action item|Open question): /,
+          "",
+        );
+      if (sentence.length > 280)
+        sentence = sentence.slice(0, 280).replace(/\s+\S*$/, "");
+      this.text(
+        res,
+        JSON.stringify({
+          lead: [{ text: sentence, cites: [best.label] }],
+          bullets: [],
+        }),
+      );
+      return;
+    }
     if (kind === "native") {
       if (this.noNativeTools) {
         record.answered = "text";

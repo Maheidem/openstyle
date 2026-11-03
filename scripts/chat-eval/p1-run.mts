@@ -2115,14 +2115,11 @@ export async function runP1(
     s("chat/plan.ts"),
     s("chat/choices.ts"),
     s("chat/context.ts"),
-    s("chat/loop/run.ts"),
-    s("chat/loop/tools.ts"),
-    s("chat/loop/definitions.ts"),
-    s("chat/loop/profile.ts"),
-    s("chat/loop/ledger.ts"),
     s("mlx-rerank/constants.ts"),
     s("mlx-llm/server.ts"),
     s("mlx-rerank/server.ts"),
+    // Not named below: the load only makes the module graph of the loop part of the run.
+    s("chat/loop/run.ts"),
   ]);
   // The scratch profile: the default LLM, the search model, the chat switches.
   const w = stack.mod.writeSetting;

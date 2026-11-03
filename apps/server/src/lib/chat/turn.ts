@@ -1709,6 +1709,8 @@ export class Turn {
       // A broad answer drops a sentence with a fact that no source holds
       // (last attempt); a lookup answer is retried and then not found.
       dropUnsupported: synth && attempt >= 2,
+      // The loop engine counts "180k" as 180000 (D22). The pipeline keeps its rows.
+      thousands: this.input.settings.engine === "loop",
     });
     this.step(
       "cite_check",

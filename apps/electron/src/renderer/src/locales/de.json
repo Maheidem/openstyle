@@ -335,7 +335,11 @@
       "hotkeyDesc": "Öffnet aus jeder App ein kleines Fragen-Fenster. Beginnt es mit den Diktiertasten, startet das Diktat nur, wenn diese Taste nicht innerhalb von 150 ms folgt.",
       "hotkeyConflict": "Wählen Sie eine Kombination mit einer Taste, die kein Diktierkürzel ist.",
       "research": "Recherchemodus",
-      "researchDesc": "Bei Fragen, die Nachforschung brauchen, sucht Ask mehrfach in mehreren Besprechungen, bevor es antwortet. Ein einfacher Fakt bekommt weiter eine schnelle Antwort."
+      "researchDesc": "Bei Fragen, die Nachforschung brauchen, sucht Ask mehrfach in mehreren Besprechungen, bevor es antwortet. Ein einfacher Fakt bekommt weiter eine schnelle Antwort.",
+      "engine": "Antwortmethode",
+      "engineDesc": "Bei der Werkzeugschleife wählt das Modell den nächsten Schritt selbst: Besprechungen auflisten, suchen, lesen oder Punkte auflisten. Klassisch nutzt einen festen Router. Klassisch bleibt der Standard.",
+      "engineLoop": "Werkzeugschleife",
+      "enginePipeline": "Klassisch"
     }
   },
   "today": {

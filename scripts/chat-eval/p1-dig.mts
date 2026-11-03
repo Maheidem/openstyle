@@ -684,6 +684,7 @@ export async function runDig(env: DigEnv, q: DigQ): Promise<DigRow[]> {
           : await mods.pipeline.runChatTurn({
               ...turnInput,
               ...(process.env.CHAT_EVAL_LOOP_FIRST ||
+              process.env.CHAT_EVAL_LOOP_HIT ||
               process.env.CHAT_EVAL_LOOP_LEDGER === "off"
                 ? {
                     loop: {
@@ -694,6 +695,9 @@ export async function runDig(env: DigEnv, q: DigQ): Promise<DigRow[]> {
                               | "list_meetings"
                               | "auto",
                           }
+                        : {}),
+                      ...(process.env.CHAT_EVAL_LOOP_HIT
+                        ? { hitChars: Number(process.env.CHAT_EVAL_LOOP_HIT) }
                         : {}),
                       ...(process.env.CHAT_EVAL_LOOP_LEDGER === "off"
                         ? { ledger: false }

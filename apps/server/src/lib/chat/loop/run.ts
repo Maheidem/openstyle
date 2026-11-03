@@ -43,7 +43,7 @@ const ANSWER_SCHEMA = {
 const answerSystem = `You answer a question about meeting notes. Use ONLY the numbered sources.
 Write the answer in the language of the QUESTION, even when the sources use another language.
 "lead" holds 1 to 3 short sentences: the answer first.
-"bullets" holds one bullet for each separate fact, reason, item or change that the sources show. Put them in date order when the question is about change over time. Write as many bullets as the sources need, at most ${BULLETS}. Write no bullet when the lead answers the question.
+"bullets" holds one bullet for each separate fact, reason, item or change that the sources show. Put them in date order when the question is about change over time. Write as many bullets as the sources need, at most ${BULLETS}. Write one bullet for each source label that adds a new fact. Write no bullet when the lead answers the question.
 One bullet states one fact in at most 30 words. Name the date of the meeting when the sources give one.
 Put the labels of the sources that show the sentence or bullet in "cites", for example ["S2"]. When a sentence uses facts of more than one source, put every one of those labels in "cites". Never write a label inside the text.
 Copy names, numbers and dates exactly as the sources write them. Write the full name of a person when the sources have it.
@@ -53,7 +53,7 @@ If the sources hold no answer, return empty lists. Never use knowledge from outs
 
 /** Eval only: overrides of the model profile, so a run can measure a first call. */
 export type LoopOverride = Partial<
-  Pick<LoopProfile, "first" | "stepCap" | "ledger">
+  Pick<LoopProfile, "first" | "stepCap" | "ledger" | "hitChars">
 >;
 
 export async function runLoop(
@@ -68,8 +68,8 @@ export async function runLoop(
   };
   const t = new Turn(input);
   const { question } = input;
-  // Hit text is 1500 characters in the loop (spec 11.10.4, `search`).
-  Object.assign(t.ctx, { hitChars: 1500 });
+  // The hit text is longer than in the pipeline (640): spec 11.10.4, `search`.
+  Object.assign(t.ctx, { hitChars: profile.hitChars });
   t.prepare();
   // D20: the clarify block runs as today. It ends the turn.
   const clarified = t.clarify();
@@ -273,6 +273,12 @@ When you have the facts, stop calling tools and reply with one short line.`;
       }
       if ((kind === "length" || kind === "context_exceeded") && attempt < 3) {
         run.budget = Math.floor(run.budget / 2);
+        continue;
+      }
+      // Some local servers answer the structured call with a tool call. Ask once more.
+      if (kind === "unexpected_tool_calls" && attempt < 3) {
+        run.repair =
+          "Reply with the JSON object only. Do not call a tool. Use only the sources.";
         continue;
       }
       if (kind === "length" || kind === "context_exceeded")

@@ -6,7 +6,13 @@
 
 export type FirstCall = "search" | "list_meetings" | "auto";
 
-export type ModelClass = "e2b" | "e4b" | "qwen-flash" | "local" | "cloud";
+export type ModelClass =
+  | "e2b"
+  | "e4b"
+  | "qwen-flash"
+  | "local-large"
+  | "local"
+  | "cloud";
 
 export interface LoopProfile {
   readonly cls: ModelClass;
@@ -14,6 +20,8 @@ export interface LoopProfile {
   readonly first: FirstCall;
   /** Most model calls in the loop. The answer call comes after them. */
   readonly stepCap: number;
+  /** Most characters of one passage in a search result. */
+  readonly hitChars: number;
   /** Size cap of one tool result, in characters. */
   readonly resultChars: number;
   /** Output tokens of one loop step. */
@@ -27,12 +35,14 @@ export interface LoopProfile {
 }
 
 const SMALL = {
-  resultChars: 6000,
-  stepTokens: 300,
+  hitChars: 900,
+  resultChars: 12_000,
+  stepTokens: 400,
   answerBudget: 10_000,
   answerTokens: 1800,
 } as const;
 const LARGE = {
+  hitChars: 1500,
   resultChars: 20_000,
   stepTokens: 1000,
   answerBudget: 30_000,
@@ -76,6 +86,16 @@ export function loopProfile(model: {
     return {
       cls: "qwen-flash",
       first: "list_meetings",
+      stepCap: 10,
+      ledger: false,
+      ...LARGE,
+    };
+  }
+  // A large local model (Qwen 27B, Gemma 31B) takes the cloud numbers and a forced search.
+  if (/(?:^|[^\d])(?:27|31|32|35|70)b/i.test(id)) {
+    return {
+      cls: "local-large",
+      first: "search",
       stepCap: 10,
       ledger: false,
       ...LARGE,

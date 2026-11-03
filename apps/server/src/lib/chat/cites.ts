@@ -136,6 +136,18 @@ function numberForms(t: string): string {
 }
 
 /**
+ * "180k" becomes 180000 (spec 11.10, D22 control fix). A number with a k holds
+ * the same fact as the number with its zeros. Only the loop engine uses it, so
+ * the pipeline engine keeps its rows.
+ */
+export function expandThousands(t: string): string {
+  return t.replace(
+    /(?<![\p{L}\d])(\d+(?:[.,]\d+)?) ?k(?![\p{L}\d])/giu,
+    (_m, n: string) => String(Math.round(Number(n.replace(",", ".")) * 1000)),
+  );
+}
+
+/**
  * Lower case, accents folded, dates to `d:MM-DD`, thousands separators out,
  * other punctuation to one space. `numberWords` turns "two" into "2". It is
  * on for the text of sources and off for the sentence of the answer: "um" is a
@@ -180,6 +192,7 @@ const QUOTES = /"([^"]{2,})"|“([^”]{2,})”|«([^»]{2,})»/g;
 export function extractFacts(
   sentence: string,
   knownNames: readonly string[],
+  opts?: { thousands?: boolean },
 ): FactToken[] {
   const out: FactToken[] = [];
   const seen = new Set<string>();
@@ -193,6 +206,7 @@ export function extractFacts(
 
   // A list marker at the start is not a fact.
   let s = sentence.replace(/^\s*(?:\d+[.)]|[-*•])\s+/, "");
+  if (opts?.thousands) s = expandThousands(s);
 
   // Quoted strings first. They leave the sentence.
   s = s.replace(QUOTES, (_m, a?: string, b?: string, c?: string) => {
@@ -270,10 +284,10 @@ const mmss = (ms: number) => {
 const dayOf = (ms: number) => new Date(ms).toISOString().slice(0, 10);
 
 /** What a source can support: its text, its title, its date and its time. */
-function sourceHaystack(s: Source): string {
+function sourceHaystack(s: Source, thousands = false): string {
   return normalizeText(
     [
-      s.text,
+      thousands ? expandThousands(s.text) : s.text,
       s.title ?? "",
       s.startedAt === null ? "" : dayOf(s.startedAt),
       s.startMs === null ? "" : mmss(s.startMs),
@@ -318,6 +332,8 @@ export interface CheckInput {
    * on (a broad answer, last attempt: unsupported claims go, never stay).
    */
   dropUnsupported?: boolean;
+  /** "180k" and 180000 are the same number (the loop engine). */
+  thousands?: boolean;
 }
 
 export function checkAnswer(input: CheckInput): CiteCheck {
@@ -327,7 +343,7 @@ export function checkAnswer(input: CheckInput): CiteCheck {
   const hayOf = (s: Source) => {
     let h = hay.get(s.label);
     if (h === undefined) {
-      h = sourceHaystack(s);
+      h = sourceHaystack(s, input.thousands);
       hay.set(s.label, h);
     }
     return h;
@@ -361,7 +377,9 @@ export function checkAnswer(input: CheckInput): CiteCheck {
     // 3: fact check.
     const cites = valid.map((s) => s.label);
     const mine: string[] = [];
-    for (const fact of extractFacts(sentence.text, input.knownNames)) {
+    for (const fact of extractFacts(sentence.text, input.knownNames, {
+      thousands: input.thousands,
+    })) {
       const forms = fact.alt ? [fact.norm, fact.alt] : [fact.norm];
       const held = (hay: string) => forms.some((f) => holds(hay, f));
       const supported =

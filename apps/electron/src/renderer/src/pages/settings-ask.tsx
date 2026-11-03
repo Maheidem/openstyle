@@ -184,6 +184,7 @@ export function AskSettingsPanel({
   const [nativeTools, setNativeTools] = useState(true);
   const [clarify, setClarify] = useState(true);
   const [research, setResearch] = useState(true);
+  const [engine, setEngine] = useState<"loop" | "pipeline">("pipeline");
 
   useEffect(() => {
     if (!settings) return;
@@ -197,6 +198,10 @@ export function AskSettingsPanel({
     setNativeTools(settings[SETTINGS_KEYS.chatNativeTools] !== "false");
     setClarify(clarifyEnabled(settings[SETTINGS_KEYS.chatClarify]));
     setResearch(clarifyEnabled(settings[SETTINGS_KEYS.chatResearch]));
+    // A missing row means the classic pipeline. Only "loop" turns the tool loop on.
+    setEngine(
+      settings[SETTINGS_KEYS.chatEngine] === "loop" ? "loop" : "pipeline",
+    );
   }, [settings, applyRounds, applySourceBudget, applyK, applyDeadline]);
 
   const save = (key: string, value: string): void => {
@@ -310,6 +315,30 @@ export function AskSettingsPanel({
           aria-label={t("settings.ask.research")}
           data-testid="settings-ask-research"
         />
+      </Row>
+      <Row label={t("settings.ask.engine")} desc={t("settings.ask.engineDesc")}>
+        <Select
+          value={engine}
+          onValueChange={(v) => {
+            const next = v === "loop" ? "loop" : "pipeline";
+            setEngine(next);
+            save(SETTINGS_KEYS.chatEngine, next);
+          }}
+        >
+          <SelectTrigger
+            className="w-56"
+            aria-label={t("settings.ask.engine")}
+            data-testid="settings-ask-engine"
+          >
+            <SelectValue />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="pipeline">
+              {t("settings.ask.enginePipeline")}
+            </SelectItem>
+            <SelectItem value="loop">{t("settings.ask.engineLoop")}</SelectItem>
+          </SelectContent>
+        </Select>
       </Row>
       <Row label={t("settings.ask.hotkey")} desc={t("settings.ask.hotkeyDesc")}>
         <HotkeyRecorderControl
