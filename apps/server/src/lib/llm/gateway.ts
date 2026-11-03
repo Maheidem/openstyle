@@ -289,7 +289,7 @@ interface Capture {
 
 function usageOf(
   u: {
-    inputTokens: { total?: number; cacheRead?: number };
+    inputTokens: { total?: number; cacheRead?: number; cacheWrite?: number };
     outputTokens: { total?: number; reasoning?: number };
   },
   responseBody: unknown,
@@ -300,6 +300,9 @@ function usageOf(
     reasoning: u.outputTokens.reasoning ?? null,
     cached: u.inputTokens.cacheRead ?? null,
   };
+  // Anthropic cache writes cost more than plain input. Kept only when above 0.
+  if ((u.inputTokens.cacheWrite ?? 0) > 0)
+    usage.cacheWrite = u.inputTokens.cacheWrite;
   // The OpenAI chat reader turns a missing detail into 0. Unknown is NULL (7.4).
   const raw = asObject(asObject(responseBody)?.usage);
   if (raw && "prompt_tokens" in raw) {

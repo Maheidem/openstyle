@@ -54,6 +54,12 @@ export interface TokenUsage {
   output: number | null;
   reasoning: number | null;
   cached: number | null;
+  /**
+   * Anthropic cache-write tokens (cache_creation_input_tokens). Not a column:
+   * the recorder keeps it in the params JSON as `cache_write_tokens`, so the
+   * schema needs no migration. Absent or null = unknown or none.
+   */
+  cacheWrite?: number | null;
 }
 
 export type StructuredMode = LlmParamsLedger["structuredMode"];
