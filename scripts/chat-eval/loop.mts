@@ -676,7 +676,9 @@ When you have the facts, stop calling tools and reply with one short line.`;
   let idle = 0;
   for (let i = 0; i < cap; i++) {
     if (t.stopReason()) break;
-    const forced = small ? opts.first : null;
+    // A large model keeps `auto`, unless the run asks for the forced call (CHAT_EVAL_LOOP_FORCE=1).
+    const forced =
+      small || process.env.CHAT_EVAL_LOOP_FORCE === "1" ? opts.first : null;
     const tools =
       i === 0 && forced
         ? TOOLS.filter((x) => x.function.name === forced)

@@ -2105,8 +2105,9 @@ export async function runP1(
     const servers = await import("../../apps/server/src/lib/own-servers.ts");
     const row = servers.insertOwnServer({
       baseUrl: BASE_URL.replace(/\/v1\/?$/, ""),
-      apiKey: null,
-      flavor: "openai",
+      // The bearer key of a protected server (environment only, never logged).
+      apiKey: process.env.CHAT_EVAL_BASE_KEY?.trim() || null,
+      flavor: process.env.CHAT_EVAL_BASE_FLAVOR?.trim() || "openai",
     });
     defaultProvider = "server";
     defaultModelId = `server/${row.id}/${MODEL_ID}`; // serverModelId() of the app
