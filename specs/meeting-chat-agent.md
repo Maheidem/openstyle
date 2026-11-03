@@ -2,7 +2,7 @@
 
 Status: DRAFT for owner review. Date: 2026-10-31. Base: `main` at `a7083674`.
 Revision 2 (2026-10-31, 09:49): owner answers applied. Section 12.1 lists them as decisions D1 to D4. Revision 3 (10:45): placement decided, D5 (section 11).
-Revision 4 (2026-10-31, 11:10): owner review applied, decisions D6 to D18 (section 12.1). Revision 5 (2026-11-01): decision D19, the P2 surfaces (section 11.6). Revision 6 (2026-11-02): decision D21, research mode, and the digging eval baseline (section 11.9). Name note: `SD8` is decision D8 of `specs/local-semantic-search.md`. `D1` to `D21` are decisions of this spec.
+Revision 4 (2026-10-31, 11:10): owner review applied, decisions D6 to D18 (section 12.1). Revision 5 (2026-11-01): decision D19, the P2 surfaces (section 11.6). Revision 6 (2026-11-02): decision D21, research mode, and the digging eval baseline (section 11.9). Revision 9 (2026-11-03): decision D22 PROPOSED, Ask as a tool loop over a better index, with the Opus ladder answer to N7 (section 11.10). Name note: `SD8` is decision D8 of `specs/local-semantic-search.md`. `D1` to `D22` are decisions of this spec.
 Scope of this document: design only. No product code is part of this change.
 Language: ASD-STE100 Simplified Technical English.
 Diagrams follow the rule "Diagram conventions" in `AGENTS.md`. The pipeline diagram (2.2), the live-variant diagram (2.4) and the failure diagrams (2.5a, 2.5b) are written to it. The other diagrams are small single-concern sketches.
@@ -54,6 +54,7 @@ I re-read the lines of the code that this spec cites most (retrieve, vector stor
 7. Gemma 4 E2B is the floor (D9). Every other model must score better on the gold set.
 8. The work has 7 phases (P0 to P5 plus the mic workstream PM). Each phase ships behind a setting. Each phase needs an isolated-app E2E proof and gold-eval numbers.
 9. Research mode (D21, section 11.9): for questions that need digging, one LangGraph graph repeats search, observe and reflect under stop rules that code owns. `cite_check` is always the last node. Simple facts stay on the fast path.
+10. Proposed (D22, section 11.10, not approved): Ask becomes a tool loop. The model picks from four tools (`list_meetings`, `search`, `read`, `list_items`) over an index with an item ledger. Code owns the phases, the caps and the cite check. The ladder shows that the harness, not the model, limits the digging pass.
 
 ## 1. Goals, non-goals and user stories
 
@@ -2147,6 +2148,316 @@ Sources: https://docs.langchain.com/oss/javascript/langgraph/workflows-agents (o
 
 Sources for this section: https://docs.langchain.com/oss/javascript/langgraph/agentic-rag, `/workflows-agents`, `/use-graph-api`, `/interrupts`, `/streaming`, `/thinking-in-langgraph`, https://docs.langchain.com/oss/javascript/migrate/langgraph-v1, https://github.com/langchain-ai/open_deep_research, https://github.com/langchain-ai/langgraphjs (adaptive RAG notebook `examples/rag/langgraph_adaptive_rag_local.ipynb`) and the repo lines named in the text.
 
+### 11.10 Ask as a tool loop over a better index (D22, owner request 2026-11-03)
+
+Status: PROPOSED. This section is a design. No product code is part of it. The owner has not approved it (open item N8). Prefixes `S/`, `V/` and `W/` are from section 0.2. Labels are from section 0.1. A name in `monospace` with no path is a name in the code of a build step (it does not exist yet). Base: `main` at `a3f64247`.
+
+Short names of code in the reports: `PI-LOOP` is `pi-agent-core` 1.4.0, `dist/agent-loop.js`. Cherry Studio paths are under `src/main/` of its repo. `F n.m` means finding m of section n of `F`.
+
+Research source names. These files are session files of 2026-11-03. They are not in the repo. A fact also names its run id, its URL or its line where one exists.
+
+| Name | File | Content |
+|---|---|---|
+| `F` | `ladder/failure-report.md` | Sort of every failing dig turn of the Opus ladder, by cause. |
+| `V3` | `ladder/rescore-v3.out` | The ladder and older runs, scored again with scorer v3. Read back from MLflow experiment 100. |
+| `R-code` | `redesign/code-deep-read.md` | Read of pi 1.4.0, Cherry Studio and our chat code, plus a port sketch. |
+| `R-qa` | `redesign/meeting-qa.md` | Benchmarks and methods for questions across many meetings. |
+| `R-small` | `redesign/small-models.md` | Small models and tool loops. |
+| `R-sdk` | `redesign/agent-sdks.md` | Agent SDKs and loop libraries. |
+| `R-fw` | `redesign/frameworks.md` | Frameworks and memory systems. |
+| `R-cli` | `redesign/cli-harnesses.md` | How CLI agents search. |
+| `R-chat` | `redesign/chat-products.md` | How chat products answer over documents. |
+| `R-oss` | `redesign/open-source-chat-apps.md` | How open source chat apps let the model pick tools. |
+
+#### 11.10.1 The question and the answer of the ladder
+
+Plan question N7: is the low blind digging pass a limit of the model, or a limit of the harness? The owner asked for a ladder on the blind DEV set (plan `indexed-frolicking-oasis.md`, Step 5). The model is Opus 5.5. The set has 31 digging turns. Scorer v3 scores all four runs.
+
+| Level | What it is | Pass (scorer v3) | MLflow run (rescore; original) | Cost per run, per digging turn | Latency p50 / p95 | LLM calls (mean) |
+|---|---|---|---|---|---|---|
+| L3 | The whole project in one prompt, plain answer prompt | 96.8% (30 of 31) | `a4b89f4c0304484ba59f28cfb45c5528` (`bc85434da6854762a19fad10ff8c4eae`) | USD 3.1972, USD 0.1031 | 12.8 s / 20.0 s | 1.0 |
+| L2 | The whole project as sources, our answer step and cite check | 77.4% (24 of 31) | `dc1131315de04f46b419f80e3740dd3a` (`977359ebc01b4e8bb9f07750d85c6f81`) | USD 2.0400, USD 0.0658 | 12.8 s / 27.2 s | 1.1 |
+| L1 | Today's harness with wide caps | 74.2% (23 of 31) | `ac5a5db5015748269cf47e3bb8f5b0ed` (`4901710afbe14beda41a5bce46660b88`) | USD 1.7432, USD 0.0562 | 27.0 s / 55.7 s | 4.1 |
+| L0 | Today's harness | 71.0% (22 of 31) | `d3c64172c78642cea58c8a90ee7382d5` (`0543ae1ede184f10a34b40be5af17e25`) | USD 1.3066, USD 0.0421 | 24.0 s / 47.3 s | 3.8 |
+
+Sources: pass rates and run ids from `V3` (the four last rows). Cost, latency and calls from the cost lines of the four run logs (`L0.log:684-685`, `L1.log:733-734`, `L2.log:262-263`, `L3.log:209-210`). Cost tracking is PR #414.
+
+What the rows say (facts from `F`, section 2):
+
+1. **All 9 failures of L0 are routing failures.** None is a model error. None is a drop by the cite check (`F` 2.2). The causes are: a list tool replaced by a plain search because the question has no list word (`S/lib/chat/turn.ts:745-765`, `LIST_RE` at `S/lib/chat/prompts.ts:210-214`); no trigger word, so research does not start (`S/lib/chat/research/trigger.ts:23-119`); the score floor 0.5 ends the turn with `not_found` (`S/lib/chat/turn.ts:116`, `:1172-1178`; `S/lib/chat/research/graph.ts:217-224`); and the stall rule ends research before the summary strategy runs (`S/lib/chat/research/research.ts:595-598`). By kind: list 4, why 3, evolve 1, pushed 1 (`F` section 3).
+2. **The 5 failures of L3 are scorer failures.** The colon rule of `normalize` hides "Insurance lookup:" (`scripts/chat-eval/keys.mts:142`). The `mustNot` rule fails a word of a done item inside "Already done:" (`scripts/chat-eval/p1-dig.mts:642`). The length gate (60 to 1800 characters, 1 to 9 text blocks, `p1-dig.mts:660-668`) fails long answers (`F` 2.1). So 96.8% is a floor for this model on this set, not a ceiling.
+3. **Wide caps do not help on this scorer.** L1 loses 7 turns on the block-count gate. It loses 8 turns on routing (`F` 2.3 and section 3). Cause: wide caps allow 12 bullets (`S/lib/chat/research/caps.ts:44` in the ladder worktree, PR #414), and the gate allows 9 text blocks.
+4. **L2 is not a clean number.** The oracle arm cuts its sources after 30000 tokens (`S/lib/chat/context.ts:219-226`). The prompt then holds the August corpus and no dev meeting. This costs 5 turns (`F` 2.4). The loss from "answer shape and checks" is therefore UNKNOWN. L2 measures the arm defect as much as the shape.
+5. **Plain reading with the same model reaches 96.8%.** The harness reaches 71.0%. The model is not the limit on this set. The harness is.
+
+**Answer to N7: the limit is the harness.** Source: points 1 and 5.
+
+What the ladder does NOT show:
+
+- It does not show that reading everything is the right fix. L3 costs 2.4 times L0 per turn (USD 0.1031 against 0.0421). A dev project holds only about 1.5k to 2.4k tokens (plan, Context). A real folder can be much bigger. The owner rule is: no "read all when it fits" as the fix.
+- It does not show how small models do. The ladder ran Opus only.
+- It does not show the final set. Opus on the final set with the harness passes 60.0% (`f2fcccb52bd44a8fb17345f4f61def6e`, `V3`). Qwen 27B passes 43.3% (`a812da3f53424154933f887c1993fffd`). Gemma family runs on the desktop pass 16.0% to 36.7% (`V3`, set `final` rows). The Mac E2B and E4B runs pass 13.3% and 6.7% (scorer before v3; spec 11.9.17, table rows at lines 2110 and 2114).
+
+#### 11.10.2 Decision D22 in one table
+
+| # | DECISION (PROPOSED) | Reason |
+|---|---|---|
+| 1 | Ask becomes a tool loop. The model picks the next tool from four plain tools. Code owns the phases, the caps and the checks. | 11.10.1 point 1: routing by words and gates caused all 9 failures. Top CLI agents, Cherry Studio and pi let the model pick tools from small plain tools (`R-cli` 1; `R-oss` 1). |
+| 2 | The four tools are `list_meetings`, `search`, `read` and `list_items`. | 11.10.4. |
+| 3 | The index gets an item ledger, chunk context and dates resolved in code. | 11.10.3. "Write path decides quality" (`R-qa` 1.2). |
+| 4 | The loop uses the AI SDK (`generateText`, `stopWhen`, `prepareStep`). Code forces the first search, sets a step cap per model size, and ends the loop with a separate answer call. | 11.10.5. `R-sdk` 11. |
+| 5 | The answer keeps the strict JSON with cites. `cites.ts` checks the cites by id. The length fits the question. Clarify (D20) stays. | 11.10.6. |
+| 6 | These are removed from the route: regex routing words, the 0.5 floor exit, the stall rule as a router, the 6 bullet cap, the 12 meeting cap. | 11.10.5, `F` section 6. |
+| 7 | Not chosen: graph stores, subagents, the Claude Agent SDK, read all, keyword fixes, copying Cherry Studio code. | 11.10.7. |
+| 8 | Rollout in four phases. Phase 1 is eval only, on today's index. The final set runs once, for the winner. | 11.10.8. |
+| 9 | Small local models (Gemma 4 E2B and E4B) stay the floor (D9). They get a forced first search and a short cap. | 11.10.5. D9. |
+
+D22 changes two earlier statements. Section 2.1 says "a code router and not a tool loop". D8 says "the code router and closed choices are settled (owner agreed)". The reasons of 2.1 have changed:
+
+| Reason of 2.1 | State now |
+|---|---|
+| Point 1: the worker has no tool calling. | The worker has native tools behind a flag: `OPENSTYLE_MLX_LLM_NATIVE_TOOLS=1`, default off (`W:706-722`). The server has a native tool turn (`S/lib/llm/gateway.ts:1487`, `S/lib/chat/llm.ts:76-82`). |
+| Point 2: no measured tool accuracy for E2B. | Still UNKNOWN. Phase 1 measures it (11.10.8). |
+| Point 3: D8, structure by default. | Kept. Code owns the phases and the checks. The model owns only the next tool. Approval of the change is open item N8. |
+| Point 4: simplest solution (https://www.anthropic.com/engineering/building-effective-agents). | A four tool loop is simple. It is less code than the router, the plan, the trigger and the graph together. This is an inference. |
+
+#### 11.10.3 The index
+
+##### 11.10.3.1 The item ledger
+
+Problem. An "open items" answer needs the status of one item over many meetings. Today an action item is a plain string inside `summary_json` (`S/lib/meetings/workflow/schemas.ts:224-240`). The done mark hangs on a hash of meeting id and task text (`S/lib/meetings/folder-overview.ts:40-48`). The model must infer the history from retrieved chunks. Section 4.1 of this spec describes a `meeting_items` table. It is not built: `grep meeting_items apps/server/src` finds nothing (checked 2026-11-03, `SCHEMA_VERSION` is 55 at `S/lib/schema.ts:14`).
+
+Evidence for a ledger:
+
+- The write path decides quality. The same reader scores 69.1% with its own store and 79.7% with a store written by a better model (https://arxiv.org/pdf/2605.30771, `R-qa` 1.2).
+- Structured, dated notes beat raw dialog on temporal questions: F1 41.9 against 21.3 (https://arxiv.org/html/2402.17753, `R-qa` 2.2).
+- Chunk retrieval is weak on "list" questions. On MemoryAgentBench BM25 scores 19.0 on summaries and a long-context reader scores 52.5 (https://arxiv.org/html/2507.05257v2, `R-qa` 2.5). A ledger holds the answer in a few rows.
+- No public benchmark scores a ledger on meetings (`R-qa` 5). No published number exists for this design. The blind dev set is the test.
+
+DECISION (PROPOSED). Two new tables replace the table of 4.1:
+
+```sql
+-- One id for one thing, across the meetings of a folder or the unfiled set.
+CREATE TABLE ledger_items (
+  id TEXT PRIMARY KEY,                 -- UUID, stable
+  folder_id TEXT,                      -- NULL for unfiled meetings
+  kind TEXT NOT NULL CHECK(kind IN ('action','decision','question')),
+  text TEXT NOT NULL,                  -- the newest wording
+  first_meeting_id TEXT NOT NULL REFERENCES meetings(id) ON DELETE CASCADE,
+  created_at INTEGER NOT NULL
+);
+-- One row for each mention in one meeting. Append only. Never overwritten.
+CREATE TABLE ledger_marks (
+  id TEXT PRIMARY KEY,
+  item_id TEXT NOT NULL REFERENCES ledger_items(id) ON DELETE CASCADE,
+  meeting_id TEXT NOT NULL REFERENCES meetings(id) ON DELETE CASCADE,
+  meeting_date INTEGER NOT NULL,       -- copy of meetings.at, set by code
+  status TEXT NOT NULL CHECK(status IN ('raised','open','done','dropped','changed')),
+  owner TEXT,
+  reason TEXT,                         -- why open or why changed
+  blocked_by TEXT,                     -- who or what holds it
+  quote TEXT NOT NULL,                 -- words from the transcript
+  quote_start_ms INTEGER,
+  quote_ok INTEGER NOT NULL,           -- 1 when code found the quote in the transcript
+  writer_model TEXT NOT NULL,
+  written_at INTEGER NOT NULL
+);
+```
+
+Rules:
+
+1. **Append only.** A new meeting adds marks. It never changes an old mark. The status of an item is the status of its newest mark. Reason: one pilot lost state with removal (16 of 16 replay failures; weak evidence: one author, synthetic data; https://arxiv.org/pdf/2609.20045, `R-qa` 5). A budgeted memory that evicts early content fell from 96% to 72% recall (https://arxiv.org/pdf/2607.21962, `R-qa` 5).
+2. **One writer pass for each meeting.** It runs after the summary is saved (the sync point of 4.1 rule 1: `S/lib/meetings/workflow/nodes/save.ts:242`). The writer reads the summary, the transcript and the open items of the same folder. For each item it returns: the id of an existing item or "new", the status, the owner, the reason, the blocked-by and a quote. The writer is one narrow job (owner principle: one narrow job for each stage; `specialization-over-prompting` in the owner memory).
+3. **Code checks every mark.** Code looks for the quote in the transcript text after `normalizeText` (`S/lib/chat/cites.ts:144`). Code sets `quote_ok`. A mark with `quote_ok = 0` stays in the table. `list_items` hides its reason and blocked-by and flags it. Code checks that a returned item id exists in the same folder. Reason: action item faithfulness is only 0.63 to 0.83 on a public test (https://aws.amazon.com/blogs/machine-learning/meeting-summarization-and-action-item-extraction-with-amazon-nova/, `R-qa` 5). That the quote check helps on meetings is an inference: no paper tested it.
+4. **The done state.** The first status of an action comes from `folder_action_item_state` (the done mark of the owner) and from the writer. The dual write of 4.1 point 3 stays: a done change from the UI writes the old table and adds a mark. The folder overview keeps reading the old table.
+5. **Backfill.** A job writes marks for the meetings that exist. It runs in the background and can resume. The cost is UNKNOWN. Phase 2 measures it (11.10.8).
+6. **No graph store.** The ledger is two SQLite tables. 11.10.7 gives the reason.
+
+Risk, stated plainly: the writer can merge two items, or split one. A small writer model does this more. Same reader and better writer gave +10.6 points in one test (`R-qa` 5). The open item N10 asks who writes the ledger.
+
+##### 11.10.3.2 Chunk context
+
+Each hit that a tool returns carries its meeting title, its date and the speakers of the span. Two steps:
+
+1. **At result time (phase 1).** Code adds title, date and the speakers of the span to the hit text. The speakers come from the segment rows. This needs no re-embed. It is a DECISION (PROPOSED).
+2. **At index time (phase 2, optional).** Code adds title, date and speakers to the text that is embedded and reranked. Spec 7.5 already names this idea (R5, arm C1). The source is https://www.anthropic.com/news/contextual-retrieval. A change of the chunk text re-embeds every chunk (`S/lib/search/chunker.ts:20`, `CHUNKER_VERSION`). The chunker rule S7 says no speaker label goes into the chunk text (`S/lib/search/chunker.ts:7`). Step 2 would reverse S7. It needs its own approval and its own retrieval eval (open item N14). The retrieval gain on meetings is UNKNOWN.
+
+##### 11.10.3.3 Dates in code
+
+1. Every meeting has a date (`meetings.at`). Every mark has a copy of it (`ledger_marks.meeting_date`).
+2. `list_meetings` returns the meetings in date order. The model reads "first" and "last" from the list. Code does no date work for it.
+3. Tools take `date_from` and `date_to`. A date word in a question ("last week", "in August") goes through `parseDates` (`S/lib/chat/dates.ts:442`). The system prompt names today's date.
+4. `list_items` returns the history in date order. It adds numbers that code computes: the meeting count and the day count since the item was first raised.
+5. Reason: small models invent time ranges. Llama 3.1 8B made up ranges for 3 of 4 questions without a time cue (https://arxiv.org/html/2410.10813, `R-qa` 1). "What changed" is weak for every system. BEAM contradiction resolution is 0.05 or lower (https://arxiv.org/html/2510.27246v1, `R-qa` 1). So code builds the two states, the first and the last, and the model compares two short lists. This is the advice of `R-qa` section 7 point 6.
+
+#### 11.10.4 The four tools
+
+The model sees four tools. Spec 3.1 rule 4 allows at most 8 visible tools. Four is far below every loss threshold in `R-small` 3 (RAG-MCP: 85% at 5 tools, 45% at 20 tools; https://arxiv.org/abs/2505.03275, secondary). Each tool has one job. Descriptions are short and say when to call. Tool output never throws: an error is a plain result that says the next step (pi: `PI-LOOP:590-598`; Cherry: `knowledgeLookup.ts:105-110`; `R-code` 2.1 and 2.2).
+
+| Tool | Job | Arguments | Result | Existing code |
+|---|---|---|---|---|
+| `list_meetings` | List all meetings in scope, oldest first. | `date_from?`, `date_to?`, `tag?` | `total`, then one line each: label `M<n>`, date, title, gist of at most 120 characters. No count cap. A byte cap adds "N more, narrow the date range". | `listMeetings` (`S/lib/chat/tools.ts:1193`). It sorts newest first (`:1196`) and shows 20 by default (`a.limit ?? 20`). The closed list for model choices stops at `MEETINGS_MAX = 12` (`S/lib/chat/choices.ts:78`). |
+| `search` | Find passages by meaning and words. | `query`, `meeting_ids?`, `date_from?`, `date_to?`, `kind?` (`transcript`, `summary`, `item`), `k?` (default 10, at most 20) | `hits`: label `S<n>`, meeting label, date, title, speakers, time, score, the text blocks. Text up to 1500 characters, with a cut notice that names the next call. No score floor. A weak best score adds a hint. An empty result says: "No passage found. Try other words, or call list_meetings or list_items." | `searchChunks` (`S/lib/chat/tools.ts:623`) on `retrieve` (`S/lib/search/retrieve.ts:243`; hybrid, RRF, reranker). Hit text is cut to 640 (`tools.ts:46`). Default `k` is 8 (`V/chat.ts:14`; range 3 to 20). |
+| `read` | Read more of one source. | `id` (a meeting label, a hit label or an item id), `part` (`summary` or `transcript`), `from_ms?` | A summary: overview, key points, decisions, action items with owner and due, open questions. A transcript span: lines with time and speaker, at most 180 s and 1500 characters, then `more: { next_from_ms }`. | `getMeetingSummary` (`tools.ts:756`; lines cut to 600 characters). `getTranscriptWindow` (`tools.ts:1037`; `WINDOW_MAX_MS` 180000 and `WINDOW_MAX_CHARS` 1500 at `tools.ts:48-50`). Scope check as in `runTool` (`tools.ts:1447`). |
+| `list_items` | List ledger items with their history. | `status?` (`open`, `done`, `all`; default `open`), `kind?`, `owner?`, `meeting_ids?`, `date_from?`, `limit?` | Each item: label `S<n>`, text, owner, status now, first raised (meeting and date), then the marks in date order: date, status, reason, blocked-by, quote, `quote_ok`. | NEW. Closest code: `listActionItems` (`tools.ts:840`), `listDecisionsQuestions` (`tools.ts:922`), `rankedTop` (`tools.ts:408`). Phase 1 wraps these. Phase 2 reads the ledger. |
+
+Result rules (all tools):
+
+1. Every result says how much was cut, how much exists and the exact next call. Pattern: pi `read.js:148` and Cherry `charEnd` paging (`R-code` 2.1, 2.2). Citation tools are not cut in the middle of an id (Cherry `types.ts:73-78`).
+2. A result has a size cap by model size. Starting values: 6000 characters for a local model and 20000 for a cloud model. These are an inference from pi (50 KB) and Cherry (20000 characters per read, `KnowledgeConceptService.ts:18`). Phase 1 tunes them.
+3. Every hit, item and span gets a source label `S<n>` from the existing `SourceMap` (`S/lib/chat/types.ts:36-83`). The label is unique for the turn. The `Source` type already has an `itemId` field (`types.ts:32`). Labels keep their order when two calls run in one step. Code runs the label-adding part of a call in call order (`R-code` 4.3).
+4. The scope stays fixed by code (`S/lib/chat/types.ts:100-105`, `tools.ts:138-150`). A meeting id outside the scope returns a plain error. The write tools (`propose_*`), `list_people`, `folder_status` and `count_mentions` are not in the loop (`R-code` 4.1). Write proposals keep the path of 3.3 and section 5.
+
+Why `search` and `read` are two tools and not one (as Cherry `kb_read` with a `pattern`): a small model does better with one job for each tool. This is a choice to measure, not a fact (`R-code` 4.1).
+
+#### 11.10.5 The loop
+
+##### 11.10.5.1 Who owns what
+
+| The model owns | Code owns |
+|---|---|
+| The next tool call and its arguments. | The scope and the meeting ids it may use. |
+| When the evidence is enough (a reply with no tool call). | The first call (forced for small models). |
+| The words of the query. | The step cap, the call cap (16, `S/lib/chat/turn.ts:106`) and the deadline (default 60 s, `V/chat.ts:15`). |
+| | The result size cap and the cut notices. |
+| | The answer call, the cite check and the not-found exit. |
+
+##### 11.10.5.2 Steps
+
+1. Code runs the gate and the clarify block (D20) as today (`S/lib/chat/clarify.ts`). Clarify ends the turn, and the chip starts the next turn (11.9.8).
+2. Code starts the loop with `generateText` from the AI SDK (`ai` is in `apps/server/package.json:45`). It sets `stopWhen` to the step cap and `prepareStep` for the rules below (https://ai-sdk.dev/docs/agents/loop-control; `R-sdk` 11 points 1 to 4). Each model call goes through the gateway, so the cost log and the MLflow trace stay. How the gateway wraps `generateText` with tools is UNKNOWN: `callToolTurn` runs one tool turn (`S/lib/llm/gateway.ts:1487`). The build step decides between a new gateway function and a loop of `callToolTurn` calls.
+3. **Forced first call.** For a local small model, step 0 has `toolChoice` set to `search` and only `search` active. Reason: small models search too little and guess (https://arxiv.org/abs/2604.04651, `R-small` 1.5; the evidence is for fine-tuned Qwen3, not Gemma). Large models keep `auto`. Which tool the forced call uses is open item N9.
+4. **Step cap by model size.** E2B 3. E4B 5. Cloud 10. These are the starting values of the owner brief. The sources: E2B has Tau2 24.5% and E4B has 42.2% (https://ai.google.dev/gemma/docs/core/model_card_4, `R-small` 1.1); untrained loops do not beat plain RAG at 3B (Search-R1 table, https://arxiv.org/html/2503.09516, `R-qa` 4.2). A large local model such as Qwen 27B takes the cloud cap. This is an inference. Phase 1 measures the cap on each model.
+5. **Stop.** The loop ends on a reply with no tool call, on the cap, on the call cap or on the deadline. There is no stall rule that routes. A guard may end the loop when two steps in a row add no new source label (the rule of `S/lib/chat/research/research.ts:595-598`, kept as a guard and not as a router).
+6. **The answer is a separate call with tools off.** The local worker answers a request with `tools` and `response_format` together with a 400 (`W:718`). So the last model call cannot be both. After the loop, code makes one structured answer call with the collected sources and no tools. Text that the model writes inside the loop is dropped. Call count: at most the step cap plus 1. For E2B that is 4.
+7. **Weak result.** A weak search does not end the turn. The hint tells the model to try other words or other tools (Cherry: `knowledgeLookup.ts:215-221`). The `not_found` exit moves to the end. It fires when the answer step has no source that supports a sentence (`checkAnswer`, `S/lib/chat/cites.ts:323`), or when the loop made no hit at all.
+8. **Bad arguments.** The tool returns an error result. The model may retry inside the cap. One repair try with the same model is an option (Cherry `repair.ts:27-40`; `R-code` 4.3).
+9. **A reply cut by the token limit** (`finishReason` "length") with tool calls: code refuses the calls and asks for a new call, as pi does (`PI-LOOP:164-170`). The local output cap makes this likely.
+10. **Parallel calls.** The AI SDK runs the calls of one step together. Results keep the call order (pi `PI-LOOP:459-465`). Gemma 4 on parallel calls in one reply is UNKNOWN (`R-small` 2).
+
+##### 11.10.5.3 What is removed
+
+| Removed | Where it is today | Why |
+|---|---|---|
+| Words that route a list question | `LIST_RE` (`S/lib/chat/prompts.ts:210-214`), `asksForList` (`S/lib/chat/turn.ts:363,750`), list tool replaced (`turn.ts:745-765`) | 4 of 9 L0 failures (`F` 3, 6). |
+| Words that start research | `DIG_RE`, `REASON_RE`, `researchTrigger` (`S/lib/chat/research/trigger.ts:23-119`) | 3 of 9 L0 failures. The owner rule is: no trigger-word fixes. |
+| The 0.5 floor that exits the turn | `S/lib/chat/turn.ts:116`, `:1172-1178`; `research/graph.ts:217-224` | 4 L0 failures end here (`F` 5). |
+| The stall rule as a router | `research/research.ts:595-598` | It fired before the summary strategy in `hv03.2`. |
+| The 640 character cut of a hit | `S/lib/chat/tools.ts:46` | A hit shows only the best segment, cut to 640 characters. The model never sees the whole chunk (plan, Context; `R-code` 3.3 point 3). |
+| The 6 bullet cap | `S/lib/chat/prompts.ts:53,67` | See 11.10.6. |
+| The 12 meeting cap in the closed list | `S/lib/chat/choices.ts:78` | A 13 meeting project loses a meeting (`R-code` 4 Stack facts). |
+
+What stays in code: the scope, the clarify block, the cite check, the repeat guard (`repeatedEarlierAnswer`, `cites.ts:466`), the deadline, the call cap and the not-found exit.
+
+#### 11.10.6 The answer
+
+1. The answer call keeps the strict JSON with `sentences` and `cites` (`S/lib/chat/prompts.ts:38-67`). A small model fills a JSON field better than an inline marker. This is an assumption to test (`R-code` 4.2).
+2. The length fits the question. Today the answer holds 1 to 3 lead sentences and 2 to 6 bullets (`prompts.ts:66-67`) and `ANSWER_MAX_TOKENS` is 500 (`prompts.ts:14`). In D22 the bullet cap is a function of the result: at most the number of ledger items or hits that the loop found, up to a cap that code sets by model size. The first value is 9 bullets, because the dev scorer fails an answer with more than 9 text blocks (`p1-dig.mts:666`; `F` 2.3). Whether the scorer gate is right is open item N12.
+3. Cites are source labels from the tools (`S<n>`). Code checks them with `checkAnswer` (`cites.ts:323`): a label that no tool returned is removed (`badLabels`, `cites.ts:296`). A sentence with a fact that no source holds is removed. The cite chip shows the real quote and the cite time (`pickCiteTimes`, `cites.ts:707`). This is the check by id. It follows the advice to "check every cited id was returned by a tool in this run" (`R-sdk` 11).
+4. A ledger source carries its quote. The cite of an item shows the quote and the meeting. A mark with `quote_ok = 0` cannot be cited as a fact.
+5. Clarify (D20) stays: a code-only block before the loop (11.8). Map-reduce synthesis (11.8 B) stays for a scope that does not fit the window. The loop ends with fewer sources in that case. The interaction is UNKNOWN. Phase 1 tests it.
+
+#### 11.10.7 Not chosen
+
+| Option | Why not | Source |
+|---|---|---|
+| Graph store (Zep, GraphRAG, LightRAG, HippoRAG) | Independent tests show no or small gain over a good dense or BM25 retriever. GraphRAG averages 49.6 against 57.0 for dense. On accurate retrieval BM25 scores 60.5, Zep 37.5, GraphRAG 40.9, Mem0 32.6. A file-style tool set with a strong loop scored 74.0% against 68.5% for the best Mem0 graph on LoCoMo (vendor test). A graph needs a strong LLM at index time. The ledger gives the same structure in two tables. | https://arxiv.org/html/2502.14802 ; https://arxiv.org/html/2507.05257v2 ; https://www.letta.com/blog/benchmarking-ai-agent-memory ; `R-fw` 1 and 3.5 |
+| Subagents, Deep Agents | Multi-agent costs about 15 times the tokens of one chat. No retrieval benchmark exists for Deep Agents. A small local model cannot run many subagents. The loop here is one agent with four tools. A cloud-only path stays possible later. | https://www.anthropic.com/engineering/multi-agent-research-system ; https://docs.langchain.com/oss/javascript/deepagents/overview ; `R-fw` 4 and recommendation 12 |
+| Claude Agent SDK | It wraps the Claude Code binary and needs the Anthropic API format. It cannot run the local floor. Its built-in tools are for files and shells. | https://code.claude.com/docs/en/agent-sdk/overview ; `R-sdk` 1 point 2 and 3 |
+| Read all ("the whole project fits") | L3 proves the ceiling, not the fix. It costs 2.4 times L0 per turn. The owner rule forbids it as the fix. A real folder can pass the window. The advice "under 200000 tokens, put all in the prompt" is for knowledge bases of that size. | 11.10.1; https://www.anthropic.com/news/contextual-retrieval ; `R-chat` 2.1 |
+| Keyword and trigger-word fixes | The owner rule forbids them. The words that fixed the read set did not help the blind set: the D21.1 attempt to add trigger words was reverted as overfit (spec 11.9.17, point 4). The dev set gives 77 to 83% on the read set and 26 to 30% on the blind set for the keyword design (owner memory `blind-set-overfit-proven`, 2026-11-02; not in the repo). | spec 11.9.17 |
+| Copy Cherry Studio code | Cherry Studio is AGPL-3.0. Openstyle is MIT. AGPL needs the whole combined work under AGPL. We read Cherry for the pattern and write our own text and code. pi is MIT. A small copy needs a `THIRD_PARTY` note and the pi LICENSE file (not checked: the installed pi packages hold no LICENSE file). This is a technical reading, not legal advice. | `/LICENSE:1-4`; `R-code` 1 |
+| Free ReAct loop for E2B with no forced step | Small models call tools when they should not, and search too little. Untrained IRCoT and Search-o1 do not beat plain RAG at 3B and 7B. The forced first search and the short cap answer this. | https://arxiv.org/html/2504.18851v1 ; https://arxiv.org/html/2503.09516 ; `R-small` 1.3, 4 |
+| Fine-tuning a search policy | Needs training. Out of scope. | `R-qa` 4.2 |
+
+#### 11.10.8 Phased rollout and eval
+
+Rules from 8.1 stay: temperature 0 on the Mac MLX arm, MLflow read back, GPU lock for local runs (`/tmp/openstyle-gpu.lock`), the chat-eval skill (`.claude/skills/chat-eval/SKILL.md`). Every run logs tokens and USD (PR #414).
+
+| Phase | What | Exit check |
+|---|---|---|
+| D22-P1 | **Eval-only arm `TL` on today's index.** An arm of the chat-eval harness. Four tools. Phase 1 `list_items` wraps the list tools. The score floor is off. Hit text is 1500 characters. The 12 meeting cap is off. The answer step is as today with the bullet cap of 11.10.6. The product code path is unchanged. No UI. No schema change. | The arm runs on the dev set (`CHAT_EVAL_DIG_SET=dev`) for E2B, E4B (Mac), Qwen 27B (desktop) and Opus, with scorer v3. Every run is read back from MLflow. The report has the pass, tokens, USD, LLM calls and latency for each model, and the failing turns sorted by cause as `F` does. |
+| D22-P2 | **Ledger and chunk context.** The ledger tables, the writer pass, the quote check, the backfill. `list_items` reads the ledger. Chunk context at result time. Chunk context at index time only if N14 says yes. Still behind a setting. | The dev bars of the table below hold on the same models. The quote check passes (`quote_ok` rate is reported). The writer cost per meeting is measured. The old graph is not touched. |
+| D22-P3 | **The loop becomes a product path** behind the setting `chat_engine` (`loop` or `pipeline`). The final set runs once for the winner. The owner reads the answers on the real folders (`real --dig`, as D16 of 11.9.14). | The final set bar holds. The old bars of 8.7, 8.7c and 11.9.14 (D5 to D12, D18) show no regression with the setting on. Default is `loop` only after the owner says yes. |
+| D22-P4 | **Retire the old route** (11.10.9). | `pnpm knip` and Biome are clean. A row diff of the kept parts shows 0 changed rows. |
+
+Models. E2B and E4B on the Mac MLX worker. Qwen 27B and Gemma 31B on the desktop llama.cpp server. Opus 5.5 in the cloud. The desktop server returned `502 Bad Gateway` from 13:18 to 13:52 (-03) on 2026-11-03 and no probe ran (`R-small` 5, `probe/desktop-poll.log`). Whether it is back is UNKNOWN. If it stays down, the Qwen 27B arm waits. The native tools flag must be on for the Mac worker (`W:706-722`). With the flag off the worker ignores `tools`. Llama.cpp needs `--jinja` for Gemma 4 tool calls and has an open parse bug for E4B (https://github.com/ggml-org/llama.cpp/issues/22786; `R-small` 2). Phase 1 checks both on the real servers.
+
+**Bars (PROPOSED, open item N15).** They are measured on the blind dev set, scorer v3, 31 digging turns, at the default settings of the phase.
+
+| # | Bar | Today (same set, scorer v3) | Bar |
+|---|---|---|---|
+| T1 | Opus dev pass | L0 71.0% (22 of 31); ceiling L3 96.8% | At least 26 of 31 (83.9%). It is the midpoint of L0 and L3, rounded up. |
+| T2 | Qwen 27B dev pass | 48.4% (15 of 31, `217500cdee9d4f639eafe2eb02287dce`) | At least 20 of 31 (64.5%). It is a gain of 5 turns. The number is an inference. |
+| T3 | E4B dev pass, desktop | 48.4% (15 of 31, `93f444ae7fcf4c8bbd0306bb406eda6e`) | At least 18 of 31 (58.1%). A gain of 3 turns. Inference. |
+| T4 | E2B and E4B dev pass, Mac | UNKNOWN. No scorer v3 run on the Mac is in `V3`. Phase 1 measures the baseline first. | At least the baseline plus 3 turns. |
+| T5 | Controls (4 simple facts) pass | Opus L0 75.0% (`L0.log:684`); L3 100% | 100% (D10 of 11.9.14). |
+| T6 | Invalid cites and uncited text blocks | 0 | 0 (D5 of 11.9.14). |
+| T7 | `not_found` on digging turns | 31.4% to 40.0% on Mac (11.9.14) | At most 10% (D4 of 11.9.14). |
+| T8 | The 33 unanswerable gold questions answer "not found" | The 0.5 floor was set on them (`S/lib/chat/turn.ts:108-116`) | No more false answers than today. Without the floor the answer step must say it. This is the main risk (11.10.10). |
+| T9 | LLM calls for a digging turn, local | mean 1.5 (E4B, 11.9.14 D13) | At most the step cap plus 1: 4 for E2B and 6 for E4B. |
+| T10 | Latency, warm, Mac E2B | bar p50 15 s and p95 30 s (D14 of 11.9.14) | The same bar. |
+| T11 | Latency, Opus | L0 24.0 s and 47.3 s (`L0.log:684`) | No worse than L0. |
+| T12 | Cost per digging turn, Opus | L0 USD 0.0421; L3 USD 0.1031 | At most USD 0.084 (2 times L0). The number is an inference. |
+| T13 | Every other bar of 8.7, 8.7c, the broad part, the threads part, the clarify part | see 8.7 and 11.6 to 11.9 | No regression with the setting on. |
+
+**The final set.** It runs once, for the winner, in phase 3. Today's rows: Opus 60.0% (`f2fcccb52bd44a8fb17345f4f61def6e`), Qwen 27B 43.3% (`a812da3f53424154933f887c1993fffd`), Gemma family 16.0% to 36.7% (`V3`). The bar is: the winner passes more turns than the same model passes today, and no control fails. A fixed pass rate is not set. The owner said: "we don't need 100% but we need to be better". The final set is slightly exposed: two agents printed summary-level rows (coordinator note, 2026-11-03; plan "Notes for the owner"). Whether to replace it is open item N11. Nobody may read the rows of the final set and nobody may tune on it.
+
+**Isolation rules for the writer and the loop.** The ledger writer prompt and the tool descriptions never contain a question, a key or a word taken from a blind set. The tool descriptions are written once and then frozen before the final run. A change after a read of failing dev rows is allowed only if it is a general rule that the owner approves. A trigger-word list is not allowed.
+
+#### 11.10.9 What happens to D21 and to the old route
+
+| Part | Fate | When |
+|---|---|---|
+| The LangGraph research graph (`S/lib/chat/research/*`, 6 files) | Stays during P1 and P2. Stays behind `chat_research` as the `pipeline` engine in P3 for one release. Deleted in P4. | P4 |
+| `S/lib/chat/pipeline.ts`, the router, the plan, the trigger, `LIST_RE` | Same as the graph. The `pipeline` engine uses them. | P4 |
+| `cites.ts`, `clarify.ts`, `mapreduce.ts`, `context.ts`, `store.ts`, `dates.ts` | Stay. The loop uses them. | stays |
+| `tools.ts` | Stays. The four tools wrap its functions. `list_people`, `folder_status`, `count_mentions` stay as code paths for the pipeline engine until P4. | P4 review |
+| Settings | `chat_research` keeps its meaning for the `pipeline` engine. New: `chat_engine`. D7 settings (rounds, k, source budget) apply to the pipeline engine. The loop uses its own caps from code by model size. Whether the loop also shows these settings is UNKNOWN. | P3 |
+| Stored threads | Unchanged. A thread stores messages and cites. The cite shape does not change. | P3 |
+
+Rule from 11.9.11: no long-lived second implementation. The `pipeline` engine lives at most one release after the loop is default. Whether the owner wants this, or an immediate delete, is open item N13.
+
+The step "M4" of 11.9.11 (delete the old loop code) is replaced by P4 of this section when D22 is approved.
+
+Migration of data: the ledger tables are new. They hold nothing until the backfill runs. With no ledger, `list_items` falls back to the list tools of phase 1. So an old install still works. Rollback: set `chat_engine` to `pipeline`. The ledger tables stay and cost only disk. This is a DECISION (PROPOSED).
+
+#### 11.10.10 Latency, cost and risks
+
+Latency. A loop turn is up to cap steps plus one answer call. On E2B a router call takes 200 to 375 ms p50 (`specs/meeting-chat-agent-p0-report.md:285-291`, quoted in 11.9.10). A step with a tool result in the prompt takes longer, because the prompt is longer. The figure is UNKNOWN. The bar is T10. For Opus, L0 p50 is 24.0 s and L3 is 12.8 s (11.10.1). A loop with fewer calls than L0 (mean 3.8) can be faster. This is an inference.
+
+Cost. Opus per digging turn: L0 USD 0.0421, L3 USD 0.1031. A tool loop reads only what it needs. The expected cost is between the two. This is an inference. Bar T12. Local models cost USD 0. The index cost is the writer pass for each meeting. For a cloud writer it is the tokens of one transcript, one summary and the open items of the folder. The figure is UNKNOWN. Phase 2 measures it and prints it per meeting.
+
+| Risk or unknown | What the evidence says | Handling |
+|---|---|---|
+| Small models fail at a free tool loop. | BFCL multi-turn: Qwen3-8B 41.75, Qwen3-4B 22.12 (https://gorilla.cs.berkeley.edu/data_overall.csv, `R-small` 1.1). Web search is 12.0 at 8B. No Gemma 4 number exists. Our task has no published number. | Forced first search. Short cap. Code owns stop and answer. Phase 1 measures E2B and E4B before any other work. If E2B fails the bars, E2B keeps the pipeline engine and the loop is for E4B and larger. The owner decides (N8). |
+| Without the 0.5 floor the loop answers when nothing exists. | The floor came from 33 unanswerable questions: best hit 0.00 to 0.31 against 0.55 to 1.00 for answerable ones (`S/lib/chat/turn.ts:108-116`). | The hint in the tool result carries the score. The answer step and the cite check remove unsupported sentences. Bar T8 measures it. A floor as a hint, not an exit, is the design. |
+| The writer makes a bad ledger. | `R-qa` 5. | Quote check in code. `quote_ok` shown. Phase 2 reports it. N10. |
+| The tool loop lengthens a turn on a weak model. | Cherry has no forced answer at its cap (`toolLoopTermination.ts:104-105`). | We always run the answer call after the cap. |
+| The native tools path in the local runtime is not reliable. | llama.cpp issue 22786: a correct call came back as content (`R-small` 2). The worker flag is off by default (`W:706-722`). | Phase 1 checks on the real servers. A fallback: a structured choice of the next tool, which is the closed choice of 11.9.2 point 6. This keeps the loop and drops the native format. |
+| Tool results fill the window of a small model. | Result cap by model size (11.10.4). | Phase 1 tunes the cap. |
+| The dev set is small and fictional. | 13 meetings, 28 digging questions (11.9.15). | The real data run (`real --dig`) is the cross-check. The owner reads the texts. |
+| The blind sets are not blind any more. | Dev is read for fixes. Final is slightly exposed. | N11. Isolation rules in 11.10.8. |
+| Map-reduce synthesis (11.8 B) and the loop may clash on a big scope. | UNKNOWN. | Phase 1 test on the folder and Everything scopes. |
+| Parallel tool calls from Gemma 4 in one reply. | UNKNOWN (`R-small` 2). | Phase 1 test. The loop works with one call for each step. |
+
+#### 11.10.11 Open questions for the owner (N8 and up)
+
+Numbers continue the list of the review page (N1 to N7). Section 12.2 repeats them.
+
+| # | Question | Default in this section |
+|---|---|---|
+| N8 | Approve D22: a tool loop that the model drives, with code owning the phases? This reverses the "code router is settled" part of D8 and 2.1. | Approve phase 1 only (eval). Decide after the numbers. |
+| N9 | Is the first forced call always `search`, or `list_meetings`? `list_meetings` is better for "first and last" questions. `search` is the call that small models skip. | `search` for E2B and E4B. The model picks for larger models. |
+| N10 | Who writes the ledger at index time: the local model, or a cloud model if the user chose one? A better writer gives a better ledger (`R-qa` 5). It also sends transcripts to a cloud (D1 allows it as the user's choice). | The model of the Summary task (D6). Cloud only if the user picked cloud. |
+| N11 | The blind final set is slightly exposed. Replace it with a fresh blind set written by agents that saw nothing? | Run the final set once as it is. Build a fresh set in parallel for the next change. |
+| N12 | The dev scorer fails an answer with more than 9 text blocks or more than 1800 characters (`p1-dig.mts:660-668`). Does the owner want these gates, when "length fits the question"? | Keep the gates for D22 bars. Review them after phase 1. |
+| N13 | After the loop is default, keep the old route for one release behind a setting, or delete it at once? | Keep for one release (P3), delete in P4. |
+| N14 | Change the embedded chunk text to hold title, date and speakers (re-embed everything, reverses S7 of the chunker)? Or add context only to the result? | Result time only. Index time only if phase 2 shows a retrieval gain. |
+| N15 | Approve the bars T1 to T13? Four numbers are inferences (T2, T3, T4, T12). | Approve after the phase 1 baseline for T4. |
+
+Sources of this section that are not in the repo: the research reports `R-*` and the ladder files `F` and `V3` are session files of 2026-11-03. The MLflow runs are in experiment 100 on `http://192.168.31.154:5000`. The code lines were read on `main` at `a3f64247` (2026-11-03).
+
 ## 12. Owner decisions and open questions
 
 ### 12.1 Decisions (owner answers, 2026-10-31 09:49)
@@ -2175,6 +2486,7 @@ Sources for this section: https://docs.langchain.com/oss/javascript/langgraph/ag
 | D19 | UI for P2 (2026-11-01, replaces D5 for P2): a main-nav Ask page with a scope picker (Everything, folder, meeting) and a thread list; a global `Control+Option+K` hotkey (a setting) that opens a floating bubble from anywhere, with the scope taken from the Meetings selection and a guard so that dictation starts only when K does not follow within about 150 ms; a folder Ask tab on the folder Overview; the Everything scope with search wider. The in-app Cmd+K palette is dropped. | 11.6, 9.1 (P2) |
 | D20 | Ask clarifies and synthesizes big scopes (2026-11-02): a code-only clarify block (person, folder, intent ambiguity; setting on by default; one for each question, never twice in a row) with chips and "Answer anyway"; map-reduce synthesis when a folder or Everything digest does not fit the window; labels carry through the notes, so the cite check is unchanged. | 11.8 |
 | D21 | Ask researches (2026-11-02, owner request; built in PR #412, see 11.9.16): for a question that needs digging ("what are the open items", then "why are they open?"), a LangGraph.js graph repeats search, observe and reflect. Nodes: scope, plan, act, observe, reflect, synthesize, cite_check, not_found. Code owns the stop rules (`MAX_ITER` 4 local and 6 cloud, stalled after 2 rounds with nothing new, no repeat of a tool with the same arguments, the call cap 16, the deadline, `recursionLimit`). `cite_check` is the last node and no edge skips it. Step text streams with `streamMode: "custom"`. The checkpointer is `NodeSqliteSaver`. A simple fact finishes in round 1. Owner decisions 2026-11-02: default on; one model for all nodes; trail line under research answers; clarify stays end-turn; checkpoints of finished turns are deleted, failed ones kept; bars of 11.9.14 approved with research latency on E2B p50 at most 15 s and p95 at most 30 s. Owner note 2026-11-02: the live chat merges into Ask (P5) only after Ask answers at least as well as the live chat does today (2.4 point 8). | 11.9, 2.4 |
+| D22 | PROPOSED (2026-11-03, not approved): Ask becomes a tool loop over a better index. The model picks the next tool from `list_meetings`, `search`, `read` and `list_items`. The index gets an item ledger (id, status for each meeting, owner, reason, blocked-by, a quote that code checks), chunk context and dates in code. Code forces the first search for small models, sets the step cap (E2B 3, E4B 5, cloud 10), ends with a separate answer call and checks the cites by id. Removed from the route: the list and trigger words, the 0.5 floor exit, the stall rule as a router, the 6 bullet cap, the 12 meeting cap. Not chosen: graph stores, subagents, the Claude Agent SDK, read all, keyword fixes, copying Cherry Studio code. Phase 1 is an eval-only arm on today's index. If approved, it changes the "code router is settled" part of D8 and 2.1. | 11.10, 2.1 |
 
 ### 12.2 Open questions
 
@@ -2190,6 +2502,15 @@ Sources for this section: https://docs.langchain.com/oss/javascript/langgraph/ag
 | Q21 | Approve the dig bars D1 to D18 of 11.9.14? | RESOLVED 2026-11-02: approved as proposed, except D14 (see Q19). D12 stays at the baseline plus 20%. |
 | Q22 | Keep clarify as "end the turn, the chip starts the next turn"? | RESOLVED 2026-11-02: yes, no `interrupt()` in v1. |
 | Q23 | Retention of the checkpoints of a research turn? | RESOLVED 2026-11-02: delete on a finished turn, keep on a failed turn. |
+| N7 | Is the low blind digging pass of small models a limit of the model? | RESOLVED 2026-11-03: the limit is the harness. Opus 5.5 on the blind dev set, scorer v3: 96.8% with the whole project and a plain prompt, 71.0% with today's harness. All 9 failures of the harness are routing failures (11.10.1). |
+| N8 | Approve D22 (tool loop, model picks the next tool, code owns phases)? It reverses the "code router is settled" part of D8 and 2.1. | Approve phase 1 (eval only). Decide after the numbers. |
+| N9 | Is the first forced call `search` or `list_meetings`? | `search` for E2B and E4B. The model picks for larger models. |
+| N10 | Who writes the ledger at index time: the local model, or a cloud model if the user chose one? | The model of the Summary task (D6). Cloud only if the user picked cloud. |
+| N11 | Replace the slightly exposed blind final set with a fresh blind set? | Run the final set once as it is. Build a fresh set in parallel. |
+| N12 | Keep the dev scorer gates (at most 9 text blocks, 60 to 1800 characters) when "length fits the question"? | Keep for the D22 bars. Review after phase 1. |
+| N13 | After the loop is default: keep the old route for one release, or delete it at once? | Keep for one release, delete in P4. |
+| N14 | Change the embedded chunk text to hold title, date and speakers (re-embed, reverses S7 of the chunker)? | Result time only. Index time only if phase 2 shows a gain. |
+| N15 | Approve the bars T1 to T13 of 11.10.8? | Approve after the phase 1 baseline. |
 
 ## 13. Sources
 
