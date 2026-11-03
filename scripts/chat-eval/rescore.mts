@@ -3,8 +3,10 @@
  *
  * Scores the saved dig answers again with the fixed pass rule (the blind keys
  * write 2 of 3 as minCov 0.67, and 2/3 < 0.67: `TWO_THIRDS` guard, as in the
- * original set). The answers and the keys do not change. Only the threshold
- * changes. Each re-score is logged to MLflow with the tag `rescore_of=<run id>`.
+ * original set). The answers and the keys do not change. Scorer v3 (2026-11-03)
+ * also scores the saved answer text again: the colon is a word break, a mustNot
+ * word inside an "already done" part does not count, and the digging length gate
+ * is 15 blocks and 3000 characters. Each re-score is logged to MLflow with the tag `rescore_of=<run id>`.
  *
  * The output of the set `final` is the summary line only: no row, no turn id.
  */
@@ -17,6 +19,8 @@ import {
   buildDig,
   type DigQ,
   type DigRow,
+  forbiddenCount,
+  lengthOk,
   summarizeDig,
   TWO_THIRDS,
 } from "./p1-dig.mts";
@@ -100,6 +104,7 @@ export async function runRescore(files: string[], mlflow: boolean) {
     const out: DigRow[] = [];
     const changed: string[] = [];
     let drift = 0;
+    let v2 = 0;
     for (const r of rows) {
       const t = key.get(r.id)?.turns[r.turn - 1];
       if (!t)
@@ -108,10 +113,21 @@ export async function runRescore(files: string[], mlflow: boolean) {
       const raw = t.minCov === TWO_THIRDS && blind ? 0.67 : t.minCov;
       const oldPass = passOf(r, raw, t.meetings.length);
       if (oldPass !== r.pass) drift++;
-      const pass = passOf(r, t.minCov, t.meetings.length);
+      // v2 = the saved forbidden count and length flag, the fixed minCov.
+      if (
+        !r.control &&
+        r.kind !== "fact" &&
+        passOf(r, t.minCov, t.meetings.length)
+      )
+        v2++;
+      // v3 = the answer text scored again.
+      const forbidden = forbiddenCount(r.answer, t.mustNot);
+      const lenOk = lengthOk(t.kind, r.control, r.blocks, r.chars);
+      const r3 = { ...r, forbidden, lenOk };
+      const pass = passOf(r3, t.minCov, t.meetings.length);
       if (pass !== r.pass) changed.push(`${r.id}t${r.turn}`);
       out.push({
-        ...r,
+        ...r3,
         pass,
         tokens: r.tokens ?? {
           in: 0,
@@ -142,7 +158,7 @@ export async function runRescore(files: string[], mlflow: boolean) {
     const nOld = dig(rows).filter((r) => r.pass).length;
     const nNew = dig(out).filter((r) => r.pass).length;
     const tags = p.run.tags;
-    let line = `${basename(f)} | model ${tags.model} | backend ${tags.backend} | set ${set} | digging turns ${dig(out).length} | old pass ${pct(oldM.pass as number)} (${nOld}) | new pass ${pct(newM.pass as number)} (${nNew}) | changed turns ${changed.length}`;
+    let line = `${basename(f)} | model ${tags.model} | backend ${tags.backend} | set ${set} | digging turns ${dig(out).length} | old pass ${pct(oldM.pass as number)} (${nOld}) | v2 pass (${v2}) | new pass ${pct(newM.pass as number)} (${nNew}) | changed turns ${changed.length}`;
     // Rows are never printed for the final set, and no turn id either.
     if (set !== "final") line += ` (${changed.join(",") || "none"})`;
     line += ` | old-rule drift ${drift}`;
@@ -151,7 +167,7 @@ export async function runRescore(files: string[], mlflow: boolean) {
       const r = await logRun(
         `${p.run.name}-rescore`,
         { ...p.run.params, rescore_file: basename(f) },
-        { ...tags, rescore_of: orig, "chat.rescore": "minCov-two-thirds" },
+        { ...tags, rescore_of: orig, "chat.rescore": "v3", scorer: "v3" },
         newM,
         EXPERIMENT_P1,
       );

@@ -550,6 +550,57 @@ const has = (norm: string, g: string[]): boolean =>
     return a !== "" && ` ${norm} `.includes(` ${a} `);
   });
 
+/** A line that opens a part the answer marks as already done (scorer v3). */
+const DONE_LINE =
+  /^[\s>*\-•#_]*(?:already done|done|já feito|ja feito|concluído|concluido)\s*:(.*)$/i;
+const BULLET_LINE = /^\s*(?:[-*•]|\d+[.)])\s/;
+
+/**
+ * The answer without its "already done" parts. A part is one line that starts
+ * with "Already done:", "Done:", "Já feito:" or "Concluído:" (bullet and bold
+ * marks allowed before it). When nothing follows the colon, the bullet lines
+ * right after it belong to the part. The rest of the answer stays as it is.
+ * Only the mustNot check uses this: a forbidden word that appears only in a
+ * done part (for example a task that is closed) does not fail the turn.
+ */
+export function withoutDoneParts(text: string): string {
+  const keep: string[] = [];
+  let skipping = false;
+  for (const line of text.split("\n")) {
+    const m = DONE_LINE.exec(line);
+    if (m) {
+      skipping = (m[1] ?? "").replace(/[\s*_]/g, "") === "";
+      continue;
+    }
+    if (skipping && BULLET_LINE.test(line)) continue;
+    skipping = false;
+    keep.push(line);
+  }
+  return keep.join("\n");
+}
+
+/** How many mustNot words the answer holds outside its done parts. */
+export function forbiddenCount(text: string, mustNot: string[]): number {
+  const norm = normalize(withoutDoneParts(text));
+  return mustNot.filter((m) => has(norm, [m])).length;
+}
+
+/**
+ * The length gate (scorer v3). A list answer is a block. A control or fact
+ * answer is short. A digging answer has 1 to 15 text blocks and 60 to 3000
+ * characters.
+ */
+export function lengthOk(
+  kind: DigKind,
+  control: boolean,
+  blocks: number,
+  chars: number,
+): boolean {
+  if (kind === "list") return chars > 0;
+  if (control || kind === "fact") return blocks >= 1 && chars <= 500;
+  return blocks >= 1 && blocks <= 15 && chars >= 60 && chars <= 3000;
+}
+
 /** The text of an answer, list items included (a list block has no content text). */
 export function answerText(res: {
   content: string;
@@ -639,7 +690,7 @@ export async function runDig(env: DigEnv, q: DigQ): Promise<DigRow[]> {
       const norm = normalize(text);
       const covHit = t.groups.filter((g) => has(norm, g)).length;
       const cov = t.groups.length === 0 ? 1 : covHit / t.groups.length;
-      const forbidden = t.mustNot.filter((m) => has(norm, [m])).length;
+      const forbidden = forbiddenCount(text, t.mustNot);
       const cited = new Set<string>(res.cites.map((c) => c.meeting_id));
       for (const b of res.blocks)
         if (b.kind === "list")
@@ -655,17 +706,7 @@ export async function runDig(env: DigEnv, q: DigQ): Promise<DigRow[]> {
         (b) => b.kind === "text" && b.cites.length === 0,
       ).length;
       const repeat = !nf && isRepeat(text, earlier);
-      // A list answer is a block. A control or fact answer is short. A digging answer
-      // has 1 to 9 text blocks and 60 to 1800 characters.
-      const lenOk =
-        t.kind === "list"
-          ? text.length > 0
-          : q.control || t.kind === "fact"
-            ? textBlocks.length >= 1 && text.length <= 500
-            : textBlocks.length >= 1 &&
-              textBlocks.length <= 9 &&
-              text.length >= 60 &&
-              text.length <= 1800;
+      const lenOk = lengthOk(t.kind, q.control, textBlocks.length, text.length);
       const recallOk = recall === null || want.size < 2 || recall >= 0.5;
       const pass =
         !nf &&

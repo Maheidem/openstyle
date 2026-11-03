@@ -208,7 +208,7 @@ Measures where a big model loses on the dig turns. Run on the DEV set only (`CHA
 | L2 | `CHAT_EVAL_DIG_ARM=oracle-harness` | no retrieval: every summary and transcript window of the scope is a source; today's answer step and cite check stay |
 | L3 | `CHAT_EVAL_DIG_ARM=oracle-plain` | one call with all sources and a plain prompt; no cite check |
 
-Code: `dig-oracle.mts`, `caps.ts` (server). The pass rule has a length gate (1 to 9 text blocks, up to 1800 characters). L1 writes up to 12 bullets, so the gate fails some of its turns: read `len_ok` next to `pass`. Opus 5.5 takes no temperature, so a rerun differs (L0 gave 21 of 31 and 22 of 31 on the same code line).
+Code: `dig-oracle.mts`, `caps.ts` (server). The pass rule has a length gate (scorer v3: digging turns 1 to 15 text blocks, 60 to 3000 characters; fact and control turns up to 500). Scorer v3 also treats a colon as a word break and ignores a mustNot word inside an "Already done:" part (`withoutDoneParts` in `p1-dig.mts`); `pnpm chat-eval rescore` scores the saved answers again with it and tags the run `scorer=v3`. L1 writes up to 12 bullets, so the gate fails some of its turns: read `len_ok` next to `pass`. Opus 5.5 takes no temperature, so a rerun differs (L0 gave 21 of 31 and 22 of 31 on the same code line).
 
 ### Re-score (`pnpm chat-eval rescore [--no-mlflow] <result.json...>`)
 

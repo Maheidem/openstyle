@@ -139,6 +139,9 @@ export function normalize(text: string): string {
   // Thousands: 41,500 and 41.500 and 41 500 become 41500.
   t = t.replace(/\b(\d{1,3})(?:[.,]\d{3})+\b/g, (m) => m.replace(/[.,]/g, ""));
   t = t.replace(/\b(\d{1,3}) (\d{3})\b/g, "$1$2");
+  // A colon is a word break ("Insurance lookup:" is "insurance lookup"), except
+  // in the ` d:MM-DD ` date tokens made above (scorer v3, 2026-11-03).
+  t = t.replace(/:(?<!(?:^|\s)d:(?=\d{2}-\d{2}(?:\s|$)))/g, " ");
   t = t.replace(/[^a-z0-9:.\-\s]/g, " ");
   // A full stop or a dash that is not inside a number or a date is a space.
   t = t.replace(/(?<!\d)[.-]|[.-](?!\d)/g, " ");
