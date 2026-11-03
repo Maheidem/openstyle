@@ -117,7 +117,14 @@ When you have the facts, stop calling tools and reply with one short line.`;
       iteration: i + 1,
       max_iter: profile.stepCap,
     });
-    const forced = profile.first === "auto" ? null : profile.first;
+    // A list of all meetings does not help a follow-up that leans on the thread:
+    // when the thread has an earlier turn, code forces the search for it.
+    const forced =
+      profile.first === "auto"
+        ? null
+        : profile.first === "list_meetings" && t.turns.length > 0
+          ? "search"
+          : profile.first;
     const active =
       i === 0 && forced
         ? TOOLS.filter((x) => x.function.name === forced)
