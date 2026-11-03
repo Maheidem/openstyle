@@ -690,9 +690,7 @@ export class FakeAskLlm {
 
     if (
       kind === "native" &&
-      tools.some((n) =>
-        ["list_meetings", "search", "read", "list_items"].includes(n),
-      )
+      system.includes("Passages and items you receive have labels")
     ) {
       // A step of the tool loop (D22): the first step calls the tool that code
       // forces (one tool is active). A step that holds a tool result stops.

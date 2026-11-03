@@ -649,6 +649,8 @@ async function prepareCall(a: {
   messages: readonly ChatTurn[];
   llamaCppCompletion: boolean;
   createModel?: CreateModel;
+  /** The call sends no tools (a structured step). */
+  noTools?: boolean;
   /** Runs inside the guarded block, so a fault in it is a setup fault. */
   buildInstructions: () => Promise<string>;
 }): Promise<PreparedCall> {
@@ -719,6 +721,7 @@ async function prepareCall(a: {
       task: profile.taskId,
       sampling: resolved.samplingParams,
       gatewayOverrides: overrides,
+      ...(a.noTools ? { noTools: true } : {}),
       ...(bodyExtra ? { bodyExtra } : {}),
       onRequestBody: (body) => {
         wireHolder.seen = true;
@@ -982,6 +985,7 @@ export async function callStructured<T>(
     maxOutputTokens,
     messages,
     llamaCppCompletion,
+    noTools: true,
     ...(input.createModel ? { createModel: input.createModel } : {}),
     buildInstructions: async () => {
       jsonSchema = await asSchema(input.schema.zod).jsonSchema;
