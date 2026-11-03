@@ -12,6 +12,7 @@ import type { AnswerSentence } from "../cites.js";
 import { assembleAnswerInput } from "../context.js";
 import { parseDates } from "../dates.js";
 import type { ChatTurnInput } from "../pipeline.js";
+import { asksForCount } from "../plan.js";
 import { answerUser } from "../prompts.js";
 import { SCORE_FLOOR, Turn } from "../turn.js";
 import type { TurnResult } from "../types.js";
@@ -59,6 +60,8 @@ export type LoopOverride = Partial<
 export async function runLoop(
   raw: ChatTurnInput,
   override?: LoopOverride,
+  /** The pipeline of the same turn. The loop hands over the kinds that it does not answer (see below). */
+  handOver?: () => Promise<TurnResult>,
 ): Promise<TurnResult> {
   const input = raw;
   const llm = input.llm;
@@ -74,6 +77,14 @@ export async function runLoop(
   // D20: the clarify block runs as today. It ends the turn.
   const clarified = t.clarify();
   if (clarified) return t.resolve(clarified);
+  // Three kinds of turn keep the code path of the pipeline, because the loop
+  // has no tool for them (spec 11.10.4 rule 4, 11.10.6 point 5): a write
+  // request (a proposal), a count of mentions, and a broad question that the
+  // synthesis path answers from the summaries of every meeting. The gold,
+  // broad and thread parts of chat-eval showed the loss without it. P4 removes
+  // this bridge when the loop has tools for them.
+  if (handOver && (t.write || t.synthesis || asksForCount(question)))
+    return handOver();
   t.begin();
   // A cloud model has an item ledger. A meeting with no pass is written in the background.
   if (profile.ledger) kickLedgerBackfill();

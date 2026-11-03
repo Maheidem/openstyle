@@ -6,7 +6,6 @@ import type {
 } from "@openstyle/validations";
 import type { ChatLlm } from "./llm.js";
 import { type LoopOverride, runLoop } from "./loop/run.js";
-import { looksLikeWrite } from "./prompts.js";
 import { runGraph } from "./research/run.js";
 import type { ChatSettings } from "./settings.js";
 import type { TurnResult } from "./types.js";
@@ -54,8 +53,7 @@ export interface ChatTurnInput {
 
 export async function runChatTurn(input: ChatTurnInput): Promise<TurnResult> {
   // The setting `chat_engine` picks the route (spec 11.10, D22). The default is the pipeline.
-  // A write request (a proposal to mark an item done) keeps the code path of the pipeline (11.10.4 rule 4).
-  if (input.settings.engine === "loop" && !looksLikeWrite(input.question))
-    return runLoop(input, input.loop);
+  if (input.settings.engine === "loop")
+    return runLoop(input, input.loop, () => runGraph(input));
   return runGraph(input);
 }
