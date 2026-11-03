@@ -13,10 +13,14 @@ import type { ChatBlock, ChatMessage } from "@openstyle/validations";
 import type { ChatTurnInput } from "../../apps/server/src/lib/chat/pipeline.ts";
 import type { TurnResult } from "../../apps/server/src/lib/chat/types.ts";
 
-// zod comes from the server package (the gateway uses the same copy).
+// zod comes from the server package (the gateway uses the same copy). The
+// name is a constant: the root package does not list zod.
+const ZOD_PACKAGE = "zod";
 const { z } = createRequire(
   new URL("../../apps/server/package.json", import.meta.url),
-)("zod") as typeof import("zod");
+)(ZOD_PACKAGE) as {
+  z: any;
+};
 
 const WINDOWS_MAX = 60;
 const FOCUS =
