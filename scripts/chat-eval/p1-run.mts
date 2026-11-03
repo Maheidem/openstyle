@@ -139,6 +139,11 @@ const LLM_STORED_ID = `local-mlx-llm/${MODEL_ID}`;
 // CHAT_EVAL_BASE_URL is the server address, CHAT_EVAL_MODEL the model name the
 // server lists. The address is read from the environment only (never logged).
 const BASE_URL = process.env.CHAT_EVAL_BASE_URL?.trim() || null;
+// A cloud provider of the app (CHAT_EVAL_CLOUD_PROVIDER=anthropic) carries the
+// chat LLM: the default model is `<provider>/<CHAT_EVAL_MODEL>` and the key
+// (CHAT_EVAL_CLOUD_API_KEY, environment only, never logged) goes into the
+// api_keys table of the scratch DB, where the app's getApiKey() reads it.
+const CLOUD_PROVIDER = process.env.CHAT_EVAL_CLOUD_PROVIDER?.trim() || null;
 const BACKEND =
   process.env.CHAT_EVAL_BACKEND?.trim() ||
   (CLOUD_PROVIDER
@@ -146,11 +151,6 @@ const BACKEND =
     : BASE_URL
       ? "remote-openai"
       : "mac-mlx");
-// A cloud provider of the app (CHAT_EVAL_CLOUD_PROVIDER=anthropic) carries the
-// chat LLM: the default model is `<provider>/<CHAT_EVAL_MODEL>` and the key
-// (CHAT_EVAL_CLOUD_API_KEY, environment only, never logged) goes into the
-// api_keys table of the scratch DB, where the app's getApiKey() reads it.
-const CLOUD_PROVIDER = process.env.CHAT_EVAL_CLOUD_PROVIDER?.trim() || null;
 const DAY = 86_400_000;
 const f3 = (x: number) => x.toFixed(3);
 const pct = (x: number) => `${(x * 100).toFixed(1)}`;
