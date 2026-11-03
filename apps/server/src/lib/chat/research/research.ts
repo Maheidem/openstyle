@@ -137,7 +137,8 @@ export function listCalls(text: string, showAll = false): Call[] {
   const q = fold(text);
   const questionsOnly = QUESTION_WORDS_RE.test(q) && !ITEM_WORDS_RE.test(q);
   // A capped list is ranked in the tool (raised often, then recent). "Show all" is not capped.
-  const cap = (n: number) => (showAll ? {} : { limit: n, rank: true as const });
+  const cap = (n: number) =>
+    showAll ? {} : { limit: n, rank: true as const, topic: text.slice(0, 300) };
   return questionsOnly
     ? [
         {

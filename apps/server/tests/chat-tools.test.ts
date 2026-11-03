@@ -268,6 +268,19 @@ describe("runTool: validation and scope", () => {
 });
 
 describe("list_action_items", () => {
+  it("rank + topic: an item that shares words with the question comes before an item raised more often (11.9.17)", async () => {
+    const ranked = await runTool(ctxOf(SCOPE_F1), "list_action_items", {
+      status: "all",
+      limit: 1,
+      rank: true,
+      topic: "What is open about the mooring lines?",
+    });
+    const block = ranked.blocks[0];
+    if (block?.kind !== "list") throw new Error("not a list");
+    expect(block.items).toHaveLength(1);
+    expect(block.items[0]?.text).toContain("mooring");
+  });
+
   it("rank + limit keeps the best items: the one raised in two meetings first, grouped by meeting (11.9.16)", async () => {
     const ranked = await runTool(ctxOf(SCOPE_F1), "list_action_items", {
       status: "all",

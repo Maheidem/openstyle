@@ -399,21 +399,48 @@ export function findActionItem(
 const oldest = <T>(xs: readonly T[]) => xs[xs.length - 1] as T;
 
 /**
- * The best `limit` groups for a short list (11.9.16): the ones raised in most
- * meetings come first, then the most recent. The kept groups are then grouped
- * by meeting (newest meeting first, rank order inside a meeting).
+ * The best `limit` groups for a short list (11.9.16). The groups that share
+ * words with the question (in the text or in a meeting title; words that most
+ * groups have say nothing) come first, then the ones raised in most meetings,
+ * then the most recent. The kept groups are then grouped by meeting (newest
+ * meeting first, rank order inside a meeting).
  */
 function rankedTop<T>(
   rows: readonly T[],
   limit: number,
-  sources: (r: T) => readonly { started_at: number | null }[],
+  sources: (
+    r: T,
+  ) => readonly { started_at: number | null; title?: string | null }[],
+  text: (r: T) => string,
+  topic: string | undefined,
 ): T[] {
   const newest = (r: T) =>
     Math.max(0, ...sources(r).map((s) => s.started_at ?? 0));
+  const words = (r: T) =>
+    new Set(
+      wordsOf(
+        `${text(r)} ${sources(r)
+          .map((s) => s.title ?? "")
+          .join(" ")}`,
+      ),
+    );
+  const want = new Set(
+    topic ? wordsOf(topic).filter((w) => w.length >= 4) : [],
+  );
+  const sets = rows.map(words);
+  const common = new Set(
+    [...want].filter(
+      (w) =>
+        sets.filter((x) => x.has(w)).length > 0.4 * Math.max(1, rows.length),
+    ),
+  );
+  const score = (i: number) =>
+    [...want].filter((w) => !common.has(w) && sets[i]?.has(w)).length;
   const top = rows
     .map((r, i) => ({ r, i }))
     .sort(
       (a, b) =>
+        score(b.i) - score(a.i) ||
         sources(b.r).length - sources(a.r).length ||
         newest(b.r) - newest(a.r) ||
         a.i - b.i,
@@ -837,7 +864,13 @@ const listActionItems: ToolDef<z.infer<typeof listActionItemsArgs>> = {
       });
     const labels: string[] = [];
     const shown = a.rank
-      ? rankedTop(rows, a.limit ?? LIST_BLOCK_MAX, ({ g }) => g.sources)
+      ? rankedTop(
+          rows,
+          a.limit ?? LIST_BLOCK_MAX,
+          ({ g }) => g.sources,
+          ({ g }) => g.text,
+          a.topic,
+        )
       : rows.slice(0, LIST_BLOCK_MAX);
     const items: ChatListItem[] = shown.map(({ g, isDone }, i) => {
       // The id is the first key. Its meeting is the oldest source.
@@ -900,7 +933,13 @@ const listDecisionsQuestions: ToolDef<
     const limit = a.limit ?? 30;
     const labels: string[] = [];
     const shownGroups = a.rank
-      ? rankedTop(groups, limit, (g) => g.sources)
+      ? rankedTop(
+          groups,
+          limit,
+          (g) => g.sources,
+          (g) => g.text,
+          a.topic,
+        )
       : groups.slice(0, limit);
     const items: ChatListItem[] = shownGroups.map((g, i) => {
       const src = oldest(g.sources);
