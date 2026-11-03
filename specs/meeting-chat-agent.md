@@ -2,7 +2,7 @@
 
 Status: DRAFT for owner review. Date: 2026-10-31. Base: `main` at `a7083674`.
 Revision 2 (2026-10-31, 09:49): owner answers applied. Section 12.1 lists them as decisions D1 to D4. Revision 3 (10:45): placement decided, D5 (section 11).
-Revision 4 (2026-10-31, 11:10): owner review applied, decisions D6 to D18 (section 12.1). Revision 5 (2026-11-01): decision D19, the P2 surfaces (section 11.6). Revision 6 (2026-11-02): decision D21, research mode, and the digging eval baseline (section 11.9). Revision 9 (2026-11-03): decision D22 PROPOSED, Ask as a tool loop over a better index, with the Opus ladder answer to N7 (section 11.10). Name note: `SD8` is decision D8 of `specs/local-semantic-search.md`. `D1` to `D22` are decisions of this spec.
+Revision 4 (2026-10-31, 11:10): owner review applied, decisions D6 to D18 (section 12.1). Revision 5 (2026-11-01): decision D19, the P2 surfaces (section 11.6). Revision 6 (2026-11-02): decision D21, research mode, and the digging eval baseline (section 11.9). Revision 9 (2026-11-03, N12 resolved: scorer v3): decision D22 PROPOSED, Ask as a tool loop over a better index, with the Opus ladder answer to N7 (section 11.10). Name note: `SD8` is decision D8 of `specs/local-semantic-search.md`. `D1` to `D22` are decisions of this spec.
 Scope of this document: design only. No product code is part of this change.
 Language: ASD-STE100 Simplified Technical English.
 Diagrams follow the rule "Diagram conventions" in `AGENTS.md`. The pipeline diagram (2.2), the live-variant diagram (2.4) and the failure diagrams (2.5a, 2.5b) are written to it. The other diagrams are small single-concern sketches.
@@ -1854,7 +1854,7 @@ Most reasons are in the transcript only. The test `dig set: the reasons are spre
 2. **Cross-meeting recall.** The share of the meetings that hold a reason and that the answer cites is at least 0.5, for a key that names two or more meetings. A list item cite counts.
 3. **Cites.** No invalid cite (`checkCites`) and no text block without a cite.
 4. **No repeat.** The answer is not a repeat of an earlier answer of the thread (`isRepeat`).
-5. **Length.** A digging answer has 1 to 9 text blocks and 60 to 1800 characters. A list answer is any list or text. A fact answer has at most 500 characters.
+5. **Length.** A digging answer has 1 to 9 text blocks and 60 to 1800 characters. A list answer is any list or text. A fact answer has at most 500 characters. (v2; v3 in PR #414 allows 15 blocks and 3000 characters.)
 6. **Not a refusal.** Not `not_found`, not `clarify`.
 7. **A list of open items names no done item** (`mustNot`).
 
@@ -2185,8 +2185,8 @@ Sources: pass rates and run ids from `V3` (the four last rows). Cost, latency an
 What the rows say (facts from `F`, section 2):
 
 1. **All 9 failures of L0 are routing failures.** None is a model error. None is a drop by the cite check (`F` 2.2). The causes are: a list tool replaced by a plain search because the question has no list word (`S/lib/chat/turn.ts:745-765`, `LIST_RE` at `S/lib/chat/prompts.ts:210-214`); no trigger word, so research does not start (`S/lib/chat/research/trigger.ts:23-119`); the score floor 0.5 ends the turn with `not_found` (`S/lib/chat/turn.ts:116`, `:1172-1178`; `S/lib/chat/research/graph.ts:217-224`); and the stall rule ends research before the summary strategy runs (`S/lib/chat/research/research.ts:595-598`). By kind: list 4, why 3, evolve 1, pushed 1 (`F` section 3).
-2. **The 5 failures of L3 are scorer failures.** The colon rule of `normalize` hides "Insurance lookup:" (`scripts/chat-eval/keys.mts:142`). The `mustNot` rule fails a word of a done item inside "Already done:" (`scripts/chat-eval/p1-dig.mts:642`). The length gate (60 to 1800 characters, 1 to 9 text blocks, `p1-dig.mts:660-668`) fails long answers (`F` 2.1). So 96.8% is a floor for this model on this set, not a ceiling.
-3. **Wide caps do not help on this scorer.** L1 loses 7 turns on the block-count gate. It loses 8 turns on routing (`F` 2.3 and section 3). Cause: wide caps allow 12 bullets (`S/lib/chat/research/caps.ts:44` in the ladder worktree, PR #414), and the gate allows 9 text blocks.
+2. **The 5 failures of L3 were scorer failures under v2.** The colon rule of `normalize` hid "Insurance lookup:" (`scripts/chat-eval/keys.mts:142`). The `mustNot` rule failed a word of a done item inside "Already done:" (`scripts/chat-eval/p1-dig.mts:642`). The length gate of v2 (60 to 1800 characters, 1 to 9 text blocks, `p1-dig.mts:660-668`) failed long answers (`F` 2.1). Scorer v3 fixed 4 of the 5 (L3 is 30 of 31, 96.8%). So 96.8% is a floor for this model on this set, not a ceiling.
+3. **Wide caps did not help under v2.** L1 lost 7 turns on the old 9-block gate. It lost 8 turns on routing (`F` 2.3 and section 3). Cause: wide caps allow 12 bullets (`S/lib/chat/research/caps.ts:44` in the ladder worktree, PR #414). Under scorer v3 (15 blocks) L1 is 74.2% (23 of 31).
 4. **L2 is not a clean number.** The oracle arm cuts its sources after 30000 tokens (`S/lib/chat/context.ts:219-226`). The prompt then holds the August corpus and no dev meeting. This costs 5 turns (`F` 2.4). The loss from "answer shape and checks" is therefore UNKNOWN. L2 measures the arm defect as much as the shape.
 5. **Plain reading with the same model reaches 96.8%.** The harness reaches 71.0%. The model is not the limit on this set. The harness is.
 
@@ -2352,7 +2352,7 @@ What stays in code: the scope, the clarify block, the cite check, the repeat gua
 #### 11.10.6 The answer
 
 1. The answer call keeps the strict JSON with `sentences` and `cites` (`S/lib/chat/prompts.ts:38-67`). A small model fills a JSON field better than an inline marker. This is an assumption to test (`R-code` 4.2).
-2. The length fits the question. Today the answer holds 1 to 3 lead sentences and 2 to 6 bullets (`prompts.ts:66-67`) and `ANSWER_MAX_TOKENS` is 500 (`prompts.ts:14`). In D22 the bullet cap is a function of the result: at most the number of ledger items or hits that the loop found, up to a cap that code sets by model size. The first value is 9 bullets, because the dev scorer fails an answer with more than 9 text blocks (`p1-dig.mts:666`; `F` 2.3). Whether the scorer gate is right is open item N12.
+2. The length fits the question. Today the answer holds 1 to 3 lead sentences and 2 to 6 bullets (`prompts.ts:66-67`) and `ANSWER_MAX_TOKENS` is 500 (`prompts.ts:14`). In D22 the bullet cap is a function of the result: at most the number of ledger items or hits that the loop found, up to a cap that code sets by model size. The first value is 12 bullets. With up to 3 lead sentences this stays inside the 15 text block gate of scorer v3 (PR #414, `c2f285ca`; N12 resolved).
 3. Cites are source labels from the tools (`S<n>`). Code checks them with `checkAnswer` (`cites.ts:323`): a label that no tool returned is removed (`badLabels`, `cites.ts:296`). A sentence with a fact that no source holds is removed. The cite chip shows the real quote and the cite time (`pickCiteTimes`, `cites.ts:707`). This is the check by id. It follows the advice to "check every cited id was returned by a tool in this run" (`R-sdk` 11).
 4. A ledger source carries its quote. The cite of an item shows the quote and the meeting. A mark with `quote_ok = 0` cannot be cited as a fact.
 5. Clarify (D20) stays: a code-only block before the loop (11.8). Map-reduce synthesis (11.8 B) stays for a scope that does not fit the window. The loop ends with fewer sources in that case. The interaction is UNKNOWN. Phase 1 tests it.
@@ -2451,7 +2451,7 @@ Numbers continue the list of the review page (N1 to N7). Section 12.2 repeats th
 | N9 | Is the first forced call always `search`, or `list_meetings`? `list_meetings` is better for "first and last" questions. `search` is the call that small models skip. | `search` for E2B and E4B. The model picks for larger models. |
 | N10 | Who writes the ledger at index time: the local model, or a cloud model if the user chose one? A better writer gives a better ledger (`R-qa` 5). It also sends transcripts to a cloud (D1 allows it as the user's choice). | The model of the Summary task (D6). Cloud only if the user picked cloud. |
 | N11 | The blind final set is slightly exposed. Replace it with a fresh blind set written by agents that saw nothing? | Run the final set once as it is. Build a fresh set in parallel for the next change. |
-| N12 | The dev scorer fails an answer with more than 9 text blocks or more than 1800 characters (`p1-dig.mts:660-668`). Does the owner want these gates, when "length fits the question"? | Keep the gates for D22 bars. Review them after phase 1. |
+| N12 | RESOLVED 2026-11-03. Scorer v3 (PR #414, `c2f285ca`): digging turns allow at most 15 text blocks and 60 to 3000 characters; the colon in `normalize` is a word break; `mustNot` words inside an "Already done:" part do not count. The owner chose all three on 2026-11-03. | Done. The D22 bars use v3. |
 | N13 | After the loop is default, keep the old route for one release behind a setting, or delete it at once? | Keep for one release (P3), delete in P4. |
 | N14 | Change the embedded chunk text to hold title, date and speakers (re-embed everything, reverses S7 of the chunker)? Or add context only to the result? | Result time only. Index time only if phase 2 shows a retrieval gain. |
 | N15 | Approve the bars T1 to T13? Four numbers are inferences (T2, T3, T4, T12). | Approve after the phase 1 baseline for T4. |
@@ -2507,7 +2507,7 @@ Sources of this section that are not in the repo: the research reports `R-*` and
 | N9 | Is the first forced call `search` or `list_meetings`? | `search` for E2B and E4B. The model picks for larger models. |
 | N10 | Who writes the ledger at index time: the local model, or a cloud model if the user chose one? | The model of the Summary task (D6). Cloud only if the user picked cloud. |
 | N11 | Replace the slightly exposed blind final set with a fresh blind set? | Run the final set once as it is. Build a fresh set in parallel. |
-| N12 | Keep the dev scorer gates (at most 9 text blocks, 60 to 1800 characters) when "length fits the question"? | Keep for the D22 bars. Review after phase 1. |
+| N12 | RESOLVED 2026-11-03. Scorer v3 (PR #414, `c2f285ca`): digging turns allow at most 15 text blocks and 60 to 3000 characters; the colon in `normalize` is a word break; `mustNot` words inside an "Already done:" part do not count. The owner chose all three on 2026-11-03. | Done. The D22 bars use v3. |
 | N13 | After the loop is default: keep the old route for one release, or delete it at once? | Keep for one release, delete in P4. |
 | N14 | Change the embedded chunk text to hold title, date and speakers (re-embed, reverses S7 of the chunker)? | Result time only. Index time only if phase 2 shows a gain. |
 | N15 | Approve the bars T1 to T13 of 11.10.8? | Approve after the phase 1 baseline. |
