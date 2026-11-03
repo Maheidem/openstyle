@@ -393,7 +393,7 @@ export function digToolDef(): NativeTool {
       // Not a read tool: the name is outside `ToolName` on purpose.
       name: DIG_TOOL_NAME as never,
       description:
-        "Dig across several meetings. Use it when the answer is an explanation or a story that no single passage holds: the reasons or causes behind something, what held something up, who wanted it and why, how a decision or a plan changed over time, or what is still not settled. Never use it for one fact, one number, one date or one name.",
+        "Dig across several meetings. Use it when the answer is an explanation or a story that no single passage holds: the reasons or causes behind something, what held something up, why a position was taken, how a decision or a plan changed over time, or what is still not settled. Never use it for one fact, number, date or name, or to find who said or proposed something.",
       parameters: { type: "object", properties: {}, required: [] },
     },
   };

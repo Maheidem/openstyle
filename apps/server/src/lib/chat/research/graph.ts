@@ -298,7 +298,7 @@ export function buildResearchGraph(t: Turn, checkpoint: boolean) {
   };
 
   /** `join`: the records are in. Compose the bullets (items), or give the verified sources to the answer call (meetings). */
-  const join = (s: ResearchStateType): Update => {
+  const join = async (s: ResearchStateType): Promise<Update> => {
     const started = Date.now();
     const lead = s.leads[0] as Lead;
     const trail = (done: Done, meetings: number) => {
@@ -331,20 +331,25 @@ export function buildResearchGraph(t: Turn, checkpoint: boolean) {
       trail("enough", new Set(recs.map((r) => r.meetingId)).size);
       return { result: t.codeResult(blocks, cites), go: "end" };
     }
-    // meetings: the verified excerpts are the only sources of the answer
+    // meetings: the verified excerpts come first. The summaries of the first and
+    // the last meeting of the scope come next: the two ends of a story (what
+    // changed between them) are in them. The answer call reads all of it.
     const recs = s.records
       .filter((r) => r.source !== "")
       .sort((a, b) => (a.startedAt ?? 0) - (b.startedAt ?? 0));
     t.step("research", "join:meetings", started, recs.length, null);
     if (recs.length === 0) return { go: "act" };
-    const keep = new Set(recs.map((r) => r.source));
-    t.sources.remove(
-      t.sources
-        .all()
-        .filter((x) => !keep.has(x.label))
-        .map((x) => x.label),
-    );
-    const ranked = t.sources.all().filter((x) => x.kind !== "folder");
+    const inScope = scopeMeetingIds(t.input.db, t.turnScope);
+    for (const id of new Set([inScope[0], inScope.at(-1)])) {
+      if (id)
+        await t.run({ tool: "get_meeting_summary", args: { meeting_id: id } });
+    }
+    const first = new Set(recs.map((r) => r.source));
+    const all = t.sources.all().filter((x) => x.kind !== "folder");
+    const ranked = [
+      ...all.filter((x) => first.has(x.label)),
+      ...all.filter((x) => !first.has(x.label)),
+    ];
     const day = (r: WorkerRecord) =>
       r.startedAt === null
         ? ""

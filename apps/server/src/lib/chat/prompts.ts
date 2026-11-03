@@ -182,11 +182,6 @@ export function nativeSystem(args: {
       : "Use search_chunks for a question about one fact, one topic, one person or one date, and when you are not sure. Use a list tool ONLY when the user asks for a whole list or a count. A `query` is the topic of the question with its names and numbers, in the language of the meeting. For a follow-up, the query holds the topic of the earlier question. Use the lists for ids.",
     ...args.lists,
   ];
-  if (args.dig && !args.write) {
-    lines.push(
-      "Call dig_deeper (no arguments) when the question asks for reasons, causes, a story over time or what is unsettled, so that one passage cannot answer it.",
-    );
-  }
   if (args.history) lines.push(`Earlier questions:\n${args.history}`);
   return lines.join("\n");
 }
