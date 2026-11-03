@@ -2073,6 +2073,78 @@ The two latency bars are higher with research on, and inside their bars: turn p9
 *E2E (fake model, the real app, server and graph; `apps/electron/tests/meeting-ask-research.test.ts`, 5 tests, CI macOS job green).* A research question shows the step text "Looking for: reason 1 of 3, round 1 of 4...", then an answer with bullets whose cites name 3 meetings and the trail line "Looked in 3 meetings · 3 searches" with the details under "How I found this". A fact keeps the fast path (no reflect call, no trail line). A page change during the loop keeps the turn. The setting off gives no reflect call. The settings switch writes `chat_research`. A local run with the real E2B model and the real index (fictional data, 3 meetings): "Why are these still open?" took 2.3 s (dark run), 3 searches, 4 cites from 3 meetings; the fact question took 0.8 to 1.3 s and had no trail line. Screenshots: `specs/assets/chat-ask-d21/`.
 
 
+#### 11.9.17 As built, follow-up: research quality (PR #413, 2026-11-02)
+
+**Why.** The coordinator review of #412 found two problems. (1) The dig eval was tuned on its own 32 questions and had no held-out set. (2) On the owner's real folders the shape rule passed answers that were poor: an open-items list with 50 items from 13 meetings, a "why are they still open?" answer with a generic lead and 3 loose bullets, and "who pushed for the biggest change, and why?" that was `not_found` because the repeat guard rejected the second answer.
+
+**Held-out sets.** Three blind sets (`CHAT_EVAL_DIG_SET=heldout|dev|final`, `dig-heldout.mts`, one JSON file each) were written by separate subagents that had not seen the research code, the prompts or the other sets: 3 projects, 13 meetings, 8 people, 30 questions, 4 controls, reasons spread over 2 to 4 meetings. Set `heldout` was read for fixes (trigger words, worker checks), so it counts as a dev set. Set `dev` was read for decisions. Set `final` was never printed: its numbers come from the summary line only. The baseline of main `e6641d0b` shows the overfit of #412: E2B 77.1% on the original set against 25.9, 22.6 and 16.7% on the three blind sets (E4B 82.9% against 29.6, 32.3 and 10.0%). The research trigger of #412 fired on only 26 to 37% of the blind digging turns (100% on the original set): the words of #412 (why, blocked, still open, who pushed) are the words of the original questions.
+
+**What was built.**
+
+1. **Open-items list** (`listCalls`, `rankedTop` in `tools.ts`, the tool args `limit` and `rank`). In research mode the list shows at most 8 action items and 4 open questions, ranked by the number of meetings that raised the item, then by recency, then grouped by meeting (newest first). The block keeps the full `total`; the item has `raised`. The UI shows a heading for each meeting, the line "N more items not shown" and the button "Show all" (`show_all` in the request; the same question again, not capped; `ask-blocks.tsx`, `ask-panel.tsx`, `showAllTurn`).
+2. **Why answers: item workers** (`research/workers.ts`, `graph.ts` nodes `worker` and `join`, LangGraph `Send` as in the Enhance graph). "Why are these open?" after a list sends one worker for each of the top 4 items (5 on cloud), at most 2 at once on a local model. A worker searches the scope for the item, reads the best 5 excerpts and makes one structured call (`chatDig`, schema `chat_dig_item`: up to 3 reasons, each with a source label and a quote). Code checks every reason (`supported`: the label is one the worker was given, 60% of the quote words are in that source, every number is in that source; `aboutItem`: the quote or the reason shares a content word with the item and adds one). A reason that fails is dropped, never shown. Code composes one bullet for each item, with the reason and its own cite, or "no reason found in the meetings" (6 languages). No answer call and no generic lead.
+3. **Who pushed, what changed, what blocked: meeting workers.** Any research question that is not an open-points question scouts the scope with one search, then sends one worker for each of the best 6 meetings (8 on cloud; the rest of a small scope fills the list). A worker returns who, what and why with a checked quote. The answer call then reads the verified excerpts first, then the summaries of the first and the last meeting (the two ends of a story), then the other sources, so the loop-friendly questions keep their evidence. A question with no verified record falls back to the loop of #412.
+4. **Trigger.** The words of #412 stay as they were (an attempt to add words was reverted: it fixed the blind set it was read from, which is overfit). The model can also start research: the native tool call offers a pseudo tool `dig_deeper` (no arguments), with a description that names the kinds of question (reasons, what held something up, change over time, what is unsettled) and says "never for one fact". It costs no extra model call. An attempt to escalate by the spread of the first search over meetings was measured and dropped (E2B, spread at least 5: dev +3.2 points, original set -3, one control escalated).
+5. **Repeat guard** (`repeatedEarlierAnswer`, `cites.ts`). It compares the whole answer, not the first sentence. A new question whose answer starts like the earlier one but adds the person and the reason may answer.
+6. **Citations.** Every claim of a worker answer has a source label that code checked against the excerpts the worker was given (the pattern of the LangChain "QA with citations" how-to: structured output with source ids, verified by code). The cite chips are the verified labels.
+
+**Decisions by numbers.**
+
+| Option | Result | Decision |
+|---|---|---|
+| More trigger words (stopping, insisted, different between) | blind set 1: E2B 25.9 to 44.4%; the words came from reading that set | reverted |
+| Trigger by `dig_deeper` in the native call, tool off against on | E4B dev 32.3 to 38.7%, heldout 29.6 to 37.0%; E2B dev 19.4 to 22.6%, heldout 29.6 to 33.3%; gold: 2 of 190 rows lost (q036 and q134), cite precision 0.805 to 0.827 | kept |
+| Escalate by the spread of the first search | E2B dev 22.6 to 25.8%, original 68.6 to 65.7%, one control escalated | dropped |
+| Answer composed by code from the meeting records | E2B dev 19.4, original 62.9 against 22.6, 68.6 with the answer call | dropped (kept for item bullets) |
+| Additive join (workers first, then the two summaries, then the rest) against workers only | E4B original 68.6 to 74.3% | kept |
+
+**Results.** Mac MLX (Gemma 4 E2B and E4B), temperature 0, thinking off, native tools on, research on, GPU lock taken by the harness, one run for each cell (8.1 rule 5), every run read back from MLflow (experiment `openstyle-lab-chat-agent-p1`, run ids in the last column). "main" is `e6641d0b`, measured in a second worktree with the same harness files (only the eval loader differs).
+
+*Digging pass, by set (E2B and E4B).* Columns with two numbers read main / this branch. The blind `final` set was never printed or tuned on.
+
+| set, model | pass main | pass branch | coverage main / branch | cross-meeting recall | not found | research trigger recall | latency p50-p95 | MLflow run (branch) |
+|---|---|---|---|---|---|---|---|---|
+| original dig, E2B | 77.1 | 77.1 | 78.0 / 74.9 | 91.2 / 92.4 | 0.0 / 2.9 | 100.0 / 100.0 | 2886-6023 / 6431-14704 ms | a51f76f7 |
+| blind set 1 (read for fixes), E2B | 25.9 | 33.3 | 31.1 / 39.8 | 59.3 / 65.4 | 11.1 / 7.4 | 37.0 / 44.4 | 2456-4416 / 3536-10618 ms | fa451366 |
+| blind dev, E2B | 22.6 | 22.6 | 37.1 / 39.4 | 54.5 / 56.9 | 6.5 / 6.5 | 25.8 / 38.7 | 2726-8263 / 3849-8508 ms | ba7b1037 |
+| blind final (untouched), E2B | 16.7 | 13.3 | 39.4 / 35.8 | 55.6 / 58.9 | 3.3 / 3.3 | 36.7 / 40.0 | 2327-4689 / 3670-12236 ms | 0d150d4b |
+| original dig, E4B | 82.9 | 85.7 | 79.4 / 75.0 | 90.7 / 88.6 | 0.0 / 2.9 | 100.0 / 100.0 | 8881-15987 / 9155-20202 ms | 0c6710ea |
+| blind set 1 (read for fixes), E4B | 29.6 | 40.7 | 36.1 / 44.8 | 63.6 / 60.8 | 11.1 / 11.1 | 37.0 / 55.6 | 3854-11895 / 7766-17660 ms | 0b8f1a1a |
+| blind dev, E4B | 32.3 | 38.7 | 44.1 / 49.6 | 56.8 / 55.3 | 6.5 / 6.5 | 25.8 / 45.2 | 5057-15664 / 8757-17426 ms | a8d47497 |
+| blind final (untouched), E4B | 10.0 | 6.7 | 39.3 / 36.2 | 64.4 / 58.9 | 0.0 / 6.7 | 36.7 / 46.7 | 5567-11405 / 5443-16583 ms | d03187d9 |
+
+Read this table plainly. The original set is back to main on E2B (77.1%) and above it on E4B (85.7 against 82.9%), after the caps of the lists were made topic aware. The two blind sets that were read gain: heldout +7.4 and +11.1 points, dev 0 and +6.4 points. The untouched `final` set does not gain: E2B 16.7 to 13.3% and E4B 10.0 to 6.7% (one turn each of 30; the research trigger fires on more of its digging turns, 36.7 to 40.0% and 46.7%, but the answers still miss reasons). The honest reading is that the first design of #412 was overfit and the follow-up fixes the shape problems of the owner's real data, but a small local model still finds only about one reason in three on questions it has not been tuned for. Research turns cost more: E2B digging turns take p50 6.4 s and p95 14.7 s against 2.9 s and 6.0 s (the bars of 11.9.14 are 15 and 30 s), with 3.5 LLM calls on average against 2.1 (cap 16).
+
+*Existing bars (D18), count of PASS / FAIL.*
+
+| Run | main PASS / FAIL | branch PASS / FAIL | failing bars on the branch (value; main value) |
+|---|---|---|---|
+| E2B gold: router, slots, e2e, a0, threads, broad, clarify, dig | 45 / 2 | 44 / 3 | Answer accuracy lookup + follow-up (25 + 10) (82.9%; 80.0%); Dig: EN pass minus PT pass (at most 10 points) (19.7%; 6.4%); Dig: controls latency p95 (baseline plus 20%) (2832 ms; 1500 ms) |
+| E2B held-out seed: router, slots, e2e, a0 | 18 / 1 | 19 / 0 | none |
+| E2B P2 set: router, e2e, threads, widen | 16 / 2 | 17 / 1 | Search wider: not found at the first scope, with the offer of the next scope (87.5%; 87.5%) |
+| E4B gold: router, slots, e2e, a0, threads, broad, clarify, dig | 46 / 1 | 45 / 2 | Dig: coverage of the must-mention reasons (75.0%; 79.4%); Dig: controls latency p95 (baseline plus 20%) (4758 ms; 4745 ms) |
+| E4B held-out seed: router, slots, e2e, a0 | 19 / 0 | 19 / 0 | none |
+| E4B P2 set: router, e2e, threads, widen | 18 / 0 | 18 / 0 | none |
+
+The failing bars on the branch: E2B gold D9 (EN pass minus PT pass): 19.7 points against 6.4 on main. The cause is one PT turn ("why" after a list with a single item: the worker returns one reason and the key needs two) and one EN turn that was won (the "why" at Everything scope). E4B gold D2 (coverage of the reasons): 75.0% against the bar "at least 75%" (main 79.4%). The "controls latency p95" bar is FAIL on main as well in a full invocation (the controls share the GPU with the other questions). The same 4 controls alone (one thread, two runs each, quiet machine) give p95 of E2B 4968 and 5155 ms on main against 5061 and 5106 ms on the branch, E4B 5862 and 5719 ms against 5590 and 6010 ms. Pass 100%, 2.0 LLM calls, 1.5 (E2B) and 1.8 (E4B) tool calls on both. The gold e2e rows: 2 rows lost (q036 "who proposed", q134 not answerable) and 1 won out of 190 on E2B; cite precision 0.805 to 0.827; not-found accuracy 92.5 to 90.0% (bar 90%). `research.share` of the gold e2e: 5 of 190 (3 are the old code false triggers q057 to q059; one is a model call `dig_deeper` on q036).
+
+*Real data (private, `pnpm chat-eval real --dig`, Mac E2B, read-only copy of the owner's DB, deleted after the run; texts only in `~/Library/Application Support/Openstyle-eval/chat-real/`).* Before (`resq-before-*.json`) and after (`resq-after-*.json`) on the same 6 turns of the 3 largest folders: the list of folder A had 142 sentences and 50 cites from 11 meetings, now 21 and 12 (6 meetings), same for folder B (152 and 50, now 24 and 12, 5 meetings). The "why" answer of folder A had a generic lead and 3 bullets of 1 cite; it has now 4 bullets, one for each of the top items, each with its own cite (one says "no reason found in the meetings"). Folder C "who pushed for the biggest change, and why?" was `not_found` (the repeat guard); it now answers with 3 dated bullets that name Marcos and two organisations. Time: list 0.2 s, why 9.6 s (35 meetings, 4 workers, 4 LLM calls, 8 tool calls) against 9.3 s before, folder C 10.7 s against 3.2 s (a `not_found` that ended early). `maxConcurrency` is 2; one against two was not measured.
+
+*E2E (fake model, real app; `meeting-ask-research.test.ts`, 8 tests, plus the clarify spec, 19 of 19 local; CI macOS job green).* A list of 26 open items shows 11 items grouped by meeting, "18 more items not shown" and the button "Show all"; the click gives the full list with no "more" line. Screenshots, light and dark: `specs/assets/chat-ask-d21/followup-list-capped-*.png` and `followup-list-show-all-*.png`. The "why are these open?" answer shows one bullet for each item with its cite, and "no reason found in the meetings" for an item with none.
+
+**What is still weak.**
+
+1. Blind digging pass is 7 to 40%: a small local model finds a third of the reasons. The `final` set did not improve. More workers or a bigger model are the levers, not more rules.
+2. An item worker can return a reason that restates the item ("The project needs to be organized into a usable repo", for the item "Organize the project into a usable repo"). `aboutItem` asks for one new content word. Two new words would drop these (not built: no time to re-measure).
+3. At Everything scope a list of a project that is named in the question is ranked by the question's words; a project that is not named is ranked by raised count and recency only.
+4. "Show all" is a button. Typing "show all of them" is a new question that the trigger may not catch.
+5. The open questions of the list come from the transcript summary (they include questions that were asked in the room), so a few items are not tasks.
+6. PT answers of the item workers are weaker on E2B (D9 gap 19.7 points).
+7. The model-driven `dig_deeper` tool works only with native tools on (the app default). With native tools off the research mode starts by the words of #412 only.
+
+Sources: https://docs.langchain.com/oss/javascript/langgraph/workflows-agents (orchestrator-worker, `Send`), https://js.langchain.com/docs/how_to/qa_citations (citations with structured output), the Enhance graph `apps/server/src/lib/meetings/workflow/graph.ts` (the `Send` and reducer pattern).
+
+
 Sources for this section: https://docs.langchain.com/oss/javascript/langgraph/agentic-rag, `/workflows-agents`, `/use-graph-api`, `/interrupts`, `/streaming`, `/thinking-in-langgraph`, https://docs.langchain.com/oss/javascript/migrate/langgraph-v1, https://github.com/langchain-ai/open_deep_research, https://github.com/langchain-ai/langgraphjs (adaptive RAG notebook `examples/rag/langgraph_adaptive_rag_local.ipynb`) and the repo lines named in the text.
 
 ## 12. Owner decisions and open questions

@@ -1417,6 +1417,9 @@
       "widenAsk": "No se encontró nada aquí. ¿Buscar más ampliamente?",
       "widenFolder": "Buscar en toda la carpeta {{name}}",
       "widenAll": "Buscar en todo",
+      "listMore_one": "{{count}} elemento más sin mostrar",
+      "listMore_other": "{{count}} elementos más sin mostrar",
+      "showAll": "Mostrar todos",
       "errWiden": "Ahora no hay una búsqueda más amplia que ejecutar.",
       "folder": {
         "title": "Preguntar sobre esta carpeta",

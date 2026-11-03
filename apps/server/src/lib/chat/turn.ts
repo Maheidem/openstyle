@@ -11,6 +11,8 @@ import { rerankPairs } from "../mlx-rerank/client.js";
 import {
   buildChoices,
   type Choices,
+  DIG_TOOL_NAME,
+  digToolDef,
   nativeToolDefs,
   validateNativeCall,
   visibleToolNames,
@@ -544,7 +546,10 @@ export class Turn {
    * deadline), `broad` (the synthesis path) or `tools` (the round loop).
    */
   async route(): Promise<
-    { kind: "exit"; exit: Exit } | { kind: "broad" } | { kind: "tools" }
+    | { kind: "exit"; exit: Exit }
+    | { kind: "broad" }
+    | { kind: "tools" }
+    | { kind: "dig" }
   > {
     const { db, question, llm, signal, settings } = this.input;
     const { turnScope, todayMs, turns } = this;
@@ -569,6 +574,8 @@ export class Turn {
     if (settings.nativeTools && !this.skipNative && !this.first) {
       const started = Date.now();
       const names = visibleToolNames(turnScope.kind, write);
+      // The research tool (11.9.17): offered when research mode is on.
+      const offerDig = settings.research && !write;
       try {
         const r = await llm.nativeCall({
           system: nativeSystem({
@@ -577,12 +584,21 @@ export class Turn {
             lists: choiceLists(choices, write),
             history: this.historyText,
             write,
+            dig: offerDig,
           }),
           messages: [{ role: "user", content: question }],
-          tools: nativeToolDefs(choices, names),
+          tools: [
+            ...nativeToolDefs(choices, names),
+            ...(offerDig ? [digToolDef()] : []),
+          ],
           maxOutputTokens: NATIVE_MAX_TOKENS,
           unitKey: "route/native",
         });
+        if (r.kind === "call" && r.name === DIG_TOOL_NAME && offerDig) {
+          // The model says the question needs digging: the graph switches to research.
+          this.step("route", "native:dig_deeper", started);
+          return { kind: "dig" };
+        }
         if (r.kind === "call") {
           const v = validateNativeCall(r, {
             choices,
@@ -1020,6 +1036,24 @@ export class Turn {
       .map((l) => this.sources.toCite(l))
       .filter((c): c is ChatCite => c !== null);
     return done(this.finish(blocks, cites, ""));
+  }
+
+  /** A result that code composed (the workers' bullets, 11.9.16). */
+  codeResult(blocks: ChatBlock[], cites: ChatCite[]): Exit {
+    const content = answerContent(
+      blocks.flatMap((b) =>
+        b.kind === "text"
+          ? [
+              {
+                text: b.text,
+                cites: b.cites,
+                ...(b.bullet ? { bullet: true } : {}),
+              },
+            ]
+          : [],
+      ),
+    );
+    return done(this.finish(blocks, cites, content));
   }
 
   /** `status_text`: the status blocks that stay as the last block of the answer. */

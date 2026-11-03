@@ -454,27 +454,26 @@ const foldWords = (t: string): string[] =>
 /** Two answers with this share of the same words are the same answer. */
 const REPEAT_JACCARD = 0.8;
 
-/** The first sentence of a text. */
-const firstSentence = (t: string): string =>
-  t.trim().split(/(?<=[.!?])\s+/u)[0] ?? "";
-
 /**
  * The earlier question whose answer the new answer repeats, or null. A new
  * question must get a new answer: a small model gave the earlier answer again
  * to "Why?" because the same chunk came back (P1.2). The same question asked
- * again may get the same answer. Only the first sentence is compared.
+ * again may get the same answer. The WHOLE answer is compared, not its first
+ * sentence: "Who pushed for the biggest change, and why?" may start with the
+ * same sentence as the answer to "How did the decisions change?" and still add
+ * the person and the reason (follow-up of the owner report 2026-11-02).
  */
 export function repeatedEarlierAnswer(
   question: string,
   answer: string,
   turns: readonly { question: string; answer: string }[],
 ): string | null {
-  const now = new Set(foldWords(firstSentence(answer)));
+  const now = new Set(foldWords(answer));
   if (now.size < 3) return null;
   const same = foldWords(question).join(" ");
   for (const t of turns.slice(-4)) {
     if (foldWords(t.question).join(" ") === same) continue;
-    const old = new Set(foldWords(firstSentence(t.answer)));
+    const old = new Set(foldWords(t.answer));
     if (old.size < 3) continue;
     let both = 0;
     for (const w of now) if (old.has(w)) both++;

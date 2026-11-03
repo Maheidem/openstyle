@@ -23,6 +23,12 @@ import {
 } from "./clarify-corpus.mts";
 import { buildCorpus } from "./corpus.mts";
 import { buildDigAddon, digAsCorpus } from "./dig-corpus.mts";
+import {
+  buildHeldoutAddon,
+  buildHeldoutDig,
+  DIG_SETS,
+  type DigSetName,
+} from "./dig-heldout.mts";
 import { buildP2, buildThreads } from "./gold.mts";
 import {
   mean,
@@ -771,6 +777,8 @@ interface E2eRow {
   ms: number;
   routeMs: number;
   native: string;
+  /** The turn ran in research mode (code trigger or the model's dig_deeper call). */
+  research?: boolean;
   tool: string | null;
   toolOk: boolean;
   argsOk: boolean;
@@ -909,6 +917,12 @@ async function partE2e(env: Env, M: Record<string, number>): Promise<PartOut> {
         ms: wall,
         routeMs,
         native: nativeOutcome(stepNames),
+        research: res.trace.research !== undefined,
+        spread:
+          Number(
+            stepNames.find((n) => n.startsWith("spread:"))?.slice(7) ??
+              Number.NaN,
+          ) || null,
         tool,
         toolOk,
         argsOk: sa.pass,
@@ -1097,6 +1111,9 @@ async function partE2e(env: Env, M: Record<string, number>): Promise<PartOut> {
         ? 0
         : natives.filter((r) => r.native === k).length / natives.length;
   metrics["native.attempts"] = natives.length;
+  // Questions of the gold set are lookups: a research turn here is a false trigger (11.9.17).
+  metrics["research.share"] =
+    rows.filter((r) => r.research).length / Math.max(1, rows.length);
   // Calls, latency, RAM, dropped.
   metrics["calls.mean"] = mean(rows.map((r) => r.calls));
   metrics["calls.max"] = Math.max(...rows.map((r) => r.calls));
@@ -1320,7 +1337,10 @@ async function partBroad(
 async function partDig(env: Env, M: Record<string, number>): Promise<PartOut> {
   const { corpus, stack, maps } = env;
   // The extra data is loaded on top of the base corpus (its ids start with dg-).
-  const addon = buildDigAddon();
+  // CHAT_EVAL_DIG_SET=heldout: the blind held-out set (dig-heldout.mts).
+  const setName = process.env.CHAT_EVAL_DIG_SET as DigSetName | undefined;
+  const heldout = setName !== undefined && setName in DIG_SETS;
+  const addon = heldout ? buildHeldoutAddon(setName) : buildDigAddon();
   loadCorpus(stack, digAsCorpus(corpus, addon));
   // Item cites of the dig meetings are known by the same key function.
   const digMaps = buildIdMaps(
@@ -1331,7 +1351,9 @@ async function partDig(env: Env, M: Record<string, number>): Promise<PartOut> {
   env.log(`dig: loaded ${addon.meetings.length} extra meetings`);
   const only = process.env.CHAT_EVAL_IDS?.split(",");
   const qs = spread(
-    buildDig().filter((q) => !only || only.includes(q.id)),
+    (heldout ? buildHeldoutDig(setName) : buildDig()).filter(
+      (q) => !only || only.includes(q.id),
+    ),
     env.opts.limit,
   );
   const known = {
@@ -1424,9 +1446,9 @@ async function partDig(env: Env, M: Record<string, number>): Promise<PartOut> {
     text,
     data: { rows, metrics: m },
     run: {
-      name: "p1-dig",
+      name: heldout ? `p1-dig-${setName}` : "p1-dig",
       params: { turns: m.turns, history: "real answers" },
-      tags: baseTags(env, "dig"),
+      tags: baseTags(env, heldout ? `dig-${setName}` : "dig"),
       metrics: m,
     },
   };

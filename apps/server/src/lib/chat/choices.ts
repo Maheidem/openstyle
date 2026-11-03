@@ -380,6 +380,25 @@ export function visibleToolNames(
   ];
 }
 
+/**
+ * The pseudo tool of the research mode (11.9.17). The model that already picks
+ * a tool for the question (the native call, no extra call) may pick this one
+ * when the answer is an explanation across meetings. It has no arguments.
+ */
+export const DIG_TOOL_NAME = "dig_deeper";
+export function digToolDef(): NativeTool {
+  return {
+    type: "function",
+    function: {
+      // Not a read tool: the name is outside `ToolName` on purpose.
+      name: DIG_TOOL_NAME as never,
+      description:
+        "Dig across several meetings. Use it when the answer is an explanation or a story that no single passage holds: the reasons or causes behind something, what held something up, why a position was taken, how a decision or a plan changed over time, or what is still not settled. Never use it for one fact, number, date or name, or to find who said or proposed something.",
+      parameters: { type: "object", properties: {}, required: [] },
+    },
+  };
+}
+
 /** All definitions that the choices allow. A tool with an empty closed list is left out. */
 function allDefs(ch: Choices): Partial<Record<ToolName, NativeTool>> {
   const meeting = ch.meetings.length

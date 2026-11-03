@@ -2,7 +2,13 @@ import { mkdirSync, rmSync } from "node:fs";
 import { join } from "node:path";
 import { expect, type Locator, type Page, test } from "@playwright/test";
 import { type Booted, boot, put, settingValue } from "./helpers/ask-app";
-import { FakeAskLlm, seedAskMeetings } from "./helpers/ask-fixture";
+import {
+  BACKLOG_FOLDER_NAME,
+  BACKLOG_TASKS,
+  FakeAskLlm,
+  seedAskMeetings,
+  seedBacklog,
+} from "./helpers/ask-fixture";
 import { closeApp } from "./helpers/e2e-app";
 
 // ---------------------------------------------------------------------------
@@ -46,12 +52,15 @@ async function newChat(page: Page): Promise<void> {
   await expect(users).toHaveCount(0);
 }
 
-async function openFolderAsk(page: Page): Promise<void> {
+async function openFolderAsk(
+  page: Page,
+  folder = "Orchid project",
+): Promise<void> {
   await page.goto("app://renderer/ask");
   await expect(page.getByTestId("ask-page")).toBeVisible({ timeout: 15_000 });
   await page.getByRole("radio", { name: "A folder" }).click();
   await page.getByTestId("ask-pick-folder").click();
-  await page.getByRole("option", { name: "Orchid project" }).click();
+  await page.getByRole("option", { name: folder }).click();
   await newChat(page);
 }
 
@@ -95,6 +104,7 @@ test.beforeAll(async () => {
   await put(b, "meeting_enhance_prompt_seen", "true");
   await put(b, "meeting_chat_enabled", "true");
   seedAskMeetings(b.userDataDir);
+  seedBacklog(b.userDataDir);
 });
 
 test.afterAll(async () => {
@@ -120,11 +130,9 @@ for (const theme of THEMES) {
     await expect(
       list.getByTestId("meeting-ask-block-list").first(),
     ).toBeVisible();
-    // Turn 2: "why are these open?" digs. Three leads, one for each item.
-    fake.spreadMeetings = true;
-    fake.reflectScript = ["next_lead", "next_lead", "stop"];
+    // Turn 2: "why are these open?" digs. One worker for each item (11.9.16).
     fake.reflectDelayMs = 1500;
-    const reflectBefore = fake.ofKind("chat_reflect").length;
+    const workersBefore = fake.ofKind("chat_dig_item").length;
     const second = await send(page, Q_WHY);
     await expect(page.getByTestId("meeting-ask-status")).toContainText(
       /Looking for/,
@@ -133,8 +141,7 @@ for (const theme of THEMES) {
     await shoot(page, `research-step-text-${theme.toLowerCase()}.png`);
     const turn = await answerAt(page, second);
     fake.reflectDelayMs = 0;
-    fake.spreadMeetings = false;
-    expect(fake.ofKind("chat_reflect").length).toBeGreaterThan(reflectBefore);
+    expect(fake.ofKind("chat_dig_item").length).toBeGreaterThan(workersBefore);
     // The answer has bullets, and the cites come from more than one meeting.
     expect(
       await turn.getByTestId("meeting-ask-block-text").count(),
@@ -159,6 +166,47 @@ for (const theme of THEMES) {
   });
 }
 
+for (const theme of THEMES) {
+  test(`a long list is capped (${theme}): at most 12 items, "more" line, "Show all" gives the rest (11.9.16)`, async () => {
+    test.setTimeout(150_000);
+    await setTheme(page, theme);
+    await openFolderAsk(page, BACKLOG_FOLDER_NAME);
+    const first = await send(page, "What are the open items in this folder?");
+    const turn = await answerAt(page, first);
+    const blocks = turn.getByTestId("meeting-ask-block-list");
+    await expect(blocks.first()).toBeVisible();
+    const shown = await turn.getByTestId("meeting-ask-list-item").count();
+    expect(shown).toBeGreaterThanOrEqual(8);
+    expect(shown).toBeLessThanOrEqual(12);
+    // The items are grouped by meeting, and the list says how many are left.
+    expect(
+      await turn.getByTestId("meeting-ask-list-group").count(),
+    ).toBeGreaterThanOrEqual(2);
+    await expect(turn.getByTestId("meeting-ask-list-more").first()).toHaveText(
+      /\d+ more items? not shown/,
+    );
+    // The best-raised tasks (the first 4, raised twice) are in the short list.
+    const text = await turn.innerText();
+    for (const task of BACKLOG_TASKS.slice(0, 4)) {
+      expect(text).toContain(task);
+    }
+    // The "more" line is at the end of a long list: scroll to it for the proof.
+    await turn
+      .getByTestId("meeting-ask-show-all")
+      .first()
+      .scrollIntoViewIfNeeded();
+    await shoot(page, `list-capped-${theme.toLowerCase()}.png`);
+    // "Show all": the same question again, with no cap.
+    await turn.getByTestId("meeting-ask-show-all").first().click();
+    const all = await answerAt(page, first + 1);
+    await expect(all.getByTestId("meeting-ask-list-more")).toHaveCount(0);
+    expect(
+      await all.getByTestId("meeting-ask-list-item").count(),
+    ).toBeGreaterThan(shown);
+    await shoot(page, `list-show-all-${theme.toLowerCase()}.png`);
+  });
+}
+
 test("a simple fact stays on the fast path: no reflect call, no trail line", async () => {
   test.setTimeout(90_000);
   await openFolderAsk(page);
@@ -174,7 +222,6 @@ test("leaving the Ask page during a research turn keeps the turn", async () => {
   await openFolderAsk(page);
   const first = await send(page, Q_LIST);
   await answerAt(page, first);
-  fake.reflectScript = ["next_lead", "stop"];
   fake.reflectDelayMs = 2500;
   const second = await send(page, Q_WHY);
   await expect(page.getByTestId("meeting-ask-status")).toContainText(

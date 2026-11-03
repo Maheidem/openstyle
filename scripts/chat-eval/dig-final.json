@@ -1,0 +1,2237 @@
+{
+  "people": [
+    {
+      "key": "p1",
+      "first": "Harlan",
+      "last": "Voss",
+      "asr": "Harlen Vos"
+    },
+    {
+      "key": "p2",
+      "first": "Mei-Lin",
+      "last": "Tran",
+      "asr": "May Lin Tran"
+    },
+    {
+      "key": "p3",
+      "first": "Cosmo",
+      "last": "Adebayo",
+      "asr": "Cosmo Adebayo"
+    },
+    {
+      "key": "p4",
+      "first": "Valdemar",
+      "last": "Souza",
+      "asr": "Valdemar Sousa"
+    },
+    {
+      "key": "p5",
+      "first": "Anselmo",
+      "last": "Ribeiro",
+      "asr": "Ansermo Ribeiro"
+    },
+    {
+      "key": "p6",
+      "first": "Yasmin",
+      "last": "Teixeira",
+      "asr": "Iasmin Teixeira"
+    },
+    {
+      "key": "p7",
+      "first": "Lucinda",
+      "last": "Marsh",
+      "asr": "Lucinda Marsch"
+    },
+    {
+      "key": "p8",
+      "first": "Ruth",
+      "last": "Calloway",
+      "asr": "Ruth Calaway"
+    }
+  ],
+  "projects": [
+    {
+      "key": "A",
+      "name": "Halden Floor Sensors",
+      "lang": "en"
+    },
+    {
+      "key": "B",
+      "name": "Plataforma de Doações Casa Girassol",
+      "lang": "pt"
+    },
+    {
+      "key": "C",
+      "name": "Dunmore Loyalty and Pricing",
+      "lang": "en"
+    }
+  ],
+  "meetings": [
+    {
+      "key": "a1",
+      "project": "A",
+      "n": 1,
+      "day": 0,
+      "title": "Kickoff for the floor sensors at Halden Works",
+      "lang": "en",
+      "overview": "The team kicked off the floor sensor rollout at Halden Works. Harlan leads and the first wave is small. The vendor and the schedule were agreed.",
+      "keyPoints": [
+        "First wave is 40 sensors on line 4",
+        "Go-live target is Nov 4",
+        "Vendor is Tessaro Sensors",
+        "Harlan leads the rollout"
+      ],
+      "decisions": [
+        "Use glue-on mounts for all sensors",
+        "Harlan leads the rollout"
+      ],
+      "actions": [
+        {
+          "task": "Order 40 sensors from Tessaro",
+          "owner": "p1",
+          "due": "Oct 10",
+          "done": true
+        },
+        {
+          "task": "Draft the network plan for line 4",
+          "owner": "p2",
+          "due": "Oct 18",
+          "done": false
+        },
+        {
+          "task": "Calibrate vibration thresholds on press 7",
+          "owner": "p3",
+          "due": "Oct 25",
+          "done": false
+        },
+        {
+          "task": "Book operator training sessions",
+          "owner": "p1",
+          "due": "Oct 28",
+          "done": false
+        },
+        {
+          "task": "Get the gateway certified for the plant network",
+          "owner": "p2",
+          "due": "Oct 30",
+          "done": false
+        }
+      ],
+      "openQuestions": ["Where are the sensor readings stored?"],
+      "say": [
+        {
+          "who": "p1",
+          "text": "Okay, welcome everyone. This is the kickoff for the floor sensor rollout at Halden Works. I will lead it."
+        },
+        {
+          "who": "p1",
+          "text": "The plan is 40 sensors on line 4, and we go live on Nov 4. The vendor is Tessaro Sensors."
+        },
+        {
+          "who": "p2",
+          "text": "I will own the network side. I need a plan for the gateways before anyone drills a hole."
+        },
+        {
+          "who": "p3",
+          "text": "And I own the press side. Press 7 is the noisy one, so I will start there."
+        },
+        {
+          "who": "p1",
+          "text": "How do we mount them? I would like glue-on mounts. They are fast and nobody has to drill the housings."
+        },
+        {
+          "who": "p3",
+          "text": "Glue is fine for a pilot. I ran a test on press 2 last week and it held for three days."
+        },
+        {
+          "who": "p2",
+          "text": "Fine by me. Let us write that down as the decision for now."
+        },
+        {
+          "who": "p1",
+          "text": "Next, the order. I will place the Tessaro order for 40 units this week."
+        },
+        {
+          "who": "p2",
+          "text": "Do we know where the readings are stored? I cannot size the network without that."
+        },
+        {
+          "who": "p1",
+          "text": "No. That is an open question. Put it on the list."
+        },
+        {
+          "who": "p3",
+          "text": "Operators will need training too. Somebody has to book the sessions."
+        },
+        {
+          "who": "p1",
+          "text": "I will take that. I will book the sessions before the end of the month."
+        },
+        {
+          "who": "p2",
+          "text": "The gateway needs a security certification before it can join the plant network. I will start that."
+        },
+        {
+          "who": "p3",
+          "text": "Alert limits come last, once we have a baseline. I will calibrate on press 7 for that."
+        },
+        {
+          "who": "p1",
+          "text": "Okay. Network plan by Oct 18, calibration by Oct 25. Let us meet again in two weeks."
+        }
+      ]
+    },
+    {
+      "key": "a2",
+      "project": "A",
+      "n": 2,
+      "day": 14,
+      "title": "Mounting problems and the network question",
+      "lang": "en",
+      "overview": "The team reviewed the first mounting tests and the network options. The mounting approach changed after the pilot. Several earlier tasks are waiting on others.",
+      "keyPoints": [
+        "Mounting method was revisited after the pilot",
+        "Wifi versus a wired link came up for the gateways",
+        "Spares need to be ordered",
+        "Gateway certification is still in progress"
+      ],
+      "decisions": ["Switch from glue-on mounts to bolted brackets"],
+      "actions": [
+        {
+          "task": "Fabricate 40 bolted brackets",
+          "owner": "p3",
+          "due": "Nov 3",
+          "done": true
+        },
+        {
+          "task": "Draft the network plan for line 4",
+          "owner": "p2",
+          "due": "Oct 18",
+          "done": true
+        },
+        {
+          "task": "Place the order for 12 spare sensors",
+          "owner": "p1",
+          "due": "Nov 1",
+          "done": false
+        },
+        {
+          "task": "Get the gateway certified for line 4",
+          "owner": "p2",
+          "due": "Nov 5",
+          "done": false
+        },
+        {
+          "task": "Price the wired ethernet run",
+          "owner": "p2",
+          "due": "Oct 31",
+          "done": false
+        }
+      ],
+      "openQuestions": ["Wifi or wired ethernet for the gateways?"],
+      "say": [
+        {
+          "who": "p1",
+          "text": "Let us start with mounting. Cosmo, you said the glue held on press 2. What happened on press 7?"
+        },
+        {
+          "who": "p3",
+          "text": "It failed. The press 7 housing runs at about 90 degrees Celsius near the die, and the glue softened in two days. Four sensors fell off."
+        },
+        {
+          "who": "p1",
+          "text": "So glue is dead for the hot presses. I propose bolted brackets for everything."
+        },
+        {
+          "who": "p3",
+          "text": "I agree. I can have 40 brackets cut this week."
+        },
+        {
+          "who": "p2",
+          "text": "Then I record the decision: bolted brackets replace glue."
+        },
+        {
+          "who": "p1",
+          "text": "Next, the network. I would like to look at wired ethernet instead of wifi for the gateways."
+        },
+        {
+          "who": "p2",
+          "text": "I am open to it, but wired means running cable. Let me price it."
+        },
+        {
+          "who": "p1",
+          "text": "Okay. Put it as an open question for now. What about the gateway certification, Mei-Lin?"
+        },
+        {
+          "who": "p2",
+          "text": "It is stuck. I filed the firewall rules with IT security, ticket 4471, and they bounced it. They want the rules rewritten by port, not by subnet."
+        },
+        {
+          "who": "p1",
+          "text": "That costs us a week at least. Cosmo, thresholds?"
+        },
+        {
+          "who": "p3",
+          "text": "Not started in earnest. I need real baseline data first, and the sensors are not even on the presses yet."
+        },
+        {
+          "who": "p1",
+          "text": "Right. About spares. We want 12 spare sensors because failures will happen."
+        },
+        {
+          "who": "p1",
+          "text": "I asked Tessaro. Their lead time on spares is nine weeks. That is a problem for the Nov 4 date."
+        },
+        {
+          "who": "p2",
+          "text": "Nine weeks is a long time. Can we get them from anywhere else?"
+        },
+        {
+          "who": "p1",
+          "text": "Not now. I will keep the order open and chase them."
+        },
+        {
+          "who": "p3",
+          "text": "The network plan for line 4 is done, by the way. I saw Mei-Lin's draft."
+        }
+      ]
+    },
+    {
+      "key": "a3",
+      "project": "A",
+      "n": 3,
+      "day": 28,
+      "title": "Wired network push and calibration delay",
+      "lang": "en",
+      "overview": "The team checked progress on installation and the network choice. Mei-Lin argued for a network change. Alert limits and training are slower than planned.",
+      "keyPoints": [
+        "Network type was debated again",
+        "Installation on line 4 is partly done",
+        "Calibration is behind plan",
+        "Training dates are not fixed"
+      ],
+      "decisions": ["Move the gateways in the welding area to wired ethernet"],
+      "actions": [
+        {
+          "task": "Run ethernet cable to the welding bay",
+          "owner": "p2",
+          "due": "Nov 30",
+          "done": false
+        },
+        {
+          "task": "Get the gateway certified",
+          "owner": "p2",
+          "due": "Nov 22",
+          "done": false
+        },
+        {
+          "task": "Calibrate vibration thresholds on press 7",
+          "owner": "p3",
+          "due": "Nov 22",
+          "done": false
+        },
+        {
+          "task": "Book operator training sessions",
+          "owner": "p1",
+          "due": "Nov 25",
+          "done": false
+        },
+        {
+          "task": "Place the spare sensor order",
+          "owner": "p1",
+          "due": "Nov 15",
+          "done": false
+        }
+      ],
+      "openQuestions": ["Who pays for storage of the readings?"],
+      "say": [
+        {
+          "who": "p1",
+          "text": "Status check. The brackets are on, and 28 sensors are live on line 4. Twelve are waiting."
+        },
+        {
+          "who": "p2",
+          "text": "Before anything else I want to push on the network again. I want wired ethernet in the welding bay."
+        },
+        {
+          "who": "p1",
+          "text": "Mei-Lin, you proposed it last time as a question. Why is it so important now?"
+        },
+        {
+          "who": "p2",
+          "text": "I measured it. Wifi dropped 31 percent of the packets near the welding bay. The arcs jam the signal."
+        },
+        {
+          "who": "p3",
+          "text": "That would wreck any alert work. I support wired."
+        },
+        {
+          "who": "p1",
+          "text": "Okay. Decision: gateways near the welding bay go wired. How long for the cable?"
+        },
+        {
+          "who": "p2",
+          "text": "The run is 80 meters. I can finish by Nov 30 if the cable arrives."
+        },
+        {
+          "who": "p1",
+          "text": "Now the gateway certification. Status?"
+        },
+        {
+          "who": "p2",
+          "text": "Good news and bad news. IT security accepted the rules, but the gateway needs firmware 2.8 to pass their scan. It ships Nov 19."
+        },
+        {
+          "who": "p1",
+          "text": "So we wait for the vendor. Cosmo, thresholds?"
+        },
+        {
+          "who": "p3",
+          "text": "Behind. I only have six days of baseline data because press 7 was down for a die change. I need at least fourteen."
+        },
+        {
+          "who": "p1",
+          "text": "Understood. Training is also behind. Our trainer is on leave until Nov 25, so I cannot book anything."
+        },
+        {
+          "who": "p3",
+          "text": "Can anyone else train the operators?"
+        },
+        {
+          "who": "p1",
+          "text": "Not with the safety sign-off. It has to be her."
+        },
+        {
+          "who": "p1",
+          "text": "The spare order is still open. Same story, I keep chasing Tessaro."
+        }
+      ]
+    },
+    {
+      "key": "a4",
+      "project": "A",
+      "n": 4,
+      "day": 49,
+      "title": "Second mounting change, power and customs",
+      "lang": "en",
+      "overview": "The team reviewed field results from line 4 and the open blockers. The mounting method changed a second time. The gateway work and the spare order are still held up.",
+      "keyPoints": [
+        "Mounting method changed again after field results",
+        "Spare sensors are still not here",
+        "Gateway sign-off still pending",
+        "Alerts depend on a data policy question"
+      ],
+      "decisions": [
+        "Use magnetic mounts on press housings and keep bolts on the conveyors"
+      ],
+      "actions": [
+        {
+          "task": "Finish gateway certification",
+          "owner": "p2",
+          "due": "Dec 6",
+          "done": false
+        },
+        {
+          "task": "Set vibration alert thresholds on press 7",
+          "owner": "p3",
+          "due": "Dec 10",
+          "done": false
+        },
+        {
+          "task": "Book training dates with the trainer",
+          "owner": "p1",
+          "due": "Dec 12",
+          "done": false
+        },
+        {
+          "task": "Chase the spare sensor order",
+          "owner": "p1",
+          "due": "Dec 1",
+          "done": false
+        },
+        {
+          "task": "Replace bolts on press 7 with magnetic mounts",
+          "owner": "p3",
+          "due": "Nov 28",
+          "done": false
+        }
+      ],
+      "openQuestions": ["Who signs off the policy for shift data?"],
+      "say": [
+        {
+          "who": "p1",
+          "text": "Field results first. Cosmo, how are the bolted brackets doing?"
+        },
+        {
+          "who": "p3",
+          "text": "Not great on press 7. Vibration loosened the bolts twice in one week. Two sensors read garbage."
+        },
+        {
+          "who": "p3",
+          "text": "I propose magnetic mounts on the press housings. We keep bolts on the conveyors, where it is calm."
+        },
+        {
+          "who": "p2",
+          "text": "Magnets are fine for me. Same signal?"
+        },
+        {
+          "who": "p3",
+          "text": "Same signal. I tested one for four days."
+        },
+        {
+          "who": "p1",
+          "text": "Okay, second change then. Magnetic on presses, bolts on conveyors. Record it."
+        },
+        {
+          "who": "p2",
+          "text": "The ethernet run to the welding bay is done. It works."
+        },
+        {
+          "who": "p1",
+          "text": "Good. Gateway certification, where are we?"
+        },
+        {
+          "who": "p2",
+          "text": "Firmware 2.8 is in. The scan passes now. But the gateway cabinet needs a 24 volt rail, and the electrician is booked for Dec 3."
+        },
+        {
+          "who": "p1",
+          "text": "So the gateway waits for power. And the spares?"
+        },
+        {
+          "who": "p1",
+          "text": "Tessaro shipped. The container is held at customs since Nov 17. No date yet."
+        },
+        {
+          "who": "p3",
+          "text": "Thresholds: I now have fourteen days of data. But the union asked for a review of the shift data policy before we turn on alerts. The review is set for Dec 10."
+        },
+        {
+          "who": "p1",
+          "text": "Alerts are the whole point. Who signs off?"
+        },
+        {
+          "who": "p3",
+          "text": "HR and the union rep. I do not know who owns it."
+        },
+        {
+          "who": "p1",
+          "text": "We list that as an open question. The trainer is back Nov 25, so I will book Dec 12."
+        }
+      ]
+    },
+    {
+      "key": "a5",
+      "project": "A",
+      "n": 5,
+      "day": 77,
+      "title": "New scope, new vendor, new date",
+      "lang": "en",
+      "overview": "The team reviewed the plan after the pilot and agreed a much bigger scope. The lead, the vendor and the schedule all differ from the kickoff. Some older items still wait on others.",
+      "keyPoints": [
+        "Scope grew well beyond the pilot",
+        "Vendor and lead changed",
+        "A new go-live date was set",
+        "Storage cost is still not settled"
+      ],
+      "decisions": [
+        "Expand to 112 sensors across lines 4, 5 and 6",
+        "Replace Tessaro with Norvik",
+        "Cosmo takes over as lead"
+      ],
+      "actions": [
+        {
+          "task": "Finish gateway certification",
+          "owner": "p2",
+          "due": "Jan 8",
+          "done": false
+        },
+        {
+          "task": "Finish threshold calibration",
+          "owner": "p3",
+          "due": "Jan 10",
+          "done": false
+        },
+        {
+          "task": "Book the training room",
+          "owner": "p3",
+          "due": "Jan 14",
+          "done": false
+        },
+        {
+          "task": "Place the spare sensor order with Norvik",
+          "owner": "p3",
+          "due": "Jan 6",
+          "done": false
+        },
+        {
+          "task": "Replace bolts on press 7 with magnetic mounts",
+          "owner": "p3",
+          "due": "Nov 28",
+          "done": true
+        }
+      ],
+      "openQuestions": [
+        "Which storage option wins, and under what retention period?"
+      ],
+      "say": [
+        {
+          "who": "p3",
+          "text": "I am running this one. Harlan moved to the finance review, so I am the lead now."
+        },
+        {
+          "who": "p1",
+          "text": "Right, I stay around for the storage quote. Cosmo, give us the new plan."
+        },
+        {
+          "who": "p3",
+          "text": "Scope is now 112 sensors on lines 4, 5 and 6, up from 40. The new go-live is Jan 20."
+        },
+        {
+          "who": "p3",
+          "text": "And we dropped Tessaro. Norvik is the new vendor. Their lead time is three weeks, not nine."
+        },
+        {
+          "who": "p2",
+          "text": "That helps with spares. Why can we not order today?"
+        },
+        {
+          "who": "p1",
+          "text": "The budget code for the spares is frozen until Jan 5. Finance closed the year."
+        },
+        {
+          "who": "p3",
+          "text": "OK, so the order waits. Mei-Lin, the gateway?"
+        },
+        {
+          "who": "p2",
+          "text": "The electrician came on Dec 3 and the power is in. It is a short sign-off now. I expect Jan 8."
+        },
+        {
+          "who": "p3",
+          "text": "Thresholds: I run alerts in test mode only, for now."
+        },
+        {
+          "who": "p3",
+          "text": "Training is blocked on the room. The safety audit takes the training room the week of Jan 12."
+        },
+        {
+          "who": "p1",
+          "text": "Quick one on storage. IT quoted 5,800 a month for on-site. A cloud option came in at 4,100."
+        },
+        {
+          "who": "p2",
+          "text": "So cloud wins?"
+        },
+        {
+          "who": "p1",
+          "text": "Not yet. Legal has not said how long we must keep the readings. Seven years or ninety days changes the price a lot."
+        },
+        {
+          "who": "p3",
+          "text": "When will legal answer?"
+        },
+        {
+          "who": "p1",
+          "text": "They promised Jan 19. Until then storage is unsettled."
+        },
+        {
+          "who": "p3",
+          "text": "Okay. Same list as last time, just with new dates. We meet again after the holiday."
+        }
+      ]
+    },
+    {
+      "key": "b1",
+      "project": "B",
+      "n": 1,
+      "day": 0,
+      "title": "Início da plataforma de doações da Casa Girassol",
+      "lang": "pt",
+      "overview": "A equipe abriu o projeto da plataforma de doações da Casa Girassol. Valdemar coordena e Anselmo cuida da parte técnica. A meta e a data de lançamento foram definidas.",
+      "keyPoints": [
+        "Meta de arrecadação mensal definida em R$ 18 mil",
+        "Lançamento previsto para 12 de março",
+        "Provedor de pagamento escolhido: Tapioca Pay",
+        "Valdemar coordena o projeto"
+      ],
+      "decisions": [
+        "Aceitar apenas Pix no início",
+        "Usar a Tapioca Pay como provedor"
+      ],
+      "actions": [
+        {
+          "task": "Criar o cadastro na Tapioca Pay",
+          "owner": "p5",
+          "due": "25 de janeiro",
+          "done": true
+        },
+        {
+          "task": "Desenhar a página de doação",
+          "owner": "p5",
+          "due": "30 de janeiro",
+          "done": false
+        },
+        {
+          "task": "Preparar a emissão de recibos",
+          "owner": "p6",
+          "due": "20 de fevereiro",
+          "done": false
+        },
+        {
+          "task": "Redigir o termo de consentimento LGPD",
+          "owner": "p4",
+          "due": "10 de fevereiro",
+          "done": false
+        }
+      ],
+      "openQuestions": ["Como os doadores recebem o recibo?"],
+      "say": [
+        {
+          "who": "p4",
+          "text": "Bom dia, pessoal. Vamos começar a plataforma de doações da Casa Girassol. Eu coordeno o projeto."
+        },
+        {
+          "who": "p4",
+          "text": "A meta é arrecadar 18 mil reais por mês. A gente lança no dia 12 de março."
+        },
+        {
+          "who": "p5",
+          "text": "Eu cuido da parte técnica. Já escolhi o provedor: a Tapioca Pay. A taxa deles é boa."
+        },
+        {
+          "who": "p6",
+          "text": "Eu cuido do financeiro e dos recibos. Doador de ONG quer recibo para abater imposto."
+        },
+        {
+          "who": "p4",
+          "text": "Verdade. Consegue emitir recibo fiscal automático?"
+        },
+        {
+          "who": "p6",
+          "text": "Consigo, mas preciso de algumas coisas da prefeitura. Vou ver o que falta."
+        },
+        {
+          "who": "p4",
+          "text": "Anselmo, quais formas de pagamento a gente aceita no começo?"
+        },
+        {
+          "who": "p5",
+          "text": "Eu sugiro só Pix. É simples, é barato e todo mundo tem."
+        },
+        {
+          "who": "p4",
+          "text": "Para mim está bom. Só Pix no começo."
+        },
+        {
+          "who": "p6",
+          "text": "E o termo de consentimento? Pela LGPD a gente precisa de um texto para os dados dos doadores."
+        },
+        {
+          "who": "p4",
+          "text": "Esse eu mesmo redijo e mando para o jurídico."
+        },
+        {
+          "who": "p5",
+          "text": "Vou criar o cadastro na Tapioca Pay amanhã e depois desenho a página de doação."
+        },
+        {
+          "who": "p4",
+          "text": "Ótimo. Quando fica pronto o primeiro teste?"
+        },
+        {
+          "who": "p5",
+          "text": "Em umas duas semanas, se nada travar."
+        },
+        {
+          "who": "p4",
+          "text": "Combinado. A gente se fala de novo no fim do mês."
+        }
+      ]
+    },
+    {
+      "key": "b2",
+      "project": "B",
+      "n": 2,
+      "day": 10,
+      "title": "Cartão e recibos",
+      "lang": "pt",
+      "overview": "A equipe revisou o andamento da página de doação e discutiu novas formas de pagamento. A emissão de recibos ficou parada. Uma ideia para o modelo de doação apareceu.",
+      "keyPoints": [
+        "Página de doação em andamento",
+        "Formas de pagamento ampliadas",
+        "Recibos ainda sem data",
+        "Ideia de mudança no modelo de doação"
+      ],
+      "decisions": ["Adicionar cartão de crédito além do Pix"],
+      "actions": [
+        {
+          "task": "Desenhar a página de doação",
+          "owner": "p5",
+          "due": "6 de fevereiro",
+          "done": false
+        },
+        {
+          "task": "Preparar a emissão de recibos",
+          "owner": "p6",
+          "due": "20 de fevereiro",
+          "done": false
+        },
+        {
+          "task": "Integrar o cartão de crédito",
+          "owner": "p5",
+          "due": "15 de fevereiro",
+          "done": false
+        },
+        {
+          "task": "Redigir o termo de consentimento LGPD",
+          "owner": "p4",
+          "due": "10 de fevereiro",
+          "done": false
+        },
+        {
+          "task": "Criar o cadastro na Tapioca Pay",
+          "owner": "p5",
+          "due": "25 de janeiro",
+          "done": true
+        }
+      ],
+      "openQuestions": ["Doação recorrente entra no lançamento?"],
+      "say": [
+        {
+          "who": "p4",
+          "text": "Vamos ao andamento. Anselmo, como está a página?"
+        },
+        {
+          "who": "p5",
+          "text": "Quase pronta. Falta ligar o botão do Pix no ambiente de teste."
+        },
+        {
+          "who": "p4",
+          "text": "Eu recebi pedidos de doadores que querem pagar no cartão. Podemos aceitar?"
+        },
+        {
+          "who": "p5",
+          "text": "Dá. A Tapioca Pay já tem cartão. Leva uns cinco dias de trabalho."
+        },
+        {
+          "who": "p4",
+          "text": "Então decidido: Pix e cartão de crédito."
+        },
+        {
+          "who": "p6",
+          "text": "Tenho uma proposta também. Queria falar de doação mensal, mas deixo para depois."
+        },
+        {
+          "who": "p4",
+          "text": "Fica como pergunta em aberto. E os recibos, Yasmin?"
+        },
+        {
+          "who": "p6",
+          "text": "Parados. O certificado digital da ONG venceu no dia 15 de janeiro. Sem ele a prefeitura não aceita a emissão."
+        },
+        {
+          "who": "p4",
+          "text": "Quanto custa renovar?"
+        },
+        {
+          "who": "p6",
+          "text": "Uns 240 reais, mas a emissão leva de cinco a dez dias."
+        },
+        {
+          "who": "p5",
+          "text": "Eu posso ajudar com a instalação do certificado quando chegar."
+        },
+        {
+          "who": "p4",
+          "text": "Ok. Yasmin, vê isso ainda hoje."
+        },
+        {
+          "who": "p6",
+          "text": "Vou ver. E o termo de LGPD, Valdemar?"
+        },
+        {
+          "who": "p4",
+          "text": "Ainda não terminei. Vou mandar para o jurídico semana que vem."
+        },
+        {
+          "who": "p5",
+          "text": "Então a gente fecha por aqui. Próxima em duas semanas."
+        }
+      ]
+    },
+    {
+      "key": "b3",
+      "project": "B",
+      "n": 3,
+      "day": 24,
+      "title": "Doação recorrente e cadastro",
+      "lang": "pt",
+      "overview": "A equipe discutiu o modelo de doações e o andamento dos recibos. Uma mudança no uso do cartão foi acertada. Outros bloqueios apareceram nas conversas.",
+      "keyPoints": [
+        "Modelo de doação revisto",
+        "Cartão passa a ter uso mais restrito",
+        "Recibos seguem parados por outro motivo",
+        "Texto de consentimento sem resposta"
+      ],
+      "decisions": [
+        "Cartão só para doação mensal recorrente e Pix para doação única"
+      ],
+      "actions": [
+        {
+          "task": "Emitir os recibos fiscais",
+          "owner": "p6",
+          "due": "5 de março",
+          "done": false
+        },
+        {
+          "task": "Implementar doação recorrente mensal",
+          "owner": "p5",
+          "due": "1 de abril",
+          "done": false
+        },
+        {
+          "task": "Corrigir o cadastro de atividade da ONG",
+          "owner": "p6",
+          "due": "1 de março",
+          "done": false
+        },
+        {
+          "task": "Cobrar o parecer do jurídico sobre o termo",
+          "owner": "p4",
+          "due": "10 de março",
+          "done": false
+        },
+        {
+          "task": "Desenhar a página de doação",
+          "owner": "p5",
+          "due": "6 de fevereiro",
+          "done": true
+        }
+      ],
+      "openQuestions": ["Qual é a data real de lançamento?"],
+      "say": [
+        {
+          "who": "p4",
+          "text": "Primeiro assunto: doação recorrente. Yasmin, você queria falar disso."
+        },
+        {
+          "who": "p6",
+          "text": "Queria sim, e agora tenho os números. Em 2023, 73 por cento das doações vieram em dezembro. De fevereiro a abril a ONG fica sem caixa."
+        },
+        {
+          "who": "p6",
+          "text": "Com doação mensal a gente forma uma base fixa. Eu defendo que o cartão seja só para recorrência."
+        },
+        {
+          "who": "p5",
+          "text": "Faz sentido técnico. Cartão para recorrência é mais simples de cobrar."
+        },
+        {
+          "who": "p4",
+          "text": "Então eu decido: cartão só para doação mensal recorrente, e Pix para doação única."
+        },
+        {
+          "who": "p5",
+          "text": "Isso aumenta o trabalho. Preciso de umas três semanas a mais."
+        },
+        {
+          "who": "p4",
+          "text": "Tudo bem. E os recibos? O certificado chegou?"
+        },
+        {
+          "who": "p6",
+          "text": "Chegou e instalamos. Mas agora travou em outra coisa: o contador disse que o CNAE da ONG está errado no cadastro."
+        },
+        {
+          "who": "p6",
+          "text": "Com o CNAE errado a prefeitura rejeita o pedido. Tenho que pedir a correção na Receita."
+        },
+        {
+          "who": "p4",
+          "text": "Quanto tempo?"
+        },
+        {
+          "who": "p6",
+          "text": "Uns quinze dias, no mínimo."
+        },
+        {
+          "who": "p4",
+          "text": "O termo de LGPD já está escrito. Mandei para o jurídico faz uma semana e não voltou."
+        },
+        {
+          "who": "p5",
+          "text": "Sem o parecer a gente não pode abrir o formulário de dados."
+        },
+        {
+          "who": "p4",
+          "text": "Eu cobro. Então a data de 12 de março está difícil."
+        },
+        {
+          "who": "p6",
+          "text": "Com certeza. Eu estimo abril."
+        },
+        {
+          "who": "p4",
+          "text": "Ok, a gente reavalia na próxima."
+        }
+      ]
+    },
+    {
+      "key": "b4",
+      "project": "B",
+      "n": 4,
+      "day": 45,
+      "title": "Nova data e prefeitura",
+      "lang": "pt",
+      "overview": "A equipe fez o balanço e fixou uma nova data de lançamento. A coordenação mudou de mãos. Os recibos e o termo ainda dependem de terceiros.",
+      "keyPoints": [
+        "Nova data de lançamento definida",
+        "Meta de arrecadação revista",
+        "Provedor de pagamento trocado",
+        "Coordenação mudou de mãos"
+      ],
+      "decisions": ["Trocar a Tapioca Pay pela Zepay", "Lançar em 28 de abril"],
+      "actions": [
+        {
+          "task": "Emitir os recibos fiscais",
+          "owner": "p6",
+          "due": "20 de abril",
+          "done": false
+        },
+        {
+          "task": "Cobrar o parecer do jurídico sobre o termo",
+          "owner": "p4",
+          "due": "10 de abril",
+          "done": false
+        },
+        {
+          "task": "Implementar doação recorrente mensal",
+          "owner": "p5",
+          "due": "15 de abril",
+          "done": false
+        },
+        {
+          "task": "Migrar o cadastro para a Zepay",
+          "owner": "p5",
+          "due": "5 de abril",
+          "done": false
+        },
+        {
+          "task": "Fazer teste de Pix com valor real",
+          "owner": "p5",
+          "due": "18 de abril",
+          "done": false
+        }
+      ],
+      "openQuestions": ["O parecer do jurídico chega antes do lançamento?"],
+      "say": [
+        {
+          "who": "p6",
+          "text": "Eu coordeno daqui para a frente. O Valdemar foi para a captação de recursos."
+        },
+        {
+          "who": "p4",
+          "text": "Isso. Eu fico nos doadores grandes. Apresenta a situação."
+        },
+        {
+          "who": "p6",
+          "text": "Meta nova: 42 mil reais por mês, porque dois patrocinadores fecharam. A data de lançamento passou para 28 de abril."
+        },
+        {
+          "who": "p5",
+          "text": "Também trocamos o provedor. Saímos da Tapioca Pay e vamos para a Zepay. A taxa de cartão é menor, e eles fazem recorrência nativa."
+        },
+        {
+          "who": "p4",
+          "text": "Quanto isso muda no cronograma?"
+        },
+        {
+          "who": "p5",
+          "text": "Uma semana de migração. O resto fica igual."
+        },
+        {
+          "who": "p6",
+          "text": "Recibos: o CNAE foi corrigido, mas agora o sistema da prefeitura está fora do ar até 15 de abril por causa de uma migração."
+        },
+        {
+          "who": "p4",
+          "text": "Então os recibos só saem depois disso."
+        },
+        {
+          "who": "p6",
+          "text": "Sim. Dá tempo, mas por pouco."
+        },
+        {
+          "who": "p5",
+          "text": "Quero fazer um teste de Pix com valor real antes do lançamento."
+        },
+        {
+          "who": "p6",
+          "text": "Combinado. Dia 18 de abril."
+        },
+        {
+          "who": "p4",
+          "text": "E o parecer do jurídico sobre o termo de LGPD?"
+        },
+        {
+          "who": "p4",
+          "text": "Eles prometeram para 10 de abril. Mas já prometeram duas vezes."
+        },
+        {
+          "who": "p5",
+          "text": "Se não vier, lançamos sem o formulário completo?"
+        },
+        {
+          "who": "p6",
+          "text": "Não. Sem parecer a gente não lança. É a decisão da coordenação."
+        },
+        {
+          "who": "p4",
+          "text": "Ok. Então a data de 28 de abril depende dessa resposta."
+        }
+      ]
+    },
+    {
+      "key": "c1",
+      "project": "C",
+      "n": 1,
+      "day": 0,
+      "title": "Loyalty and pricing kickoff",
+      "lang": "en",
+      "overview": "The team opened the loyalty and pricing rework for Dunmore Grocers. Cosmo leads, with a small pilot first. The loyalty structure and the launch date were set.",
+      "keyPoints": [
+        "Pilot runs in six stores",
+        "Launch target is Apr 15",
+        "Loyalty program starts with three tiers",
+        "Budget of 120k approved by the board",
+        "Members log in with an app account"
+      ],
+      "decisions": [
+        "Run the pilot in six stores",
+        "Launch loyalty with three tiers: Bronze, Silver and Gold"
+      ],
+      "actions": [
+        {
+          "task": "Pull 12 months of basket data",
+          "owner": "p3",
+          "due": "Jan 20",
+          "done": true
+        },
+        {
+          "task": "Draft the points expiry rules",
+          "owner": "p8",
+          "due": "Jan 31",
+          "done": false
+        },
+        {
+          "task": "Define coupon expiry rules",
+          "owner": "p7",
+          "due": "Feb 5",
+          "done": false
+        },
+        {
+          "task": "Write the price match policy for dairy",
+          "owner": "p7",
+          "due": "Feb 10",
+          "done": false
+        },
+        {
+          "task": "Get a quote for electronic shelf labels",
+          "owner": "p8",
+          "due": "Jan 28",
+          "done": false
+        }
+      ],
+      "openQuestions": ["How long do points stay valid?"],
+      "say": [
+        {
+          "who": "p3",
+          "text": "Okay, let us start. I lead this rework, loyalty and pricing together. The pilot is six stores, and we launch on Apr 15."
+        },
+        {
+          "who": "p7",
+          "text": "And the budget for the pilot?"
+        },
+        {
+          "who": "p3",
+          "text": "It is 120k, approved by the board."
+        },
+        {
+          "who": "p8",
+          "text": "I run store operations, so anything on the floor goes through me. That includes the shelf labels."
+        },
+        {
+          "who": "p7",
+          "text": "I own pricing. I want to talk about how often we change shelf prices, but later."
+        },
+        {
+          "who": "p3",
+          "text": "First the loyalty structure. I propose three tiers: Bronze, Silver, Gold. Gold gets the best coupons."
+        },
+        {
+          "who": "p7",
+          "text": "Three tiers is the standard. I am fine with that."
+        },
+        {
+          "who": "p8",
+          "text": "Staff will need to explain it at the till. Three is a lot, but okay."
+        },
+        {
+          "who": "p3",
+          "text": "Members log in with an app account. No account, no points."
+        },
+        {
+          "who": "p8",
+          "text": "Many older customers do not use the app. Let us note that as a risk."
+        },
+        {
+          "who": "p3",
+          "text": "Noted. Ruth, what about the shelf labels?"
+        },
+        {
+          "who": "p8",
+          "text": "Electronic labels would let us change prices in minutes. I will get a quote."
+        },
+        {
+          "who": "p7",
+          "text": "Also, we need a price match policy for dairy. Customers keep asking."
+        },
+        {
+          "who": "p3",
+          "text": "I will pull twelve months of basket data first, so everything rests on facts."
+        },
+        {
+          "who": "p7",
+          "text": "And points expiry and coupon expiry need rules. Who writes them?"
+        },
+        {
+          "who": "p8",
+          "text": "I take points expiry. Lucinda takes coupons."
+        },
+        {
+          "who": "p3",
+          "text": "Good. We meet in two weeks."
+        }
+      ]
+    },
+    {
+      "key": "c2",
+      "project": "C",
+      "n": 2,
+      "day": 12,
+      "title": "Tiers shrink, labels hit a wall",
+      "lang": "en",
+      "overview": "The team reviewed early basket data and the tier design. The loyalty structure changed after the data came in. The label rollout hit its first hurdle.",
+      "keyPoints": [
+        "Basket data changed the tier discussion",
+        "Label rollout slowed",
+        "A faster price rhythm was floated",
+        "Coupon rules still open"
+      ],
+      "decisions": ["Cut the program from three tiers to two tiers"],
+      "actions": [
+        {
+          "task": "Draft the expiry rules for points",
+          "owner": "p8",
+          "due": "Feb 14",
+          "done": false
+        },
+        {
+          "task": "Write the coupon rules",
+          "owner": "p7",
+          "due": "Feb 18",
+          "done": false
+        },
+        {
+          "task": "Write the dairy matching policy",
+          "owner": "p7",
+          "due": "Feb 20",
+          "done": false
+        },
+        {
+          "task": "Plan the electronic shelf label pilot in store 12",
+          "owner": "p8",
+          "due": "Mar 1",
+          "done": false
+        },
+        {
+          "task": "Pull 12 months of basket data",
+          "owner": "p3",
+          "due": "Jan 20",
+          "done": true
+        }
+      ],
+      "openQuestions": ["Should prices change weekly instead of monthly?"],
+      "say": [
+        {
+          "who": "p3",
+          "text": "The basket data is in. Only 9 percent of members ever reach Gold, so Gold barely matters."
+        },
+        {
+          "who": "p3",
+          "text": "I propose two tiers: Member and Plus. It is simpler for the till staff."
+        },
+        {
+          "who": "p7",
+          "text": "That works for me. Fewer tiers, fewer coupon variants."
+        },
+        {
+          "who": "p8",
+          "text": "Staff will like it. I agree."
+        },
+        {
+          "who": "p3",
+          "text": "Decision: two tiers instead of three."
+        },
+        {
+          "who": "p7",
+          "text": "Now the pricing rhythm. I want to try changing key prices weekly, not monthly. Let me raise it as a question."
+        },
+        {
+          "who": "p3",
+          "text": "We will come back to it. Ruth, the labels?"
+        },
+        {
+          "who": "p8",
+          "text": "Store 12 is the pilot store. The survey showed dead zones across the back half of the store. The labels talk over wifi and cannot reach."
+        },
+        {
+          "who": "p3",
+          "text": "How many aisles?"
+        },
+        {
+          "who": "p8",
+          "text": "Seven of eleven. We would need extra access points."
+        },
+        {
+          "who": "p7",
+          "text": "That is extra cost. How much?"
+        },
+        {
+          "who": "p8",
+          "text": "About 14 thousand for that store. I do not have approval."
+        },
+        {
+          "who": "p3",
+          "text": "The quote for the labels is in?"
+        },
+        {
+          "who": "p8",
+          "text": "Yes. The per label price is fine. The infrastructure is the issue."
+        },
+        {
+          "who": "p7",
+          "text": "The dairy matching policy, I still have no draft."
+        },
+        {
+          "who": "p3",
+          "text": "Same for the points rules. Both slip to next time."
+        }
+      ]
+    },
+    {
+      "key": "c3",
+      "project": "C",
+      "n": 3,
+      "day": 26,
+      "title": "Weekly pricing and label batteries",
+      "lang": "en",
+      "overview": "The team looked at pricing frequency and the label test results. A change of rhythm was agreed. The labels remain a problem.",
+      "keyPoints": [
+        "Price update rhythm changed",
+        "Label test results disappointed",
+        "Coupon and expiry rules still not written",
+        "Dairy matching question pending outside advice"
+      ],
+      "decisions": ["Update key prices weekly"],
+      "actions": [
+        {
+          "task": "Draft the points expiry rules",
+          "owner": "p8",
+          "due": "Mar 4",
+          "done": false
+        },
+        {
+          "task": "Define coupon expiry rules",
+          "owner": "p7",
+          "due": "Mar 6",
+          "done": false
+        },
+        {
+          "task": "Write the price match policy for dairy",
+          "owner": "p7",
+          "due": "Mar 12",
+          "done": false
+        },
+        {
+          "task": "Build the weekly price update job",
+          "owner": "p3",
+          "due": "Mar 15",
+          "done": false
+        },
+        {
+          "task": "Run the electronic shelf label pilot in store 12",
+          "owner": "p8",
+          "due": "Mar 20",
+          "done": false
+        }
+      ],
+      "openQuestions": ["Does the dairy price match break a pricing rule?"],
+      "say": [
+        {
+          "who": "p7",
+          "text": "I need to push for weekly price changes. Last time I only raised it."
+        },
+        {
+          "who": "p3",
+          "text": "Lucinda, why does it matter this much?"
+        },
+        {
+          "who": "p7",
+          "text": "A discounter across the road changes dairy prices every Tuesday. We lost 6 percent of dairy baskets in January because we were a week behind."
+        },
+        {
+          "who": "p3",
+          "text": "That is a real number. I am in. Weekly it is, for key items."
+        },
+        {
+          "who": "p8",
+          "text": "Weekly needs the labels to work, otherwise my staff print paper tags."
+        },
+        {
+          "who": "p3",
+          "text": "Then labels. Ruth, the battery test?"
+        },
+        {
+          "who": "p8",
+          "text": "Bad news. The supplier says five years of battery life. In our cold aisle test, the labels died in 14 months of simulated use."
+        },
+        {
+          "who": "p7",
+          "text": "That is not usable for dairy. The cold aisle is where we need them."
+        },
+        {
+          "who": "p8",
+          "text": "The supplier offered a new battery pack, but it ships in six weeks."
+        },
+        {
+          "who": "p3",
+          "text": "I will build the weekly price job. It does not need the labels."
+        },
+        {
+          "who": "p7",
+          "text": "Coupon expiry rules are still not written. Sorry."
+        },
+        {
+          "who": "p8",
+          "text": "Same on points expiry. I have not started."
+        },
+        {
+          "who": "p7",
+          "text": "And for the dairy price match, I think it might clash with a state pricing rule. I asked outside counsel."
+        },
+        {
+          "who": "p3",
+          "text": "Fine. We keep that open."
+        },
+        {
+          "who": "p8",
+          "text": "One more thing. Store managers are nervous about changes before spring."
+        },
+        {
+          "who": "p3",
+          "text": "Noted. We discuss it next time."
+        }
+      ]
+    },
+    {
+      "key": "c4",
+      "project": "C",
+      "n": 4,
+      "day": 50,
+      "title": "Wider rollout and a new lead",
+      "lang": "en",
+      "overview": "The team reviewed pilot results and agreed a much larger rollout. The lead, the scope and the launch date all differ from the start. Some questions remain open.",
+      "keyPoints": [
+        "Scope grew beyond the pilot",
+        "New project lead",
+        "Launch date moved",
+        "Loyalty reduced again",
+        "Labels paused for now"
+      ],
+      "decisions": [
+        "Move to a single tier with a points multiplier",
+        "Pause the electronic label rollout",
+        "Launch Jun 3 in 31 stores"
+      ],
+      "actions": [
+        {
+          "task": "Draft the points expiry rules",
+          "owner": "p8",
+          "due": "Apr 10",
+          "done": false
+        },
+        {
+          "task": "Define coupon expiry rules",
+          "owner": "p7",
+          "due": "Apr 12",
+          "done": false
+        },
+        {
+          "task": "Write the price match policy for dairy",
+          "owner": "p7",
+          "due": "Apr 20",
+          "done": false
+        },
+        {
+          "task": "Build the weekly price update job",
+          "owner": "p3",
+          "due": "Apr 5",
+          "done": true
+        },
+        {
+          "task": "Rework store training for one tier",
+          "owner": "p8",
+          "due": "May 1",
+          "done": false
+        }
+      ],
+      "openQuestions": ["Can the dairy price match go live in all 31 stores?"],
+      "say": [
+        {
+          "who": "p8",
+          "text": "I lead the rollout from today. Cosmo moved to the data platform team."
+        },
+        {
+          "who": "p3",
+          "text": "Right. Short version for the record: we go from six stores to 31 stores, and the budget is 310k now."
+        },
+        {
+          "who": "p8",
+          "text": "Launch moves from Apr 15 to Jun 3."
+        },
+        {
+          "who": "p7",
+          "text": "And loyalty is down to one tier now. Everyone earns points, and Plus members get a multiplier."
+        },
+        {
+          "who": "p3",
+          "text": "The two tiers still confused the till staff. One tier with a multiplier is the simplest."
+        },
+        {
+          "who": "p8",
+          "text": "Agreed. Training gets easier too."
+        },
+        {
+          "who": "p7",
+          "text": "Weekly prices run. The job is done."
+        },
+        {
+          "who": "p3",
+          "text": "Yes, the job runs every Monday night."
+        },
+        {
+          "who": "p8",
+          "text": "Labels: I have to pause. Store managers asked us to wait until after the spring inventory count, because the count crews need the old tags."
+        },
+        {
+          "who": "p7",
+          "text": "So no labels in the first wave."
+        },
+        {
+          "who": "p8",
+          "text": "Right. Paper tags for weekly changes in the first wave."
+        },
+        {
+          "who": "p7",
+          "text": "The dairy price match is still unsettled. The attorney general's office promised an opinion by Mar 22, but it has not arrived."
+        },
+        {
+          "who": "p3",
+          "text": "Until then we cannot publish the policy."
+        },
+        {
+          "who": "p8",
+          "text": "And coupon and points expiry? Still not written."
+        },
+        {
+          "who": "p7",
+          "text": "My bad. Both are due next month."
+        },
+        {
+          "who": "p3",
+          "text": "Okay. Ruth owns the list from now on."
+        }
+      ]
+    }
+  ],
+  "questions": [
+    {
+      "id": "q01",
+      "scope": {
+        "kind": "folder",
+        "project": "A"
+      },
+      "control": false,
+      "lang": "en",
+      "turns": [
+        {
+          "kind": "list",
+          "text": "what's still open on the sensor rollout?",
+          "groups": [
+            ["vibration thresholds"],
+            ["certified"],
+            ["operator training"],
+            ["spare sensor"]
+          ],
+          "mustNot": ["network plan", "fabricate"],
+          "meetings": ["a1", "a3", "a4", "a5"],
+          "minCov": 0.75
+        },
+        {
+          "kind": "why",
+          "text": "why are those still sitting there?",
+          "groups": [
+            ["firmware 2.8", "24 volt"],
+            ["six days", "union"],
+            ["customs", "budget code"],
+            ["leave until", "safety audit"]
+          ],
+          "mustNot": [],
+          "meetings": ["a3", "a4", "a5"],
+          "minCov": 0.75
+        }
+      ]
+    },
+    {
+      "id": "q02",
+      "scope": {
+        "kind": "folder",
+        "project": "A"
+      },
+      "control": false,
+      "lang": "en",
+      "turns": [
+        {
+          "kind": "list",
+          "text": "what is left to do before go-live?",
+          "groups": [
+            ["vibration thresholds"],
+            ["certified"],
+            ["spare sensor"],
+            ["storage"]
+          ],
+          "mustNot": ["network plan"],
+          "meetings": ["a1", "a3", "a5"],
+          "minCov": 0.75
+        },
+        {
+          "kind": "why",
+          "text": "what's holding those up?",
+          "groups": [
+            ["4471", "firmware 2.8"],
+            ["nine weeks", "customs"],
+            ["union", "six days"]
+          ],
+          "mustNot": [],
+          "meetings": ["a2", "a3", "a4"],
+          "minCov": 0.67
+        }
+      ]
+    },
+    {
+      "id": "q03",
+      "scope": {
+        "kind": "meeting",
+        "key": "a5"
+      },
+      "control": false,
+      "lang": "en",
+      "turns": [
+        {
+          "kind": "list",
+          "text": "anything still outstanding coming out of the last meeting?",
+          "groups": [
+            ["gateway certification"],
+            ["threshold calibration"],
+            ["training room"],
+            ["spare sensor"],
+            ["storage"]
+          ],
+          "mustNot": ["magnetic mounts"],
+          "meetings": ["a5"],
+          "minCov": 0.75
+        },
+        {
+          "kind": "why",
+          "text": "and why is the spare order not placed?",
+          "groups": [["budget code"], ["safety audit", "legal"]],
+          "mustNot": [],
+          "meetings": ["a5"],
+          "minCov": 0.5
+        }
+      ]
+    },
+    {
+      "id": "q04",
+      "scope": {
+        "kind": "folder",
+        "project": "B"
+      },
+      "control": false,
+      "lang": "pt",
+      "turns": [
+        {
+          "kind": "list",
+          "text": "O que ainda falta fazer na plataforma?",
+          "groups": [
+            ["parecer"],
+            ["doacao recorrente"],
+            ["teste de pix"],
+            ["recibos fiscais"]
+          ],
+          "mustNot": ["cadastro na tapioca"],
+          "meetings": ["b3", "b4"],
+          "minCov": 0.75
+        },
+        {
+          "kind": "why",
+          "text": "e por que essas coisas estão paradas?",
+          "groups": [["cnae", "fora do ar"], ["prometeram"], ["tres semanas"]],
+          "mustNot": [],
+          "meetings": ["b3", "b4"],
+          "minCov": 0.67
+        }
+      ]
+    },
+    {
+      "id": "q05",
+      "scope": {
+        "kind": "folder",
+        "project": "C"
+      },
+      "control": false,
+      "lang": "en",
+      "turns": [
+        {
+          "kind": "list",
+          "text": "what do we still owe on the loyalty and pricing side?",
+          "groups": [["points expiry"], ["coupon expiry"], ["price match"]],
+          "mustNot": ["basket data"],
+          "meetings": ["c1", "c3", "c4"],
+          "minCov": 0.67
+        }
+      ]
+    },
+    {
+      "id": "q06",
+      "scope": {
+        "kind": "folder",
+        "project": "A"
+      },
+      "control": false,
+      "lang": "en",
+      "turns": [
+        {
+          "kind": "blocker",
+          "text": "what's holding up the gateway certification?",
+          "groups": [["4471"], ["firmware 2.8"], ["24 volt", "electrician"]],
+          "mustNot": [],
+          "meetings": ["a2", "a3", "a4"],
+          "minCov": 0.67
+        }
+      ]
+    },
+    {
+      "id": "q07",
+      "scope": {
+        "kind": "folder",
+        "project": "A"
+      },
+      "control": false,
+      "lang": "en",
+      "turns": [
+        {
+          "kind": "blocker",
+          "text": "why has the spare sensor order not arrived?",
+          "groups": [["nine weeks"], ["customs"], ["budget code"]],
+          "mustNot": [],
+          "meetings": ["a2", "a4", "a5"],
+          "minCov": 0.67
+        }
+      ]
+    },
+    {
+      "id": "q08",
+      "scope": {
+        "kind": "folder",
+        "project": "B"
+      },
+      "control": false,
+      "lang": "pt",
+      "turns": [
+        {
+          "kind": "blocker",
+          "text": "O que está travando os recibos fiscais?",
+          "groups": [
+            ["venceu", "certificado digital"],
+            ["cnae"],
+            ["fora do ar"]
+          ],
+          "mustNot": [],
+          "meetings": ["b2", "b3", "b4"],
+          "minCov": 0.67
+        }
+      ]
+    },
+    {
+      "id": "q09",
+      "scope": {
+        "kind": "folder",
+        "project": "C"
+      },
+      "control": false,
+      "lang": "en",
+      "turns": [
+        {
+          "kind": "blocker",
+          "text": "what's slowing down the electronic shelf labels?",
+          "groups": [["dead zones"], ["14 months"], ["inventory count"]],
+          "mustNot": [],
+          "meetings": ["c2", "c3", "c4"],
+          "minCov": 0.67
+        }
+      ]
+    },
+    {
+      "id": "q10",
+      "scope": {
+        "kind": "folder",
+        "project": "A"
+      },
+      "control": false,
+      "lang": "en",
+      "turns": [
+        {
+          "kind": "evolve",
+          "text": "how did the sensor mounting decision move over time?",
+          "groups": [["glue"], ["bolted brackets"], ["magnetic"]],
+          "mustNot": [],
+          "meetings": ["a1", "a2", "a4"],
+          "minCov": 0.67
+        }
+      ]
+    },
+    {
+      "id": "q11",
+      "scope": {
+        "kind": "folder",
+        "project": "B"
+      },
+      "control": false,
+      "lang": "pt",
+      "turns": [
+        {
+          "kind": "evolve",
+          "text": "Como ficou a decisão sobre as formas de pagamento?",
+          "groups": [["so pix"], ["pix e cartao"], ["cartao so para"]],
+          "mustNot": [],
+          "meetings": ["b1", "b2", "b3"],
+          "minCov": 0.67
+        }
+      ]
+    },
+    {
+      "id": "q12",
+      "scope": {
+        "kind": "folder",
+        "project": "C"
+      },
+      "control": false,
+      "lang": "en",
+      "turns": [
+        {
+          "kind": "evolve",
+          "text": "where did the loyalty tiers end up?",
+          "groups": [["three tiers"], ["two tiers"], ["one tier"]],
+          "mustNot": [],
+          "meetings": ["c1", "c2", "c4"],
+          "minCov": 0.67
+        }
+      ]
+    },
+    {
+      "id": "q13",
+      "scope": {
+        "kind": "folder",
+        "project": "A"
+      },
+      "control": false,
+      "lang": "en",
+      "turns": [
+        {
+          "kind": "pushed",
+          "text": "who wanted the wired network and what was the argument?",
+          "groups": [["mei-lin"], ["31 percent", "welding bay"]],
+          "mustNot": [],
+          "meetings": ["a3"],
+          "minCov": 1.0
+        }
+      ]
+    },
+    {
+      "id": "q14",
+      "scope": {
+        "kind": "folder",
+        "project": "B"
+      },
+      "control": false,
+      "lang": "pt",
+      "turns": [
+        {
+          "kind": "fact",
+          "text": "Quem cuida do financeiro?",
+          "groups": [["financeiro"]],
+          "mustNot": [],
+          "meetings": ["b1"],
+          "minCov": 1.0
+        },
+        {
+          "kind": "pushed",
+          "text": "e quem queria a doação mensal, e por quê?",
+          "groups": [["yasmin"], ["73 por cento", "dezembro"]],
+          "mustNot": [],
+          "meetings": ["b3"],
+          "minCov": 1.0
+        }
+      ]
+    },
+    {
+      "id": "q15",
+      "scope": {
+        "kind": "folder",
+        "project": "C"
+      },
+      "control": false,
+      "lang": "en",
+      "turns": [
+        {
+          "kind": "pushed",
+          "text": "who pushed for weekly price changes?",
+          "groups": [["lucinda"], ["every tuesday", "6 percent"]],
+          "mustNot": [],
+          "meetings": ["c3"],
+          "minCov": 1.0
+        }
+      ]
+    },
+    {
+      "id": "q16",
+      "scope": {
+        "kind": "folder",
+        "project": "A"
+      },
+      "control": false,
+      "lang": "en",
+      "turns": [
+        {
+          "kind": "changed",
+          "text": "how is the end different from the start on the rollout?",
+          "groups": [["112 sensors"], ["norvik"], ["jan 20"], ["lead now"]],
+          "mustNot": [],
+          "meetings": ["a5"],
+          "minCov": 0.75
+        }
+      ]
+    },
+    {
+      "id": "q17",
+      "scope": {
+        "kind": "folder",
+        "project": "B"
+      },
+      "control": false,
+      "lang": "pt",
+      "turns": [
+        {
+          "kind": "changed",
+          "text": "O que mudou entre a primeira e a última reunião?",
+          "groups": [
+            ["42 mil"],
+            ["zepay"],
+            ["28 de abril"],
+            ["coordeno daqui"]
+          ],
+          "mustNot": [],
+          "meetings": ["b4"],
+          "minCov": 0.75
+        }
+      ]
+    },
+    {
+      "id": "q18",
+      "scope": {
+        "kind": "folder",
+        "project": "C"
+      },
+      "control": false,
+      "lang": "en",
+      "turns": [
+        {
+          "kind": "changed",
+          "text": "what's different between kickoff and the last meeting?",
+          "groups": [["31 stores"], ["310k"], ["jun 3"], ["lead the rollout"]],
+          "mustNot": [],
+          "meetings": ["c4"],
+          "minCov": 0.75
+        }
+      ]
+    },
+    {
+      "id": "q19",
+      "scope": {
+        "kind": "folder",
+        "project": "A"
+      },
+      "control": false,
+      "lang": "en",
+      "turns": [
+        {
+          "kind": "unresolved",
+          "text": "is the data storage question sorted yet?",
+          "groups": [["legal"], ["retention"], ["jan 19"]],
+          "mustNot": [],
+          "meetings": ["a5"],
+          "minCov": 0.67
+        }
+      ]
+    },
+    {
+      "id": "q20",
+      "scope": {
+        "kind": "folder",
+        "project": "B"
+      },
+      "control": false,
+      "lang": "pt",
+      "turns": [
+        {
+          "kind": "unresolved",
+          "text": "O termo de consentimento já está resolvido?",
+          "groups": [["parecer"], ["10 de abril", "prometeram"]],
+          "mustNot": [],
+          "meetings": ["b3", "b4"],
+          "minCov": 0.67
+        }
+      ]
+    },
+    {
+      "id": "q21",
+      "scope": {
+        "kind": "folder",
+        "project": "C"
+      },
+      "control": false,
+      "lang": "en",
+      "turns": [
+        {
+          "kind": "unresolved",
+          "text": "is the dairy price match settled?",
+          "groups": [["attorney general"], ["mar 22"]],
+          "mustNot": [],
+          "meetings": ["c3", "c4"],
+          "minCov": 0.67
+        }
+      ]
+    },
+    {
+      "id": "q22",
+      "scope": {
+        "kind": "all"
+      },
+      "control": false,
+      "lang": "pt",
+      "turns": [
+        {
+          "kind": "blocker",
+          "text": "Os recibos da Casa Girassol estão parados por quê?",
+          "groups": [
+            ["venceu", "certificado digital"],
+            ["cnae"],
+            ["fora do ar"]
+          ],
+          "mustNot": [],
+          "meetings": ["b2", "b3", "b4"],
+          "minCov": 0.67
+        }
+      ]
+    },
+    {
+      "id": "q23",
+      "scope": {
+        "kind": "all"
+      },
+      "control": false,
+      "lang": "pt",
+      "turns": [
+        {
+          "kind": "evolve",
+          "text": "Como o provedor de pagamento da Casa Girassol mudou?",
+          "groups": [["tapioca pay"], ["zepay"]],
+          "mustNot": [],
+          "meetings": ["b1", "b4"],
+          "minCov": 1.0
+        }
+      ]
+    },
+    {
+      "id": "q24",
+      "scope": {
+        "kind": "all"
+      },
+      "control": false,
+      "lang": "pt",
+      "turns": [
+        {
+          "kind": "unresolved",
+          "text": "O parecer do jurídico sobre a plataforma de doações já saiu?",
+          "groups": [["parecer"], ["prometeram"]],
+          "mustNot": [],
+          "meetings": ["b3", "b4"],
+          "minCov": 0.67
+        }
+      ]
+    },
+    {
+      "id": "q25",
+      "scope": {
+        "kind": "meeting",
+        "key": "a1"
+      },
+      "control": true,
+      "lang": "en",
+      "turns": [
+        {
+          "kind": "fact",
+          "text": "which vendor did we pick for the sensors?",
+          "groups": [["tessaro sensors"]],
+          "mustNot": [],
+          "meetings": ["a1"],
+          "minCov": 1.0
+        }
+      ]
+    },
+    {
+      "id": "q26",
+      "scope": {
+        "kind": "folder",
+        "project": "B"
+      },
+      "control": true,
+      "lang": "pt",
+      "turns": [
+        {
+          "kind": "fact",
+          "text": "Qual era a meta mensal de arrecadação no começo?",
+          "groups": [["18 mil"]],
+          "mustNot": [],
+          "meetings": ["b1"],
+          "minCov": 1.0
+        }
+      ]
+    },
+    {
+      "id": "q27",
+      "scope": {
+        "kind": "meeting",
+        "key": "c1"
+      },
+      "control": true,
+      "lang": "en",
+      "turns": [
+        {
+          "kind": "fact",
+          "text": "how many stores are in the pilot?",
+          "groups": [["six stores"]],
+          "mustNot": [],
+          "meetings": ["c1"],
+          "minCov": 1.0
+        }
+      ]
+    },
+    {
+      "id": "q28",
+      "scope": {
+        "kind": "folder",
+        "project": "C"
+      },
+      "control": true,
+      "lang": "en",
+      "turns": [
+        {
+          "kind": "fact",
+          "text": "how much budget did the board approve?",
+          "groups": [["120k"]],
+          "mustNot": [],
+          "meetings": ["c1"],
+          "minCov": 1.0
+        }
+      ]
+    },
+    {
+      "id": "q29",
+      "scope": {
+        "kind": "folder",
+        "project": "A"
+      },
+      "control": false,
+      "lang": "en",
+      "turns": [
+        {
+          "kind": "fact",
+          "text": "who runs the network side?",
+          "groups": [["network side"]],
+          "mustNot": [],
+          "meetings": ["a1"],
+          "minCov": 1.0
+        },
+        {
+          "kind": "blocker",
+          "text": "and what is holding up the operator training?",
+          "groups": [["leave until"], ["safety audit"]],
+          "mustNot": [],
+          "meetings": ["a3", "a5"],
+          "minCov": 1.0
+        }
+      ]
+    },
+    {
+      "id": "q30",
+      "scope": {
+        "kind": "folder",
+        "project": "C"
+      },
+      "control": false,
+      "lang": "en",
+      "turns": [
+        {
+          "kind": "fact",
+          "text": "who runs store operations?",
+          "groups": [["store operations"]],
+          "mustNot": [],
+          "meetings": ["c1"],
+          "minCov": 1.0
+        },
+        {
+          "kind": "blocker",
+          "text": "and what held the label test back?",
+          "groups": [["14 months"], ["dead zones"]],
+          "mustNot": [],
+          "meetings": ["c2", "c3"],
+          "minCov": 1.0
+        }
+      ]
+    }
+  ]
+}

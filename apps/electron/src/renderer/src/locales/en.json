@@ -1750,6 +1750,9 @@
       "widenAsk": "Nothing found here. Search wider?",
       "widenFolder": "Search the whole folder {{name}}",
       "widenAll": "Search everything",
+      "listMore_one": "{{count}} more item not shown",
+      "listMore_other": "{{count}} more items not shown",
+      "showAll": "Show all",
       "errWiden": "There is no wider search to run now.",
       "folder": {
         "title": "Ask about this folder",

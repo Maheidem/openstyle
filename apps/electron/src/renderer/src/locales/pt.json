@@ -1416,6 +1416,9 @@
       "widenAsk": "Nada encontrado aqui. Pesquisar em um escopo maior?",
       "widenFolder": "Pesquisar na pasta inteira {{name}}",
       "widenAll": "Pesquisar tudo",
+      "listMore_one": "mais {{count}} item não mostrado",
+      "listMore_other": "mais {{count}} itens não mostrados",
+      "showAll": "Mostrar todos",
       "errWiden": "Não há uma pesquisa mais ampla para executar agora.",
       "folder": {
         "title": "Perguntar sobre esta pasta",

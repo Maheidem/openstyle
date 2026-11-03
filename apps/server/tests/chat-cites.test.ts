@@ -608,10 +608,20 @@ describe("repeated answer guard (P1.2)", () => {
     expect(
       repeatedEarlierAnswer(
         "Why?",
-        "The team decided on Postgres, not MySQL. It was cheaper.",
+        "The team decided on Postgres, not MySQL.",
         turns,
       ),
     ).toBe("What did we decide on the database engine?");
+  });
+  it("allows an answer that starts like the earlier one but adds the new part", () => {
+    // "Who pushed for it, and why?" may repeat the lead sentence (follow-up of 2026-11-02).
+    expect(
+      repeatedEarlierAnswer(
+        "Who pushed for it, and why?",
+        "The team decided on Postgres, not MySQL. Dana pushed for it because the audit needs JSON columns and a cheaper licence.",
+        turns,
+      ),
+    ).toBeNull();
   });
   it("allows the same answer to the same question", () => {
     expect(

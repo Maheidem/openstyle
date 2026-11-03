@@ -76,6 +76,8 @@ export const chatListItemSchema = z.object({
   owner: z.string().nullable(),
   due: z.string().nullable(),
   label: z.string().nullable(),
+  /** In how many meetings the item was raised (research mode lists), else absent. */
+  raised: z.number().int().nullable().optional(),
 });
 export type ChatListItem = z.infer<typeof chatListItemSchema>;
 
@@ -265,6 +267,8 @@ export const chatAskSchema = z
     widen: z.literal(true).optional(),
     /** "Answer anyway": the turn does not ask a clarifying question (D20). */
     no_clarify: z.literal(true).optional(),
+    /** "Show all": the open-items list is not capped for this turn (11.9.16). */
+    show_all: z.literal(true).optional(),
   })
   .refine((v) => (v.question === undefined) !== (v.widen === undefined), {
     message: "Pass exactly one of question and widen",

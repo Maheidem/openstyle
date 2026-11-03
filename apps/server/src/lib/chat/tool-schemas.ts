@@ -30,6 +30,11 @@ export const listActionItemsArgs = z.object({
   date_from: iso,
   date_to: iso,
   meeting_id: z.string().nullish(),
+  /** Research mode: show the best `limit` items, ranked and grouped by meeting (11.9.16). */
+  limit: z.number().int().min(1).max(50).optional(),
+  rank: z.literal(true).optional(),
+  /** The question: items that share its words (in the text or the meeting title) rank first. */
+  topic: z.string().max(300).optional(),
 });
 export type ListActionItemsArgs = z.infer<typeof listActionItemsArgs>;
 
@@ -39,6 +44,9 @@ export const listDecisionsQuestionsArgs = z.object({
   date_to: iso,
   meeting_id: z.string().nullish(),
   limit: z.number().int().min(1).max(50).optional(),
+  /** Research mode: rank by how often an item was raised, then by recency; group by meeting. */
+  rank: z.literal(true).optional(),
+  topic: z.string().max(300).optional(),
 });
 export type ListDecisionsQuestionsArgs = z.infer<
   typeof listDecisionsQuestionsArgs

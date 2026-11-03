@@ -1417,6 +1417,9 @@
       "widenAsk": "Hier nichts gefunden. Breiter suchen?",
       "widenFolder": "Den ganzen Ordner {{name}} durchsuchen",
       "widenAll": "Alles durchsuchen",
+      "listMore_one": "{{count}} weiterer Eintrag nicht angezeigt",
+      "listMore_other": "{{count}} weitere Einträge nicht angezeigt",
+      "showAll": "Alle anzeigen",
       "errWiden": "Jetzt gibt es keine weitere Suche.",
       "folder": {
         "title": "Zu diesem Ordner fragen",

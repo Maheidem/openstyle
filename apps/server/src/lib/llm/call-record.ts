@@ -29,7 +29,8 @@ export type ChatStepId =
   | "chatRoute"
   | "chatSlots"
   | "chatAnswer"
-  | "chatReflect";
+  | "chatReflect"
+  | "chatDig";
 
 /** Every step that the gateway can call. */
 export type GatewayStepId = LlmStepId | FolderStepId | ChatStepId;

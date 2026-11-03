@@ -398,6 +398,58 @@ export function findActionItem(
 
 const oldest = <T>(xs: readonly T[]) => xs[xs.length - 1] as T;
 
+/**
+ * The best `limit` groups for a short list (11.9.16). The groups that share
+ * words with the question (in the text or in a meeting title; words that most
+ * groups have say nothing) come first, then the ones raised in most meetings,
+ * then the most recent. The kept groups are then grouped by meeting (newest
+ * meeting first, rank order inside a meeting).
+ */
+function rankedTop<T>(
+  rows: readonly T[],
+  limit: number,
+  sources: (
+    r: T,
+  ) => readonly { started_at: number | null; title?: string | null }[],
+  text: (r: T) => string,
+  topic: string | undefined,
+): T[] {
+  const newest = (r: T) =>
+    Math.max(0, ...sources(r).map((s) => s.started_at ?? 0));
+  const words = (r: T) =>
+    new Set(
+      wordsOf(
+        `${text(r)} ${sources(r)
+          .map((s) => s.title ?? "")
+          .join(" ")}`,
+      ),
+    );
+  const want = new Set(
+    topic ? wordsOf(topic).filter((w) => w.length >= 4) : [],
+  );
+  const sets = rows.map(words);
+  const common = new Set(
+    [...want].filter(
+      (w) =>
+        sets.filter((x) => x.has(w)).length > 0.4 * Math.max(1, rows.length),
+    ),
+  );
+  const score = (i: number) =>
+    [...want].filter((w) => !common.has(w) && sets[i]?.has(w)).length;
+  const top = rows
+    .map((r, i) => ({ r, i }))
+    .sort(
+      (a, b) =>
+        score(b.i) - score(a.i) ||
+        sources(b.r).length - sources(a.r).length ||
+        newest(b.r) - newest(a.r) ||
+        a.i - b.i,
+    )
+    .slice(0, limit);
+  const home = (r: T) => oldest(sources(r)).started_at ?? 0;
+  return top.sort((a, b) => home(b.r) - home(a.r) || a.i - b.i).map((x) => x.r);
+}
+
 function itemLine(g: ItemGroup, done: boolean | null): string {
   const extra = [
     g.owner && `owner: ${g.owner}`,
@@ -811,39 +863,47 @@ const listActionItems: ToolDef<z.infer<typeof listActionItemsArgs>> = {
         return true;
       });
     const labels: string[] = [];
-    const items: ChatListItem[] = rows
-      .slice(0, LIST_BLOCK_MAX)
-      .map(({ g, isDone }, i) => {
-        // The id is the first key. Its meeting is the oldest source.
-        const src = oldest(g.sources);
-        let label: string | null = null;
-        if (i < LIST_SOURCES_MAX) {
-          label = addSource(
-            ctx,
-            {
-              kind: "item",
-              meetingId: src.meeting_id,
-              title: src.title,
-              startedAt: src.started_at,
-              startMs: null,
-              endMs: null,
-              itemId: g.keys[0] as string,
-              text: itemLine(g, isDone),
-            },
-            labels,
-          );
-        }
-        return {
-          text: g.text,
-          meeting_id: src.meeting_id,
-          meeting_title: src.title,
-          item_id: g.keys[0] as string,
-          done: isDone,
-          owner: g.owner,
-          due: g.due,
-          label,
-        };
-      });
+    const shown = a.rank
+      ? rankedTop(
+          rows,
+          a.limit ?? LIST_BLOCK_MAX,
+          ({ g }) => g.sources,
+          ({ g }) => g.text,
+          a.topic,
+        )
+      : rows.slice(0, LIST_BLOCK_MAX);
+    const items: ChatListItem[] = shown.map(({ g, isDone }, i) => {
+      // The id is the first key. Its meeting is the oldest source.
+      const src = oldest(g.sources);
+      let label: string | null = null;
+      if (i < LIST_SOURCES_MAX) {
+        label = addSource(
+          ctx,
+          {
+            kind: "item",
+            meetingId: src.meeting_id,
+            title: src.title,
+            startedAt: src.started_at,
+            startMs: null,
+            endMs: null,
+            itemId: g.keys[0] as string,
+            text: itemLine(g, isDone),
+          },
+          labels,
+        );
+      }
+      return {
+        text: g.text,
+        meeting_id: src.meeting_id,
+        meeting_title: src.title,
+        item_id: g.keys[0] as string,
+        done: isDone,
+        owner: g.owner,
+        due: g.due,
+        label,
+        ...(a.rank ? { raised: g.sources.length } : {}),
+      };
+    });
     return {
       rows: rows.length,
       labels,
@@ -872,7 +932,16 @@ const listDecisionsQuestions: ToolDef<
     );
     const limit = a.limit ?? 30;
     const labels: string[] = [];
-    const items: ChatListItem[] = groups.slice(0, limit).map((g, i) => {
+    const shownGroups = a.rank
+      ? rankedTop(
+          groups,
+          limit,
+          (g) => g.sources,
+          (g) => g.text,
+          a.topic,
+        )
+      : groups.slice(0, limit);
+    const items: ChatListItem[] = shownGroups.map((g, i) => {
       const src = oldest(g.sources);
       const key = g.keys[0] as string;
       let label: string | null = null;
@@ -901,6 +970,7 @@ const listDecisionsQuestions: ToolDef<
         owner: null,
         due: null,
         label,
+        ...(a.rank ? { raised: g.sources.length } : {}),
       };
     });
     return {

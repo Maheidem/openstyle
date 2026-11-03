@@ -8,6 +8,7 @@ import type {
 import { Button } from "@renderer/components/ui/button";
 import { cn } from "@renderer/lib/utils";
 import { Check, Circle } from "lucide-react";
+import { Fragment } from "react";
 import { useTranslation } from "react-i18next";
 import {
   answerBlocks,
@@ -36,6 +37,8 @@ export interface ClarifyActions {
   pick: (ask: string) => void;
   /** "Answer anyway" sends the first question again with `no_clarify`. */
   anyway: () => void;
+  /** "Show all" sends the question of a capped list again with `show_all` (11.9.16). */
+  showAll?: () => void;
 }
 
 /** A cite chip: a real button. Its name has the title and the time. */
@@ -177,7 +180,10 @@ function Block({
           />
         </div>
       );
-    case "list":
+    case "list": {
+      const more = block.total - block.items.length;
+      // A research list is grouped by meeting: a small heading where the meeting changes.
+      const grouped = block.items.some((i) => i.raised != null);
       return (
         <div data-testid="meeting-ask-block-list">
           <p className="text-muted-foreground m-0 mb-1 text-[11.5px]">
@@ -185,18 +191,53 @@ function Block({
           </p>
           <ul className="m-0 flex list-none flex-col gap-2 p-0">
             {block.items.map((item, i) => (
-              <ListItemRow
+              <Fragment
                 // The server gives no stable id for every item.
                 key={`${item.item_id ?? item.meeting_id ?? "x"}-${i}`}
-                item={item}
-                showDone={block.list === "action_items"}
-                cites={cites}
-                actions={actions}
-              />
+              >
+                {grouped &&
+                  item.meeting_title &&
+                  item.meeting_title !== block.items[i - 1]?.meeting_title && (
+                    <li
+                      className="text-muted-foreground mt-1 text-[11.5px] font-medium"
+                      data-testid="meeting-ask-list-group"
+                    >
+                      {item.meeting_title}
+                    </li>
+                  )}
+                <ListItemRow
+                  item={item}
+                  showDone={block.list === "action_items"}
+                  cites={cites}
+                  actions={actions}
+                />
+              </Fragment>
             ))}
           </ul>
+          {more > 0 && (
+            <div className="mt-2 flex flex-wrap items-center gap-2">
+              <span
+                className="text-muted-foreground text-[11.5px]"
+                data-testid="meeting-ask-list-more"
+              >
+                {t("meetings.ask.listMore", { count: more })}
+              </span>
+              {clarify?.showAll && (
+                <Button
+                  variant="outline"
+                  size="sm"
+                  className="h-auto py-1"
+                  onClick={() => clarify.showAll?.()}
+                  data-testid="meeting-ask-show-all"
+                >
+                  {t("meetings.ask.showAll")}
+                </Button>
+              )}
+            </div>
+          )}
         </div>
       );
+    }
     case "count":
       return (
         <div

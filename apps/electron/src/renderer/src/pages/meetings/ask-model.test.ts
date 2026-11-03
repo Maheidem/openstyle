@@ -26,6 +26,7 @@ import {
   sameScope,
   scopeKey,
   scopeOfThread,
+  showAllTurn,
   summarizeTrace,
   threadTitle,
   unsavedQuestion,
@@ -444,6 +445,13 @@ describe("clarify turns (D20)", () => {
     expect(clarifyAnywayTurn("status?")).toEqual({
       question: "status?",
       no_clarify: true,
+    });
+  });
+
+  it("Show all sends the question of a capped list again with show_all", () => {
+    expect(showAllTurn("What are the open items?")).toEqual({
+      question: "What are the open items?",
+      show_all: true,
     });
   });
 
