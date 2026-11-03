@@ -1,9 +1,5 @@
 import { describe, expect, it } from "vitest";
 import {
-  asksAcrossMeetings,
-  researchTrigger,
-} from "../src/lib/chat/research/trigger.js";
-import {
   aboutItem,
   langOf,
   supported,

@@ -181,20 +181,28 @@ No new bars: thresholds are the owner's to set (`BARS` stays as it is).
 - The desktop llama.cpp server can need minutes to swap a model: a first request that waits for a long time is a swap, not a hang. Ping it with one small request before a run.
 - `pnpm chat-eval real --db <copy.db> --dig` runs 6 generic digging questions on the 3 folders with the most meetings (named A, B, C in the output). It stops when the chat model is not the local MLX model.
 
-### The blind held-out dig set (`CHAT_EVAL_DIG_SET=heldout`, 2026-11-02, spec 11.9.17)
+### The blind dig sets (`CHAT_EVAL_DIG_SET=heldout|dev|final`, 2026-11-02, spec 11.9.17)
 
-`CHAT_EVAL_DIG_SET=heldout pnpm chat-eval p1 --only dig` runs 30 questions (35 turns, 4 controls) on a second fictional corpus: 3 projects, 13 meetings, 8 people, ids `hd-*` / `fld-hd-*`, question ids `hd01` to `hd30`. Code: `dig-heldout.mts` (loader), `dig-heldout.json` (data and keys), a test in `dig.test.mts` (every key is in the data). MLflow run `p1-dig-heldout` (tag `chat.arm` = `dig-heldout`).
+`CHAT_EVAL_DIG_SET=<name> pnpm chat-eval p1 --only dig` runs 30 questions (about 35 turns, 4 controls) on a second fictional corpus (3 projects, 13 meetings, 8 people). Code: `dig-heldout.mts` (loader and `DIG_SETS`), the data and keys in `dig-heldout.json`, `dig-dev.json`, `dig-final.json`, tests in `dig.test.mts` (every key is in the data). MLflow run `p1-dig-<name>`, tag `chat.arm` = `dig-<name>`. Ids: `hd-*` / `hd01` (heldout), `hv-*` / `hv01` (dev), `hf-*` / `hf01` (final).
 
-- It was written by a separate Claude subagent that had NOT seen the research code or the dig questions. It got only the data format and the question kinds (list, why, blocker, evolve, pushed, changed, unresolved). The original set (`dg*`) was tuned on; this one was not.
-- **Never tune on it.** A change that is made after you read its failing rows is not blind any more. Read the aggregate, fix the cause with the ORIGINAL set and generic words, then measure here. When the set has been read for fixes, write a new one the same way (brief for the subagent: schema, kinds, no repo access).
-- The 2026-11-02 baseline of main `e6641d0b` on E2B: original 77.1%, blind 25.9% (trigger recall 37%). The gap is the overfit of #412.
-- To run `main` and a branch side by side use two worktrees (`git worktree add --detach ../x <sha>`, copy `apps/electron/resources/{bin,models}`, own launcher script). Edit the branch while the other one runs.
+- Each set was written by a separate Claude subagent that had NOT seen the research code, the prompts or the other sets. The brief is only the data format and the question kinds (list, why, blocker, evolve, pushed, changed, unresolved). Half of the digging questions use plain words ("what is holding up X", "who wanted Y") on purpose.
+- **heldout** was read for fixes on 2026-11-02 (trigger words, worker checks), so it counts as a dev set. **dev** may be read and used for decisions. **final** is read only for the last measure: never print its rows or answers, never tune on it. Report headline numbers from `final`.
+- When a set has been read for fixes, write a new one the same way (same brief: `/tmp/chatp1/brief.txt` is the template; no repo access for the subagent).
+- 2026-11-02 baseline of main `e6641d0b` (E2B / E4B): original 77.1 / 82.9%, heldout 25.9 / 29.6%, dev 22.6 / 32.3%, final 16.7 / 10.0%. The original set is overfit: #412 was tuned on it.
+- To run `main` and a branch side by side use two worktrees (`git worktree add --detach ../x <sha>`, copy `apps/electron/resources/{bin,models}`, own launcher script). Edit the branch while the other one runs. A running `pnpm chat-eval` loads the source at start: never edit `apps/server/src` while a matrix runs on that worktree.
 
 ### Research workers (spec 11.9.17)
 
-The graph has an orchestrator-worker fan-out (`Send`) in `research/graph.ts`, workers in `research/workers.ts`. "Why are these open?" after a list: one `item` worker for each of the top 4 items (5 on cloud). A question that asks who pushed, what changed or what blocked: `scout` searches, then one `meeting` worker for each of the best 4 meetings (6 on cloud). A worker searches, makes ONE `chatDig` call (schema `chat_dig_item` or `chat_dig_meeting`), and code checks the record (`supported`, `aboutItem` in `workers.ts`). Max 2 workers at once on a local model. `CHAT_EVAL_REFLECT` does not touch the workers. Per-worker steps in the trace: `research:worker:item:reason|none`, `research:worker:meeting:record|none`, `research:join:items|meetings`.
+The graph has an orchestrator-worker fan-out (`Send`) in `research/graph.ts`, workers in `research/workers.ts`. The research mode starts by code (the words of #412) or when the model picks the pseudo tool `dig_deeper` in the native tool call (`choices.ts`, no extra model call; only with `chat_research` on and `chat_native_tools` on). Then:
 
-The open-items list is capped (8 actions + 4 questions, ranked by how many meetings raised an item, then recency, grouped by meeting) unless the turn has `show_all`. The row of such a turn has the list block with `total` above the shown items.
+- "Why are these open?" after a list: one `item` worker for each of the top 4 items (5 on cloud), ranked by the words of the thread, then by how often the list raised the item. Each worker searches, makes ONE `chatDig` call (schema `chat_dig_item`: up to 3 reasons, each with a source label and a quote) and code checks it (`supported`, `aboutItem` in `workers.ts`). Code composes one bullet for each item, with the reason and its own cite, or "no reason found" (`composeReasons`). No answer call.
+- Any other research question: `scout` searches, then one `meeting` worker for each of the best 6 meetings (8 on cloud; the rest of a small scope fills the list). A worker returns who, what, why with a checked quote. The answer call then reads the verified excerpts first, then the summaries of the first and the last meeting, then the other sources.
+- At most 2 workers run at once on a local model (`maxConcurrency`). Worker calls count in the 16-call cap; `ANSWER_RESERVE` keeps room for the answer.
+- Trace steps: `research:worker:item:reason|none`, `research:worker:meeting:record|none`, `research:join:items|meetings`, `route:native:dig_deeper`.
+
+The open-items list is capped (8 actions + 4 questions, ranked by how many meetings raised an item, then recency, grouped by meeting) unless the turn has `show_all` ("Show all" button). The list block keeps the full `total`; the UI shows "N more items not shown".
+
+Eval metrics: `research.share` of the e2e part (gold questions that ran research: 5 of 190 on E2B, 3 of them the old code false triggers), trace steps above, `CHAT_EVAL_RESEARCH=off` for the old path.
 
 ### Real threads (private, `pnpm chat-eval real`)
 
