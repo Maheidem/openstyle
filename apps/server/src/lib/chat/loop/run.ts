@@ -275,6 +275,11 @@ When you have the facts, stop calling tools and reply with one short line.`;
         run.budget = Math.floor(run.budget / 2);
         continue;
       }
+      // The answer broke a limit of the schema (a long sentence, too many bullets). Ask once more.
+      if (kind === "schema" && attempt < 3) {
+        run.repair = `Your answer broke a limit. Write at most 3 lead sentences and at most ${BULLETS} bullets, each text under 300 characters, and at most 4 labels in each "cites".`;
+        continue;
+      }
       // Some local servers answer the structured call with a tool call. Ask once more.
       if (kind === "unexpected_tool_calls" && attempt < 3) {
         run.repair =

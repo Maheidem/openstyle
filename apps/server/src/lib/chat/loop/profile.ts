@@ -35,7 +35,7 @@ export interface LoopProfile {
 }
 
 const SMALL = {
-  hitChars: 900,
+  hitChars: 1500,
   resultChars: 12_000,
   stepTokens: 400,
   answerBudget: 10_000,
