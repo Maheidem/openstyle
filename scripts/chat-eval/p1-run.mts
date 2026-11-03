@@ -141,7 +141,16 @@ const LLM_STORED_ID = `local-mlx-llm/${MODEL_ID}`;
 const BASE_URL = process.env.CHAT_EVAL_BASE_URL?.trim() || null;
 const BACKEND =
   process.env.CHAT_EVAL_BACKEND?.trim() ||
-  (BASE_URL ? "remote-openai" : "mac-mlx");
+  (CLOUD_PROVIDER
+    ? `cloud-${CLOUD_PROVIDER}`
+    : BASE_URL
+      ? "remote-openai"
+      : "mac-mlx");
+// A cloud provider of the app (CHAT_EVAL_CLOUD_PROVIDER=anthropic) carries the
+// chat LLM: the default model is `<provider>/<CHAT_EVAL_MODEL>` and the key
+// (CHAT_EVAL_CLOUD_API_KEY, environment only, never logged) goes into the
+// api_keys table of the scratch DB, where the app's getApiKey() reads it.
+const CLOUD_PROVIDER = process.env.CHAT_EVAL_CLOUD_PROVIDER?.trim() || null;
 const DAY = 86_400_000;
 const f3 = (x: number) => x.toFixed(3);
 const pct = (x: number) => `${(x * 100).toFixed(1)}`;
@@ -2013,6 +2022,18 @@ export async function runP1(
     });
     defaultProvider = "server";
     defaultModelId = `server/${row.id}/${MODEL_ID}`; // serverModelId() of the app
+  }
+  if (CLOUD_PROVIDER) {
+    const key = process.env.CHAT_EVAL_CLOUD_API_KEY?.trim();
+    if (!key) throw new Error("CHAT_EVAL_CLOUD_API_KEY is not set");
+    stack.db
+      .prepare(
+        `INSERT INTO api_keys (provider, key) VALUES (?, ?)
+         ON CONFLICT(provider) DO UPDATE SET key = excluded.key`,
+      )
+      .run(CLOUD_PROVIDER, key);
+    defaultProvider = CLOUD_PROVIDER;
+    defaultModelId = `${CLOUD_PROVIDER}/${MODEL_ID}`;
   }
   stack.db
     .prepare(
