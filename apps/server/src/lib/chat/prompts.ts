@@ -55,6 +55,16 @@ export const ANSWER_SCHEMA: StepSchema<{
   }),
 };
 
+/** The same schema with room for more bullets (caps.ts, wide caps). */
+export const ANSWER_SCHEMA_WIDE: typeof ANSWER_SCHEMA = {
+  name: "chat_answer",
+  version: 3,
+  zod: z.object({
+    sentences: z.array(sentenceSchema).max(12),
+    bullets: z.array(sentenceSchema).max(12).optional(),
+  }),
+};
+
 /** Stage 4 for a broad question: a lead paragraph (1 to 3 sentences) plus 2 to 6 bullets. */
 export const SYNTH_SCHEMA: StepSchema<{
   lead: { text: string; cites: string[] }[];
@@ -94,6 +104,21 @@ Cover different sources: do not say the same fact twice.
 When the sources are listed by date, tell the story in date order.
 When a block ALREADY TOLD is given, do NOT repeat its facts. Give other facts from the sources.
 Never use knowledge from outside the sources.`;
+
+export const SYNTH_SCHEMA_WIDE: typeof SYNTH_SCHEMA = {
+  name: "chat_synthesis",
+  version: 1,
+  zod: z.object({
+    lead: z.array(sentenceSchema).min(1).max(3),
+    bullets: z.array(sentenceSchema).min(2).max(12),
+  }),
+};
+
+/** The prompt text for the wide caps: up to 12 bullets. */
+export const SYNTH_SYSTEM_WIDE = SYNTH_SYSTEM.replace(
+  '"bullets" holds 3 to 6 bullets.',
+  '"bullets" holds 3 to 12 bullets.',
+);
 
 /** Output cap of one map call (D20): short notes, one for each source. */
 export const MAP_MAX_TOKENS = 1500;

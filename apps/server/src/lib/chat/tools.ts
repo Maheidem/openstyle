@@ -589,15 +589,15 @@ async function rankPieces(
  * text is cut to `HIT_CHARS` and starts at the best segment, so the cited
  * line is inside the text.
  */
-function snippetOf(pieces: Piece[]): Snippet {
+function snippetOf(pieces: Piece[], hitChars: number = HIT_CHARS): Snippet {
   let best = pieces[0] as Piece;
   for (const p of pieces) if (p.score > best.score) best = p;
   const full = pieces.map((p) => p.text).join(" ");
   const segments = pieces.map((p) => ({ startMs: p.start, text: p.text }));
-  if (full.length <= HIT_CHARS)
+  if (full.length <= hitChars)
     return { text: full, bestMs: best.start, segments };
-  // Window of HIT_CHARS - 2 characters (room for two "…"), from the best segment.
-  const room = HIT_CHARS - 2;
+  // Window of hitChars - 2 characters (room for two "…"), from the best segment.
+  const room = hitChars - 2;
   const start = Math.max(0, Math.min(best.offset, full.length - room));
   const end = Math.min(full.length, start + room);
   const body = full.slice(start, end).trim();
@@ -698,8 +698,8 @@ const searchChunks: ToolDef<z.infer<typeof searchChunksArgs>> = {
       const info = meetingInfo(ctx.db, h.meetingId);
       if (h.kind === "transcript") {
         const ps = pieces.get(h);
-        const snip = ps ? snippetOf(ps) : null;
-        const text = snip?.text ?? hitText(h, HIT_CHARS);
+        const snip = ps ? snippetOf(ps, ctx.hitChars ?? HIT_CHARS) : null;
+        const text = snip?.text ?? hitText(h, ctx.hitChars ?? HIT_CHARS);
         if (text === "") continue;
         const label = addSource(
           ctx,
@@ -718,7 +718,7 @@ const searchChunks: ToolDef<z.infer<typeof searchChunksArgs>> = {
         if (snip) ctx.sources.segments.set(label, snip.segments);
       } else {
         // A summary hit, or a meta hit that shows as a summary.
-        const text = hitText(h, HIT_CHARS);
+        const text = hitText(h, ctx.hitChars ?? HIT_CHARS);
         if (text === "") continue;
         addSource(
           ctx,

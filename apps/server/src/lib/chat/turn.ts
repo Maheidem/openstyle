@@ -8,6 +8,7 @@ import type {
 } from "@openstyle/validations";
 import { estimatePromptTokens } from "../llm/token-budget.js";
 import { rerankPairs } from "../mlx-rerank/client.js";
+import { type Caps, DEFAULT_CAPS, WIDE_CAPS } from "./caps.js";
 import {
   buildChoices,
   type Choices,
@@ -63,6 +64,7 @@ import {
 import {
   ANSWER_MAX_TOKENS,
   ANSWER_SCHEMA,
+  ANSWER_SCHEMA_WIDE,
   ANSWER_SYSTEM,
   answerUser,
   asksForList,
@@ -81,7 +83,9 @@ import {
   SLOT_MAX_TOKENS,
   SYNTH_MAX_TOKENS,
   SYNTH_SCHEMA,
+  SYNTH_SCHEMA_WIDE,
   SYNTH_SYSTEM,
+  SYNTH_SYSTEM_WIDE,
 } from "./prompts.js";
 import { proposalFor } from "./proposals.js";
 import { countScopeMeetings, nextWider } from "./store.js";
@@ -244,6 +248,8 @@ function choiceLists(ch: Choices, write: boolean): string[] {
 
 export class Turn {
   readonly input: ChatTurnInput;
+  /** The size caps of this turn: wide only on request and never for a local model. */
+  readonly caps: Caps;
   readonly t0 = Date.now();
   readonly todayMs: number;
   readonly turnScope: TurnScope;
@@ -297,7 +303,23 @@ export class Turn {
   private mapped: { from: string; to: string; n: number } | null = null;
   private mappedLabels = new Set<string>();
 
-  constructor(input: ChatTurnInput) {
+  constructor(raw: ChatTurnInput) {
+    const wide = raw.caps === "wide" && !raw.llm.isLocal;
+    this.caps = wide ? WIDE_CAPS : DEFAULT_CAPS;
+    const input: ChatTurnInput =
+      wide && WIDE_CAPS.sourceBudget !== null
+        ? {
+            ...raw,
+            scoreFloor: raw.scoreFloor ?? WIDE_CAPS.scoreFloor ?? undefined,
+            settings: {
+              ...raw.settings,
+              sourceBudget: Math.max(
+                raw.settings.sourceBudget,
+                WIDE_CAPS.sourceBudget,
+              ),
+            },
+          }
+        : raw;
     this.input = input;
     const { db, scope, question, settings } = input;
     this.todayMs = input.now ?? this.t0;
@@ -312,6 +334,7 @@ export class Turn {
       todayMs: this.todayMs,
       k: settings.k,
       rerank: true,
+      ...(wide ? { hitChars: WIDE_CAPS.hitChars } : {}),
       ...(input.signal ? { signal: input.signal } : {}),
     };
     this.turns = compactHistory(
@@ -1557,8 +1580,19 @@ export class Turn {
     const attempt = ++run.attempt;
     const why = this.stopReason();
     if (why) return { kind: "exit", exit: miss(why) };
-    const system = synth ? SYNTH_SYSTEM : ANSWER_SYSTEM;
-    const maxOut = synth ? SYNTH_MAX_TOKENS : ANSWER_MAX_TOKENS;
+    const wide = this.caps === WIDE_CAPS;
+    const system = synth
+      ? wide
+        ? SYNTH_SYSTEM_WIDE
+        : SYNTH_SYSTEM
+      : ANSWER_SYSTEM;
+    const maxOut = synth
+      ? wide
+        ? this.caps.synthMaxTokens
+        : SYNTH_MAX_TOKENS
+      : wide
+        ? this.caps.answerMaxTokens
+        : ANSWER_MAX_TOKENS;
     const assembled = assembleAnswerInput({
       system,
       question,
@@ -1589,7 +1623,7 @@ export class Turn {
         const r = await llm.structured({
           step: "chatAnswer",
           unitKey: attempt === 1 ? "answer" : `answer/retry${attempt - 1}`,
-          schema: SYNTH_SCHEMA,
+          schema: wide ? SYNTH_SCHEMA_WIDE : SYNTH_SCHEMA,
           system,
           messages,
           maxOutputTokens: maxOut,
@@ -1602,7 +1636,7 @@ export class Turn {
         const r = await llm.structured({
           step: "chatAnswer",
           unitKey: attempt === 1 ? "answer" : `answer/retry${attempt - 1}`,
-          schema: ANSWER_SCHEMA,
+          schema: wide ? ANSWER_SCHEMA_WIDE : ANSWER_SCHEMA,
           system,
           messages,
           maxOutputTokens: maxOut,

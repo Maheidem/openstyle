@@ -604,7 +604,7 @@ export async function runDig(env: DigEnv, q: DigQ): Promise<DigRow[]> {
         threadId: `eval-${q.id}`,
         signal,
       });
-      const res = await mods.pipeline.runChatTurn({
+      const turnInput: Parameters<typeof mods.pipeline.runChatTurn>[0] = {
         db: stack.db,
         scope: { kind: q.scope.kind, id: q.scope.id } as never,
         question: t.text,
@@ -618,7 +618,17 @@ export async function runDig(env: DigEnv, q: DigQ): Promise<DigRow[]> {
         ...(process.env.CHAT_EVAL_REFLECT === "off"
           ? { researchReflect: false }
           : {}),
-      });
+        // L1 of the cloud-model ladder: the wide caps (a local model ignores them).
+        ...(process.env.CHAT_EVAL_CAPS === "wide"
+          ? { caps: "wide" as const }
+          : {}),
+      };
+      // L2 and L3: no retrieval, the whole scope is the source (dig-oracle.mts).
+      const arm = process.env.CHAT_EVAL_DIG_ARM?.trim();
+      const res =
+        arm === "oracle-harness" || arm === "oracle-plain"
+          ? await (await import("./dig-oracle.mts")).runOracle(arm, turnInput)
+          : await mods.pipeline.runChatTurn(turnInput);
       llm.finish("succeeded");
       const tokens = usageOfRun(stack.db, llm.runId);
       const usd = usdOf(tokens, env.prices ?? null);
