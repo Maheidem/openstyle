@@ -21,10 +21,6 @@ import { ANSWER_RESERVE, type Lead } from "./research.js";
 // call, and returns a record. Code checks the record against the sources it
 // was given: a reason that no source holds is dropped, never shown.
 
-/** Sources one worker shows to the model. */
-const WORKER_SOURCES = 5;
-const SOURCE_CHARS = 520;
-
 export const recordSchema = z.object({
   /** The lead (item worker) or the meeting (meeting worker) that this record answers. */
   key: z.string(),
@@ -111,14 +107,14 @@ export function aboutItem(
   return shared && fresh >= 1;
 }
 
-const sourceLines = (picked: readonly Source[]): string =>
+const sourceLines = (picked: readonly Source[], chars: number): string =>
   picked
     .map((s) => {
       const day =
         s.startedAt === null
           ? ""
           : ` (${new Date(s.startedAt).toISOString().slice(0, 10)})`;
-      return `[${s.label}] ${s.title ?? "meeting"}${day}: ${s.text.replace(/\s+/g, " ").slice(0, SOURCE_CHARS)}`;
+      return `[${s.label}] ${s.title ?? "meeting"}${day}: ${s.text.replace(/\s+/g, " ").slice(0, chars)}`;
     })
     .join("\n");
 
@@ -134,7 +130,7 @@ function pick(
   return [
     ...all.filter((s) => s.kind === "transcript"),
     ...all.filter((s) => s.kind !== "transcript"),
-  ].slice(0, WORKER_SOURCES);
+  ].slice(0, t.caps.workerSources);
 }
 
 /** True when the call cap leaves no room for another worker call. */
@@ -226,7 +222,10 @@ export async function itemWorker(t: Turn, lead: Lead): Promise<WorkerRecord> {
         messages: [
           {
             role: "user",
-            content: digItemUser(lead.text, sourceLines(picked)),
+            content: digItemUser(
+              lead.text,
+              sourceLines(picked, t.caps.workerChars),
+            ),
           },
         ],
         maxOutputTokens: DIG_MAX_TOKENS,
@@ -321,7 +320,7 @@ export async function meetingWorker(
             role: "user",
             content: digMeetingUser(
               question.slice(0, 300),
-              sourceLines(picked),
+              sourceLines(picked, t.caps.workerChars),
             ),
           },
         ],

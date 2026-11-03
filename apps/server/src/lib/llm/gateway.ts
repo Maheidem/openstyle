@@ -9,6 +9,7 @@ import {
   jsonSchema,
   type LanguageModel,
   type LanguageModelMiddleware,
+  type ModelMessage,
   NoObjectGeneratedError,
   NoOutputGeneratedError,
   Output,
@@ -277,7 +278,7 @@ interface Capture {
   text: string;
   reasoningChars: number;
   /** The tool calls of the answer, as the model wrote them (callToolTurn). */
-  toolCalls: { name: string; input: string }[];
+  toolCalls: { id: string; name: string; input: string }[];
   usage: TokenUsage;
   /** Call options the SDK handed to the model, for the ledger when no body exists. */
   callOptions: {
@@ -289,7 +290,7 @@ interface Capture {
 
 function usageOf(
   u: {
-    inputTokens: { total?: number; cacheRead?: number };
+    inputTokens: { total?: number; cacheRead?: number; cacheWrite?: number };
     outputTokens: { total?: number; reasoning?: number };
   },
   responseBody: unknown,
@@ -300,6 +301,9 @@ function usageOf(
     reasoning: u.outputTokens.reasoning ?? null,
     cached: u.inputTokens.cacheRead ?? null,
   };
+  // Anthropic cache writes cost more than plain input. Kept only when above 0.
+  if ((u.inputTokens.cacheWrite ?? 0) > 0)
+    usage.cacheWrite = u.inputTokens.cacheWrite;
   // The OpenAI chat reader turns a missing detail into 0. Unknown is NULL (7.4).
   const raw = asObject(asObject(responseBody)?.usage);
   if (raw && "prompt_tokens" in raw) {
@@ -757,7 +761,11 @@ function captureMiddleware(captured: {
         if (part.type === "text") text += part.text;
         else if (part.type === "reasoning") reasoningChars += part.text.length;
         else if (part.type === "tool-call") {
-          toolCalls.push({ name: part.toolName, input: part.input });
+          toolCalls.push({
+            id: part.toolCallId,
+            name: part.toolName,
+            input: part.input,
+          });
         }
       }
       const fromBody = bodyReasoning(result.response?.body);
@@ -1432,6 +1440,18 @@ export interface CallToolTurnInput {
   retry?: { kind: GatewayErrorKind };
   createModel?: CreateModel;
   timeoutMs?: number;
+  /**
+   * Eval loop only: the full wire messages, tool calls and tool results
+   * included. They replace `messages` on the wire. `messages` still feeds the
+   * window check and the record. Unset in the app.
+   */
+  modelMessages?: ModelMessage[];
+  /** Eval loop only: default "auto". */
+  toolChoice?:
+    | "auto"
+    | "none"
+    | "required"
+    | { type: "tool"; toolName: string };
 }
 
 type ToolTurnOutcome =
@@ -1441,6 +1461,10 @@ type ToolTurnOutcome =
 export type CallToolTurnResult = ToolTurnOutcome & {
   /** Names of every call that the model made, in order. The first one is returned. */
   callNames: string[];
+  /** Every call with its id and arguments (null when they are not a JSON object). Eval loop. */
+  calls: { id: string; name: string; args: Record<string, unknown> | null }[];
+  /** The text of the reply. */
+  text: string;
   /** Why a turn with a tool call gave `none`. null otherwise. */
   note: string | null;
   rawFinishReason: string;
@@ -1628,12 +1652,14 @@ export async function callToolTurn(
             telemetry: telemetryFor(getTracing(), input.step),
             abortSignal,
             instructions,
-            messages: messages.map((m) => ({
-              role: m.role,
-              content: m.content,
-            })),
+            messages:
+              input.modelMessages ??
+              messages.map((m) => ({
+                role: m.role,
+                content: m.content,
+              })),
             tools: toolSet,
-            toolChoice: "auto",
+            toolChoice: input.toolChoice ?? "auto",
             temperature: resolved.temperature,
             ...(resolved.topP !== undefined ? { topP: resolved.topP } : {}),
             maxOutputTokens,
@@ -1810,6 +1836,12 @@ export async function callToolTurn(
         );
         return {
           ...outcome,
+          text: c.text,
+          calls: c.toolCalls.map((t) => ({
+            id: t.id,
+            name: t.name,
+            args: parseToolArgs(t.input),
+          })),
           callNames,
           note,
           rawFinishReason: c.raw,

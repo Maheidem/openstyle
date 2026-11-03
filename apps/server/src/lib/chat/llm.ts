@@ -2,6 +2,7 @@ import { randomUUID } from "node:crypto";
 import type { DatabaseSync } from "node:sqlite";
 import { createAppLogger, errorMessage } from "@openstyle/utils";
 import { parseServerModelId } from "@openstyle/validations";
+import type { ModelMessage } from "ai";
 import { getApiKey } from "../api-keys.js";
 import type {
   ChatTurn,
@@ -14,6 +15,7 @@ import {
   gatewayRetryOn,
 } from "../llm/call-unit.js";
 import {
+  type CallToolTurnInput,
   type CallToolTurnResult,
   type CreateModel,
   callStructured,
@@ -61,9 +63,15 @@ export class ChatGateError extends Error {
   }
 }
 
-export type NativeCallResult =
+export type NativeCallResult = (
   | { kind: "call"; name: string; args: Record<string, unknown> }
-  | { kind: "none"; text: string };
+  | { kind: "none"; text: string }
+) & {
+  /** Eval loop: every call of the reply, with its id. Unset in the app path. */
+  calls?: { id: string; name: string; args: Record<string, unknown> | null }[];
+  /** Eval loop: the text of the reply. */
+  text?: string;
+};
 
 export interface ChatLlm {
   readonly provider: string;
@@ -79,6 +87,9 @@ export interface ChatLlm {
     tools: NativeTool[];
     maxOutputTokens: number;
     unitKey: string;
+    /** Eval loop only: full wire messages (tool calls and results) and the tool choice. */
+    modelMessages?: ModelMessage[];
+    toolChoice?: CallToolTurnInput["toolChoice"];
   }): Promise<NativeCallResult>;
   /** Strict JSON stage (router intent, slots, answer). Throws GatewayError. */
   structured<T>(i: {
@@ -264,6 +275,8 @@ export async function createChatLlm(
           instructions: i.system,
           messages: i.messages,
           tools: i.tools,
+          ...(i.modelMessages ? { modelMessages: i.modelMessages } : {}),
+          ...(i.toolChoice ? { toolChoice: i.toolChoice } : {}),
           profile,
           maxOutputTokens: i.maxOutputTokens,
           signal,
@@ -298,9 +311,14 @@ export async function createChatLlm(
             retry: { kind: (e as GatewayError).kind as GatewayErrorKind },
           });
         }
-        return result.kind === "call"
-          ? { kind: "call", name: result.name, args: result.args }
-          : { kind: "none", text: result.text };
+        const base2 =
+          result.kind === "call"
+            ? { kind: "call" as const, name: result.name, args: result.args }
+            : { kind: "none" as const, text: result.text };
+        // The loop of the eval asks for every call and the reply text.
+        return i.modelMessages
+          ? { ...base2, calls: result.calls, text: result.text }
+          : base2;
       });
     },
 

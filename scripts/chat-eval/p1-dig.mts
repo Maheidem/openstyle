@@ -17,6 +17,16 @@
 
 import type { ChatMessage } from "@openstyle/validations";
 import {
+  addUsage,
+  evidenceOfRun,
+  type Prices,
+  type TurnEvidence,
+  type Usage,
+  usageOfRun,
+  usdOf,
+  ZERO_USAGE,
+} from "./cost.mts";
+import {
   DIG_CEDAR_ID,
   DIG_LAGOA_ID,
   DIG_ORCHARD_ID,
@@ -63,7 +73,7 @@ const lag = (...n: number[]) => n.map((x) => digMeetingId("lag", x));
 const ced = (...n: number[]) => n.map((x) => digMeetingId("ced", x));
 
 /** Two of three groups (a plain 0.67 would fail 2 of 3 by rounding). */
-const TWO_THIRDS = 2 / 3 - 1e-9;
+export const TWO_THIRDS = 2 / 3 - 1e-9;
 
 const T = (
   kind: DigKind,
@@ -527,6 +537,11 @@ export interface DigRow {
   research: boolean;
   /** The time of each checkpoint write of the turn, in ms. */
   ckptMs: number[];
+  /** Tokens and USD of all LLM calls of the turn (cost.mts). */
+  tokens: Usage;
+  usd: number;
+  /** The call records of the turn and the sources of the answer call. */
+  evidence: TurnEvidence | null;
 }
 
 const has = (norm: string, g: string[]): boolean =>
@@ -534,6 +549,57 @@ const has = (norm: string, g: string[]): boolean =>
     const a = normalize(alt);
     return a !== "" && ` ${norm} `.includes(` ${a} `);
   });
+
+/** A line that opens a part the answer marks as already done (scorer v3). */
+const DONE_LINE =
+  /^[\s>*\-•#_]*(?:already done|done|já feito|ja feito|concluído|concluido)\s*:(.*)$/i;
+const BULLET_LINE = /^\s*(?:[-*•]|\d+[.)])\s/;
+
+/**
+ * The answer without its "already done" parts. A part is one line that starts
+ * with "Already done:", "Done:", "Já feito:" or "Concluído:" (bullet and bold
+ * marks allowed before it). When nothing follows the colon, the bullet lines
+ * right after it belong to the part. The rest of the answer stays as it is.
+ * Only the mustNot check uses this: a forbidden word that appears only in a
+ * done part (for example a task that is closed) does not fail the turn.
+ */
+export function withoutDoneParts(text: string): string {
+  const keep: string[] = [];
+  let skipping = false;
+  for (const line of text.split("\n")) {
+    const m = DONE_LINE.exec(line);
+    if (m) {
+      skipping = (m[1] ?? "").replace(/[\s*_]/g, "") === "";
+      continue;
+    }
+    if (skipping && BULLET_LINE.test(line)) continue;
+    skipping = false;
+    keep.push(line);
+  }
+  return keep.join("\n");
+}
+
+/** How many mustNot words the answer holds outside its done parts. */
+export function forbiddenCount(text: string, mustNot: string[]): number {
+  const norm = normalize(withoutDoneParts(text));
+  return mustNot.filter((m) => has(norm, [m])).length;
+}
+
+/**
+ * The length gate (scorer v3). A list answer is a block. A control or fact
+ * answer is short. A digging answer has 1 to 15 text blocks and 60 to 3000
+ * characters.
+ */
+export function lengthOk(
+  kind: DigKind,
+  control: boolean,
+  blocks: number,
+  chars: number,
+): boolean {
+  if (kind === "list") return chars > 0;
+  if (control || kind === "fact") return blocks >= 1 && chars <= 500;
+  return blocks >= 1 && blocks <= 15 && chars >= 60 && chars <= 3000;
+}
 
 /** The text of an answer, list items included (a list block has no content text). */
 export function answerText(res: {
@@ -560,6 +626,8 @@ export interface DigEnv {
     settings: typeof import("../../apps/server/src/lib/chat/settings.ts");
   };
   known: Parameters<typeof checkCites>[1];
+  /** Prices of the cloud model; null for a local model (USD 0). */
+  prices?: Prices | null;
 }
 
 export async function runDig(env: DigEnv, q: DigQ): Promise<DigRow[]> {
@@ -587,7 +655,7 @@ export async function runDig(env: DigEnv, q: DigQ): Promise<DigRow[]> {
         threadId: `eval-${q.id}`,
         signal,
       });
-      const res = await mods.pipeline.runChatTurn({
+      const turnInput: Parameters<typeof mods.pipeline.runChatTurn>[0] = {
         db: stack.db,
         scope: { kind: q.scope.kind, id: q.scope.id } as never,
         question: t.text,
@@ -601,15 +669,34 @@ export async function runDig(env: DigEnv, q: DigQ): Promise<DigRow[]> {
         ...(process.env.CHAT_EVAL_REFLECT === "off"
           ? { researchReflect: false }
           : {}),
-      });
+        // L1 of the cloud-model ladder: the wide caps (a local model ignores them).
+        ...(process.env.CHAT_EVAL_CAPS === "wide"
+          ? { caps: "wide" as const }
+          : {}),
+      };
+      // L2 and L3: no retrieval, the whole scope is the source (dig-oracle.mts).
+      const arm = process.env.CHAT_EVAL_DIG_ARM?.trim();
+      // D22 spike: the tool loop (loop.mts), with or without the item ledger.
+      const res =
+        arm === "oracle-harness" || arm === "oracle-plain"
+          ? await (await import("./dig-oracle.mts")).runOracle(arm, turnInput)
+          : arm === "loop" || arm === "loop-ledger"
+            ? await (await import("./loop.mts")).runLoop(
+                (await import("./loop.mts")).loopOptsFromEnv(),
+                turnInput,
+              )
+            : await mods.pipeline.runChatTurn(turnInput);
       llm.finish("succeeded");
+      const tokens = usageOfRun(stack.db, llm.runId);
+      const usd = usdOf(tokens, env.prices ?? null);
+      const evidence = evidenceOfRun(stack.db, llm.runId);
       const nf = res.blocks.some((b) => b.kind === "not_found");
       const clarify = res.blocks.some((b) => b.kind === "clarify");
       const text = answerText(res);
       const norm = normalize(text);
       const covHit = t.groups.filter((g) => has(norm, g)).length;
       const cov = t.groups.length === 0 ? 1 : covHit / t.groups.length;
-      const forbidden = t.mustNot.filter((m) => has(norm, [m])).length;
+      const forbidden = forbiddenCount(text, t.mustNot);
       const cited = new Set<string>(res.cites.map((c) => c.meeting_id));
       for (const b of res.blocks)
         if (b.kind === "list")
@@ -625,17 +712,7 @@ export async function runDig(env: DigEnv, q: DigQ): Promise<DigRow[]> {
         (b) => b.kind === "text" && b.cites.length === 0,
       ).length;
       const repeat = !nf && isRepeat(text, earlier);
-      // A list answer is a block. A control or fact answer is short. A digging answer
-      // has 1 to 9 text blocks and 60 to 1800 characters.
-      const lenOk =
-        t.kind === "list"
-          ? text.length > 0
-          : q.control || t.kind === "fact"
-            ? textBlocks.length >= 1 && text.length <= 500
-            : textBlocks.length >= 1 &&
-              textBlocks.length <= 9 &&
-              text.length >= 60 &&
-              text.length <= 1800;
+      const lenOk = lengthOk(t.kind, q.control, textBlocks.length, text.length);
       const recallOk = recall === null || want.size < 2 || recall >= 0.5;
       const pass =
         !nf &&
@@ -676,6 +753,9 @@ export async function runDig(env: DigEnv, q: DigQ): Promise<DigRow[]> {
           .join(" > "),
         research: res.trace.research !== undefined,
         ckptMs,
+        tokens,
+        usd,
+        evidence,
       });
       earlier.push(text);
       const mk = {
@@ -733,6 +813,11 @@ export async function runDig(env: DigEnv, q: DigQ): Promise<DigRow[]> {
         trace: "",
         research: false,
         ckptMs,
+        tokens: llm ? usageOfRun(stack.db, llm.runId) : ZERO_USAGE,
+        usd: llm
+          ? usdOf(usageOfRun(stack.db, llm.runId), env.prices ?? null)
+          : 0,
+        evidence: llm ? evidenceOfRun(stack.db, llm.runId) : null,
       });
       break;
     }
@@ -795,6 +880,19 @@ export function summarizeDig(rows: DigRow[]): Record<string, number> {
     dig.map((r) => r.ms),
     0.95,
   );
+  // Cost of the run: every turn (controls and setup turns too).
+  const tot = rows.reduce(
+    (a, r) => addUsage(a, r.tokens ?? ZERO_USAGE),
+    ZERO_USAGE,
+  );
+  const usd = rows.reduce((a, r) => a + (r.usd ?? 0), 0);
+  m.tokens_in = tot.in;
+  m.tokens_out = tot.out;
+  m.tokens_cached = tot.cached;
+  m.tokens_cache_write = tot.cacheWrite;
+  m.tokens_reasoning = tot.reasoning;
+  m.usd_total = usd;
+  m.usd_per_turn = dig.length > 0 ? usd / dig.length : 0;
   m.setup_n = setup.length;
   m.setup_pass = mean(setup.map((r) => (r.pass ? 1 : 0)));
   m.control_n = ctl.length;

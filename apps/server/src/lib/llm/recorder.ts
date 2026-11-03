@@ -334,7 +334,16 @@ export function createLlmRecorder(db: DatabaseSync): LlmRecorder {
             c.schema.version,
             cap(JSON.stringify(c.schema.json) ?? "null"),
             // Mask like the trace log: Authorization and api_key values.
-            cap(JSON.stringify(redact(c.params))),
+            cap(
+              JSON.stringify(
+                c.usage.cacheWrite != null
+                  ? {
+                      ...(redact(c.params) as Record<string, unknown>),
+                      cache_write_tokens: c.usage.cacheWrite,
+                    }
+                  : redact(c.params),
+              ),
+            ),
             capOrNull(c.rawText),
             jsonOrNull(c.parsed),
             c.finishUnified,

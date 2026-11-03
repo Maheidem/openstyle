@@ -40,6 +40,8 @@ export interface ChatTurnInput {
   showAll?: boolean;
   /** Override of `SCORE_FLOOR` (the eval measures it). */
   scoreFloor?: number;
+  /** Eval only: `wide` lifts the size caps for a cloud model (caps.ts). A local model ignores it. */
+  caps?: "wide";
   /** Eval only: `false` runs the research loop with no reflect call (code order of strategies). */
   researchReflect?: boolean;
   /** Eval only: called with the time of each checkpoint write, in ms (bar D17). */

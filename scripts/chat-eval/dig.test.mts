@@ -6,8 +6,16 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import { buildDigAddon } from "./dig-corpus.mts";
+import { buildHeldoutDig } from "./dig-heldout.mts";
 import { normalize } from "./keys.mts";
-import { buildDig, type DigRow, summarizeDig } from "./p1-dig.mts";
+import {
+  buildDig,
+  type DigRow,
+  forbiddenCount,
+  lengthOk,
+  summarizeDig,
+  TWO_THIRDS,
+} from "./p1-dig.mts";
 
 const addon = buildDigAddon();
 const qs = buildDig();
@@ -196,3 +204,66 @@ for (const name of ["heldout", "dev", "final"] as const) {
     assert.ok(ha.meetings.every((m) => m.id.startsWith(`${px}-`)));
   });
 }
+
+test("blind dig sets: 2 of 3 groups reach minCov (0.67 is read as two thirds)", () => {
+  // Only the dev and heldout sets are read here. The final set is not opened.
+  for (const set of ["heldout", "dev"] as const)
+    for (const q of buildHeldoutDig(set))
+      for (const t of q.turns) {
+        if (t.groups.length === 3 && t.minCov >= 0.66)
+          assert.ok(2 / 3 >= t.minCov, `${q.id}: 2 of 3 groups must pass`);
+        assert.ok(t.minCov <= 1, q.id);
+      }
+  assert.ok(2 / 3 >= TWO_THIRDS);
+});
+
+test("scorer v3: a colon is a word break, date tokens keep theirs", () => {
+  assert.equal(normalize("Insurance lookup: done"), "insurance lookup done");
+  assert.equal(normalize("insurance lookup"), "insurance lookup");
+  assert.equal(normalize("at 10:30 sharp"), "at 10 30 sharp");
+  assert.equal(normalize("on 2026-11-05"), "on d:11-05");
+  assert.equal(normalize("due March 5th"), "due d:03-05");
+  assert.equal(normalize("Plan d: x"), "plan d x");
+});
+
+test("scorer v3: mustNot ignores a word inside an already-done part only", () => {
+  const bad = ["insurance lookup"];
+  // Outside a done part the word still fails.
+  assert.equal(forbiddenCount("We chose the insurance lookup.", bad), 1);
+  assert.equal(
+    forbiddenCount("Already done: insurance lookup.\nThe plan is open.", bad),
+    0,
+  );
+  assert.equal(
+    forbiddenCount(
+      "- **Já feito:** insurance lookup\n- Next: insurance lookup",
+      bad,
+    ),
+    1,
+  );
+  // A heading with bullets under it: the bullets belong to the done part.
+  assert.equal(
+    forbiddenCount("Done:\n- insurance lookup\n- other\n\nNext step", bad),
+    0,
+  );
+  assert.equal(
+    forbiddenCount("Concluído:\n- other\n\nPlano: insurance lookup", bad),
+    1,
+  );
+  // A line that only mentions "done" in the middle is not a done part.
+  assert.equal(forbiddenCount("It is not done: insurance lookup", bad), 1);
+  // The colon rule: "Insurance lookup:" now matches the key.
+  assert.equal(forbiddenCount("Insurance lookup: still open", bad), 1);
+});
+
+test("scorer v3: length gate of digging turns is 15 blocks and 3000 characters", () => {
+  assert.equal(lengthOk("why", false, 15, 3000), true);
+  assert.equal(lengthOk("why", false, 16, 500), false);
+  assert.equal(lengthOk("why", false, 5, 3001), false);
+  assert.equal(lengthOk("why", false, 5, 59), false);
+  // Fact, control and list turns are unchanged.
+  assert.equal(lengthOk("fact", false, 1, 500), true);
+  assert.equal(lengthOk("fact", false, 1, 501), false);
+  assert.equal(lengthOk("why", true, 1, 501), false);
+  assert.equal(lengthOk("list", false, 20, 9000), true);
+});

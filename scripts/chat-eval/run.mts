@@ -21,6 +21,7 @@ import { buildGold } from "./gold.mts";
 import { EXPERIMENT_P1, logRun } from "./mlflow.mts";
 import { PARTS, type Part, runP1 } from "./p1-run.mts";
 import { runReal } from "./real.mts";
+import { runRescore } from "./rescore.mts";
 import { runRetrieval } from "./retrieval-run.mts";
 import { runRouter } from "./router-run.mts";
 import { OUT, sha } from "./stack.mts";
@@ -165,6 +166,16 @@ async function main() {
     }
     return;
   }
+  if (cmd === "rescore") {
+    // Result files only: no model, no GPU. The final set prints a summary line only.
+    const files = process.argv.slice(3).filter((a) => !a.startsWith("--"));
+    if (files.length === 0)
+      throw new Error(
+        "usage: pnpm chat-eval rescore [--no-mlflow] <result.json...>",
+      );
+    await runRescore(files, !flag("no-mlflow"));
+    return;
+  }
   if (cmd === "real") {
     const arg = (n: string) => {
       const i = process.argv.indexOf(`--${n}`);
@@ -196,7 +207,7 @@ async function main() {
     return;
   }
   console.error(
-    "usage: pnpm chat-eval corpus [--write] | retrieval [--no-mlflow] | router [--no-mlflow] | p1 [--no-mlflow] [--only a,b] [--limit N] [--scale N] [--set p2] [--seed N] | real --db <copy.db> --threads <id>,<id>",
+    "usage: pnpm chat-eval corpus [--write] | retrieval [--no-mlflow] | router [--no-mlflow] | p1 [--no-mlflow] [--only a,b] [--limit N] [--scale N] [--set p2] [--seed N] | rescore [--no-mlflow] <result.json...> | real --db <copy.db> --threads <id>,<id>",
   );
   process.exitCode = 2;
 }

@@ -235,7 +235,9 @@ export function buildResearchGraph(t: Turn, checkpoint: boolean) {
     if (hits.length === 0 && prior) {
       hits = await find(`${prior.question} ${prior.answer.slice(0, 120)}`);
     }
-    const max = t.input.llm.isLocal ? FAN_MEETINGS.local : FAN_MEETINGS.cloud;
+    const max =
+      t.caps.fanMeetings ??
+      (t.input.llm.isLocal ? FAN_MEETINGS.local : FAN_MEETINGS.cloud);
     const seen = new Map<string, { title: string | null; at: number | null }>();
     for (const h of hits) {
       if (!seen.has(h.meetingId)) {
@@ -474,7 +476,7 @@ export function buildResearchGraph(t: Turn, checkpoint: boolean) {
     const topScore = scores.length > 0 ? Math.max(...scores) : null;
     const rows = last.results.reduce((n, r) => n + r.rows, 0);
     const evidence: Evidence[] = added.map((x) =>
-      toEvidence(x, tool, last.leadId, topScore),
+      toEvidence(x, tool, last.leadId, topScore, t.caps.hitChars),
     );
     const step: Step = {
       tool,

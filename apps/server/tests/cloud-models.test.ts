@@ -247,3 +247,25 @@ describe("one-time notice of a replaced default model", () => {
     expect(listRetiredNotices()).toEqual([]);
   });
 });
+
+describe("cloudLlmPrices", () => {
+  it("gives the Opus 5.5 prices with the cache prices of the Anthropic pricing page", async () => {
+    const { cloudLlmPrices } = await import("../src/lib/cloud-models.js");
+    expect(cloudLlmPrices("anthropic", "anthropic/claude-opus-5-5")).toEqual({
+      input: 4,
+      output: 20,
+      cacheWrite: 5,
+      cacheRead: 0.2,
+    });
+  });
+  it("bills the cache like plain input when no cache price is set", async () => {
+    const { cloudLlmPrices } = await import("../src/lib/cloud-models.js");
+    expect(cloudLlmPrices("openai", "gpt-6.1-sol")).toEqual({
+      input: 2,
+      output: 10,
+      cacheWrite: 2,
+      cacheRead: 2,
+    });
+    expect(cloudLlmPrices("anthropic", "nope")).toBeNull();
+  });
+});

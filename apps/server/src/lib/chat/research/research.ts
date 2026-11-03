@@ -271,7 +271,9 @@ function priorItems(
 /** Code seeds the leads. No model call. */
 export function seedLeads(t: Turn): Lead[] {
   const { question, history } = t.input;
-  const fan = t.input.llm.isLocal ? FAN_ITEMS.local : FAN_ITEMS.cloud;
+  const fan =
+    t.caps.fanItems ??
+    (t.input.llm.isLocal ? FAN_ITEMS.local : FAN_ITEMS.cloud);
   // Only a question with an earlier turn can lean on it ("this project" is not a follow-up).
   // "Show all" asks the earlier list question again: it stands alone.
   const dependent =
@@ -488,6 +490,7 @@ export function toEvidence(
   tool: string,
   lead: string,
   score: number | null,
+  chars = 640,
 ): Evidence {
   return {
     label: s.label,
@@ -498,7 +501,7 @@ export function toEvidence(
     startMs: s.startMs,
     endMs: s.endMs,
     itemId: s.itemId,
-    text: s.text.slice(0, 640),
+    text: s.text.slice(0, chars),
     tool,
     leadId: lead,
     score,

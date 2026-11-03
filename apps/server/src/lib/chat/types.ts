@@ -121,6 +121,8 @@ export interface ToolContext {
   k: number;
   /** Rerank the fused candidates (the reranker worker may be absent: then no rerank). */
   rerank: boolean;
+  /** Characters of a chunk hit for the model. Default HIT_CHARS (tools.ts). */
+  hitChars?: number;
   signal?: AbortSignal;
 }
 

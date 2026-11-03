@@ -34,6 +34,14 @@ interface CloudLlmEntry {
   role: LineupRole;
   costInput: number;
   costOutput: number;
+  /**
+   * Anthropic only (USD per 1M tokens): 5-minute cache write and cache read.
+   * Source: https://platform.claude.com/docs/en/about-claude/pricing (checked
+   * 2026-11-03). Unset = the cache is billed like plain input. The chat eval
+   * uses these to price cached tokens (scripts/chat-eval/cost.mts).
+   */
+  costCacheWrite?: number;
+  costCacheRead?: number;
 }
 
 /** The cloud LLM line-up. Order: capable, fast, more, per provider. */
@@ -47,6 +55,8 @@ export const CLOUD_LLM_LINEUP: readonly CloudLlmEntry[] = [
     role: "capable",
     costInput: 2,
     costOutput: 10,
+    costCacheWrite: 2.5,
+    costCacheRead: 0.1,
   },
   {
     providerId: "anthropic",
@@ -57,6 +67,8 @@ export const CLOUD_LLM_LINEUP: readonly CloudLlmEntry[] = [
     role: "fast",
     costInput: 0.1,
     costOutput: 0.5,
+    costCacheWrite: 0.125,
+    costCacheRead: 0.01,
   },
   {
     providerId: "anthropic",
@@ -67,6 +79,8 @@ export const CLOUD_LLM_LINEUP: readonly CloudLlmEntry[] = [
     role: "more",
     costInput: 4,
     costOutput: 20,
+    costCacheWrite: 5,
+    costCacheRead: 0.2,
   },
   {
     providerId: "anthropic",
@@ -77,6 +91,8 @@ export const CLOUD_LLM_LINEUP: readonly CloudLlmEntry[] = [
     role: "more",
     costInput: 10,
     costOutput: 50,
+    costCacheWrite: 12.5,
+    costCacheRead: 0.25,
   },
   {
     providerId: "openai",
@@ -194,6 +210,29 @@ export const CLOUD_LLM_LINEUP: readonly CloudLlmEntry[] = [
 export const CURATED_LLM_IDS: ReadonlySet<string> = new Set(
   CLOUD_LLM_LINEUP.map((m) => `${m.providerId}/${m.id}`),
 );
+
+/** USD per 1M tokens of a line-up model, or null (cache prices fall back to the input price). */
+export function cloudLlmPrices(
+  providerId: string,
+  modelId: string,
+): {
+  input: number;
+  output: number;
+  cacheWrite: number;
+  cacheRead: number;
+} | null {
+  const id = stripModelPrefix(providerId, modelId);
+  const m = CLOUD_LLM_LINEUP.find(
+    (x) => x.providerId === providerId && x.id === id,
+  );
+  if (!m) return null;
+  return {
+    input: m.costInput,
+    output: m.costOutput,
+    cacheWrite: m.costCacheWrite ?? m.costInput,
+    cacheRead: m.costCacheRead ?? m.costInput,
+  };
+}
 
 /** True when the line-up holds this cloud LLM, with or without the prefix. */
 export function isLineupCloudLlm(providerId: string, modelId: string): boolean {

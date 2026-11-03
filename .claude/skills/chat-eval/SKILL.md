@@ -72,6 +72,12 @@ pnpm chat-eval p1 [--no-mlflow] [--only a,b,c] [--limit N] [--scale N]
 
 A remote chat LLM (llama.cpp, oMLX or any OpenAI-compatible server): set `CHAT_EVAL_BASE_URL` (server address, from the environment only), `CHAT_EVAL_MODEL` (the name `GET /v1/models` lists) and optionally `CHAT_EVAL_BACKEND` (MLflow tag `backend`, default `remote-openai`). The harness adds one row to the scratch `own_servers` table and sets `server/<id>/<model>` as the default LLM, so the app's own-server provider, the Auto sampling (temperature 0) and `enable_thinking: false` apply as in the app. Embed and rerank stay on the Mac workers, so the Mac GPU lock still applies. MLflow runs carry the tags `backend` and `model`. Latency of a remote GPU does not represent a Mac.
 
+A cloud chat LLM of the app (2026-11-03): set `CHAT_EVAL_CLOUD_PROVIDER=anthropic` (or another key provider), `CHAT_EVAL_MODEL=claude-opus-5-5` and `CHAT_EVAL_CLOUD_API_KEY` (environment only). The harness writes the key into the `api_keys` table of the scratch DB (where the app's `getApiKey()` reads it) and sets `<provider>/<model>` as the default LLM, so `createChatModel`, the Auto sampling and the provider options apply as in the app. The key is never printed or logged to MLflow; delete `/tmp/chatp0/run` after the run (the scratch DB holds the key). Set `CHAT_EVAL_BACKEND=cloud-opus` for the MLflow tag. Never put the key in a file of the repo. Cloud calls cost money: smoke-test with `CHAT_EVAL_IDS`.
+
+Cost fields (2026-11-03): every `dig` and `e2e` row has `tokens {in, out, cached, cacheWrite, reasoning}` and `usd`. Code: `cost.mts`. The tokens are the sum of `llm_calls` of the run id of the turn (all calls, retries and workers too). `in` holds every input token, cached ones included. USD = plain input x input price + cached x cache-read price + cache write x cache-write price + out x output price, with the prices of `cloud-models.ts` (`cloudLlmPrices`; Anthropic cache prices from https://platform.claude.com/docs/en/about-claude/pricing). A local model or an own server costs 0. The summary line prints `Tokens in/out/cached/cache write; USD total, per digging turn`. MLflow gets `tokens_in`, `tokens_out`, `tokens_cached`, `tokens_cache_write`, `tokens_reasoning`, `usd_total`, `usd_per_turn`. Checked on 2026-11-03: one Opus turn, row tokens (10422 in, 1012 out, 6 calls) equal the sum of the raw API `usage` fields, USD 0.0619 by hand.
+
+Dig rows also hold `evidence {sha, calls[], answerPrompt}`: the call records of the turn (node, step, tokens, latency, the parsed record of each `chatDig` worker) and the messages of the last answer call (the sources that reached it). It sorts a failure into: retrieval miss, evidence present but not used, shape cap, scorer.
+
 | Part (run `p1-<part>`) | What it measures |
 |---|---|
 | `retrieval` | 147 queries through the production `retrieve()`, k=10, arms dense, hybrid, hybrid + rerank 15, hybrid + rerank 30: recall@1/5/10, r@10 any, nDCG@10 per language and slice, warm p50/p95, reranker added time, embed and rerank worker RSS |
@@ -190,6 +196,23 @@ No new bars: thresholds are the owner's to set (`BARS` stays as it is).
 - When a set has been read for fixes, write a new one the same way (same brief: `/tmp/chatp1/brief.txt` is the template; no repo access for the subagent).
 - 2026-11-02 baseline of main `e6641d0b` (E2B / E4B): original 77.1 / 82.9%, heldout 25.9 / 29.6%, dev 22.6 / 32.3%, final 16.7 / 10.0%. The original set is overfit: #412 was tuned on it.
 - To run `main` and a branch side by side use two worktrees (`git worktree add --detach ../x <sha>`, copy `apps/electron/resources/{bin,models}`, own launcher script). Edit the branch while the other one runs. A running `pnpm chat-eval` loads the source at start: never edit `apps/server/src` while a matrix runs on that worktree.
+
+### The dig ladder (cloud model, `CHAT_EVAL_LEVEL`, 2026-11-03)
+
+Measures where a big model loses on the dig turns. Run on the DEV set only (`CHAT_EVAL_DIG_SET=dev`), never on `final`. Set `CHAT_EVAL_LEVEL=L0..L3` (MLflow tags `level` and `arm`).
+
+| Level | Env | What changes |
+|---|---|---|
+| L0 | none | today's harness |
+| L1 | `CHAT_EVAL_CAPS=wide` | `caps.ts` WIDE caps: hit text 2000, worker sources 12 x 1500, source budget 30000, 12 bullets, answer tokens 2000 (3000 synth), score floor 0.3, 12 item workers, 16 meeting workers. Only for a non-local model |
+| L2 | `CHAT_EVAL_DIG_ARM=oracle-harness` | no retrieval: every summary and transcript window of the scope is a source; today's answer step and cite check stay |
+| L3 | `CHAT_EVAL_DIG_ARM=oracle-plain` | one call with all sources and a plain prompt; no cite check |
+
+Code: `dig-oracle.mts`, `caps.ts` (server). The pass rule has a length gate (scorer v3: digging turns 1 to 15 text blocks, 60 to 3000 characters; fact and control turns up to 500). Scorer v3 also treats a colon as a word break and ignores a mustNot word inside an "Already done:" part (`withoutDoneParts` in `p1-dig.mts`); `pnpm chat-eval rescore` scores the saved answers again with it and tags the run `scorer=v3`. L1 writes up to 12 bullets, so the gate fails some of its turns: read `len_ok` next to `pass`. Opus 5.5 takes no temperature, so a rerun differs (L0 gave 21 of 31 and 22 of 31 on the same code line).
+
+### Re-score (`pnpm chat-eval rescore [--no-mlflow] <result.json...>`)
+
+Scores the saved dig answers again with the fixed rule: the blind keys write 2 of 3 as `minCov` 0.67 and 2/3 is less than 0.67, so the loader (`dig-heldout.mts`) now maps it to `TWO_THIRDS`, as the original set does. Keys and answers do not change. The command prints one line for each file (old pass, new pass, changed turns, `old-rule drift` = rows where the old rule does not give the stored pass, must be 0) and logs `<run name>-rescore` with the tag `rescore_of=<original run id>`. For the `final` set it prints the summary line only, no turn ids.
 
 ### Research workers (spec 11.9.17)
 
