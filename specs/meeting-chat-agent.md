@@ -2578,9 +2578,9 @@ Owner decision: "Citations should come naturally with tool use like we identifie
 
 **Known costs and open faults** (2026-11-04 measurement, scorer v3).
 
-1. The cite precision at the start of the gold segment is lower than the pipeline: 0.69 against 0.83 on E2B, 0.64 against 0.85 on E4B. The recall is equal or higher (0.82 and 0.88). A loop answer has more sentences than a pipeline answer, so it has more cites.
+1. The cite precision at the start of the gold segment is lower than the pipeline: 0.69 against 0.83 on E2B, 0.64 against 0.85 on E4B. The recall is equal on E2B (0.82) and a little lower on E4B (0.88 against 0.90). A loop answer has more sentences than a pipeline answer, so it has more cites.
 2. Gold accuracy of E4B: 0.847 for the loop against 0.937 for the pipeline (0.905 for the loop before this change). The lookups and follow-ups lose most. The model no longer commits to a source label, so a follow-up such as "and when is that due?" picks a wrong item more often. E2B gold: 0.900 against 0.884.
-3. Qwen 27B (oMLX) returns empty answer lists for 41.9% of the dev turns after this change (pass 45.2%, 74.2% before). The text of the system prompt causes it, not the schema: with the old text that names the cite field, the same 6 failing turns pass 6 of 6, with a cite-free text they pass 2 to 4 of 6. A prompt text for large local models that works without a cite field is open.
+3. Qwen 27B (oMLX) returns empty answer lists for 41.9% of the dev turns after this change (pass 45.2%, 74.2% before). The text of the system prompt causes it, not the schema: with the old text that names the cite field, the same 6 failing turns pass 6 of 6, with cite-free texts they pass 1 to 4 of 6. A prompt text for large local models that works without a cite field is open.
 4. The real-folder turn "who pushed and why" in folder C is still not found on E2B (weak evidence ends the turn) and short on E4B. The hint of (b) fixed it and cost the unanswerable questions.
 
 ## 12. Owner decisions and open questions
