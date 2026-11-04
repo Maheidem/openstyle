@@ -3,6 +3,12 @@
 // 27 bench cases (medium) and the fictional pipeline cases (own intensity and
 // tone), with the app's local MLX provider and worker.
 //
+// --base-url=http://<host>:<port>/v1 --model=<served id> (env OMLX_KEY) runs the
+// same arms on an OpenAI-style server (oMLX) instead of the local worker; add
+// --sampling='{"temperature":0.1,"top_k":50,"repetition_penalty":1.1}' to
+// override the app's temperature 0 and --thinking=on to keep the model's
+// thinking on (default off, as the app sends enable_thinking false).
+//
 //   HF_HOME=<hf cache> HF_HUB_OFFLINE=1 OPENSTYLE_MLX_LLM_WORKER=<worker binary> \
 //   pnpm dlx tsx apps/server/scripts/benchmark-dictation-pipeline.ts \
 //     --model=gemma-4-e2b-qat-4bit --arms=main,pipeline --passes=4 --out=/tmp/x.json
@@ -96,7 +102,7 @@ async function callModel(
       model,
       instructions: call.system,
       prompt: call.prompt,
-      temperature: 0,
+      temperature: SAMPLING.temperature ?? 0,
       maxOutputTokens: maxOutputTokensForCleanup(input),
       include: { responseBody: true },
     });
@@ -135,6 +141,27 @@ function toneOptions(t: CaseTone | undefined) {
     emailTone: t?.emailTone,
     overallTone: t?.overallTone,
   };
+}
+
+const SAMPLING = JSON.parse(arg("sampling") ?? "{}") as Record<string, number>;
+
+/** An OpenAI-style server (oMLX): the same chat call as the app's own-server provider. */
+async function remoteModel(modelId: string, baseUrl: string) {
+  const { createOpenAI } = await import("@ai-sdk/openai");
+  return createOpenAI({
+    apiKey: process.env.OMLX_KEY ?? "local",
+    baseURL: baseUrl,
+    fetch: (async (url: unknown, init: RequestInit) => {
+      const body = JSON.parse(String(init.body)) as Record<string, unknown>;
+      const { temperature: _t, ...rest } = SAMPLING;
+      Object.assign(body, rest, {
+        chat_template_kwargs: {
+          enable_thinking: arg("thinking") === "on",
+        },
+      });
+      return fetch(url as string, { ...init, body: JSON.stringify(body) });
+    }) as typeof fetch,
+  }).chat(modelId);
 }
 
 let cleanupModel: LanguageModel;
@@ -256,6 +283,67 @@ function summary(rows: Row[], passes: number): void {
   }
 }
 
+/** --mlflow-experiment=<name> [--tag=k=v,k=v]: one run per arm, numbers only, read back. */
+async function logMlflow(rows: Row[], modelId: string, passes: number) {
+  const exp = arg("mlflow-experiment");
+  if (!exp) return;
+  const { logRun } = await import("../../../scripts/chat-eval/mlflow.mts");
+  const tags = Object.fromEntries(
+    (arg("tag") ?? "")
+      .split(",")
+      .filter(Boolean)
+      .map((kv) => [
+        kv.slice(0, kv.indexOf("=")),
+        kv.slice(kv.indexOf("=") + 1),
+      ]),
+  );
+  for (const arm of new Set(rows.map((r) => r.arm))) {
+    const mine = rows.filter((r) => r.arm === arm);
+    const metrics: Record<string, number> = {
+      pass: mine.filter((r) => r.ok).length,
+      total: mine.length,
+    };
+    const count = (key: (r: Row) => string, prefix: string) => {
+      for (const k of new Set(mine.map(key))) {
+        const sub = mine.filter((r) => key(r) === k);
+        metrics[`${prefix}.${k}.pass`] = sub.filter((r) => r.ok).length;
+        metrics[`${prefix}.${k}.n`] = sub.length;
+      }
+    };
+    count((r) => r.language, "lang");
+    count((r) => r.feature, "feature");
+    for (const g of new Set(mine.map((r) => r.group))) {
+      const lat = mine
+        .filter((r) => r.group === g)
+        .map((r) => r.latencyMs)
+        .sort((a, b) => a - b);
+      metrics[`latency.${g}.p50`] = percentile(lat, 50);
+      metrics[`latency.${g}.p95`] = percentile(lat, 95);
+    }
+    const calls = mine.flatMap((r) => r.calls);
+    metrics.calls = calls.length;
+    metrics.callsFailed = calls.filter((c) => c.failed).length;
+    metrics.inputTokens = calls.reduce((a, c) => a + c.inputTokens, 0);
+    metrics.outputTokens = calls.reduce((a, c) => a + c.outputTokens, 0);
+    metrics.callMs = calls.reduce((a, c) => a + c.ms, 0);
+    const run = await logRun(
+      `dictation-${modelId}-${arm}${arg("label") ? `-${arg("label")}` : ""}`,
+      {
+        model: modelId,
+        arm,
+        passes,
+        baseUrl: arg("base-url") ? "remote" : "local-worker",
+        sampling: arg("sampling") ?? "app (temperature 0)",
+        thinking: arg("thinking") ?? "off",
+      },
+      { "sweep.model": modelId, ...tags },
+      metrics,
+      exp,
+    );
+    console.log(`mlflow ${exp} run ${run.runId} (${run.n} metrics, read back)`);
+  }
+}
+
 async function main(): Promise<void> {
   const modelId = arg("model") ?? "gemma-4-e2b-qat-4bit";
   const arms = (arg("arms") ?? "main,pipeline").split(",") as Arm[];
@@ -274,21 +362,27 @@ async function main(): Promise<void> {
   const key = (c: Case) => `${c.intensity}|${JSON.stringify(c.tone ?? {})}`;
   const ordered = [...cases].sort((a, b) => key(a).localeCompare(key(b)));
   const t0 = Date.now();
-  await ensureMlxLlmWorker(modelId);
+  const baseUrl = arg("base-url");
+  if (!baseUrl) await ensureMlxLlmWorker(modelId);
   console.log(
     `[bench] worker ready ${Date.now() - t0} ms; ${ordered.length} cases x ${passes} passes x ${arms.join(",")}`,
   );
-  const provider = getLlmProvider(MLX_LLM_PROVIDER_ID);
-  if (!provider) throw new Error(`no provider ${MLX_LLM_PROVIDER_ID}`);
-  cleanupModel = await provider.createModel(modelId, "local", {
-    task: "cleanup",
-    sampling: {},
-  });
-  plainModel = await provider.createModel(modelId, "local", {
-    task: "cleanup",
-    sampling: {},
-    prefixCache: false,
-  });
+  if (baseUrl) {
+    cleanupModel = await remoteModel(modelId, baseUrl);
+    plainModel = cleanupModel;
+  } else {
+    const provider = getLlmProvider(MLX_LLM_PROVIDER_ID);
+    if (!provider) throw new Error(`no provider ${MLX_LLM_PROVIDER_ID}`);
+    cleanupModel = await provider.createModel(modelId, "local", {
+      task: "cleanup",
+      sampling: {},
+    });
+    plainModel = await provider.createModel(modelId, "local", {
+      task: "cleanup",
+      sampling: {},
+      prefixCache: false,
+    });
+  }
   const rows: Row[] = [];
   try {
     for (const arm of arms) {
@@ -322,6 +416,7 @@ async function main(): Promise<void> {
       }
     }
     summary(rows, passes);
+    await logMlflow(rows, modelId, passes);
   } finally {
     if (out) {
       writeFileSync(

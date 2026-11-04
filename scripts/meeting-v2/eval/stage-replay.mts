@@ -385,7 +385,15 @@ export type Complete = (body: Record<string, unknown>) => Promise<Reply>;
  */
 export function workerClient(
   chatUrl: string,
-  o: { timeoutMs?: number; model?: string; parallel?: number } = {},
+  o: {
+    timeoutMs?: number;
+    model?: string;
+    parallel?: number;
+    /** Extra request headers (an OpenAI-style server that needs a key). */
+    headers?: Record<string, string>;
+    /** An OpenAI-style server (oMLX): no llama.cpp raw path, no field renames. */
+    plain?: boolean;
+  } = {},
 ): Complete {
   let running = 0;
   const waiting: (() => void)[] = [];
@@ -401,15 +409,31 @@ export function workerClient(
     }
   };
   async function post(input: Record<string, unknown>): Promise<Reply> {
-    if (o.model && !thinkingOn(input)) return postRaw(input);
+    if (!o.plain) return postOnce(input);
+    // An OpenAI-style LAN server (oMLX) answered an empty body or a 500 now
+    // and then (2026-11-04): retry a failed request twice, and say so.
+    for (let attempt = 1; ; attempt++) {
+      try {
+        return await postOnce(input);
+      } catch (e) {
+        if (attempt >= 8) throw e;
+        console.log(
+          `retry ${attempt} after: ${(e as Error).message.slice(0, 120)}`,
+        );
+        await new Promise((r) => setTimeout(r, 3000 * Math.min(attempt, 3)));
+      }
+    }
+  }
+  async function postOnce(input: Record<string, unknown>): Promise<Reply> {
+    if (o.model && !o.plain && !thinkingOn(input)) return postRaw(input);
     const body: Record<string, unknown> = { ...input, stream: false };
     if (o.model) {
       body.model = o.model;
       // The prompt cache changes the logits a little: at temperature 0 the
       // same summary request gave 2 different answers in 3 runs with it, and
       // 3 equal answers without it (2026-10-22).
-      body.cache_prompt = false;
-      if (body.repetition_penalty !== undefined) {
+      if (!o.plain) body.cache_prompt = false;
+      if (!o.plain && body.repetition_penalty !== undefined) {
         body.repeat_penalty = body.repetition_penalty;
         delete body.repetition_penalty;
       }
@@ -417,13 +441,22 @@ export function workerClient(
     const t0 = Date.now();
     const r = await fetch(chatUrl, {
       method: "POST",
-      headers: { "content-type": "application/json" },
+      headers: { "content-type": "application/json", ...(o.headers ?? {}) },
       body: JSON.stringify(body),
       signal: AbortSignal.timeout(o.timeoutMs ?? 900_000),
     });
-    const j = (await r.json().catch(() => null)) as any;
+    const raw = await r.text().catch(() => "");
+    const j = (() => {
+      try {
+        return JSON.parse(raw) as any;
+      } catch {
+        return null;
+      }
+    })();
     if (r.status !== 200 || !j?.choices?.[0])
-      throw new Error(`the model server answered ${r.status}`);
+      throw new Error(
+        `the model server answered ${r.status}${o.plain ? ` (${raw.length} bytes) ${JSON.stringify(raw.slice(0, 300))}` : ""}`,
+      );
     return {
       text: String(j.choices[0].message?.content ?? ""),
       finish: String(j.choices[0].finish_reason ?? ""),
