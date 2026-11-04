@@ -58,7 +58,8 @@ export type LoopFix =
   | "segmentCites"
   | "labelledHits"
   | "emptyRetry"
-  | "navSearch";
+  | "navSearch"
+  | "bulletPerSource";
 export type LoopOverride = Partial<
   Pick<LoopProfile, "first" | "stepCap" | "ledger" | "hitChars">
 > & {
@@ -303,9 +304,15 @@ When you have the facts, stop calling tools and reply with one short line.`;
     );
   }
   if (weak && profile.weakExit) return t.notFound("no_sources");
-  const answerSys = weak
-    ? `${answerSystem}\nThe search found only weak matches. Write a sentence only when a source states the answer in its own words. If no source states it, return empty lists.`
+  const answerBase = off.has("bulletPerSource")
+    ? answerSystem.replace(
+        "Write one bullet for each source label that adds a new fact. ",
+        "",
+      )
     : answerSystem;
+  const answerSys = weak
+    ? `${answerBase}\nThe search found only weak matches. Write a sentence only when a source states the answer in its own words. If no source states it, return empty lists.`
+    : answerBase;
 
   // ---- The answer: one structured call, tools off (the worker rejects both). ----
   // Only what a tool showed to the model can be cited.
