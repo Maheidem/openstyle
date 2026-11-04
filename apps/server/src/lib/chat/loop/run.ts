@@ -246,6 +246,7 @@ When you have the facts, stop calling tools and reply with one short line.`;
       `best score ${Math.max(...searchTops).toFixed(2)}`,
     );
   }
+  if (weak && profile.weakExit) return t.notFound("no_sources");
   const answerSys = weak
     ? `${answerSystem}\nThe search found only weak matches. Write a sentence only when a source states the answer in its own words. If no source states it, return empty lists.`
     : answerSystem;

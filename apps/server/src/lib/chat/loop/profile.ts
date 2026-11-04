@@ -30,6 +30,12 @@ export interface LoopProfile {
   readonly answerBudget: number;
   /** Output tokens of the answer call. */
   readonly answerTokens: number;
+  /**
+   * Weak search evidence ends the turn as not found. Other models get a hint
+   * in the answer step. E2B ignores the hint: 19 of 30 unanswerable gold
+   * questions were answered against 26 for the pipeline (spec 11.10.12 P3).
+   */
+  readonly weakExit: boolean;
   /** The item ledger is on. Only a cloud model writes and reads it. */
   readonly ledger: boolean;
 }
@@ -60,6 +66,7 @@ export function loopProfile(model: {
       cls: "cloud",
       first: "auto",
       stepCap: 10,
+      weakExit: false,
       ledger: true,
       ...LARGE,
     };
@@ -69,6 +76,7 @@ export function loopProfile(model: {
       cls: "e2b",
       first: "list_meetings",
       stepCap: 3,
+      weakExit: true,
       ledger: false,
       ...SMALL,
     };
@@ -78,6 +86,7 @@ export function loopProfile(model: {
       cls: "e4b",
       first: "search",
       stepCap: 5,
+      weakExit: false,
       ledger: false,
       ...SMALL,
     };
@@ -87,6 +96,7 @@ export function loopProfile(model: {
       cls: "qwen-flash",
       first: "list_meetings",
       stepCap: 10,
+      weakExit: false,
       ledger: false,
       ...LARGE,
     };
@@ -97,6 +107,7 @@ export function loopProfile(model: {
       cls: "local-large",
       first: "search",
       stepCap: 10,
+      weakExit: false,
       ledger: false,
       ...LARGE,
     };
@@ -106,6 +117,7 @@ export function loopProfile(model: {
     cls: "local",
     first: "search",
     stepCap: 5,
+    weakExit: false,
     ledger: false,
     ...SMALL,
   };
