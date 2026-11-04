@@ -634,6 +634,11 @@ export function stripCiteMarkers(text: string): string {
 export function tidyCites(
   sentences: { text: string; cites: string[] }[],
   sources: SourceMap,
+  /**
+   * `bySegment`: a transcript source scores by its best segment, not by the
+   * whole text. A long hit then does not win by size alone (the loop engine).
+   */
+  opts: { bySegment?: boolean } = {},
 ): void {
   for (const sentence of sentences) {
     const words = new Set(foldWords(sentence.text));
@@ -656,11 +661,18 @@ export function tidyCites(
     for (const label of candidates) {
       const src = sources.get(label);
       if (!src) continue;
-      const have = new Set(foldWords(src.text));
-      let hit = 0;
-      for (const w of words) if (have.has(w)) hit++;
       const spoken = src.kind === "transcript" || src.kind === "window";
-      const score = hit / words.size + (spoken ? 0.15 : 0);
+      const segs = opts.bySegment ? sources.segments.get(label) : undefined;
+      const texts =
+        segs && segs.length > 1 ? segs.map((g) => g.text) : [src.text];
+      let share = 0;
+      for (const text of texts) {
+        const have = new Set(foldWords(text));
+        let hit = 0;
+        for (const w of words) if (have.has(w)) hit++;
+        share = Math.max(share, hit / words.size);
+      }
+      const score = share + (spoken ? 0.15 : 0);
       if (score > bestScore) {
         best = label;
         bestScore = score;

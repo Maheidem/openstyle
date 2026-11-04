@@ -246,6 +246,9 @@ function baseTags(env: Env, arm: string): Record<string, string> {
       ? { first_call: process.env.CHAT_EVAL_LOOP_FIRST }
       : {}),
     ...(process.env.CHAT_EVAL_LEVEL ? { scorer: "v3" } : {}),
+    ...(process.env.CHAT_EVAL_LOOP_OFF
+      ? { loop_off: process.env.CHAT_EVAL_LOOP_OFF }
+      : {}),
   };
 }
 
@@ -905,6 +908,14 @@ async function partE2e(env: Env, M: Record<string, number>): Promise<PartOut> {
         now: corpus.todayMs,
         allowProposals: true,
         ...(floor !== undefined ? { scoreFloor: floor } : {}),
+        // P3.1: switch a loop fix off to measure it (CHAT_EVAL_LOOP_OFF=listBlocks,...).
+        ...(process.env.CHAT_EVAL_LOOP_OFF
+          ? {
+              loop: {
+                off: process.env.CHAT_EVAL_LOOP_OFF.split(",") as never,
+              },
+            }
+          : {}),
       });
       llm.finish("succeeded");
       const wall = performance.now() - t0;

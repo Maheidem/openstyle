@@ -1760,7 +1760,11 @@ export class Turn {
           "Your answer repeats an earlier answer, but this question is new. Answer only the new question. If no source shows it, return an empty sentences list.";
         return { kind: "retry" };
       }
-      tidyCites(check.sentences, sources);
+      tidyCites(check.sentences, sources, {
+        bySegment:
+          this.input.settings.engine === "loop" &&
+          !this.input.loop?.off?.includes("segmentCites"),
+      });
       refineCiteTimes(check.sentences, sources);
       try {
         await pickCiteTimes(

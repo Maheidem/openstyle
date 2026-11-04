@@ -40,6 +40,8 @@ export interface LoopTools {
   readonly shown: Set<string>;
   /** Meeting ids of the scope, oldest first. */
   readonly ids: readonly string[];
+  /** Labels of the list of meetings. */
+  readonly navLabels: ReadonlySet<string>;
   /** The speakers of a transcript source, as ` speakers: A, B`, or "". */
   speakersOf(s: Source): string;
 }
@@ -48,6 +50,7 @@ export function createLoopTools(
   t: Turn,
   profile: LoopProfile,
   question: string,
+  noLabelledHits = false,
 ): LoopTools {
   const { db } = t.input;
   const resultChars = profile.resultChars;
@@ -77,6 +80,8 @@ export function createLoopTools(
 
   // ---- Source rendering. ----
   const shown = new Set<string>();
+  /** Labels of the list of meetings: a map of the project, not evidence. */
+  const navLabels = new Set<string>();
   const speakersOf = (s: Source): string => {
     if (s.kind !== "transcript" && s.kind !== "window") return "";
     const nameOf = speakerResolver(db, s.meetingId);
@@ -106,6 +111,36 @@ export function createLoopTools(
     const m = labelOf.get(s.meetingId) ?? "";
     const at = s.startMs === null ? "" : ` @${clock(s.startMs)}`;
     return `[${s.label}] ${m} ${day(s.startedAt)} "${s.title ?? "Untitled"}"${at}${speakersOf(s)}`;
+  };
+  /**
+   * A transcript hit shows who said each line: "Name: text". The tool result
+   * and the answer step then both see the speaker of each line. The cite chip
+   * keeps the plain text.
+   */
+  const labelHit = (s: Source): void => {
+    if (noLabelledHits || s.citeText !== undefined) return;
+    if (s.kind !== "transcript" && s.kind !== "window") return;
+    const segs = t.sources.segments.get(s.label);
+    if (!segs || segs.length === 0) return;
+    const nameOf = speakerResolver(db, s.meetingId);
+    const who = db.prepare(
+      "SELECT speaker_label, source FROM meeting_segments WHERE meeting_id = ? AND start_ms = ? AND status = 'ok' LIMIT 1",
+    );
+    const lines = segs.map((g) => {
+      const r = who.get(s.meetingId, g.startMs) as
+        | { speaker_label: string | null; source: string }
+        | undefined;
+      const name = r
+        ? r.speaker_label
+          ? nameOf(r.speaker_label)
+          : r.source === "mic"
+            ? "Me"
+            : "Them"
+        : "";
+      return name ? `${name}: ${g.text}` : g.text;
+    });
+    s.citeText = s.text;
+    s.text = lines.join("\n");
   };
   /** Joins blocks until `limit` characters. A block that does not fit is removed from the map. */
   const fit = (
@@ -163,7 +198,7 @@ export function createLoopTools(
   };
 
   // ---- list_meetings ----
-  const listMeetings = (a: Args): string => {
+  const listMeetings = async (a: Args): Promise<string> => {
     const range = isoToRange(iso(a.date_from), iso(a.date_to));
     if ((a.date_from || a.date_to) && range === null) return BAD_DATE;
     const rows = ids
@@ -203,6 +238,7 @@ export function createLoopTools(
         text: `${m.title ?? "Untitled"} (${day(m.at)})${gist ? ` ${gist}` : ""}`,
       });
       labels.push(s.label);
+      navLabels.add(s.label);
       gists.set(s.label, gist);
     }
     t.toolCalls.push({ tool: "list_meetings", args: a, rows: rows.length });
@@ -214,6 +250,12 @@ export function createLoopTools(
       resultChars,
       "narrow the date range",
     );
+    // The list block of the pipeline, for the case that the meetings are the
+    // answer (run.ts decides). It adds no source that the model saw.
+    await call("list_meetings", {
+      ...(iso(a.date_from) ? { date_from: iso(a.date_from) } : {}),
+      ...(iso(a.date_to) ? { date_to: iso(a.date_to) } : {}),
+    });
     return `${rows.length} meetings, oldest first.\n${body}`;
   };
 
@@ -244,6 +286,10 @@ export function createLoopTools(
       return "Search is not available. Try list_meetings or list_items.";
     if (r.rows === 0)
       return "No passage found. Try other words, or call list_meetings or list_items.";
+    for (const l of r.labels) {
+      const src = t.sources.get(l);
+      if (src) labelHit(src);
+    }
     const body = fit(
       r.labels,
       (s) => `${head(s)}\n${s.text}`,
@@ -422,6 +468,9 @@ export function createLoopTools(
         status,
       );
     }
+    // An owner or a status belongs to action items. Decisions and questions have neither.
+    const kindOf: ItemKind | null =
+      kind ?? (owner || a.status !== undefined ? "action" : null);
     const wantMeeting = m.ids.length === 1 ? (m.ids[0] ?? null) : null;
     const common = {
       ...(from ? { date_from: from } : {}),
@@ -455,18 +504,18 @@ export function createLoopTools(
         `${title} (${r.rows} in total):\n${fit(labels, (s) => `[${s.label}] ${labelOf.get(s.meetingId) ?? ""} ${day(s.startedAt)}: ${s.text}`, resultChars / 2, "use limit or meeting_ids")}`,
       );
     };
-    if (!kind || kind === "action")
+    if (!kindOf || kindOf === "action")
       await add("Action items", "list_action_items", {
         status,
         ...(owner ? { person_id: owner } : {}),
         ...common,
       });
-    if (!kind || kind === "decision")
+    if (!kindOf || kindOf === "decision")
       await add("Decisions", "list_decisions_questions", {
         kind: "decision",
         ...common,
       });
-    if (!kind || kind === "question")
+    if (!kindOf || kindOf === "question")
       await add("Open questions", "list_decisions_questions", {
         kind: "open_question",
         ...common,
@@ -477,6 +526,7 @@ export function createLoopTools(
   return {
     ids,
     shown,
+    navLabels,
     speakersOf,
     async execute(name, args) {
       switch (name) {

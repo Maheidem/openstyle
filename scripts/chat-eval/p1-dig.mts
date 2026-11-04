@@ -685,6 +685,7 @@ export async function runDig(env: DigEnv, q: DigQ): Promise<DigRow[]> {
               ...turnInput,
               ...(process.env.CHAT_EVAL_LOOP_FIRST ||
               process.env.CHAT_EVAL_LOOP_HIT ||
+              process.env.CHAT_EVAL_LOOP_OFF ||
               process.env.CHAT_EVAL_LOOP_LEDGER === "off"
                 ? {
                     loop: {
@@ -694,6 +695,13 @@ export async function runDig(env: DigEnv, q: DigQ): Promise<DigRow[]> {
                               | "search"
                               | "list_meetings"
                               | "auto",
+                          }
+                        : {}),
+                      ...(process.env.CHAT_EVAL_LOOP_OFF
+                        ? {
+                            off: process.env.CHAT_EVAL_LOOP_OFF.split(
+                              ",",
+                            ) as never,
                           }
                         : {}),
                       ...(process.env.CHAT_EVAL_LOOP_HIT

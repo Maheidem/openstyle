@@ -13,7 +13,7 @@ import { assembleAnswerInput } from "../context.js";
 import { parseDates } from "../dates.js";
 import type { ChatTurnInput } from "../pipeline.js";
 import { asksForCount } from "../plan.js";
-import { answerUser } from "../prompts.js";
+import { answerUser, asksForList, asksForStatus } from "../prompts.js";
 import { SCORE_FLOOR, Turn } from "../turn.js";
 import type { TurnResult } from "../types.js";
 import { TOOL_LINE, TOOLS, type ToolName } from "./definitions.js";
@@ -53,9 +53,17 @@ Answer the new question. Earlier questions give context only.
 If the sources hold no answer, return empty lists. Never use knowledge from outside the sources.`;
 
 /** Eval only: overrides of the model profile, so a run can measure a first call. */
+export type LoopFix =
+  | "listBlocks"
+  | "segmentCites"
+  | "labelledHits"
+  | "emptyRetry";
 export type LoopOverride = Partial<
   Pick<LoopProfile, "first" | "stepCap" | "ledger" | "hitChars">
->;
+> & {
+  /** Eval only: switches a P3.1 fix off, to measure it. */
+  off?: LoopFix[];
+};
 
 export async function runLoop(
   raw: ChatTurnInput,
@@ -69,6 +77,7 @@ export async function runLoop(
     ...loopProfile({ modelId: llm.modelId, isLocal: llm.isLocal }),
     ...override,
   };
+  const off = new Set<LoopFix>(override?.off ?? []);
   const t = new Turn(input);
   const { question } = input;
   // The hit text is longer than in the pipeline (640): spec 11.10.4, `search`.
@@ -83,13 +92,19 @@ export async function runLoop(
   // synthesis path answers from the summaries of every meeting. The gold,
   // broad and thread parts of chat-eval showed the loss without it. P4 removes
   // this bridge when the loop has tools for them.
-  if (handOver && (t.write || t.synthesis || asksForCount(question)))
+  if (
+    handOver &&
+    (t.write ||
+      t.synthesis ||
+      asksForCount(question) ||
+      asksForStatus(question))
+  )
     return handOver();
   t.begin();
   // A cloud model has an item ledger. A meeting with no pass is written in the background.
   if (profile.ledger) kickLedgerBackfill();
 
-  const tools = createLoopTools(t, profile, question);
+  const tools = createLoopTools(t, profile, question, off.has("labelledHits"));
   const { ids } = tools;
   const todayIso = day(t.todayMs);
   const named = parseDates(question, t.todayMs);
@@ -109,6 +124,8 @@ When you have the facts, stop calling tools and reply with one short line.`;
     { role: "user", content: question },
   ];
   let idle = 0;
+  /** The tools of the last step that ran. */
+  let lastNames: string[] = [];
   for (let i = 0; i < profile.stepCap; i++) {
     if (t.stopReason()) break;
     t.progress({
@@ -197,6 +214,7 @@ When you have the facts, stop calling tools and reply with one short line.`;
         })),
       ],
     });
+    lastNames = calls.map((c) => c.name);
     const results: string[] = [];
     // Calls of one step run in order, so the labels do not change between runs.
     for (const c of calls)
@@ -213,6 +231,28 @@ When you have the facts, stop calling tools and reply with one short line.`;
     // Guard (not a router): two steps in a row with no new source end the loop.
     idle = t.sources.size === before ? idle + 1 : 0;
     if (idle >= 2) break;
+  }
+
+  // ---- List answer (P3.1). ----
+  // When the last step of the model asked for the lists of items, the lists
+  // are the answer, in the blocks that the pipeline writes (grouped lists with
+  // "Show all"). The model chose the list; code does not read the question.
+  if (
+    !off.has("listBlocks") &&
+    // The model chose the lists, and the question asks for a list. The pipeline
+    // detector only picks the answer form here. Retrieval stays with the model.
+    asksForList(question) &&
+    lastNames.length > 0 &&
+    lastNames.every((n) => n === "list_items" || n === "list_meetings") &&
+    t.results.some((r) => r.blocks.some((b) => b.kind === "list"))
+  ) {
+    // The lists of items answer. The list of meetings is the map to them.
+    if (lastNames.includes("list_items")) {
+      for (let i = t.results.length - 1; i >= 0; i--)
+        if (t.results[i]?.tool === "list_meetings") t.results.splice(i, 1);
+    }
+    t.step("route", "loop:list_blocks", Date.now(), 0, null);
+    return t.resolve(t.researchBlocks());
   }
 
   // ---- Weak evidence (spec 11.10.10, risk T8). ----
@@ -259,13 +299,20 @@ When you have the facts, stop calling tools and reply with one short line.`;
       .filter((s) => !tools.shown.has(s.label))
       .map((s) => s.label),
   );
+  // The list of meetings is a map, not evidence: when a passage, a summary or
+  // an item gave a source, the map stays out of the cites.
+  if (
+    [...tools.shown].some((l) => !tools.navLabels.has(l)) &&
+    tools.navLabels.size > 0
+  )
+    t.sources.remove([...tools.navLabels]);
   const ranked = t.sources
     .all()
     .sort((a, b) => Number(a.label.slice(1)) - Number(b.label.slice(1)));
   if (ranked.length === 0) return t.notFound("no_sources");
   // The answer step sees who spoke. The cite chip keeps the real text.
   for (const s of ranked) {
-    const who = tools.speakersOf(s).trim();
+    const who = s.citeText === undefined ? tools.speakersOf(s).trim() : "";
     if (who) {
       s.citeText = s.citeText ?? s.text;
       s.text = `(${who}) ${s.text}`;
@@ -345,6 +392,13 @@ When you have the facts, stop calling tools and reply with one short line.`;
       throw e;
     }
     parsed = parsed.filter((x) => x.text.trim() !== "");
+    // An empty answer with good evidence is one more try. Some models answer
+    // with empty lists when a source states the fact only in other words.
+    if (parsed.length === 0 && !weak && attempt < 2 && !off.has("emptyRetry")) {
+      run.repair =
+        "The sources hold facts about this question. Answer from them. Return empty lists only when no source mentions the topic.";
+      continue;
+    }
     if (parsed.length === 0) return t.notFound("no_sources");
     const c = await t.checkAttempt(job, run, parsed);
     if (c.kind === "exit") return t.resolve(c.exit);
