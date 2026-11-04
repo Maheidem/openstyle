@@ -99,7 +99,9 @@ export async function runLoop(
     (t.write ||
       t.synthesis ||
       asksForCount(question) ||
-      asksForStatus(question))
+      asksForStatus(question) ||
+      // "What was decided?", "What are the next steps?" in one meeting: the summary answers it.
+      t.summaryKind !== null)
   )
     return handOver();
   t.begin();
