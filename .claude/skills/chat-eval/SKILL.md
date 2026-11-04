@@ -203,6 +203,7 @@ The product code path `apps/server/src/lib/chat/loop/` (spec 11.10, PR 416). `CH
 
 - The first call, the step cap and the result size come from the model profile in code (`loop/profile.ts`). The eval can override: `CHAT_EVAL_LOOP_FIRST=search|list_meetings|auto` (tag `first_call`) and `CHAT_EVAL_LOOP_LEDGER=off`.
 - The item ledger exists only for a cloud model. The dig part builds it with `backfillLedger` (the product writer, the model under test) before the questions, and logs `ledger_*` metrics.
+- Code-owned cites (2026-11-04, spec 11.10.14). The answer step of the loop writes plain sentences with no cite field. `loop/attribute.ts` gives each sentence the block of the turn that shows it (reranker score of the sentence against each block; word share when the reranker is absent). `CHAT_EVAL_LOOP_CITE=min:0.5,max:1,mix:0.5,spoken:2` changes the options (tag `cite`). `CHAT_EVAL_LOOP_OFF` also takes `argRetry`, `listGate` and `tidy`, to measure those P3.2 fixes. Read `cite.precision_start`, `cite.recall_start`, `cite.shown` and `cite.invalid` of the `e2e` part. The trace step `cite_check:attribute` holds the best score of each sentence.
 - Per-run wrappers live in the session scratchpad, not in the repo. Keys come from a read-only copy of the app DB, in the environment only.
 
 ### The dig ladder (cloud model, `CHAT_EVAL_LEVEL`, 2026-11-03)

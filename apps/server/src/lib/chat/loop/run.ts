@@ -135,6 +135,26 @@ When you have the facts, stop calling tools and reply with one short line.`;
     ...hist,
     { role: "user", content: question },
   ];
+  // ---- Weak evidence (spec 11.10.10, risk T8). ----
+  // The score floor of the pipeline is a hint inside the loop, not an exit
+  // (an exit failed simple facts that the reranker scored low). When every
+  // search was weak and no read or item list gave a source, the answer step
+  // gets a line that says so. A cloud model needs no such line.
+  const floor = profile.cls === "cloud" ? 0 : (input.scoreFloor ?? SCORE_FLOOR);
+  function weakEvidence(): boolean {
+    const tops = t.results
+      .filter((r) => r.tool === "search_chunks" && r.topScore !== null)
+      .map((r) => r.topScore as number);
+    const other = t.toolCalls.some(
+      (c) =>
+        c.tool === "get_meeting_summary" ||
+        c.tool === "get_transcript_window" ||
+        c.tool === "list_action_items" ||
+        c.tool === "list_decisions_questions" ||
+        (c.tool === "list_items" && c.rows > 0),
+    );
+    return floor > 0 && tops.length > 0 && Math.max(...tops) < floor && !other;
+  }
   let idle = 0;
   /** The tools of the last step that ran. */
   let lastNames: string[] = [];
@@ -318,28 +338,11 @@ When you have the facts, stop calling tools and reply with one short line.`;
     t.step("route", "loop:nav_search", started, 1, null);
   }
 
-  // ---- Weak evidence (spec 11.10.10, risk T8). ----
-  // The score floor of the pipeline is a hint inside the loop, not an exit
-  // (an exit failed simple facts that the reranker scored low). When every
-  // search was weak and no read or item list gave a source, the answer step
-  // gets a line that says so. A cloud model needs no such line.
-  const floor = profile.cls === "cloud" ? 0 : (input.scoreFloor ?? SCORE_FLOOR);
+  // ---- Weak evidence (the function is defined before the loop). ----
+  const weak = weakEvidence();
   const searchTops = t.results
     .filter((r) => r.tool === "search_chunks" && r.topScore !== null)
     .map((r) => r.topScore as number);
-  const otherEvidence = t.toolCalls.some(
-    (c) =>
-      c.tool === "get_meeting_summary" ||
-      c.tool === "get_transcript_window" ||
-      c.tool === "list_action_items" ||
-      c.tool === "list_decisions_questions" ||
-      (c.tool === "list_items" && c.rows > 0),
-  );
-  const weak =
-    floor > 0 &&
-    searchTops.length > 0 &&
-    Math.max(...searchTops) < floor &&
-    !otherEvidence;
   if (weak) {
     t.step(
       "route",

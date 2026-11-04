@@ -400,8 +400,11 @@ export async function runReal(opts: {
               scope: "folder",
               steps: res.trace.steps
                 .map(
-                  (x: { stage: string; name: string }) =>
-                    `${x.stage}:${x.name}`,
+                  (x: { stage: string; name: string; note: string | null }) =>
+                    // The attribution note holds scores only. Other notes can hold words of the folder.
+                    x.name === "attribute"
+                      ? `${x.stage}:${x.name}(${x.note})`
+                      : `${x.stage}:${x.name}`,
                 )
                 .join(" > "),
             },

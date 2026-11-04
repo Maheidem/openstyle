@@ -2354,7 +2354,7 @@ What stays in code: the scope, the clarify block, the cite check, the repeat gua
 
 #### 11.10.6 The answer
 
-1. The answer call keeps the strict JSON with `sentences` and `cites` (`S/lib/chat/prompts.ts:38-67`). A small model fills a JSON field better than an inline marker. This is an assumption to test (`R-code` 4.2).
+1. (Replaced on 2026-11-04 by 11.10.14: the answer call has no cite field. Code adds the cites.) The answer call keeps the strict JSON with `sentences` and `cites` (`S/lib/chat/prompts.ts:38-67`). A small model fills a JSON field better than an inline marker. This is an assumption to test (`R-code` 4.2).
 2. The length fits the question. Today the answer holds 1 to 3 lead sentences and 2 to 6 bullets (`prompts.ts:66-67`) and `ANSWER_MAX_TOKENS` is 500 (`prompts.ts:14`). In D22 the bullet cap is a function of the result: at most the number of ledger items or hits that the loop found, up to a cap that code sets by model size. The first value is 12 bullets. With up to 3 lead sentences this stays inside the 15 text block gate of scorer v3 (PR #414, `c2f285ca`; N12 resolved).
 3. Cites are source labels from the tools (`S<n>`). Code checks them with `checkAnswer` (`cites.ts:323`): a label that no tool returned is removed (`badLabels`, `cites.ts:296`). A sentence with a fact that no source holds is removed. The cite chip shows the real quote and the cite time (`pickCiteTimes`, `cites.ts:707`). This is the check by id. It follows the advice to "check every cited id was returned by a tool in this run" (`R-sdk` 11).
 4. A ledger source carries its quote. The cite of an item shows the quote and the meeting. A mark with `quote_ok = 0` cannot be cited as a fact.
@@ -2553,6 +2553,30 @@ Nobody read the rows of the final set. Nobody tuned on it.
 The upper bounds of fixes 1 to 5 are in `d22/failure-sort.md` section 5.0. No fix is tested yet.
 
 Sources of this section that are not in the repo: the research reports `R-*` and the ladder files `F` and `V3` are session files of 2026-11-03. The MLflow runs are in experiment 100 on `http://192.168.31.154:5000`. The code lines were read on `main` at `a3f64247` (2026-11-03). The eval of 11.10.12 is merged at `25e43388`.
+
+#### 11.10.14 Code-owned citations and the P3.2 fixes (owner decision 2026-11-04)
+
+Owner decision: "Citations should come naturally with tool use like we identified in Claude code and others when they run a search tool. This way we remove the responsibility of citations from the model itself." This section replaces points 1 and 3 of 11.10.6 for `chat_engine = loop`. The pipeline engine is unchanged.
+
+**Design** (code: `S/lib/chat/loop/attribute.ts`, `S/lib/chat/loop/tidy.ts`).
+
+1. The schema `chat_loop_answer` (version 3) has `lead` and `bullets` with a `text` field and no cite field. The prompt says: write no source label and no cite marker.
+2. After the answer, `attributeCites` gives each sentence the block of this turn that shows it. A block is a search hit (one block for each transcript segment), a read span, or a list item. Only what a tool showed to the model is a candidate.
+3. The reranker (`rerankPairs`) scores the sentence against the blocks. Without the reranker the share of the words of the sentence in the block does the job (minimum 0.5). A sentence with no block above the threshold gets no cite and the cite check removes it (`checkAnswer`, unchanged: ids, scope, numbers, dates and names).
+4. The reranker score saturates. The rank breaks the ties: 0.5 times the share of the words (with "180k" read as 180000), then a spoken block (a transcript segment) before a summary or an item, so that the chip opens the meeting at the line. Each sentence has one cite. Two cites for a sentence gave cite precision 0.44 against 0.72 for one (gold, E2B).
+5. Threshold. The best scores of 286 sentences of the dig dev set and the gold set (E2B) are 284 above 0.9 and 2 below 0.2: the scores have a gap. The threshold is 0.5. The thresholds 0.2, 0.35, 0.5, 0.7 and 0.85 gave identical answers on dig dev and gold (pass 64.5%, accuracy 0.879, same cites). The value only has to sit in the gap.
+6. Native citations of a provider are not used. The AI SDK Anthropic provider (4.0.82) supports them for document parts and for its own web tools, not for the text of a tool result, and the answer is a structured call. The same code attribution runs for every model, cloud models too.
+
+**P3.2 fixes** (each general, none uses a word list).
+
+1. A tool call with no valid arguments (cut or broken JSON) gets one retry with a short hint. A meeting list of more than 20 labels means all meetings. The tool descriptions say "up to 10 labels, leave it out for all".
+2. `list_items` without a kind lists the open action items and the open questions. A decision is never open, so decisions need `kind=decision`. The result says that the lines hold no reasons and no history, and that `search` finds the why.
+3. A list of three items or more from the whole scope (not from one meeting) is a list answer in the list blocks of the pipeline (grouping, "Show all"). A list from one meeting, or fewer than three items, is a lookup and the answer step writes it. Before this, only a question with a list word got the list blocks.
+4. A sentence that the length limit cut ends at a clause, or at a word with "…", and a dangling bracket is removed. A sentence that repeats an earlier one (Jaccard 0.8 on the words) is dropped.
+
+**Dropped after measurement.** (a) A cap of 8 action items and 4 open questions with the ranking of the research list: dig dev lost 3.2 points (E2B) and 6.5 points (E4B). (b) A hint after a weak search ("call another tool"): it fixed 3 of 4 failing real-folder turns, but it raised false answers of unanswerable gold questions (E4B nf.acc 0.85 to 0.70, E2B 0.90 to 0.45). (c) An answer instruction "answer only the question that was asked": E4B dev 64.5 against 74.2 without it, E4B held-out 59.3 against 55.6, gold equal. No consistent gain on two sets, so it is out.
+
+**Measured.** The tables are in the PR 416 description (scorer v3, MLflow experiment 100, tag `engine`). Cost of the move: on E4B gold the loop answers fewer lookups and follow-ups right than before (the model no longer picks the source), and the cite precision at the start of the gold segment is 0.66 for E4B (pipeline 0.85).
 
 ## 12. Owner decisions and open questions
 

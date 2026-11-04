@@ -28,6 +28,8 @@ const clock = (ms: number) => {
 const cut = (s: string, n: number) =>
   s.length > n ? `${s.slice(0, n - 1)}…` : s;
 
+/** From this many items, a list of the whole scope is a list answer; fewer is a lookup. */
+const MIN_LIST = 3;
 /** A meeting list longer than this means all meetings. */
 const MAX_LABELS = 20;
 
@@ -48,8 +50,8 @@ export interface LoopTools {
   /** The speakers of a transcript source, as ` speakers: A, B`, or "". */
   speakersOf(s: Source): string;
   /**
-   * The last `list_items` call listed the items of the whole scope (not of one
-   * meeting). A list of the whole scope is a list question; one meeting is a lookup.
+   * The last `list_items` call listed three items or more from the whole scope
+   * (not from one meeting). That is a list question; fewer items is a lookup.
    */
   readonly wholeScopeList: () => boolean;
 }
@@ -451,6 +453,8 @@ export function createLoopTools(
   };
 
   let wholeList = false;
+  /** The items that the last non-ledger `list_items` call found. */
+  let listRows = 0;
   const listItems = async (a: Args): Promise<string> => {
     const status =
       a.status === "done" || a.status === "all" ? a.status : "open";
@@ -467,6 +471,7 @@ export function createLoopTools(
     const from = iso(a.date_from);
     if (a.date_from && !from) return BAD_DATE;
     wholeList = ids.length > 1 && m.ids.length !== 1;
+    listRows = 0;
     // The ledger exists only for a cloud model. Without one, the lists of the summaries answer.
     if (profile.ledger && ledgerCovers(db, ids)) {
       return ledgerItems(
@@ -498,6 +503,7 @@ export function createLoopTools(
         parts.push(`${title}: failed (${err})`);
         return;
       }
+      listRows += r.rows;
       const items =
         (
           r.blocks.find((b) => b.kind === "list") as
@@ -523,7 +529,9 @@ export function createLoopTools(
         ...(owner ? { person_id: owner } : {}),
         ...common,
       });
-    if (!kindOf || kindOf === "decision")
+    // The default status is open, and a decision is never open: without a
+    // kind, the lists are the open action items and the open questions.
+    if (kindOf === "decision")
       await add("Decisions", "list_decisions_questions", {
         kind: "decision",
         ...common,
@@ -547,7 +555,7 @@ export function createLoopTools(
     shown,
     navLabels,
     speakersOf,
-    wholeScopeList: () => wholeList,
+    wholeScopeList: () => wholeList && listRows >= MIN_LIST,
     async execute(name, args) {
       switch (name) {
         case "list_meetings":

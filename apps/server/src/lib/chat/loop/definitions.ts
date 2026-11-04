@@ -75,7 +75,7 @@ export const TOOLS = [
     function: {
       name: "list_items",
       description:
-        "List action items, decisions and open questions with their status and history. Use it for what is open, who owns what, what blocked it, and what changed.",
+        "List action items, decisions and open questions with their status. Use it for what is open, who owns what, and what was decided. Without kind it lists the open action items and the open questions; decisions need kind=decision.",
       parameters: {
         type: "object",
         properties: {
