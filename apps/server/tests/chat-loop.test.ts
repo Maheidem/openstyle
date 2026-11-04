@@ -46,6 +46,7 @@ interface Calls {
   tools: string[][];
   forced: (string | undefined)[];
   answerUser: string[];
+  answerSystem: string[];
 }
 
 /** A scripted model: step 1 calls `first`, the next step stops. */
@@ -55,7 +56,12 @@ function loopLlm(
   answer: unknown,
   opts: { isLocal?: boolean; modelId?: string } = {},
 ) {
-  const seen: Calls = { tools: [], forced: [], answerUser: [] };
+  const seen: Calls = {
+    tools: [],
+    forced: [],
+    answerUser: [],
+    answerSystem: [],
+  };
   let step = 0;
   let n = 0;
   const llm = {
@@ -82,9 +88,11 @@ function loopLlm(
     },
     async structured(i: {
       schema: { zod: z.ZodType<unknown> };
+      system: string;
       messages: { content: string }[];
     }) {
       n++;
+      seen.answerSystem.push(i.system);
       seen.answerUser.push(i.messages.map((m) => m.content).join("\n"));
       return {
         object: i.schema.zod.parse(answer),
@@ -256,7 +264,7 @@ describe("loop engine", () => {
     expect(r.blocks[0]).toMatchObject({ kind: "not_found" });
   });
 
-  it("a search with only weak hits ends the turn as not found, with no answer call", async () => {
+  it("a search with only weak hits tells the answer step, which may still answer", async () => {
     retrieveMock.mockResolvedValue({
       status: "ok",
       modelId: "x",
@@ -264,12 +272,15 @@ describe("loop engine", () => {
     });
     const { llm, seen } = loopLlm(
       "search",
-      { query: "moon base" },
-      { lead: [{ text: "The moon base opens.", cites: ["S1"] }], bullets: [] },
+      { query: "first year budget" },
+      {
+        lead: [{ text: "The first-year budget is 180000.", cites: ["S1"] }],
+        bullets: [],
+      },
     );
-    const r = await run("What about the moon base?", llm);
-    expect(r.blocks[0]).toMatchObject({ kind: "not_found" });
-    expect(seen.answerUser).toHaveLength(0);
+    const r = await run("What is the first-year budget?", llm);
+    expect(r.blocks[0]?.kind).toBe("text");
+    expect(seen.answerSystem[0]).toContain("only weak matches");
   });
 
   it("list_meetings lists every meeting with no cap", async () => {

@@ -216,11 +216,10 @@ When you have the facts, stop calling tools and reply with one short line.`;
   }
 
   // ---- Weak evidence (spec 11.10.10, risk T8). ----
-  // The score floor of the pipeline is a hint inside the loop, but it still
-  // ends a turn that has no better evidence: every search was weak, and no
-  // read or item list gave a source. The loop has no other check for a
-  // question that the meetings cannot answer.
-  // A cloud model says "no answer" in the answer step by itself, so the floor is for local models.
+  // The score floor of the pipeline is a hint inside the loop, not an exit
+  // (an exit failed simple facts that the reranker scored low). When every
+  // search was weak and no read or item list gave a source, the answer step
+  // gets a line that says so. A cloud model needs no such line.
   const floor = profile.cls === "cloud" ? 0 : (input.scoreFloor ?? SCORE_FLOOR);
   const searchTops = t.results
     .filter((r) => r.tool === "search_chunks" && r.topScore !== null)
@@ -233,12 +232,12 @@ When you have the facts, stop calling tools and reply with one short line.`;
       c.tool === "list_decisions_questions" ||
       (c.tool === "list_items" && c.rows > 0),
   );
-  if (
+  const weak =
     floor > 0 &&
     searchTops.length > 0 &&
     Math.max(...searchTops) < floor &&
-    !otherEvidence
-  ) {
+    !otherEvidence;
+  if (weak) {
     t.step(
       "route",
       "loop:weak_evidence",
@@ -246,8 +245,10 @@ When you have the facts, stop calling tools and reply with one short line.`;
       0,
       `best score ${Math.max(...searchTops).toFixed(2)}`,
     );
-    return t.notFound("no_sources");
   }
+  const answerSys = weak
+    ? `${answerSystem}\nThe search found only weak matches. Write a sentence only when a source states the answer in its own words. If no source states it, return empty lists.`
+    : answerSystem;
 
   // ---- The answer: one structured call, tools off (the worker rejects both). ----
   // Only what a tool showed to the model can be cited.
@@ -278,14 +279,14 @@ When you have the facts, stop calling tools and reply with one short line.`;
     const why = t.stopReason();
     if (why) return t.notFound(why);
     const assembled = assembleAnswerInput({
-      system: answerSystem,
+      system: answerSys,
       question,
       history: t.turns,
       sources: ranked,
       budgetTokens: run.budget,
       windowTokens: llm.contextWindow,
       maxOutputTokens: profile.answerTokens,
-      fixedTokens: estimatePromptTokens(answerSystem),
+      fixedTokens: estimatePromptTokens(answerSys),
     });
     t.sourcesDropped = assembled.droppedLabels;
     t.historyDropped = assembled.historyTurnsDropped;
@@ -297,7 +298,7 @@ When you have the facts, stop calling tools and reply with one short line.`;
         step: "chatAnswer",
         unitKey: attempt === 1 ? "answer" : `answer/retry${attempt - 1}`,
         schema: ANSWER_SCHEMA,
-        system: answerSystem,
+        system: answerSys,
         messages: [
           {
             role: "user",
