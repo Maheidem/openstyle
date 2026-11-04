@@ -197,6 +197,15 @@ No new bars: thresholds are the owner's to set (`BARS` stays as it is).
 - 2026-11-02 baseline of main `e6641d0b` (E2B / E4B): original 77.1 / 82.9%, heldout 25.9 / 29.6%, dev 22.6 / 32.3%, final 16.7 / 10.0%. The original set is overfit: #412 was tuned on it.
 - To run `main` and a branch side by side use two worktrees (`git worktree add --detach ../x <sha>`, copy `apps/electron/resources/{bin,models}`, own launcher script). Edit the branch while the other one runs. A running `pnpm chat-eval` loads the source at start: never edit `apps/server/src` while a matrix runs on that worktree.
 
+### The tool loop engine (D22, `CHAT_EVAL_ENGINE=loop`, 2026-11-03)
+
+The product code path `apps/server/src/lib/chat/loop/` (spec 11.10, PR 416). `CHAT_EVAL_ENGINE=loop` writes the setting `chat_engine=loop` into the scratch profile, so EVERY part (gold, held-out, threads, broad, clarify, p2, dig) runs the loop. The default is `pipeline` (as in the app). MLflow tag `engine`. Old arms `CHAT_EVAL_DIG_ARM=loop` and `loop-ledger` and the files `loop.mts` and `ledger.mts` are gone: the product code replaced them.
+
+- The first call, the step cap and the result size come from the model profile in code (`loop/profile.ts`). The eval can override: `CHAT_EVAL_LOOP_FIRST=search|list_meetings|auto` (tag `first_call`) and `CHAT_EVAL_LOOP_LEDGER=off`.
+- The item ledger exists only for a cloud model. The dig part builds it with `backfillLedger` (the product writer, the model under test) before the questions, and logs `ledger_*` metrics.
+- Code-owned cites (2026-11-04, spec 11.10.14). The answer step of the loop writes plain sentences with no cite field. `loop/attribute.ts` gives each sentence the block of the turn that shows it (reranker score of the sentence against each block; word share when the reranker is absent). `CHAT_EVAL_LOOP_CITE=min:0.5,max:1,mix:0.5,spoken:2` changes the options (tag `cite`). `CHAT_EVAL_LOOP_OFF` also takes `argRetry`, `listGate` and `tidy`, to measure those P3.2 fixes. Read `cite.precision_start`, `cite.recall_start`, `cite.shown` and `cite.invalid` of the `e2e` part. The trace step `cite_check:attribute` holds the best score of each sentence.
+- Per-run wrappers live in the session scratchpad, not in the repo. Keys come from a read-only copy of the app DB, in the environment only.
+
 ### The dig ladder (cloud model, `CHAT_EVAL_LEVEL`, 2026-11-03)
 
 Measures where a big model loses on the dig turns. Run on the DEV set only (`CHAT_EVAL_DIG_SET=dev`), never on `final`. Set `CHAT_EVAL_LEVEL=L0..L3` (MLflow tags `level` and `arm`).

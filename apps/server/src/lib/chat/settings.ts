@@ -20,6 +20,8 @@ export interface ChatSettings {
   clarify: boolean;
   /** The research mode for questions that need digging (spec 11.9.9, D21). On by default. */
   research: boolean;
+  /** The engine of a turn (spec 11.10, D22). `pipeline` is the default. */
+  engine: "loop" | "pipeline";
   /** The router uses native tool calls first. */
   nativeTools: boolean;
   /** The switch of the Ask tab. */
@@ -54,6 +56,10 @@ export function readChatSettings(): ChatSettings {
     searchWider: readSetting(SETTINGS_KEYS.chatSearchWider) !== "false",
     clarify: readSetting(SETTINGS_KEYS.chatClarify) !== "false",
     research: readSetting(SETTINGS_KEYS.chatResearch) !== "false",
+    engine:
+      readSetting(SETTINGS_KEYS.chatEngine) === "pipeline"
+        ? "pipeline"
+        : "loop",
     nativeTools: readSetting(SETTINGS_KEYS.chatNativeTools) !== "false",
     enabled: readSetting(SETTINGS_KEYS.meetingChatEnabled) === "true",
   };

@@ -136,6 +136,18 @@ function numberForms(t: string): string {
 }
 
 /**
+ * "180k" becomes 180000 (spec 11.10, D22 control fix). A number with a k holds
+ * the same fact as the number with its zeros. Only the loop engine uses it, so
+ * the pipeline engine keeps its rows.
+ */
+export function expandThousands(t: string): string {
+  return t.replace(
+    /(?<![\p{L}\d])(\d+(?:[.,]\d+)?) ?k(?![\p{L}\d])/giu,
+    (_m, n: string) => String(Math.round(Number(n.replace(",", ".")) * 1000)),
+  );
+}
+
+/**
  * Lower case, accents folded, dates to `d:MM-DD`, thousands separators out,
  * other punctuation to one space. `numberWords` turns "two" into "2". It is
  * on for the text of sources and off for the sentence of the answer: "um" is a
@@ -180,6 +192,7 @@ const QUOTES = /"([^"]{2,})"|“([^”]{2,})”|«([^»]{2,})»/g;
 export function extractFacts(
   sentence: string,
   knownNames: readonly string[],
+  opts?: { thousands?: boolean },
 ): FactToken[] {
   const out: FactToken[] = [];
   const seen = new Set<string>();
@@ -193,6 +206,7 @@ export function extractFacts(
 
   // A list marker at the start is not a fact.
   let s = sentence.replace(/^\s*(?:\d+[.)]|[-*•])\s+/, "");
+  if (opts?.thousands) s = expandThousands(s);
 
   // Quoted strings first. They leave the sentence.
   s = s.replace(QUOTES, (_m, a?: string, b?: string, c?: string) => {
@@ -270,10 +284,10 @@ const mmss = (ms: number) => {
 const dayOf = (ms: number) => new Date(ms).toISOString().slice(0, 10);
 
 /** What a source can support: its text, its title, its date and its time. */
-function sourceHaystack(s: Source): string {
+function sourceHaystack(s: Source, thousands = false): string {
   return normalizeText(
     [
-      s.text,
+      thousands ? expandThousands(s.text) : s.text,
       s.title ?? "",
       s.startedAt === null ? "" : dayOf(s.startedAt),
       s.startMs === null ? "" : mmss(s.startMs),
@@ -318,6 +332,8 @@ export interface CheckInput {
    * on (a broad answer, last attempt: unsupported claims go, never stay).
    */
   dropUnsupported?: boolean;
+  /** "180k" and 180000 are the same number (the loop engine). */
+  thousands?: boolean;
 }
 
 export function checkAnswer(input: CheckInput): CiteCheck {
@@ -327,7 +343,7 @@ export function checkAnswer(input: CheckInput): CiteCheck {
   const hayOf = (s: Source) => {
     let h = hay.get(s.label);
     if (h === undefined) {
-      h = sourceHaystack(s);
+      h = sourceHaystack(s, input.thousands);
       hay.set(s.label, h);
     }
     return h;
@@ -361,7 +377,9 @@ export function checkAnswer(input: CheckInput): CiteCheck {
     // 3: fact check.
     const cites = valid.map((s) => s.label);
     const mine: string[] = [];
-    for (const fact of extractFacts(sentence.text, input.knownNames)) {
+    for (const fact of extractFacts(sentence.text, input.knownNames, {
+      thousands: input.thousands,
+    })) {
       const forms = fact.alt ? [fact.norm, fact.alt] : [fact.norm];
       const held = (hay: string) => forms.some((f) => holds(hay, f));
       const supported =
@@ -419,19 +437,30 @@ export function citeFromSentences(
 }
 
 /** The note for the answer retry (spec 6.2, "remove or fix"). */
-export function failureNote(check: CiteCheck): string {
+export function failureNote(check: CiteCheck, codeCites = false): string {
   const parts: string[] = [];
   if (check.unsupportedTokens.length > 0) {
     parts.push(
       `Remove or fix: ${check.unsupportedTokens.map((t) => `"${t}"`).join(", ")}. No cited source holds them.`,
     );
   }
-  if (check.badLabels.length > 0) {
+  if (check.badLabels.length > 0 && !codeCites) {
     parts.push(
       `Do not use these labels: ${check.badLabels.join(", ")}. They are not sources of this turn.`,
     );
   }
-  if (check.sentences.length === 0) {
+  if (codeCites) {
+    // Code adds the cites. A sentence that no source supports is gone.
+    if (check.sentences.length === 0) {
+      parts.push(
+        "No source supports your sentences. Write only what a source states, in its words.",
+      );
+    } else if (check.removedSentences > 0) {
+      parts.push(
+        `${check.removedSentences} sentence(s) were removed: no source supports them. Write only what a source states.`,
+      );
+    }
+  } else if (check.sentences.length === 0) {
     parts.push("Cite at least one source label for each sentence.");
   } else if (check.removedSentences > 0) {
     parts.push(
@@ -442,7 +471,7 @@ export function failureNote(check: CiteCheck): string {
 }
 
 const WORD = /[\p{L}\p{N}]{2,}/gu;
-const foldWords = (t: string): string[] =>
+export const foldWords = (t: string): string[] =>
   (
     t
       .normalize("NFD")
@@ -616,6 +645,11 @@ export function stripCiteMarkers(text: string): string {
 export function tidyCites(
   sentences: { text: string; cites: string[] }[],
   sources: SourceMap,
+  /**
+   * `bySegment`: a transcript source scores by its best segment, not by the
+   * whole text. A long hit then does not win by size alone (the loop engine).
+   */
+  opts: { bySegment?: boolean } = {},
 ): void {
   for (const sentence of sentences) {
     const words = new Set(foldWords(sentence.text));
@@ -638,11 +672,18 @@ export function tidyCites(
     for (const label of candidates) {
       const src = sources.get(label);
       if (!src) continue;
-      const have = new Set(foldWords(src.text));
-      let hit = 0;
-      for (const w of words) if (have.has(w)) hit++;
       const spoken = src.kind === "transcript" || src.kind === "window";
-      const score = hit / words.size + (spoken ? 0.15 : 0);
+      const segs = opts.bySegment ? sources.segments.get(label) : undefined;
+      const texts =
+        segs && segs.length > 1 ? segs.map((g) => g.text) : [src.text];
+      let share = 0;
+      for (const text of texts) {
+        const have = new Set(foldWords(text));
+        let hit = 0;
+        for (const w of words) if (have.has(w)) hit++;
+        share = Math.max(share, hit / words.size);
+      }
+      const score = share + (spoken ? 0.15 : 0);
       if (score > bestScore) {
         best = label;
         bestScore = score;

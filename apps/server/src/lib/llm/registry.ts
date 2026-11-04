@@ -43,6 +43,13 @@ export interface LlmTaskContext {
    */
   onRequestBody?: (body: unknown) => void;
   /**
+   * The call sends no tools (a structured step). An own server may add tools
+   * of its own to every request (oMLX with MCP tools did, and the model called
+   * one instead of answering). The `server` entry then sends `tool_choice:
+   * "none"`.
+   */
+  noTools?: boolean;
+  /**
    * false: no prefix cache header for a `cleanup` model. The dictation polish
    * and tone stages use it, so their prompts do not replace the one cached
    * cleanup prefix in the worker (specs/dictation-pipeline.md 4.6).
@@ -369,6 +376,28 @@ function createExtraBodyFetch(
   };
 }
 
+/** Adds `tool_choice: "none"` to a JSON request body that holds no `tools`. */
+function withToolChoiceNone(
+  inner: typeof globalThis.fetch,
+): typeof globalThis.fetch {
+  return (async (input, init) => {
+    if (typeof init?.body === "string") {
+      try {
+        const body = JSON.parse(init.body) as Record<string, unknown>;
+        if (body.tools === undefined && body.tool_choice === undefined) {
+          return inner(input, {
+            ...init,
+            body: JSON.stringify({ ...body, tool_choice: "none" }),
+          });
+        }
+      } catch {
+        // Not JSON: send as it is.
+      }
+    }
+    return inner(input, init);
+  }) as typeof globalThis.fetch;
+}
+
 /** The sampling fetch of an OpenAI-style local engine, from the task context. */
 function taskSamplingFetch(
   taskContext: LlmTaskContext | undefined,
@@ -520,7 +549,9 @@ const PROVIDERS: LlmProvider[] = [
         // Always intercepted: this wrapper is what writes the trace log, and
         // it is the only point that sees the final post-merge request body.
         // With no sampling configured it forwards the body untouched.
-        fetch: taskSamplingFetch(taskContext),
+        fetch: taskContext?.noTools
+          ? withToolChoiceNone(taskSamplingFetch(taskContext))
+          : taskSamplingFetch(taskContext),
       }).chat(target.model);
     },
   },

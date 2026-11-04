@@ -5,6 +5,7 @@ import type {
   ChatScope,
 } from "@openstyle/validations";
 import type { ChatLlm } from "./llm.js";
+import { type LoopOverride, runLoop } from "./loop/run.js";
 import { runGraph } from "./research/run.js";
 import type { ChatSettings } from "./settings.js";
 import type { TurnResult } from "./types.js";
@@ -46,8 +47,12 @@ export interface ChatTurnInput {
   researchReflect?: boolean;
   /** Eval only: called with the time of each checkpoint write, in ms (bar D17). */
   onCheckpointMs?: (ms: number) => void;
+  /** Eval only: overrides of the model profile of the tool loop (spec 11.10). */
+  loop?: LoopOverride;
 }
 
 export async function runChatTurn(input: ChatTurnInput): Promise<TurnResult> {
-  return runGraph(input);
+  // The setting `chat_engine` picks the route (spec 11.10, D22). The default is the loop.
+  if (input.settings.engine === "pipeline") return runGraph(input);
+  return runLoop(input, input.loop, () => runGraph(input));
 }

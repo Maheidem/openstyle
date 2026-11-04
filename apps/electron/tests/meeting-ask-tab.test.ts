@@ -188,6 +188,7 @@ function defineScenario(): void {
       await put(b, "mlx_llm_keep_alive_minutes", "-1");
     }
     await put(b, "meeting_enhance_prompt_seen", "true");
+    await put(b, "chat_engine", "pipeline");
     seedAskMeetings(b.userDataDir);
     if (REAL) {
       // The embedding model last: the index starts and reads the seeded rows.

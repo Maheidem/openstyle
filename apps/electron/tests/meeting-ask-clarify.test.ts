@@ -97,6 +97,7 @@ test.beforeAll(async () => {
   });
   expect(model.ok, "POST /api/models/configured").toBe(true);
   await put(b, "meeting_enhance_prompt_seen", "true");
+  await put(b, "chat_engine", "pipeline");
   await put(b, "meeting_chat_enabled", "true");
   seedAskMeetings(b.userDataDir, { extra: true });
   seedClarifyExtras(b.userDataDir);

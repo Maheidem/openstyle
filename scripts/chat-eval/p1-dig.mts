@@ -37,6 +37,23 @@ import { isRepeat } from "./p1-broad.mts";
 import { checkCites } from "./p1-score.mts";
 import type { Lang, Scope } from "./types.mts";
 
+/**
+ * Eval only: how the loop attributes the cites (`CHAT_EVAL_LOOP_CITE=min:0.5,max:2,mix:0,spoken:0`).
+ * Unset: the product defaults.
+ */
+export function loopCiteFromEnv():
+  | { min?: number; max?: number; mix?: number; spoken?: number }
+  | undefined {
+  const raw = process.env.CHAT_EVAL_LOOP_CITE?.trim();
+  if (!raw) return undefined;
+  const out: Record<string, number> = {};
+  for (const part of raw.split(",")) {
+    const [k, v] = part.split(":");
+    if (k && v !== undefined && Number.isFinite(Number(v))) out[k] = Number(v);
+  }
+  return out;
+}
+
 export type DigKind =
   | "list"
   | "why"
@@ -676,16 +693,46 @@ export async function runDig(env: DigEnv, q: DigQ): Promise<DigRow[]> {
       };
       // L2 and L3: no retrieval, the whole scope is the source (dig-oracle.mts).
       const arm = process.env.CHAT_EVAL_DIG_ARM?.trim();
-      // D22 spike: the tool loop (loop.mts), with or without the item ledger.
+      // D22: the tool loop is the product engine (CHAT_EVAL_ENGINE=loop). The
+      // eval overrides only the first call and the ledger, to measure them.
       const res =
         arm === "oracle-harness" || arm === "oracle-plain"
           ? await (await import("./dig-oracle.mts")).runOracle(arm, turnInput)
-          : arm === "loop" || arm === "loop-ledger"
-            ? await (await import("./loop.mts")).runLoop(
-                (await import("./loop.mts")).loopOptsFromEnv(),
-                turnInput,
-              )
-            : await mods.pipeline.runChatTurn(turnInput);
+          : await mods.pipeline.runChatTurn({
+              ...turnInput,
+              ...(process.env.CHAT_EVAL_LOOP_FIRST ||
+              process.env.CHAT_EVAL_LOOP_HIT ||
+              process.env.CHAT_EVAL_LOOP_OFF ||
+              loopCiteFromEnv() ||
+              process.env.CHAT_EVAL_LOOP_LEDGER === "off"
+                ? {
+                    loop: {
+                      ...(process.env.CHAT_EVAL_LOOP_FIRST
+                        ? {
+                            first: process.env.CHAT_EVAL_LOOP_FIRST as
+                              | "search"
+                              | "list_meetings"
+                              | "auto",
+                          }
+                        : {}),
+                      ...(process.env.CHAT_EVAL_LOOP_OFF
+                        ? {
+                            off: process.env.CHAT_EVAL_LOOP_OFF.split(
+                              ",",
+                            ) as never,
+                          }
+                        : {}),
+                      ...(loopCiteFromEnv() ? { cite: loopCiteFromEnv() } : {}),
+                      ...(process.env.CHAT_EVAL_LOOP_HIT
+                        ? { hitChars: Number(process.env.CHAT_EVAL_LOOP_HIT) }
+                        : {}),
+                      ...(process.env.CHAT_EVAL_LOOP_LEDGER === "off"
+                        ? { ledger: false }
+                        : {}),
+                    },
+                  }
+                : {}),
+            });
       llm.finish("succeeded");
       const tokens = usageOfRun(stack.db, llm.runId);
       const usd = usdOf(tokens, env.prices ?? null);

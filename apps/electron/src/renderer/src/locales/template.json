@@ -385,7 +385,11 @@
       "hotkeyDesc": "Opens a small Ask window from any app. When it starts with the dictation keys, dictation starts only if this key does not follow within 150 ms.",
       "hotkeyConflict": "Pick a combination with a key that is not a dictation shortcut.",
       "research": "Research mode",
-      "researchDesc": "For questions that need digging, Ask searches several times in several meetings before it answers. A simple fact still gets a fast answer."
+      "researchDesc": "For questions that need digging, Ask searches several times in several meetings before it answers. A simple fact still gets a fast answer.",
+      "engine": "Answer method",
+      "engineDesc": "Tool loop lets the model pick its next step: list meetings, search, read, or list items. Classic uses a fixed router. Tool loop is the default.",
+      "engineLoop": "Tool loop",
+      "enginePipeline": "Classic"
     }
   },
   "today": {

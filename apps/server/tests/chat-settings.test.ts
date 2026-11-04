@@ -55,6 +55,7 @@ const ALL_KEYS = [
   K.chatDeadlineSeconds,
   K.chatSearchWider,
   K.chatResearch,
+  K.chatEngine,
   K.chatNativeTools,
 ];
 
@@ -72,6 +73,7 @@ describe("readChatSettings", () => {
       searchWider: true,
       clarify: true,
       research: true,
+      engine: "loop",
       nativeTools: true,
       enabled: false,
     });

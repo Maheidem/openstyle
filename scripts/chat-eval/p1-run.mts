@@ -67,7 +67,13 @@ import {
   summarizeClarify,
   summarizeMap,
 } from "./p1-clarify.mts";
-import { buildDig, type DigRow, runDig, summarizeDig } from "./p1-dig.mts";
+import {
+  buildDig,
+  type DigRow,
+  loopCiteFromEnv,
+  runDig,
+  summarizeDig,
+} from "./p1-dig.mts";
 import {
   answerFromTurn,
   barsTable,
@@ -142,6 +148,9 @@ export interface P1Result {
 
 // Any built-in catalog id (apps/server/src/lib/mlx-llm/constants.ts). E2B is the floor.
 const MODEL_ID = process.env.CHAT_EVAL_MODEL ?? "gemma-4-e2b-qat-4bit";
+/** The setting `chat_engine` of the scratch profile (D22). The default is the pipeline, as in the app. */
+const ENGINE: "loop" | "pipeline" =
+  process.env.CHAT_EVAL_ENGINE === "loop" ? "loop" : "pipeline";
 const LLM_STORED_ID = `local-mlx-llm/${MODEL_ID}`;
 // An OpenAI-compatible server (llama.cpp, oMLX, ...) for the chat LLM instead
 // of the built-in MLX worker. The app's own-server provider carries the call:
@@ -208,6 +217,17 @@ interface PartOut {
   run: RunOut;
 }
 
+type LedgerRun =
+  import("../../apps/server/src/lib/chat/loop/ledger.ts").LedgerStats & {
+    tokens: {
+      in: number;
+      out: number;
+      cached: number;
+      cacheWrite: number;
+      reasoning: number;
+    };
+  };
+
 function baseTags(env: Env, arm: string): Record<string, string> {
   return {
     "chat.stage": "p1",
@@ -226,18 +246,17 @@ function baseTags(env: Env, arm: string): Record<string, string> {
     ...(process.env.CHAT_EVAL_LEVEL
       ? { arm: process.env.CHAT_EVAL_DIG_ARM?.trim() || "harness" }
       : {}),
-    // D22 spike (2026-11-03): the loop arms name the first call and the ledger.
-    ...(process.env.CHAT_EVAL_LEVEL
-      ? {
-          scorer: "v3",
-          first_call: (process.env.CHAT_EVAL_DIG_ARM ?? "").startsWith("loop")
-            ? process.env.CHAT_EVAL_LOOP_FIRST === "list_meetings"
-              ? "list_meetings"
-              : "search"
-            : "none",
-          ledger:
-            process.env.CHAT_EVAL_DIG_ARM === "loop-ledger" ? "true" : "false",
-        }
+    // D22 (2026-11-03): the engine of the Ask turn. `loop` is the product tool loop.
+    engine: ENGINE,
+    ...(ENGINE === "loop" && process.env.CHAT_EVAL_LOOP_FIRST
+      ? { first_call: process.env.CHAT_EVAL_LOOP_FIRST }
+      : {}),
+    ...(process.env.CHAT_EVAL_LEVEL ? { scorer: "v3" } : {}),
+    ...(process.env.CHAT_EVAL_LOOP_OFF
+      ? { loop_off: process.env.CHAT_EVAL_LOOP_OFF }
+      : {}),
+    ...(process.env.CHAT_EVAL_LOOP_CITE
+      ? { cite: process.env.CHAT_EVAL_LOOP_CITE }
       : {}),
   };
 }
@@ -898,6 +917,17 @@ async function partE2e(env: Env, M: Record<string, number>): Promise<PartOut> {
         now: corpus.todayMs,
         allowProposals: true,
         ...(floor !== undefined ? { scoreFloor: floor } : {}),
+        // P3.1: switch a loop fix off to measure it (CHAT_EVAL_LOOP_OFF=listBlocks,...).
+        ...(process.env.CHAT_EVAL_LOOP_OFF || loopCiteFromEnv()
+          ? {
+              loop: {
+                ...(process.env.CHAT_EVAL_LOOP_OFF
+                  ? { off: process.env.CHAT_EVAL_LOOP_OFF.split(",") as never }
+                  : {}),
+                ...(loopCiteFromEnv() ? { cite: loopCiteFromEnv() } : {}),
+              },
+            }
+          : {}),
       });
       llm.finish("succeeded");
       const wall = performance.now() - t0;
@@ -1429,23 +1459,50 @@ async function partDig(env: Env, M: Record<string, number>): Promise<PartOut> {
     known,
     prices: await loadPrices(),
   };
-  // D22 phase 2: the item ledger is built once, at "index time", by the model
-  // under test. Its cost is logged apart from the turns.
-  let ledgerStats: import("./ledger.mts").LedgerStats | null = null;
-  if (process.env.CHAT_EVAL_DIG_ARM === "loop-ledger") {
-    const { buildLedger } = await import("./ledger.mts");
-    ledgerStats = await buildLedger(
-      stack.db,
-      (threadId) =>
-        env.mods.llm.createChatLlm(stack.db, {
-          threadId,
-          signal: AbortSignal.timeout(600_000),
-        }),
-      env.log,
+  // D22: a cloud model has the item ledger. The product writer reads every
+  // meeting once, at "index time", with the model under test. Its cost is
+  // logged apart from the turns.
+  let ledgerStats: LedgerRun | null = null;
+  if (ENGINE === "loop" && process.env.CHAT_EVAL_LOOP_LEDGER !== "off") {
+    const probe = await env.mods.llm.createChatLlm(stack.db, {
+      threadId: "ledger-probe",
+      signal: AbortSignal.timeout(60_000),
+    });
+    probe.finish("cancelled");
+    const { loopProfile } = await import(
+      "../../apps/server/src/lib/chat/loop/profile.ts"
     );
-    env.log(
-      `ledger: ${ledgerStats.meetings} meetings, ${ledgerStats.items} items, ${ledgerStats.marks} marks (${ledgerStats.quoteOk} quote ok), ${ledgerStats.failed} failed, ${Math.round(ledgerStats.ms / 1000)} s, tokens in ${ledgerStats.tokensIn} out ${ledgerStats.tokensOut}`,
-    );
+    if (
+      loopProfile({ modelId: probe.modelId, isLocal: probe.isLocal }).ledger
+    ) {
+      const { backfillLedger } = await import(
+        "../../apps/server/src/lib/chat/loop/ledger.ts"
+      );
+      const tok = { in: 0, out: 0, cached: 0, cacheWrite: 0, reasoning: 0 };
+      const st = await backfillLedger(
+        stack.db,
+        (threadId) =>
+          env.mods.llm.createChatLlm(stack.db, {
+            threadId,
+            signal: AbortSignal.timeout(600_000),
+          }),
+        {
+          log: env.log,
+          onPass: (l) => {
+            const u = usageOfRun(stack.db, l.runId);
+            tok.in += u.in;
+            tok.out += u.out;
+            tok.cached += u.cached;
+            tok.cacheWrite += u.cacheWrite;
+            tok.reasoning += u.reasoning;
+          },
+        },
+      );
+      ledgerStats = { ...st, tokens: tok };
+      env.log(
+        `ledger: ${st.meetings} meetings, ${st.items} items, ${st.marks} marks (${st.quoteOk} quote ok), ${st.failed} failed, ${Math.round(st.ms / 1000)} s, tokens in ${tok.in} out ${tok.out}`,
+      );
+    }
   }
   const rows: DigRow[] = [];
   const par = Math.min(2, Number(process.env.CHAT_EVAL_THREADS_PAR ?? 2) || 2);
@@ -1482,11 +1539,11 @@ async function partDig(env: Env, M: Record<string, number>): Promise<PartOut> {
   if (ledgerStats) {
     const usd = (await import("./cost.mts")).usdOf(
       {
-        in: ledgerStats.tokensIn,
-        out: ledgerStats.tokensOut,
-        cached: ledgerStats.tokensCached,
-        cacheWrite: ledgerStats.tokensCacheWrite,
-        reasoning: ledgerStats.tokensReasoning,
+        in: ledgerStats.tokens.in,
+        out: ledgerStats.tokens.out,
+        cached: ledgerStats.tokens.cached,
+        cacheWrite: ledgerStats.tokens.cacheWrite,
+        reasoning: ledgerStats.tokens.reasoning,
       },
       denv.prices ?? null,
     );
@@ -1498,8 +1555,8 @@ async function partDig(env: Env, M: Record<string, number>): Promise<PartOut> {
       : 0;
     m.ledger_failed = ledgerStats.failed;
     m.ledger_ms = ledgerStats.ms;
-    m.ledger_tokens_in = ledgerStats.tokensIn;
-    m.ledger_tokens_out = ledgerStats.tokensOut;
+    m.ledger_tokens_in = ledgerStats.tokens.in;
+    m.ledger_tokens_out = ledgerStats.tokens.out;
     m.ledger_usd = usd;
   }
   M["dig.tier"] = /e2b/i.test(MODEL_ID) ? 2 : 4;
@@ -2084,12 +2141,15 @@ export async function runP1(
     s("mlx-rerank/constants.ts"),
     s("mlx-llm/server.ts"),
     s("mlx-rerank/server.ts"),
+    // Not named below: the load only makes the module graph of the loop part of the run.
+    s("chat/loop/run.ts"),
   ]);
   // The scratch profile: the default LLM, the search model, the chat switches.
   const w = stack.mod.writeSetting;
   w("search_embedding_model", EMBED_MODEL_ID);
   w("meeting_chat_enabled", "true");
   w("chat_native_tools", "true");
+  if (ENGINE === "loop") w("chat_engine", "loop");
   // Research mode (D21): on as in the app; CHAT_EVAL_RESEARCH=off measures the old path.
   w(
     "chat_research",

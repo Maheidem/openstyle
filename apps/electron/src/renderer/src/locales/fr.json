@@ -335,7 +335,11 @@
       "hotkeyDesc": "Ouvre une petite fenêtre de question depuis n'importe quelle app. Si elle commence par les touches de dictée, la dictée ne démarre que si cette touche ne suit pas dans les 150 ms.",
       "hotkeyConflict": "Choisissez une combinaison avec une touche qui n'est pas un raccourci de dictée.",
       "research": "Mode recherche",
-      "researchDesc": "Pour les questions qui demandent d’enquêter, Ask cherche plusieurs fois dans plusieurs réunions avant de répondre. Un fait simple garde une réponse rapide."
+      "researchDesc": "Pour les questions qui demandent d’enquêter, Ask cherche plusieurs fois dans plusieurs réunions avant de répondre. Un fait simple garde une réponse rapide.",
+      "engine": "Méthode de réponse",
+      "engineDesc": "Avec la boucle d’outils, le modèle choisit lui-même la prochaine étape : lister les réunions, chercher, lire ou lister les points. Le mode classique utilise un routeur fixe. La boucle d’outils est le choix par défaut.",
+      "engineLoop": "Boucle d’outils",
+      "enginePipeline": "Classique"
     }
   },
   "today": {

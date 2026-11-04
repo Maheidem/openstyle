@@ -1,4 +1,5 @@
 import { createAppLogger } from "@openstyle/utils";
+import { kickLedgerBackfill } from "../../../chat/loop/ledger.js";
 import { withTransaction } from "../../../db.js";
 import type { NewLink } from "../../../llm/recorder.js";
 import { notifyMeetingChanged } from "../../../search/notify.js";
@@ -281,6 +282,9 @@ export function makeSaveNode(deps: WorkflowDeps) {
         r.wroteAny = true;
         // The summary is in the search index (spec 4.6).
         notifyMeetingChanged(meetingId);
+        // The Ask tool loop keeps an item ledger for a cloud chat model (D22).
+        // The call checks its own gates and never throws.
+        kickLedgerBackfill();
       } else {
         r.sw3 = "failed";
         r.failures.push(saveFailure(null, "SW3 failed twice"));

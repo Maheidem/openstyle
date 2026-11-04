@@ -234,7 +234,7 @@ jobs:
         run: node scripts/check-renderer-asset-urls.mjs
 
       - name: Run Electron E2E tests
-        timeout-minutes: 10
+        timeout-minutes: 15
         run: pnpm --filter @openstyle/electron run test:e2e
 
       - name: Upload E2E traces

@@ -35,6 +35,7 @@ const SETTINGS: ChatSettings = {
   searchWider: true,
   clarify: true,
   research: true,
+  engine: "pipeline",
   nativeTools: true,
   enabled: true,
 };

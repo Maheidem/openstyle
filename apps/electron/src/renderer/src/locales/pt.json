@@ -335,7 +335,11 @@
       "hotkeyDesc": "Abre uma pequena janela de Perguntar a partir de qualquer app. Se começar com as teclas de ditado, o ditado só começa se esta tecla não vier em 150 ms.",
       "hotkeyConflict": "Escolha uma combinação com uma tecla que não seja um atalho de ditado.",
       "research": "Modo de pesquisa",
-      "researchDesc": "Para perguntas que pedem investigação, o Ask busca várias vezes em várias reuniões antes de responder. Um fato simples continua com resposta rápida."
+      "researchDesc": "Para perguntas que pedem investigação, o Ask busca várias vezes em várias reuniões antes de responder. Um fato simples continua com resposta rápida.",
+      "engine": "Método de resposta",
+      "engineDesc": "No loop de ferramentas, o modelo escolhe o próximo passo: listar reuniões, buscar, ler ou listar itens. O clássico usa um roteador fixo. O loop de ferramentas é o padrão.",
+      "engineLoop": "Loop de ferramentas",
+      "enginePipeline": "Clássico"
     }
   },
   "today": {
