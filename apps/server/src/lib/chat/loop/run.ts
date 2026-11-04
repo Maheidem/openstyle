@@ -220,7 +220,8 @@ When you have the facts, stop calling tools and reply with one short line.`;
   // ends a turn that has no better evidence: every search was weak, and no
   // read or item list gave a source. The loop has no other check for a
   // question that the meetings cannot answer.
-  const floor = input.scoreFloor ?? SCORE_FLOOR;
+  // A cloud model says "no answer" in the answer step by itself, so the floor is for local models.
+  const floor = profile.cls === "cloud" ? 0 : (input.scoreFloor ?? SCORE_FLOOR);
   const searchTops = t.results
     .filter((r) => r.tool === "search_chunks" && r.topScore !== null)
     .map((r) => r.topScore as number);
