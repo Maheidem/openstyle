@@ -293,11 +293,25 @@ describe("loop engine", () => {
       },
       { modelId: "local-mlx-llm/gemma-4-e2b-qat-4bit" },
     );
-    const r = await run("Which meeting came first?", llm);
+    const r = await run(
+      "What was the opening topic of the first meeting?",
+      llm,
+    );
     expect(r.blocks[0]?.kind).toBe("text");
     expect(seen.tools[0]).toEqual(["list_meetings"]);
     expect(seen.answerUser[0]).toContain("Alpha sync");
     expect(seen.answerUser[0]).toContain("Beta sync");
+  });
+
+  it("a list question that ends on the list of meetings gives the list block of the pipeline", async () => {
+    const { llm } = loopLlm(
+      "list_meetings",
+      {},
+      { lead: [], bullets: [] },
+      { modelId: "local-mlx-llm/gemma-4-e2b-qat-4bit" },
+    );
+    const r = await run("List all the meetings.", llm);
+    expect(r.blocks[0]?.kind).toBe("list");
   });
 
   it("the pipeline engine does not enter the loop", async () => {
