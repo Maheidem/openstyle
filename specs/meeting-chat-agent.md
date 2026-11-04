@@ -2574,9 +2574,14 @@ Owner decision: "Citations should come naturally with tool use like we identifie
 3. A list of three items or more from the whole scope (not from one meeting) is a list answer in the list blocks of the pipeline (grouping, "Show all"). A list from one meeting, or fewer than three items, is a lookup and the answer step writes it. Before this, only a question with a list word got the list blocks.
 4. A sentence that the length limit cut ends at a clause, or at a word with "…", and a dangling bracket is removed. A sentence that repeats an earlier one (Jaccard 0.8 on the words) is dropped.
 
-**Dropped after measurement.** (a) A cap of 8 action items and 4 open questions with the ranking of the research list: dig dev lost 3.2 points (E2B) and 6.5 points (E4B). (b) A hint after a weak search ("call another tool"): it fixed 3 of 4 failing real-folder turns, but it raised false answers of unanswerable gold questions (E4B nf.acc 0.85 to 0.70, E2B 0.90 to 0.45). (c) An answer instruction "answer only the question that was asked": E4B dev 64.5 against 74.2 without it, E4B held-out 59.3 against 55.6, gold equal. No consistent gain on two sets, so it is out.
+**Dropped after measurement.** (a) A cap of 8 action items and 4 open questions with the ranking of the research list: dig dev lost 3.2 points (E2B) and 6.5 points (E4B). (b) A hint after a weak search ("call another tool"): it turned 3 not-found turns of the real folders into answers, but it raised false answers of unanswerable gold questions (nf.acc E4B 0.85 to 0.70, E2B 0.90 to 0.45). (c) An answer instruction "answer only the question that was asked": dig dev E4B 64.5 with it against 74.2 without it, held-out E4B 59.3 against 55.6, gold equal. No consistent gain on two sets, so it is out.
 
-**Measured.** The tables are in the PR 416 description (scorer v3, MLflow experiment 100, tag `engine`). Cost of the move: on E4B gold the loop answers fewer lookups and follow-ups right than before (the model no longer picks the source), and the cite precision at the start of the gold segment is 0.66 for E4B (pipeline 0.85).
+**Known costs and open faults** (2026-11-04 measurement, scorer v3).
+
+1. The cite precision at the start of the gold segment is lower than the pipeline: 0.69 against 0.83 on E2B, 0.64 against 0.85 on E4B. The recall is equal or higher (0.82 and 0.88). A loop answer has more sentences than a pipeline answer, so it has more cites.
+2. Gold accuracy of E4B: 0.847 for the loop against 0.937 for the pipeline (0.905 for the loop before this change). The lookups and follow-ups lose most. The model no longer commits to a source label, so a follow-up such as "and when is that due?" picks a wrong item more often. E2B gold: 0.900 against 0.884.
+3. Qwen 27B (oMLX) returns empty answer lists for 41.9% of the dev turns after this change (pass 45.2%, 74.2% before). The text of the system prompt causes it, not the schema: with the old text that names the cite field, the same 6 failing turns pass 6 of 6, with a cite-free text they pass 2 to 4 of 6. A prompt text for large local models that works without a cite field is open.
+4. The real-folder turn "who pushed and why" in folder C is still not found on E2B (weak evidence ends the turn) and short on E4B. The hint of (b) fixed it and cost the unanswerable questions.
 
 ## 12. Owner decisions and open questions
 
