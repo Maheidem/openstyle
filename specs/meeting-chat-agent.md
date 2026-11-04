@@ -2558,6 +2558,8 @@ Sources of this section that are not in the repo: the research reports `R-*` and
 
 Owner decision: "Citations should come naturally with tool use like we identified in Claude code and others when they run a search tool. This way we remove the responsibility of citations from the model itself." This section replaces points 1 and 3 of 11.10.6 for `chat_engine = loop`. The pipeline engine is unchanged.
 
+Default engine: `loop` (owner decision 2026-11-04: "Loop is on by default, merge into main."). `pipeline` stays selectable in Settings > Ask until P4.
+
 **Design** (code: `S/lib/chat/loop/attribute.ts`, `S/lib/chat/loop/tidy.ts`).
 
 1. The schema `chat_loop_answer` (version 3) has `lead` and `bullets` with a `text` field and no cite field. The prompt says: write no source label and no cite marker.

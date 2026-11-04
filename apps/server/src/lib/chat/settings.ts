@@ -57,7 +57,9 @@ export function readChatSettings(): ChatSettings {
     clarify: readSetting(SETTINGS_KEYS.chatClarify) !== "false",
     research: readSetting(SETTINGS_KEYS.chatResearch) !== "false",
     engine:
-      readSetting(SETTINGS_KEYS.chatEngine) === "loop" ? "loop" : "pipeline",
+      readSetting(SETTINGS_KEYS.chatEngine) === "pipeline"
+        ? "pipeline"
+        : "loop",
     nativeTools: readSetting(SETTINGS_KEYS.chatNativeTools) !== "false",
     enabled: readSetting(SETTINGS_KEYS.meetingChatEnabled) === "true",
   };

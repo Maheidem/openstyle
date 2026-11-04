@@ -83,9 +83,9 @@ export const SETTINGS_KEYS = {
   /** Ask page: `"false"` turns the research mode off (spec 11.9.9, D21). A missing row means on. */
   chatResearch: "chat_research",
   /**
-   * Ask page: the engine of an Ask turn (spec 11.10, D22). `"loop"` is the tool
-   * loop. A missing row or any other value means `"pipeline"`, the router and
-   * the research graph of D21.
+   * Ask page: the engine of an Ask turn (spec 11.10, D22). `"pipeline"` is the router
+   * and the research graph of D21. A missing row or any other value means
+   * `"loop"`, the tool loop (default since 2026-11-04).
    */
   chatEngine: "chat_engine",
   /**

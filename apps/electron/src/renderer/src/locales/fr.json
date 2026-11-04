@@ -337,7 +337,7 @@
       "research": "Mode recherche",
       "researchDesc": "Pour les questions qui demandent d’enquêter, Ask cherche plusieurs fois dans plusieurs réunions avant de répondre. Un fait simple garde une réponse rapide.",
       "engine": "Méthode de réponse",
-      "engineDesc": "Avec la boucle d’outils, le modèle choisit lui-même la prochaine étape : lister les réunions, chercher, lire ou lister les points. Le mode classique utilise un routeur fixe. Le classique reste le choix par défaut.",
+      "engineDesc": "Avec la boucle d’outils, le modèle choisit lui-même la prochaine étape : lister les réunions, chercher, lire ou lister les points. Le mode classique utilise un routeur fixe. La boucle d’outils est le choix par défaut.",
       "engineLoop": "Boucle d’outils",
       "enginePipeline": "Classique"
     }

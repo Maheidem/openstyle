@@ -337,7 +337,7 @@
       "research": "Modo de investigación",
       "researchDesc": "Para preguntas que piden investigar, Ask busca varias veces en varias reuniones antes de responder. Un dato simple sigue con respuesta rápida.",
       "engine": "Método de respuesta",
-      "engineDesc": "En el bucle de herramientas, el modelo elige su siguiente paso: listar reuniones, buscar, leer o listar puntos. El clásico usa un enrutador fijo. El clásico sigue siendo el predeterminado.",
+      "engineDesc": "En el bucle de herramientas, el modelo elige su siguiente paso: listar reuniones, buscar, leer o listar puntos. El clásico usa un enrutador fijo. El bucle de herramientas es el predeterminado.",
       "engineLoop": "Bucle de herramientas",
       "enginePipeline": "Clásico"
     }

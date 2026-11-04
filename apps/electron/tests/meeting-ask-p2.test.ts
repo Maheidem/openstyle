@@ -161,6 +161,7 @@ function defineFake(): void {
     });
     expect(model.ok, "POST /api/models/configured").toBe(true);
     await put(b, "meeting_enhance_prompt_seen", "true");
+    await put(b, "chat_engine", "pipeline");
     seedAskMeetings(b.userDataDir, { extra: true });
   });
 
@@ -754,6 +755,7 @@ function defineReal(): void {
     expect(model.ok, "POST /api/models/configured (local)").toBe(true);
     await put(b, "mlx_llm_keep_alive_minutes", "-1");
     await put(b, "meeting_enhance_prompt_seen", "true");
+    await put(b, "chat_engine", "pipeline");
     await put(b, "meeting_chat_enabled", "true");
     seedAskMeetings(b.userDataDir, { extra: true });
     await put(b, "search_embedding_model", "embeddinggemma-2-bf16-text");

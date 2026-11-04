@@ -337,7 +337,7 @@
       "research": "Modo de pesquisa",
       "researchDesc": "Para perguntas que pedem investigação, o Ask busca várias vezes em várias reuniões antes de responder. Um fato simples continua com resposta rápida.",
       "engine": "Método de resposta",
-      "engineDesc": "No loop de ferramentas, o modelo escolhe o próximo passo: listar reuniões, buscar, ler ou listar itens. O clássico usa um roteador fixo. O clássico continua sendo o padrão.",
+      "engineDesc": "No loop de ferramentas, o modelo escolhe o próximo passo: listar reuniões, buscar, ler ou listar itens. O clássico usa um roteador fixo. O loop de ferramentas é o padrão.",
       "engineLoop": "Loop de ferramentas",
       "enginePipeline": "Clássico"
     }

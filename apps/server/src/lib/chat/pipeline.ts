@@ -52,8 +52,7 @@ export interface ChatTurnInput {
 }
 
 export async function runChatTurn(input: ChatTurnInput): Promise<TurnResult> {
-  // The setting `chat_engine` picks the route (spec 11.10, D22). The default is the pipeline.
-  if (input.settings.engine === "loop")
-    return runLoop(input, input.loop, () => runGraph(input));
-  return runGraph(input);
+  // The setting `chat_engine` picks the route (spec 11.10, D22). The default is the loop.
+  if (input.settings.engine === "pipeline") return runGraph(input);
+  return runLoop(input, input.loop, () => runGraph(input));
 }

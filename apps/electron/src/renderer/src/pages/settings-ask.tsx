@@ -184,7 +184,7 @@ export function AskSettingsPanel({
   const [nativeTools, setNativeTools] = useState(true);
   const [clarify, setClarify] = useState(true);
   const [research, setResearch] = useState(true);
-  const [engine, setEngine] = useState<"loop" | "pipeline">("pipeline");
+  const [engine, setEngine] = useState<"loop" | "pipeline">("loop");
 
   useEffect(() => {
     if (!settings) return;
@@ -198,9 +198,9 @@ export function AskSettingsPanel({
     setNativeTools(settings[SETTINGS_KEYS.chatNativeTools] !== "false");
     setClarify(clarifyEnabled(settings[SETTINGS_KEYS.chatClarify]));
     setResearch(clarifyEnabled(settings[SETTINGS_KEYS.chatResearch]));
-    // A missing row means the classic pipeline. Only "loop" turns the tool loop on.
+    // A missing row means the tool loop. Only "pipeline" turns the classic pipeline on.
     setEngine(
-      settings[SETTINGS_KEYS.chatEngine] === "loop" ? "loop" : "pipeline",
+      settings[SETTINGS_KEYS.chatEngine] === "pipeline" ? "pipeline" : "loop",
     );
   }, [settings, applyRounds, applySourceBudget, applyK, applyDeadline]);
 
@@ -320,7 +320,7 @@ export function AskSettingsPanel({
         <Select
           value={engine}
           onValueChange={(v) => {
-            const next = v === "loop" ? "loop" : "pipeline";
+            const next = v === "pipeline" ? "pipeline" : "loop";
             setEngine(next);
             save(SETTINGS_KEYS.chatEngine, next);
           }}

@@ -73,7 +73,7 @@ describe("readChatSettings", () => {
       searchWider: true,
       clarify: true,
       research: true,
-      engine: "pipeline",
+      engine: "loop",
       nativeTools: true,
       enabled: false,
     });

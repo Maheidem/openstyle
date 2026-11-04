@@ -337,7 +337,7 @@
       "research": "Recherchemodus",
       "researchDesc": "Bei Fragen, die Nachforschung brauchen, sucht Ask mehrfach in mehreren Besprechungen, bevor es antwortet. Ein einfacher Fakt bekommt weiter eine schnelle Antwort.",
       "engine": "Antwortmethode",
-      "engineDesc": "Bei der Werkzeugschleife wählt das Modell den nächsten Schritt selbst: Besprechungen auflisten, suchen, lesen oder Punkte auflisten. Klassisch nutzt einen festen Router. Klassisch bleibt der Standard.",
+      "engineDesc": "Bei der Werkzeugschleife wählt das Modell den nächsten Schritt selbst: Besprechungen auflisten, suchen, lesen oder Punkte auflisten. Klassisch nutzt einen festen Router. Die Werkzeugschleife ist der Standard.",
       "engineLoop": "Werkzeugschleife",
       "enginePipeline": "Klassisch"
     }

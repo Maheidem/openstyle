@@ -337,7 +337,7 @@
       "research": "Modalità ricerca",
       "researchDesc": "Per le domande che richiedono approfondimento, Ask cerca più volte in più riunioni prima di rispondere. Un fatto semplice ottiene comunque una risposta rapida.",
       "engine": "Metodo di risposta",
-      "engineDesc": "Con il ciclo di strumenti il modello sceglie il passo successivo: elencare le riunioni, cercare, leggere o elencare i punti. Quello classico usa un router fisso. Il classico resta quello predefinito.",
+      "engineDesc": "Con il ciclo di strumenti il modello sceglie il passo successivo: elencare le riunioni, cercare, leggere o elencare i punti. Quello classico usa un router fisso. Il ciclo di strumenti è quello predefinito.",
       "engineLoop": "Ciclo di strumenti",
       "enginePipeline": "Classico"
     }

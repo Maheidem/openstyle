@@ -129,17 +129,17 @@ const THEMES = EVIDENCE_DIR
   ? (["Light", "Dark"] as const)
   : (["Light"] as const);
 
-test("the Ask settings page has the answer method: the pipeline by default, it writes chat_engine", async () => {
+test("the Ask settings page has the answer method: the tool loop by default, it writes chat_engine", async () => {
   test.setTimeout(60_000);
   await page.goto("app://renderer/settings#ask");
   const select = page.getByTestId("settings-ask-engine");
   await expect(select).toBeVisible({ timeout: 15_000 });
-  await expect(select).toContainText("Classic");
+  await expect(select).toContainText("Tool loop");
   expect(await settingValue(b, "chat_engine")).toBeUndefined();
   await select.click();
-  await page.getByRole("option", { name: "Tool loop" }).click();
-  await expect.poll(() => settingValue(b, "chat_engine")).toBe("loop");
-  await expect(select).toContainText("Tool loop");
+  await page.getByRole("option", { name: "Classic" }).click();
+  await expect.poll(() => settingValue(b, "chat_engine")).toBe("pipeline");
+  await expect(select).toContainText("Classic");
   await shoot(page, "loop-settings.png");
 });
 
