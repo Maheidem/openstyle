@@ -49,6 +49,7 @@ import { join, resolve } from "node:path";
 import process from "node:process";
 import { DatabaseSync } from "node:sqlite";
 import { MLX_LLM_MODELS } from "../../../apps/server/src/lib/mlx-llm/constants.ts";
+import { logRun } from "../../chat-eval/mlflow.mts";
 import { DEFAULT_GOLD_DIR, type Gold, loadGold } from "./gold.mts";
 import {
   EVAL_HOME,
@@ -117,8 +118,13 @@ function usage(msg: string): never {
 
 const catalog = new Map(MLX_LLM_MODELS.map((m) => [m.id, m]));
 const models = (arg("models") ?? "").split(",").filter(Boolean);
+// --backend omlx (LFM3 study, 2026-11-04): the owner's oMLX server on the LAN
+// (OpenAI-style, key from the env OMLX_KEY, never printed). The models are the
+// served ids; the stage inputs come from the capture of --capture-of.
+const omlx = arg("backend") === "omlx";
+const captureOf = arg("capture-of") ?? "gemma-4-e2b-qat-4bit";
 for (const m of models)
-  if (!catalog.has(m)) usage(`unknown model ${m} (built-in MLX only)`);
+  if (!omlx && !catalog.has(m)) usage(`unknown model ${m} (built-in MLX only)`);
 const meetingIds = (arg("meetings") ?? DEFAULT_MEETINGS.join(","))
   .split(",")
   .filter(Boolean)
@@ -133,13 +139,19 @@ if (!isCacheDir(hfCache))
 // llama.cpp server (owner, 2026-10-22: it counts as local; sweeps only).
 // Desktop numbers are "coarse, GGUF": only MLX-confirmed numbers count.
 const backend = arg("backend") ?? "mlx";
-if (backend !== "mlx" && backend !== "llamacpp")
-  usage("--backend must be mlx or llamacpp");
+if (backend !== "mlx" && backend !== "llamacpp" && backend !== "omlx")
+  usage("--backend must be mlx, llamacpp or omlx");
 const baseUrl = arg("base-url")?.replace(/\/$/, "");
-if (backend === "llamacpp" && !baseUrl)
-  usage("--backend llamacpp needs --base-url (for example http://<host>/v1)");
-if (baseUrl && ["8123", "4649"].includes(new URL(baseUrl).port))
-  usage("--base-url must not be the owner's model server or the app port");
+if ((backend === "llamacpp" || omlx) && !baseUrl)
+  usage(
+    "--backend llamacpp or omlx needs --base-url (for example http://<host>/v1)",
+  );
+if (baseUrl && new URL(baseUrl).port === "4649")
+  usage("--base-url must not be the app port");
+if (baseUrl && !omlx && new URL(baseUrl).port === "8123")
+  usage("--base-url must not be the owner's model server (use --backend omlx)");
+if (omlx && !process.env.OMLX_KEY)
+  usage("--backend omlx needs the env OMLX_KEY");
 /** The llama.cpp names of the built-in models (GGUF QAT quants, not the MLX qat-4bit). */
 const LLAMA_NAMES: Record<string, string> = {
   "gemma-4-e2b-qat-4bit": "gemma4-e2b",
@@ -151,7 +163,9 @@ if (backend === "llamacpp")
 const BACKEND_LABEL =
   backend === "mlx"
     ? "MLX worker (app model)"
-    : "llama.cpp desktop (coarse, GGUF)";
+    : omlx
+      ? "oMLX server (LAN, MLX)"
+      : "llama.cpp desktop (coarse, GGUF)";
 const stamp = new Date()
   .toISOString()
   .replace(/[-:]/g, "")
@@ -170,8 +184,9 @@ interface Loaded {
 /** The captures of one model, shortest meeting first (early stop reads the first two). */
 function loadMeetings(model: string): Loaded[] {
   const out = meetingIds.map((id8) => {
-    const cap = loadCapture(id8, model);
-    const db = capturePaths(id8, model).db;
+    const capModel = omlx ? captureOf : model;
+    const cap = loadCapture(id8, capModel);
+    const db = capturePaths(id8, capModel).db;
     const meeting = readMeeting(db, cap.meetingId);
     return {
       id8,
@@ -197,6 +212,23 @@ async function withWorker<T>(
   logDir: string,
   fn: (complete: Complete) => Promise<T>,
 ): Promise<{ value: T; gpuSeconds: number }> {
+  if (omlx) {
+    // The oMLX server: one job at a time on it, no local GPU lock.
+    const t0 = Date.now();
+    try {
+      const complete = workerClient(`${baseUrl}/chat/completions`, {
+        model,
+        parallel: 1,
+        timeoutMs: 900_000,
+        plain: true,
+        headers: { authorization: `Bearer ${process.env.OMLX_KEY}` },
+      });
+      return { value: await fn(complete), gpuSeconds: 0 };
+    } finally {
+      lastGpuSeconds = Math.round((Date.now() - t0) / 1000);
+      console.log(`oMLX time ${job} ${model}: ${lastGpuSeconds} s`);
+    }
+  }
   if (backend === "llamacpp") {
     // The desktop: no local GPU lock. Parallel requests = the slot count of
     // the model (llama-swap needs ?model= on /props), max 4.
@@ -926,7 +958,9 @@ async function variant(stage: StageName, outDir: string): Promise<number> {
     const loaded = loadMeetings(model);
     const base = against ? storedArmOf(against, model) : null;
     if (against && !base) throw new Error(`--against has no ${model}`);
-    const params = base?.params ?? {};
+    const params =
+      base?.params ??
+      (arg("params") ? (JSON.parse(arg("params") as string) as Params) : {});
     const { value: v } = await withWorker(
       model,
       `variant-${stage}`,
@@ -951,6 +985,47 @@ async function variant(stage: StageName, outDir: string): Promise<number> {
       v,
       base,
     });
+    // --mlflow-experiment <name> [--tag k=v,k=v]: one run per model and
+    // parameter set (numbers only), read back from the server by logRun.
+    const exp = arg("mlflow-experiment");
+    if (exp) {
+      const tags: Record<string, string> = {
+        "sweep.stage": stage,
+        "sweep.backend": backend,
+        "sweep.model": model,
+        ...Object.fromEntries(
+          (arg("tag") ?? "")
+            .split(",")
+            .filter(Boolean)
+            .map((kv) => [
+              kv.slice(0, kv.indexOf("=")),
+              kv.slice(kv.indexOf("=") + 1),
+            ]),
+        ),
+      };
+      const metrics: Record<string, number> = {
+        objective: v.arm.objective,
+        seconds: lastGpuSeconds,
+      };
+      for (const [k, x] of Object.entries(v.arm.totals))
+        if (typeof x === "number") metrics[k] = x;
+      const run = await logRun(
+        `${stage}-${model}-${arg("label") ?? "run"}`,
+        {
+          stage,
+          model,
+          backend,
+          meetings: loaded.map((l) => l.id8).join(","),
+          ...params,
+        },
+        tags,
+        metrics,
+        exp,
+      );
+      console.log(
+        `mlflow ${exp} run ${run.runId} (${run.n} metrics, read back)`,
+      );
+    }
     md.push(
       "",
       `## ${model}`,
