@@ -186,6 +186,8 @@ export interface AnswerRun {
   attempt: number;
   budget: number;
   repair: string | null;
+  /** The loop engine: the retry of an empty answer drops the rule for empty lists. */
+  forceAnswer?: boolean;
 }
 
 export type AttemptOut =

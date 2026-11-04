@@ -44,6 +44,7 @@ const ANSWER_SCHEMA = {
   }),
 };
 
+const NO_ANSWER_RULE = "If the sources hold no answer, return empty lists. ";
 const answerSystem = `You answer a question about meeting notes. Use ONLY the numbered sources.
 Write the answer in the language of the QUESTION, even when the sources use another language.
 "lead" holds 1 to 3 short sentences: the answer first.
@@ -61,6 +62,7 @@ export type LoopFix =
   | "segmentCites"
   | "labelledHits"
   | "emptyRetry"
+  | "forceAnswer"
   | "navSearch"
   | "bulletPerSource"
   | "argRetry"
@@ -408,7 +410,9 @@ When you have the facts, stop calling tools and reply with one short line.`;
     const why = t.stopReason();
     if (why) return t.notFound(why);
     const assembled = assembleAnswerInput({
-      system: answerSys,
+      system: run.forceAnswer
+        ? answerSys.replace(NO_ANSWER_RULE, "")
+        : answerSys,
       question,
       history: t.turns,
       sources: ranked,
@@ -427,7 +431,9 @@ When you have the facts, stop calling tools and reply with one short line.`;
         step: "chatAnswer",
         unitKey: attempt === 1 ? "answer" : `answer/retry${attempt - 1}`,
         schema: ANSWER_SCHEMA,
-        system: answerSys,
+        system: run.forceAnswer
+          ? answerSys.replace(NO_ANSWER_RULE, "")
+          : answerSys,
         messages: [
           {
             role: "user",
@@ -482,6 +488,8 @@ When you have the facts, stop calling tools and reply with one short line.`;
     // An empty answer with good evidence is one more try. Some models answer
     // with empty lists when a source states the fact only in other words.
     if (parsed.length === 0 && !weak && attempt < 2 && !off.has("emptyRetry")) {
+      // The retry has no permission for empty lists: Qwen 27B returned empty lists for good evidence.
+      run.forceAnswer = !off.has("forceAnswer");
       run.repair =
         "The sources hold facts about this question. Answer from them. Return empty lists only when no source mentions the topic.";
       continue;
