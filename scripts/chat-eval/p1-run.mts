@@ -67,7 +67,13 @@ import {
   summarizeClarify,
   summarizeMap,
 } from "./p1-clarify.mts";
-import { buildDig, type DigRow, runDig, summarizeDig } from "./p1-dig.mts";
+import {
+  buildDig,
+  type DigRow,
+  loopCiteFromEnv,
+  runDig,
+  summarizeDig,
+} from "./p1-dig.mts";
 import {
   answerFromTurn,
   barsTable,
@@ -248,6 +254,9 @@ function baseTags(env: Env, arm: string): Record<string, string> {
     ...(process.env.CHAT_EVAL_LEVEL ? { scorer: "v3" } : {}),
     ...(process.env.CHAT_EVAL_LOOP_OFF
       ? { loop_off: process.env.CHAT_EVAL_LOOP_OFF }
+      : {}),
+    ...(process.env.CHAT_EVAL_LOOP_CITE
+      ? { cite: process.env.CHAT_EVAL_LOOP_CITE }
       : {}),
   };
 }
@@ -909,10 +918,13 @@ async function partE2e(env: Env, M: Record<string, number>): Promise<PartOut> {
         allowProposals: true,
         ...(floor !== undefined ? { scoreFloor: floor } : {}),
         // P3.1: switch a loop fix off to measure it (CHAT_EVAL_LOOP_OFF=listBlocks,...).
-        ...(process.env.CHAT_EVAL_LOOP_OFF
+        ...(process.env.CHAT_EVAL_LOOP_OFF || loopCiteFromEnv()
           ? {
               loop: {
-                off: process.env.CHAT_EVAL_LOOP_OFF.split(",") as never,
+                ...(process.env.CHAT_EVAL_LOOP_OFF
+                  ? { off: process.env.CHAT_EVAL_LOOP_OFF.split(",") as never }
+                  : {}),
+                ...(loopCiteFromEnv() ? { cite: loopCiteFromEnv() } : {}),
               },
             }
           : {}),

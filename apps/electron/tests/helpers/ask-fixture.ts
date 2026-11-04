@@ -715,7 +715,8 @@ export class FakeAskLlm {
     }
     if (kind === "chat_loop_answer") {
       // The answer of the loop: one lead sentence, copied from the source that
-      // shares most words with the question, cited with its label.
+      // shares most words with the question. It holds no cite: code attributes
+      // the sentence to the source that shows it (D22, code-owned citations).
       const question = questionOf(user);
       const sources = parseSources(user);
       record.answered = "chat_loop_answer";
@@ -747,7 +748,7 @@ export class FakeAskLlm {
       this.text(
         res,
         JSON.stringify({
-          lead: [{ text: sentence, cites: [best.label] }],
+          lead: [{ text: sentence }],
           bullets: [],
         }),
       );

@@ -177,6 +177,8 @@ export interface AnswerJob {
   ranked: Source[];
   synth: boolean;
   focus: string | null;
+  /** Code set the cites of the sentences (the loop engine): no model cite, no word-share repair. */
+  codeCites?: boolean;
 }
 
 /** The state of the attempts of one `AnswerJob`. */
@@ -1699,7 +1701,7 @@ export class Turn {
     for (const sentence of parsed) {
       sentence.text = stripCiteMarkers(sentence.text);
     }
-    assignMissingCites(parsed, sources);
+    if (!job.codeCites) assignMissingCites(parsed, sources);
     const check = checkAnswer({
       sentences: parsed,
       sources,
@@ -1717,7 +1719,7 @@ export class Turn {
       check.ok ? "pass" : "fail",
       started5,
       check.sentences.length,
-      check.ok ? null : failureNote(check),
+      check.ok ? null : failureNote(check, job.codeCites),
     );
     if (check.ok) {
       // Facts the thread told already stay out (a follow-up asks for more).
@@ -1760,11 +1762,12 @@ export class Turn {
           "Your answer repeats an earlier answer, but this question is new. Answer only the new question. If no source shows it, return an empty sentences list.";
         return { kind: "retry" };
       }
-      tidyCites(check.sentences, sources, {
-        bySegment:
-          this.input.settings.engine === "loop" &&
-          !this.input.loop?.off?.includes("segmentCites"),
-      });
+      if (!job.codeCites)
+        tidyCites(check.sentences, sources, {
+          bySegment:
+            this.input.settings.engine === "loop" &&
+            !this.input.loop?.off?.includes("segmentCites"),
+        });
       refineCiteTimes(check.sentences, sources);
       try {
         await pickCiteTimes(
@@ -1800,7 +1803,7 @@ export class Turn {
         exit: done(this.finish(blocks, cites, answerContent(check.sentences))),
       };
     }
-    run.repair = failureNote(check);
+    run.repair = failureNote(check, job.codeCites);
     if (attempt >= 2) return { kind: "exit", exit: miss("cite_check") };
     return { kind: "retry" };
   }

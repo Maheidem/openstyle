@@ -28,6 +28,9 @@ const clock = (ms: number) => {
 const cut = (s: string, n: number) =>
   s.length > n ? `${s.slice(0, n - 1)}…` : s;
 
+/** A meeting list longer than this means all meetings. */
+const MAX_LABELS = 20;
+
 const BAD_DATE =
   "Dates must be YYYY-MM-DD, and date_from must not be after date_to.";
 
@@ -44,6 +47,11 @@ export interface LoopTools {
   readonly navLabels: ReadonlySet<string>;
   /** The speakers of a transcript source, as ` speakers: A, B`, or "". */
   speakersOf(s: Source): string;
+  /**
+   * The last `list_items` call listed the items of the whole scope (not of one
+   * meeting). A list of the whole scope is a list question; one meeting is a lookup.
+   */
+  readonly wholeScopeList: () => boolean;
 }
 
 export function createLoopTools(
@@ -70,9 +78,12 @@ export function createLoopTools(
       for (const x of xs) {
         const s = String(x).trim();
         const id = idOf.get(s.toUpperCase()) ?? (labelOf.has(s) ? s : null);
-        if (id) out.push(id);
-        else bad.push(s);
+        if (id) {
+          if (!out.includes(id)) out.push(id);
+        } else if (bad.length < 5) bad.push(s);
       }
+    // A list of many labels is a filter that names nearly every meeting: it is "all".
+    if (out.length > MAX_LABELS) return { ids: [], bad: [] };
     return { ids: out, bad };
   };
   const iso = (v: unknown): string | null =>
@@ -439,6 +450,7 @@ export function createLoopTools(
     return `${res.total} items${res.total > shownItems ? `, showing ${shownItems}` : ""}, newest first.\n${out.join("\n")}`;
   };
 
+  let wholeList = false;
   const listItems = async (a: Args): Promise<string> => {
     const status =
       a.status === "done" || a.status === "all" ? a.status : "open";
@@ -454,6 +466,7 @@ export function createLoopTools(
       return `Unknown meeting label: ${m.bad.join(", ")}. Call list_meetings for the labels.`;
     const from = iso(a.date_from);
     if (a.date_from && !from) return BAD_DATE;
+    wholeList = ids.length > 1 && m.ids.length !== 1;
     // The ledger exists only for a cloud model. Without one, the lists of the summaries answer.
     if (profile.ledger && ledgerCovers(db, ids)) {
       return ledgerItems(
@@ -520,6 +533,12 @@ export function createLoopTools(
         kind: "open_question",
         ...common,
       });
+    // The lists come from the summaries. They hold the item, its owner, its
+    // status and its meeting date, and no reason. Say so, so the model searches for the why.
+    if (parts.some((p) => p.includes("[S")))
+      parts.push(
+        "These lines hold no reasons and no history. For why an item is open, who blocked it or how it changed, call search with the words of the item.",
+      );
     return parts.join("\n");
   };
 
@@ -528,6 +547,7 @@ export function createLoopTools(
     shown,
     navLabels,
     speakersOf,
+    wholeScopeList: () => wholeList,
     async execute(name, args) {
       switch (name) {
         case "list_meetings":

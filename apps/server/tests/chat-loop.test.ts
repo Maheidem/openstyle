@@ -17,10 +17,17 @@ vi.mock("../src/lib/search/retrieve.js", () => ({
   hitText: vi.fn(() => "SUMMARY TEXT"),
 }));
 vi.mock("../src/lib/mlx-rerank/client.js", () => ({
-  // A stand-in reranker: a segment about the security review scores high.
-  rerankPairs: vi.fn(async (_q: string, docs: readonly string[]) =>
-    docs.map((d) => (/security review/i.test(d) ? 0.9 : 0.1)),
-  ),
+  // A stand-in reranker: the share of the query words that the document holds.
+  rerankPairs: vi.fn(async (q: string, docs: readonly string[]) => {
+    const words = (q.toLowerCase().match(/[a-z0-9]{4,}/g) ?? []).map((w) =>
+      w.slice(0, 5),
+    );
+    return docs.map((d) => {
+      const low = d.toLowerCase();
+      const hit = words.filter((w) => low.includes(w)).length;
+      return words.length > 0 && hit / words.length >= 0.5 ? 0.9 : 0.1;
+    });
+  }),
 }));
 const { retrieve } = await import("../src/lib/search/retrieve.js");
 const retrieveMock = vi.mocked(retrieve);
@@ -230,7 +237,7 @@ describe("loop engine", () => {
       "search",
       { query: "first year budget" },
       {
-        lead: [{ text: "The first-year budget is 180000.", cites: ["S1"] }],
+        lead: [{ text: "The first-year budget is 180000." }],
         bullets: [],
       },
       { modelId: "local-mlx-llm/gemma-4-e4b-qat-4bit" },
@@ -274,7 +281,7 @@ describe("loop engine", () => {
       "search",
       { query: "first year budget" },
       {
-        lead: [{ text: "The first-year budget is 180000.", cites: ["S1"] }],
+        lead: [{ text: "The first-year budget is 180000." }],
         bullets: [],
       },
     );
@@ -288,7 +295,7 @@ describe("loop engine", () => {
       "list_meetings",
       {},
       {
-        lead: [{ text: "The first meeting is Alpha sync.", cites: ["S1"] }],
+        lead: [{ text: "The first meeting is Alpha sync." }],
         bullets: [],
       },
       { modelId: "local-mlx-llm/gemma-4-e2b-qat-4bit" },
@@ -312,6 +319,83 @@ describe("loop engine", () => {
     );
     const r = await run("List all the meetings.", llm);
     expect(r.blocks[0]?.kind).toBe("list");
+  });
+
+  it("code adds the cites: a sentence that no source shows is removed", async () => {
+    retrieveMock.mockResolvedValue({
+      status: "ok",
+      modelId: "x",
+      hits: [hit(1, "m1", 0.95)],
+    });
+    const { llm } = loopLlm(
+      "search",
+      { query: "first year budget" },
+      {
+        lead: [
+          { text: "The first-year budget is 180000." },
+          { text: "Penguins prefer cold weather." },
+        ],
+        bullets: [],
+      },
+      { modelId: "local-mlx-llm/gemma-4-e4b-qat-4bit" },
+    );
+    const r = await run("What is the first-year budget?", llm);
+    const texts = r.blocks.filter((b) => b.kind === "text");
+    expect(texts).toHaveLength(1);
+    expect(texts[0]).toMatchObject({ cites: ["S1"] });
+    expect(r.trace.steps.some((s) => s.name === "attribute")).toBe(true);
+  });
+
+  it("a tool call with no valid arguments gets one retry with a hint", async () => {
+    retrieveMock.mockResolvedValue({
+      status: "ok",
+      modelId: "x",
+      hits: [hit(1, "m1", 0.95)],
+    });
+    const keys: string[] = [];
+    let bad = true;
+    const base = loopLlm(
+      "search",
+      { query: "first year budget" },
+      { lead: [{ text: "The first-year budget is 180000." }], bullets: [] },
+      { modelId: "local-mlx-llm/gemma-4-e4b-qat-4bit" },
+    ).llm;
+    const llm = {
+      ...base,
+      nativeCall: async (i: { unitKey: string }) => {
+        keys.push(i.unitKey);
+        if (i.unitKey === "loop/0" && bad) {
+          bad = false;
+          return {
+            kind: "none",
+            text: "",
+            calls: [{ id: "x", name: "search", args: null }],
+          } as unknown as NativeCallResult;
+        }
+        if (i.unitKey.startsWith("loop/0"))
+          return {
+            kind: "call",
+            name: "search",
+            args: { query: "first year budget" },
+            text: "",
+            calls: [
+              {
+                id: "c1",
+                name: "search",
+                args: { query: "first year budget" },
+              },
+            ],
+          } as unknown as NativeCallResult;
+        return {
+          kind: "none",
+          text: "done",
+          calls: [],
+        } as unknown as NativeCallResult;
+      },
+    } as unknown as ChatLlm;
+    const r = await run("What is the first-year budget?", llm);
+    expect(keys.slice(0, 2)).toEqual(["loop/0", "loop/0/retry"]);
+    expect(r.blocks[0]?.kind).toBe("text");
   });
 
   it("the pipeline engine does not enter the loop", async () => {

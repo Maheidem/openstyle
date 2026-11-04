@@ -167,8 +167,12 @@ for (const theme of THEMES) {
       fake.ofKind("chat_loop_answer").length,
       JSON.stringify(fake.requests.map((r) => [r.kind, r.answered])),
     ).toBeGreaterThanOrEqual(1);
+    // Code owns the cites: the schema of the answer step has no cite field.
+    const answerCall = fake.ofKind("chat_loop_answer").at(-1);
+    expect(JSON.stringify(answerCall?.body ?? {})).not.toContain('"cites"');
     const text = turn.getByTestId("meeting-ask-block-text");
     await expect(text.first()).toBeVisible();
+    // The fake answer copies a source, so the attribution finds it and a chip shows.
     expect(
       await turn.getByTestId("meeting-ask-cite").count(),
     ).toBeGreaterThanOrEqual(1);

@@ -41,7 +41,8 @@ export const TOOLS = [
           meeting_ids: {
             type: "array",
             items: { type: "string" },
-            description: "Meeting labels such as M3. Empty means all meetings.",
+            description:
+              "Up to 10 meeting labels such as M3. Leave it out for all meetings.",
           },
           date_from: { type: "string", description: "YYYY-MM-DD" },
           date_to: { type: "string", description: "YYYY-MM-DD" },
@@ -81,7 +82,12 @@ export const TOOLS = [
           status: { type: "string", enum: ["open", "done", "all"] },
           kind: { type: "string", enum: ["action", "decision", "question"] },
           owner: { type: "string" },
-          meeting_ids: { type: "array", items: { type: "string" } },
+          meeting_ids: {
+            type: "array",
+            items: { type: "string" },
+            description:
+              "Up to 10 meeting labels. Leave it out for all meetings.",
+          },
           date_from: { type: "string", description: "YYYY-MM-DD" },
           limit: { type: "integer", description: "At most 50. Default 25." },
         },

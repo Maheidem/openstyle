@@ -8,7 +8,8 @@
 import type { ModelMessage } from "ai";
 import { z } from "zod";
 import { estimatePromptTokens } from "../../llm/token-budget.js";
-import type { AnswerSentence } from "../cites.js";
+import { rerankPairs } from "../../mlx-rerank/client.js";
+import type { AnswerSentence, Ranker } from "../cites.js";
 import { assembleAnswerInput } from "../context.js";
 import { parseDates } from "../dates.js";
 import type { ChatTurnInput } from "../pipeline.js";
@@ -16,9 +17,11 @@ import { asksForCount } from "../plan.js";
 import { answerUser, asksForList, asksForStatus } from "../prompts.js";
 import { SCORE_FLOOR, Turn } from "../turn.js";
 import type { TurnResult } from "../types.js";
+import { type AttributeOptions, attributeCites } from "./attribute.js";
 import { TOOL_LINE, TOOLS, type ToolName } from "./definitions.js";
 import { kickLedgerBackfill } from "./ledger.js";
 import { type LoopProfile, loopProfile } from "./profile.js";
+import { tidySentences } from "./tidy.js";
 import { createLoopTools } from "./tools.js";
 
 const day = (ms: number) => new Date(ms).toISOString().slice(0, 10);
@@ -28,13 +31,13 @@ const cut = (s: string, n: number) =>
 /** The most bullets of an answer. Code sets it by model size (spec 11.10.6 point 2). */
 const BULLETS = 12;
 
+// The answer step writes plain sentences. Code adds the cites (attribute.ts).
 const sentence = z.object({
   text: z.string().max(300),
-  cites: z.array(z.string().max(6)).max(4),
 });
 const ANSWER_SCHEMA = {
   name: "chat_loop_answer",
-  version: 2,
+  version: 3,
   zod: z.object({
     lead: z.array(sentence).max(3),
     bullets: z.array(sentence).max(BULLETS),
@@ -46,7 +49,7 @@ Write the answer in the language of the QUESTION, even when the sources use anot
 "lead" holds 1 to 3 short sentences: the answer first.
 "bullets" holds one bullet for each separate fact, reason, item or change that the sources show. Put them in date order when the question is about change over time. Write as many bullets as the sources need, at most ${BULLETS}. Write one bullet for each source label that adds a new fact. Write no bullet when the lead answers the question.
 One bullet states one fact in at most 30 words. Name the date of the meeting when the sources give one.
-Put the labels of the sources that show the sentence or bullet in "cites", for example ["S2"]. When a sentence uses facts of more than one source, put every one of those labels in "cites". Never write a label inside the text.
+Each sentence and each bullet states what one source shows. Write no source label and no cite marker: code adds the sources after your answer.
 Copy names, numbers and dates exactly as the sources write them. Write the full name of a person when the sources have it.
 When a source shows an item with its history, say its status now and why.
 Answer the new question. Earlier questions give context only.
@@ -59,12 +62,17 @@ export type LoopFix =
   | "labelledHits"
   | "emptyRetry"
   | "navSearch"
-  | "bulletPerSource";
+  | "bulletPerSource"
+  | "argRetry"
+  | "listGate"
+  | "tidy";
 export type LoopOverride = Partial<
   Pick<LoopProfile, "first" | "stepCap" | "ledger" | "hitChars">
 > & {
   /** Eval only: switches a P3.1 fix off, to measure it. */
   off?: LoopFix[];
+  /** Eval only: how code attributes the cites (see `AttributeOptions`). */
+  cite?: AttributeOptions;
 };
 
 export async function runLoop(
@@ -152,28 +160,59 @@ When you have the facts, stop calling tools and reply with one short line.`;
         : TOOLS;
     const before = t.sources.size;
     const started = Date.now();
-    let res: Awaited<ReturnType<typeof llm.nativeCall>>;
-    try {
-      res = await llm.nativeCall({
-        system: systemFor(active.map((x) => x.function.name)),
-        // The record and the window check see the flat text of the thread.
-        messages: [
-          { role: "user", content: JSON.stringify(messages).slice(-60_000) },
+    type NativeRes = Awaited<ReturnType<typeof llm.nativeCall>>;
+    const callModel = async (
+      extra: ModelMessage[],
+      key: string,
+    ): Promise<NativeRes | null> => {
+      try {
+        return await llm.nativeCall({
+          system: systemFor(active.map((x) => x.function.name)),
+          // The record and the window check see the flat text of the thread.
+          messages: [
+            {
+              role: "user",
+              content: JSON.stringify(messages).slice(-60_000),
+            },
+          ],
+          modelMessages: [...messages, ...extra],
+          tools: active as never,
+          // The worker takes auto, required or none. One tool is active, so required forces it.
+          ...(i === 0 && forced ? { toolChoice: "required" as const } : {}),
+          maxOutputTokens: profile.stepTokens,
+          unitKey: key,
+        });
+      } catch (e) {
+        const kind = (e as { kind?: string }).kind;
+        t.step("route", `loop:${i}`, started, null, kind ?? "error");
+        if (input.signal.aborted) return null;
+        // A cut reply ends the loop; the answer step uses what was found.
+        if (kind === "length" || kind === "context_exceeded") return null;
+        throw e;
+      }
+    };
+    let res = await callModel([], `loop/${i}`);
+    if (res === null) break;
+    // A call that the model cut or wrote as broken JSON has no arguments. The
+    // model gets one more try with a short hint; code does not guess its call.
+    if (
+      !off.has("argRetry") &&
+      (res.calls ?? []).length > 0 &&
+      (res.calls ?? []).every((c) => c.args === null)
+    ) {
+      t.step("route", `loop:${i}:bad_args`, started, null, null);
+      const again = await callModel(
+        [
+          {
+            role: "user",
+            content:
+              "Your last tool call was cut or was not valid JSON. Call one tool again. Keep the arguments short. Leave meeting_ids out to use all meetings.",
+          },
         ],
-        modelMessages: messages,
-        tools: active as never,
-        // The worker takes auto, required or none. One tool is active, so required forces it.
-        ...(i === 0 && forced ? { toolChoice: "required" as const } : {}),
-        maxOutputTokens: profile.stepTokens,
-        unitKey: `loop/${i}`,
-      });
-    } catch (e) {
-      const kind = (e as { kind?: string }).kind;
-      t.step("route", `loop:${i}`, started, null, kind ?? "error");
-      if (input.signal.aborted) break;
-      // A cut reply ends the loop; the answer step uses what was found.
-      if (kind === "length" || kind === "context_exceeded") break;
-      throw e;
+        `loop/${i}/retry`,
+      );
+      if (again === null) break;
+      res = again;
     }
     const names = new Set(active.map((x) => x.function.name as string));
     let calls = (res.calls ?? []).filter(
@@ -243,9 +282,15 @@ When you have the facts, stop calling tools and reply with one short line.`;
   // "Show all"). The model chose the list; code does not read the question.
   if (
     !off.has("listBlocks") &&
-    // The model chose the lists, and the question asks for a list. The pipeline
-    // detector only picks the answer form here. Retrieval stays with the model.
-    asksForList(question) &&
+    // The model chose the lists in its last step. Retrieval stays with the
+    // model. A list of the items of the whole scope is a list answer. A list of
+    // one meeting is a lookup, and the answer step writes it. A step of meetings
+    // only is a list answer when the question asks for a list (the pipeline
+    // detector picks the form).
+    (off.has("listGate")
+      ? asksForList(question)
+      : (lastNames.includes("list_items") && tools.wholeScopeList()) ||
+        asksForList(question)) &&
     lastNames.length > 0 &&
     lastNames.every((n) => n === "list_items" || n === "list_meetings") &&
     t.results.some((r) => r.blocks.some((b) => b.kind === "list"))
@@ -265,7 +310,6 @@ When you have the facts, stop calling tools and reply with one short line.`;
   // model gives no valid first call. The model then has passages to cite.
   if (
     !off.has("navSearch") &&
-    t.toolCalls.length > 0 &&
     t.toolCalls.every((c) => c.tool === "list_meetings") &&
     !t.stopReason()
   ) {
@@ -346,7 +390,19 @@ When you have the facts, stop calling tools and reply with one short line.`;
   t.progress({ stage: "answering", count: null });
   const run = t.newRun();
   run.budget = profile.answerBudget;
-  const job = { ranked, synth: true, focus: null };
+  const job = { ranked, synth: true, focus: null, codeCites: true };
+  // The reranker scores a sentence against the blocks. When it fails once, the word share takes over.
+  let rerankDown = false;
+  const rankSentence: Ranker = async (q, texts) => {
+    if (rerankDown) return null;
+    try {
+      return await rerankPairs(q, texts, input.signal);
+    } catch (e) {
+      if (input.signal.aborted) throw e;
+      rerankDown = true;
+      return null;
+    }
+  };
   while (run.attempt < 3) {
     const attempt = ++run.attempt;
     const why = t.stopReason();
@@ -387,8 +443,12 @@ When you have the facts, stop calling tools and reply with one short line.`;
       });
       t.step("answer", `attempt ${attempt}`, started);
       parsed = [
-        ...r.object.lead.map((x) => ({ ...x })),
-        ...r.object.bullets.map((x) => ({ ...x, bullet: true })),
+        ...r.object.lead.map((x) => ({ ...x, cites: [] as string[] })),
+        ...r.object.bullets.map((x) => ({
+          ...x,
+          cites: [] as string[],
+          bullet: true,
+        })),
       ];
     } catch (e) {
       const kind = (e as { kind?: string }).kind ?? "";
@@ -403,7 +463,7 @@ When you have the facts, stop calling tools and reply with one short line.`;
       }
       // The answer broke a limit of the schema (a long sentence, too many bullets). Ask once more.
       if (kind === "schema" && attempt < 3) {
-        run.repair = `Your answer broke a limit. Write at most 3 lead sentences and at most ${BULLETS} bullets, each text under 300 characters, and at most 4 labels in each "cites".`;
+        run.repair = `Your answer broke a limit. Write at most 3 lead sentences and at most ${BULLETS} bullets, each text under 300 characters.`;
         continue;
       }
       // Some local servers answer the structured call with a tool call. Ask once more.
@@ -416,7 +476,9 @@ When you have the facts, stop calling tools and reply with one short line.`;
         return t.notFound("model_error");
       throw e;
     }
-    parsed = parsed.filter((x) => x.text.trim() !== "");
+    parsed = off.has("tidy")
+      ? parsed.filter((x) => x.text.trim() !== "")
+      : tidySentences(parsed.filter((x) => x.text.trim() !== ""));
     // An empty answer with good evidence is one more try. Some models answer
     // with empty lists when a source states the fact only in other words.
     if (parsed.length === 0 && !weak && attempt < 2 && !off.has("emptyRetry")) {
@@ -425,6 +487,30 @@ When you have the facts, stop calling tools and reply with one short line.`;
       continue;
     }
     if (parsed.length === 0) return t.notFound("no_sources");
+    // Code owns the cites: each sentence gets the blocks of this turn that show it.
+    const startedCites = Date.now();
+    try {
+      const stats = await attributeCites(
+        parsed,
+        ranked,
+        t.sources,
+        rankSentence,
+        override?.cite,
+      );
+      t.step(
+        "cite_check",
+        "attribute",
+        startedCites,
+        stats.cited,
+        `cited ${stats.cited}, uncited ${stats.uncited}, ${stats.reranked ? "reranker" : "word share"}, best ${stats.best.map((b) => b.toFixed(2)).join(" ")}`,
+      );
+    } catch (e) {
+      if (input.signal.aborted) {
+        const w = t.stopReason();
+        if (w) return t.notFound(w);
+      }
+      throw e;
+    }
     const c = await t.checkAttempt(job, run, parsed);
     if (c.kind === "exit") return t.resolve(c.exit);
   }

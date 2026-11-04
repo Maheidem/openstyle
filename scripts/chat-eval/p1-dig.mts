@@ -37,6 +37,23 @@ import { isRepeat } from "./p1-broad.mts";
 import { checkCites } from "./p1-score.mts";
 import type { Lang, Scope } from "./types.mts";
 
+/**
+ * Eval only: how the loop attributes the cites (`CHAT_EVAL_LOOP_CITE=min:0.5,max:2,mix:0,spoken:0`).
+ * Unset: the product defaults.
+ */
+export function loopCiteFromEnv():
+  | { min?: number; max?: number; mix?: number; spoken?: number }
+  | undefined {
+  const raw = process.env.CHAT_EVAL_LOOP_CITE?.trim();
+  if (!raw) return undefined;
+  const out: Record<string, number> = {};
+  for (const part of raw.split(",")) {
+    const [k, v] = part.split(":");
+    if (k && v !== undefined && Number.isFinite(Number(v))) out[k] = Number(v);
+  }
+  return out;
+}
+
 export type DigKind =
   | "list"
   | "why"
@@ -686,6 +703,7 @@ export async function runDig(env: DigEnv, q: DigQ): Promise<DigRow[]> {
               ...(process.env.CHAT_EVAL_LOOP_FIRST ||
               process.env.CHAT_EVAL_LOOP_HIT ||
               process.env.CHAT_EVAL_LOOP_OFF ||
+              loopCiteFromEnv() ||
               process.env.CHAT_EVAL_LOOP_LEDGER === "off"
                 ? {
                     loop: {
@@ -704,6 +722,7 @@ export async function runDig(env: DigEnv, q: DigQ): Promise<DigRow[]> {
                             ) as never,
                           }
                         : {}),
+                      ...(loopCiteFromEnv() ? { cite: loopCiteFromEnv() } : {}),
                       ...(process.env.CHAT_EVAL_LOOP_HIT
                         ? { hitChars: Number(process.env.CHAT_EVAL_LOOP_HIT) }
                         : {}),

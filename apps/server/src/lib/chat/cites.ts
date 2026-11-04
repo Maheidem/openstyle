@@ -437,19 +437,30 @@ export function citeFromSentences(
 }
 
 /** The note for the answer retry (spec 6.2, "remove or fix"). */
-export function failureNote(check: CiteCheck): string {
+export function failureNote(check: CiteCheck, codeCites = false): string {
   const parts: string[] = [];
   if (check.unsupportedTokens.length > 0) {
     parts.push(
       `Remove or fix: ${check.unsupportedTokens.map((t) => `"${t}"`).join(", ")}. No cited source holds them.`,
     );
   }
-  if (check.badLabels.length > 0) {
+  if (check.badLabels.length > 0 && !codeCites) {
     parts.push(
       `Do not use these labels: ${check.badLabels.join(", ")}. They are not sources of this turn.`,
     );
   }
-  if (check.sentences.length === 0) {
+  if (codeCites) {
+    // Code adds the cites. A sentence that no source supports is gone.
+    if (check.sentences.length === 0) {
+      parts.push(
+        "No source supports your sentences. Write only what a source states, in its words.",
+      );
+    } else if (check.removedSentences > 0) {
+      parts.push(
+        `${check.removedSentences} sentence(s) were removed: no source supports them. Write only what a source states.`,
+      );
+    }
+  } else if (check.sentences.length === 0) {
     parts.push("Cite at least one source label for each sentence.");
   } else if (check.removedSentences > 0) {
     parts.push(
@@ -460,7 +471,7 @@ export function failureNote(check: CiteCheck): string {
 }
 
 const WORD = /[\p{L}\p{N}]{2,}/gu;
-const foldWords = (t: string): string[] =>
+export const foldWords = (t: string): string[] =>
   (
     t
       .normalize("NFD")
