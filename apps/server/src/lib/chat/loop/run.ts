@@ -57,7 +57,8 @@ export type LoopFix =
   | "listBlocks"
   | "segmentCites"
   | "labelledHits"
-  | "emptyRetry";
+  | "emptyRetry"
+  | "navSearch";
 export type LoopOverride = Partial<
   Pick<LoopProfile, "first" | "stepCap" | "ledger" | "hitChars">
 > & {
@@ -253,6 +254,21 @@ When you have the facts, stop calling tools and reply with one short line.`;
     }
     t.step("route", "loop:list_blocks", Date.now(), 0, null);
     return t.resolve(t.researchBlocks());
+  }
+
+  // ---- A map is not evidence (P3.1). ----
+  // The model asked for the list of meetings and stopped. The titles and gists
+  // are a map, so code makes the search with the question, as it does when the
+  // model gives no valid first call. The model then has passages to cite.
+  if (
+    !off.has("navSearch") &&
+    t.toolCalls.length > 0 &&
+    t.toolCalls.every((c) => c.tool === "list_meetings") &&
+    !t.stopReason()
+  ) {
+    const started = Date.now();
+    await tools.execute("search", { query: question });
+    t.step("route", "loop:nav_search", started, 1, null);
   }
 
   // ---- Weak evidence (spec 11.10.10, risk T8). ----
