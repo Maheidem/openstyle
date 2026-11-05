@@ -1,5 +1,9 @@
 # Changelog
 
+## 3.0.0
+
+- No documented changes.
+
 ## 3.0.0-alpha.2
 
 ### New Features ✨
