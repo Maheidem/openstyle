@@ -8,8 +8,16 @@ import { createRequire, registerHooks } from "node:module";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 
-const repoRoot = join(dirname(fileURLToPath(import.meta.url)), "..", "..", "..", "..");
-const ts = createRequire(join(repoRoot, "apps", "server", "package.json"))("typescript");
+const repoRoot = join(
+  dirname(fileURLToPath(import.meta.url)),
+  "..",
+  "..",
+  "..",
+  "..",
+);
+const ts = createRequire(join(repoRoot, "apps", "server", "package.json"))(
+  "typescript",
+);
 
 registerHooks({
   resolve(specifier, context, next) {

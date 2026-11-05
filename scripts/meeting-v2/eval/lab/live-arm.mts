@@ -90,12 +90,16 @@ const loopUrl = new URL(
 );
 const { defaultLiveDeps, startLive, stopLive } = await import(loopUrl.href);
 const { planTail, slicePcm } = await import(
-  new URL("../../../../apps/server/src/lib/meetings/live/tail.ts", import.meta.url)
-    .href
+  new URL(
+    "../../../../apps/server/src/lib/meetings/live/tail.ts",
+    import.meta.url,
+  ).href
 );
 const { saveLiveTranscript } = await import(
-  new URL("../../../../apps/server/src/lib/meetings/live/finish.ts", import.meta.url)
-    .href
+  new URL(
+    "../../../../apps/server/src/lib/meetings/live/finish.ts",
+    import.meta.url,
+  ).href
 );
 const { getDb } = await import(
   new URL("../../../../apps/server/src/lib/db.ts", import.meta.url).href
@@ -107,7 +111,10 @@ const SOURCES: Source[] = ["mic", "system"];
 const liveDir = join(scratch, "live-audio", meetingId);
 rmSync(liveDir, { recursive: true, force: true });
 mkdirSync(liveDir, { recursive: true });
-const src: Record<Source, Buffer> = { mic: Buffer.alloc(0), system: Buffer.alloc(0) };
+const src: Record<Source, Buffer> = {
+  mic: Buffer.alloc(0),
+  system: Buffer.alloc(0),
+};
 for (const s of SOURCES) {
   const p = join(meetingDir, `${s}.wav`);
   if (!existsSync(p)) {
@@ -173,7 +180,8 @@ const deps = {
   detectSpeech: async (pcm: Int16Array, source: Source) => {
     openTail[source] = undefined;
     if (SKIP_PARTIAL && !flushing) {
-      const fromMs = (appendedBytes[source] / 2 - pcm.length) / (SAMPLE_RATE / 1000);
+      const fromMs =
+        (appendedBytes[source] / 2 - pcm.length) / (SAMPLE_RATE / 1000);
       const plan = planTail(pcm, fromMs);
       if (plan.open) openTail[source] = slicePcm(pcm, fromMs, plan.open);
     }
@@ -253,7 +261,8 @@ console.log(
 );
 rmSync(liveDir, { recursive: true, force: true });
 const { stopMlxServer } = await import(
-  new URL("../../../../apps/server/src/lib/mlx-asr/server.ts", import.meta.url).href
+  new URL("../../../../apps/server/src/lib/mlx-asr/server.ts", import.meta.url)
+    .href
 );
 await stopMlxServer();
 process.exit(saved > 0 ? 0 : 1);
