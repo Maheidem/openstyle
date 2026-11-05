@@ -1,4 +1,5 @@
 import { normalizeLanguageList } from "@openstyle/validations";
+import { Button } from "@renderer/components/ui/button";
 import { formatAcceleratorKeys } from "@renderer/hooks/use-hotkey-recorder";
 import { defaultLanguage } from "@renderer/lib/languages";
 import { displayProviderName, formatBytes } from "@renderer/lib/models";
@@ -29,7 +30,7 @@ import { WelcomeStep } from "@renderer/pages/onboarding/welcome-step";
 import { useQuery } from "@tanstack/react-query";
 import { useCallback, useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
-import { useNavigate } from "react-router";
+import { useNavigate, useSearchParams } from "react-router";
 import { getDefaultHotkey } from "../../shared/hotkey-defaults";
 import type { OnboardingState } from "../../shared/onboarding";
 import { SETTINGS_KEYS } from "../../shared/settings-keys";
@@ -42,30 +43,66 @@ const DEFAULT_HOTKEY =
 // they are there, so the first screen is the right one after a quit.
 export default function OnboardingPage(): React.JSX.Element | null {
   const [saved, setSaved] = useState<OnboardingState | null>(null);
+  const [params] = useSearchParams();
+  // "Run setup again": the safe replay (specs/onboarding.md section 11).
+  const replay = params.get("replay") === "1";
   const { data: config } = useQuery(configQueryOptions());
   const { data: settings } = useQuery(settingsQueryOptions());
 
   useEffect(() => {
+    if (replay) return;
     let cancelled = false;
-    void (window.api?.getOnboardingState() ?? Promise.resolve(null)).then(
-      (state) => {
+    void (window.api?.getOnboardingState() ?? Promise.resolve(null))
+      .catch(() => null)
+      .then((state) => {
         if (!cancelled) setSaved(state ?? { step: 0, draft: {} });
-      },
-    );
+      });
     return () => {
       cancelled = true;
     };
-  }, []);
+  }, [replay]);
 
-  if (!saved || !config || !settings) return null;
+  if (!config || !settings) return null;
+  if (replay) {
+    return (
+      <OnboardingFlow
+        key="replay"
+        replay
+        saved={{
+          step: STEP.language,
+          draft: { languages: storedLanguages(settings) },
+        }}
+        meetings={config.flags?.meetings === true}
+        storedOwnerName={settings[SETTINGS_KEYS.ownerName] ?? ""}
+        storedHotkey={settings[SETTINGS_KEYS.hotkey]}
+        storedEnhance={settings[SETTINGS_KEYS.meetingEnhanceAutoRun] === "true"}
+        storedLanguages={storedLanguages(settings)}
+      />
+    );
+  }
+  if (!saved) return null;
   return (
     <OnboardingFlow
       saved={saved}
       meetings={config.flags?.meetings === true}
       storedOwnerName={settings[SETTINGS_KEYS.ownerName] ?? ""}
       storedHotkey={settings[SETTINGS_KEYS.hotkey]}
+      storedEnhance={false}
+      storedLanguages={[]}
     />
   );
+}
+
+/** The saved language list of the settings (a JSON array of codes). */
+function storedLanguages(settings: Record<string, string>): string[] {
+  try {
+    const value = JSON.parse(settings[SETTINGS_KEYS.languages] ?? "[]");
+    return Array.isArray(value)
+      ? value.filter((c): c is string => typeof c === "string")
+      : [];
+  } catch {
+    return [];
+  }
 }
 
 function OnboardingFlow({
@@ -73,11 +110,20 @@ function OnboardingFlow({
   meetings,
   storedOwnerName,
   storedHotkey,
+  storedEnhance,
+  storedLanguages: savedLanguages,
+  replay = false,
 }: {
   saved: OnboardingState;
   meetings: boolean;
   storedOwnerName: string;
   storedHotkey: string | undefined;
+  /** Setup again: the saved state of the auto Enhance setting. */
+  storedEnhance: boolean;
+  /** Setup again: the saved language list. */
+  storedLanguages: string[];
+  /** Setup again: change nothing until the user saves at the end. */
+  replay?: boolean;
 }): React.JSX.Element {
   const { t } = useTranslation();
   const navigate = useNavigate();
@@ -90,6 +136,7 @@ function OnboardingFlow({
     return guess === "auto" ? [] : [guess];
   });
   const [osLanguage] = useState<string | null>(() => {
+    if (replay) return null;
     const guess = defaultLanguage();
     return guess === "auto" ? null : guess;
   });
@@ -103,21 +150,29 @@ function OnboardingFlow({
   const [body, setBody] = useState("");
   const [ownerName, setOwnerName] = useState<string | null>(null);
   const [enhance, setEnhance] = useState<boolean | null>(
-    saved.draft.enhance ?? null,
+    replay ? storedEnhance : (saved.draft.enhance ?? null),
   );
   const [dictated, setDictated] = useState(false);
   const [commitError, setCommitError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
 
-  const models = useOnboardingModels(languages, saved.draft, downloadStarted);
+  const models = useOnboardingModels(
+    languages,
+    saved.draft,
+    downloadStarted,
+    replay,
+  );
   const voiceLater = models.voiceSource === "later";
-  const flow: FlowOptions = { meetings, voiceLater };
+  // Setup again does not test dictation (the hotkey would save at once).
+  const flow: FlowOptions = { meetings, voiceLater: voiceLater || replay };
 
   const [step, setStep] = useState<number>(() =>
-    resumeStep(saved.step, {
-      meetings,
-      voiceLater: saved.draft.voiceSource === "later",
-    }),
+    replay
+      ? STEP.language
+      : resumeStep(saved.step, {
+          meetings,
+          voiceLater: saved.draft.voiceSource === "later",
+        }),
   );
 
   const permissions = usePermissions(
@@ -146,9 +201,10 @@ function OnboardingFlow({
       draft?: Parameters<typeof window.api.setOnboardingState>[0]["draft"],
     ) => {
       setStep(to);
-      void window.api?.setOnboardingState({ step: to, draft });
+      // Setup again saves nothing on the way.
+      if (!replay) void window.api?.setOnboardingState({ step: to, draft });
     },
-    [],
+    [replay],
   );
 
   const draftNow = useCallback(
@@ -172,14 +228,22 @@ function OnboardingFlow({
   };
 
   const continueLanguage = (): void => {
-    // The transcribe path reads this setting for each request.
-    void putSetting(SETTINGS_KEYS.languages, JSON.stringify(languages));
+    // The transcribe path reads this setting for each request. Setup again
+    // writes it at the end.
+    if (!replay) {
+      void putSetting(SETTINGS_KEYS.languages, JSON.stringify(languages));
+    }
     go(nextStep(step, flow), { ...draftNow(), languages });
   };
 
   // ---- Model --------------------------------------------------------------
   const continueModel = async (): Promise<void> => {
     setCommitError(null);
+    if (replay) {
+      // Setup again saves and downloads at the end, when the user saves.
+      go(nextStep(step, flow));
+      return;
+    }
     const error = await models.commit();
     if (error) {
       setCommitError(error);
@@ -195,14 +259,26 @@ function OnboardingFlow({
 
   const decideLater = async (): Promise<void> => {
     // Nothing downloads and no voice model stays saved.
-    await models.clearVoiceDefault();
+    try {
+      await models.clearVoiceDefault();
+    } catch {
+      setCommitError("failed");
+      return;
+    }
     models.setVoiceSource("later");
     setDownloadStarted(false);
-    go(nextStep(step, { meetings, voiceLater: true }), {
+    const draft = {
       ...draftNow(),
-      voiceSource: "later",
+      voiceSource: "later" as const,
       downloadStarted: false,
-    });
+    };
+    // The footer also offers "Decide later" on later steps. Only the Model
+    // step moves on. Another step stays where it is.
+    if (step === STEP.model) {
+      go(nextStep(step, { meetings, voiceLater: true }), draft);
+    } else {
+      void window.api?.setOnboardingState({ step, draft });
+    }
   };
 
   const chooseOtherAfterStop = (): void => {
@@ -212,7 +288,7 @@ function OnboardingFlow({
 
   // ---- Name and Enhance ---------------------------------------------------
   const finishName = async (name: string | null): Promise<void> => {
-    if (name !== null && name !== storedOwnerName) {
+    if (!replay && name !== null && name !== storedOwnerName) {
       await putSetting(SETTINGS_KEYS.ownerName, name);
     }
     go(nextStep(step, flow), draftNow());
@@ -229,6 +305,10 @@ function OnboardingFlow({
       : null;
 
   const finishEnhance = async (): Promise<void> => {
+    if (replay) {
+      go(nextStep(step, flow));
+      return;
+    }
     setBusy(true);
     try {
       if (enhanceOn && !hasTextModel && models.recommendedText) {
@@ -241,6 +321,8 @@ function OnboardingFlow({
       );
       await putSetting(SETTINGS_KEYS.meetingEnhancePromptSeen, "true");
       go(nextStep(step, flow), { ...draftNow(), enhance: enhanceOn });
+    } catch {
+      setCommitError("failed");
     } finally {
       setBusy(false);
     }
@@ -249,6 +331,45 @@ function OnboardingFlow({
   const finishSetup = (): void => {
     window.api?.setOnboardingComplete();
     navigate("/today", { replace: true });
+  };
+
+  // ---- Setup again --------------------------------------------------------
+  // Cancel and close change nothing. The user saves at the end. Only what the
+  // user changed is written. Nothing is deleted.
+  const cancelReplay = (): void => {
+    void navigate("/settings", { replace: true });
+  };
+
+  const applyReplay = async (): Promise<void> => {
+    setBusy(true);
+    setCommitError(null);
+    try {
+      if (JSON.stringify(languages) !== JSON.stringify(savedLanguages)) {
+        await putSetting(SETTINGS_KEYS.languages, JSON.stringify(languages));
+      }
+      const error = await models.commit();
+      if (error) {
+        setCommitError(error);
+        return;
+      }
+      if (ownerName !== null && ownerName !== storedOwnerName) {
+        await putSetting(SETTINGS_KEYS.ownerName, ownerName);
+      }
+      if (enhance !== null && enhance !== storedEnhance) {
+        if (enhance && !hasTextModel && models.textSource === "keep") {
+          await models.startRecommendedText();
+        }
+        await putSetting(
+          SETTINGS_KEYS.meetingEnhanceAutoRun,
+          enhance ? "true" : "false",
+        );
+      }
+      navigate("/settings", { replace: true });
+    } catch {
+      setCommitError("failed");
+    } finally {
+      setBusy(false);
+    }
   };
 
   // ---- Ready screen -------------------------------------------------------
@@ -260,7 +381,26 @@ function OnboardingFlow({
         ? t("onboarding.ready.ownServer")
         : displayProviderName(provider ?? "");
   const voiceProvider = models.defaultVoice?.provider;
-  if (models.defaultVoice && !voiceLater) {
+  // Setup again: a changed choice shows as it will be after the save.
+  const changedVoice = replay && models.voiceSource !== "keep";
+  const changedText = replay && models.textSource !== "keep";
+  if (changedVoice && models.voiceSource !== "later") {
+    const src = models.voiceSource;
+    readyChips.push({
+      id: "voice",
+      label: t("onboarding.ready.voice", {
+        where:
+          src === "mac"
+            ? t("onboarding.ready.thisMac")
+            : src === "server"
+              ? t("onboarding.ready.ownServer")
+              : displayProviderName(models.voiceRemote.provider),
+      }),
+      tone:
+        src === "mac" && models.chosenVoice?.status !== "ready" ? "warn" : "ok",
+    });
+  }
+  if (models.defaultVoice && !voiceLater && !changedVoice) {
     const local =
       voiceProvider === "local-mlx" || voiceProvider === "local-whisper";
     // A model on a server or a provider is ready, unless the key test could
@@ -276,7 +416,23 @@ function OnboardingFlow({
       tone: ready ? "ok" : "warn",
     });
   }
-  if (models.defaultLlm) {
+  if (changedText && !(models.textSource === "mac" && !models.chosenText)) {
+    const src = models.textSource;
+    readyChips.push({
+      id: "text",
+      label: t("onboarding.ready.text", {
+        where:
+          src === "mac"
+            ? t("onboarding.ready.thisMac")
+            : src === "server"
+              ? t("onboarding.ready.ownServer")
+              : displayProviderName(models.textRemote.provider),
+      }),
+      tone:
+        src === "mac" && models.chosenText?.status !== "ready" ? "warn" : "ok",
+    });
+  }
+  if (models.defaultLlm && !changedText) {
     const provider = models.defaultLlm.provider;
     const local = provider === "local-mlx-llm";
     const ready = local
@@ -313,22 +469,36 @@ function OnboardingFlow({
   const words = hotkeyWords(formatAcceleratorKeys(hotkey));
   const voiceDownloading =
     models.defaultVoiceItem && models.defaultVoiceItem.status !== "ready";
-  const readyLine =
-    voiceLater || !models.defaultVoice
+  const readyLine = replay
+    ? t("onboarding.replay.line")
+    : voiceLater || !models.defaultVoice
       ? t("onboarding.ready.lineLater")
       : voiceDownloading
         ? t("onboarding.ready.lineDownloading", { keys: words })
         : t("onboarding.ready.line", { keys: words });
 
   const counter = stepCounter(step, flow);
-  const showFooter = step >= STEP.model && step <= STEP.ready;
+  const showFooter = !replay && step >= STEP.model && step <= STEP.ready;
 
   return (
     <div className="glass-window-shell glass-content flex h-screen flex-col">
       <div
-        className="h-9 shrink-0"
+        className="flex h-9 shrink-0 items-center justify-end px-4"
         style={{ WebkitAppRegion: "drag" } as React.CSSProperties}
-      />
+      >
+        {replay && (
+          <Button
+            variant="ghost"
+            size="sm"
+            onClick={cancelReplay}
+            disabled={busy}
+            data-testid="onboarding-cancel"
+            style={{ WebkitAppRegion: "no-drag" } as React.CSSProperties}
+          >
+            {t("common.cancel")}
+          </Button>
+        )}
+      </div>
 
       <div
         className="flex min-h-0 flex-1 flex-col items-center justify-center overflow-auto px-6 py-8"
@@ -351,7 +521,7 @@ function OnboardingFlow({
               setLanguagesTouched(true);
               setLanguages([]);
             }}
-            onBack={() => go(prevStep(step, flow))}
+            onBack={() => (replay ? cancelReplay() : go(prevStep(step, flow)))}
             onContinue={continueLanguage}
           />
         )}
@@ -361,6 +531,7 @@ function OnboardingFlow({
             models={models}
             counter={counter}
             commitError={commitError}
+            replay={replay}
             onBack={() => go(prevStep(step, flow), draftNow())}
             onContinue={() => void continueModel()}
             onDecideLater={() => void decideLater()}
@@ -397,8 +568,9 @@ function OnboardingFlow({
             dictated={dictated}
             permissionsMissing={!permsOk}
             modelWait={
-              models.downloads.state === "running" ||
-              models.downloads.state === "failed"
+              models.downloads.current?.kind === "voice" &&
+              (models.downloads.state === "running" ||
+                models.downloads.state === "failed")
                 ? {
                     percent: models.downloads.percent,
                     secondsLeft: models.downloads.secondsLeft,
@@ -438,7 +610,12 @@ function OnboardingFlow({
           <ReadyStep
             chips={readyChips}
             line={readyLine}
-            onFinish={finishSetup}
+            onFinish={replay ? () => void applyReplay() : finishSetup}
+            buttonLabel={replay ? t("onboarding.replay.save") : undefined}
+            busy={busy}
+            error={
+              replay && commitError ? t("onboarding.model.errors.failed") : null
+            }
           />
         )}
       </div>

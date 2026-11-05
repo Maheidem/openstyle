@@ -1,3 +1,4 @@
+import { execFileSync } from "node:child_process";
 import { mkdtempSync, readFileSync, writeFileSync } from "node:fs";
 import { createServer, type Server } from "node:http";
 import { tmpdir } from "node:os";
@@ -10,6 +11,7 @@ import {
 } from "@playwright/test";
 import {
   closeApp,
+  embeddedServerUrl,
   launchOpenstyle,
   waitForDashboardWindow,
 } from "./helpers/e2e-app";
@@ -682,4 +684,186 @@ test("a key test with no internet does not block, and Ready says not tested", as
     "data-tone",
     "warn",
   );
+});
+
+// ---------------------------------------------------------------------------
+// "Run setup again": the safe replay. Cancel changes nothing. A save changes
+// only what the user changed. Nothing is deleted.
+// ---------------------------------------------------------------------------
+async function post(
+  app: ElectronApplication,
+  path: string,
+  body: unknown,
+): Promise<number> {
+  return app.evaluate(
+    async (_electron, args) => {
+      const res = await fetch(args.url, {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify(args.body),
+      });
+      return res.status;
+    },
+    { url: `${embeddedServerUrl(app)}${path}`, body },
+  );
+}
+
+/** Everything that setup again must not change by itself. */
+async function snapshot(app: ElectronApplication, userDataDir: string) {
+  const get = async (path: string) =>
+    JSON.stringify((await serverGet<unknown>(app, path)).body);
+  return {
+    configured: await get("/api/models/configured"),
+    keys: await get("/api/keys"),
+    settings: await get("/api/settings"),
+    meetings: await get("/api/meetings"),
+    history: await get("/api/history"),
+    local: JSON.stringify(localSettings(userDataDir)),
+  };
+}
+
+test("run setup again: cancel changes nothing, a save changes only the pick", async () => {
+  const userDataDir = newProfile();
+  writeFileSync(
+    join(userDataDir, "settings.json"),
+    JSON.stringify({ onboardingComplete: true }),
+  );
+  // First launch makes the database. Then seed a meeting and a history row.
+  const first = await launch(userDataDir);
+  await expect.poll(async () => (await configured(first.app)).length).toBe(0);
+  await closeApp(first.app);
+  const db = join(userDataDir, "freestyle.db");
+  execFileSync("sqlite3", [
+    db,
+    "INSERT INTO meetings (id, title, started_at, ended_at, duration_ms, status, created_at) VALUES ('seed-meeting','Seed meeting',1,2,1,'transcribed',1);" +
+      "INSERT INTO transcription_history (raw_text, cleaned_text, voice_provider, voice_model) VALUES ('seed words','seed words','local-whisper','small-q5_1');",
+  ]);
+
+  session = await launch(userDataDir);
+  const { app, page, fakes } = session;
+  expect(
+    await post(app, "/api/models/configured", {
+      provider: "local-whisper",
+      model_id: "local-whisper/small-q5_1",
+      model_name: "Whisper Balanced",
+      type: "voice",
+      is_default: true,
+    }),
+  ).toBe(201);
+  expect(
+    await post(app, "/api/models/configured", {
+      provider: "anthropic",
+      model_id: "claude-haiku-4-5",
+      model_name: "Claude Haiku 4.5",
+      type: "llm",
+      is_default: true,
+    }),
+  ).toBe(201);
+  expect(
+    await post(app, "/api/keys", {
+      provider: "anthropic",
+      key: "sk-ant-seeded-key",
+    }),
+  ).toBe(200);
+  const before = await snapshot(app, userDataDir);
+  expect(before.meetings).toContain("Seed meeting");
+  expect(before.history).toContain("seed words");
+
+  // The button is in Settings.
+  await page.goto("app://renderer/settings#application");
+  await page.waitForLoadState("load");
+  const run = page.getByTestId("settings-run-setup");
+  await run.scrollIntoViewIfNeeded();
+  await expect(run).toBeVisible({ timeout: 15_000 });
+  await shoot(page, "15-settings-run-setup");
+  await run.click();
+
+  // Replay: no Welcome, a Cancel button, the saved models are pre-selected.
+  await expect(page).toHaveURL(/\/onboarding\?replay=1/);
+  await expectStep(page, 1);
+  await expect(page.getByTestId("onboarding-cancel")).toBeVisible();
+  await shoot(page, "16-replay-language");
+  await page.getByRole("button", { name: "Continue" }).click();
+  await expectStep(page, 2);
+  await expect(page.getByTestId("onboarding-voice-keep")).toContainText(
+    "Keep Whisper Balanced",
+  );
+  await expect(page.getByTestId("onboarding-text-keep")).toContainText(
+    "Keep Claude Haiku 4.5",
+  );
+  await expect(page.getByTestId("onboarding-voice-keep")).toHaveAttribute(
+    "aria-pressed",
+    "true",
+  );
+  await expect(page.getByTestId("onboarding-decide-later")).toHaveCount(0);
+  await shoot(page, "17-replay-model");
+  await page.getByTestId("onboarding-model-continue").click();
+  await expectStep(page, 3);
+  // The user changes the language list and the name, then cancels midway.
+  await page.getByTestId("onboarding-permissions-continue").click();
+  await expectStep(page, 5);
+  await page.getByTestId("onboarding-owner-name").fill("Changed Name");
+  await page.getByTestId("onboarding-cancel").click();
+  await expect(page).toHaveURL(/\/settings/);
+  expect(await snapshot(app, userDataDir)).toEqual(before);
+  expect(fakes.downloads).toEqual([]);
+
+  // Run it again and change only the text model: OpenAI in the cloud.
+  await page.goto("app://renderer/settings#application");
+  await page.waitForLoadState("load");
+  await page.getByTestId("settings-run-setup").click();
+  await expectStep(page, 1);
+  await page.getByRole("button", { name: "Continue" }).click();
+  await expectStep(page, 2);
+  await page.getByTestId("onboarding-text-source-cloud").click();
+  await page.getByTestId("onboarding-text-provider-openai").click();
+  await page.getByTestId("onboarding-text-cloud-key").fill("sk-openai-new-key");
+  await page.getByTestId("onboarding-text-cloud-test").click();
+  await expect(page.getByTestId("onboarding-text-cloud-ok")).toBeVisible();
+  // Nothing is saved before the end.
+  expect(await snapshot(app, userDataDir)).toEqual(before);
+  await page.getByTestId("onboarding-model-continue").click();
+  await page.getByTestId("onboarding-permissions-continue").click();
+  await page.getByTestId("onboarding-name-skip").click();
+  await page.getByTestId("onboarding-enhance-continue").click();
+  await expectStep(page, 7);
+  await expect(page.getByTestId("onboarding-chip-text")).toContainText(
+    "Text model · OpenAI",
+  );
+  await expect(page.getByTestId("onboarding-chip-voice")).toContainText(
+    "Voice model · this Mac",
+  );
+  await shoot(page, "18-replay-save");
+  await expect(page.getByTestId("onboarding-finish")).toHaveText(
+    "Save and close",
+  );
+  await page.getByTestId("onboarding-finish").click();
+  await expect(page).toHaveURL(/\/settings/, { timeout: 15_000 });
+
+  const after = await snapshot(app, userDataDir);
+  // Only the models and keys changed. The voice default stayed.
+  expect(after.meetings).toBe(before.meetings);
+  expect(after.history).toBe(before.history);
+  expect(after.settings).toBe(before.settings);
+  expect(after.local).toBe(before.local);
+  const rows = JSON.parse(after.configured) as Configured[];
+  expect(
+    rows.find((m) => m.type === "voice" && m.is_default === 1),
+  ).toMatchObject({
+    provider: "local-whisper",
+    model_id: "local-whisper/small-q5_1",
+  });
+  expect(
+    rows.find((m) => m.type === "llm" && m.is_default === 1),
+  ).toMatchObject({ provider: "openai" });
+  // The old text model row is still there. Nothing was deleted.
+  expect(rows.some((m) => m.model_id === "claude-haiku-4-5")).toBe(true);
+  expect(
+    (JSON.parse(after.keys) as { provider: string }[])
+      .map((k) => k.provider)
+      .sort(),
+  ).toEqual(["anthropic", "openai"]);
+  expect(fakes.downloads).toEqual([]);
+  expect(localSettings(userDataDir).onboardingComplete).toBe(true);
+  expect(localSettings(userDataDir).onboardingStep).toBeUndefined();
 });

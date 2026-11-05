@@ -268,6 +268,13 @@
       "needsModifier": "Fügen Sie eine Sondertaste oder eine seitliche Maustaste hinzu · Esc zum Abbrechen",
       "release": "Zum Speichern loslassen · Esc zum Abbrechen",
       "press": "Drücken Sie eine Sondertaste oder eine seitliche Maustaste… · Esc zum Abbrechen"
+    },
+    "replay": {
+      "line": "Ihre Änderungen gelten, wenn Sie auf Speichern drücken. Mit Abbrechen verlassen Sie die Einrichtung ohne Änderung.",
+      "save": "Speichern und schließen",
+      "keep": "{{name}} behalten",
+      "modelNote": "Ihre gespeicherten Modelle bleiben, bis Sie ein anderes wählen und speichern.",
+      "download": "Openstyle lädt {{size}}, wenn Sie speichern."
     }
   },
   "settings": {
@@ -310,7 +317,9 @@
       "advancedModeDesc": "Entwicklereinstellungen anzeigen: Sampling-Werte, Aufgabenprofile, Speichergrenzen und den LLM-Inspektor.",
       "acknowledgments": "Danksagungen",
       "acknowledgmentsDesc": "Modelle und Lizenzen von Drittanbietern, die Openstyle verwendet.",
-      "acknowledgmentsText": "Die Sprechererkennungsmodelle (Speaker Diarization) leiten sich von <pyannote>pyannote/speaker-diarization-community-1</pyannote> (CC-BY-4.0) über <fluidaudio>FluidInference/FluidAudio</fluidaudio> (Apache-2.0) ab."
+      "acknowledgmentsText": "Die Sprechererkennungsmodelle (Speaker Diarization) leiten sich von <pyannote>pyannote/speaker-diarization-community-1</pyannote> (CC-BY-4.0) über <fluidaudio>FluidInference/FluidAudio</fluidaudio> (Apache-2.0) ab.",
+      "runSetup": "Einrichtung erneut starten",
+      "runSetupDesc": "Gehen Sie die Schritte der ersten Einrichtung noch einmal durch. Nichts ändert sich vor dem Speichern. Ihre Daten und Modelle bleiben."
     },
     "recording": {
       "hotkey": "Tastenkombination",

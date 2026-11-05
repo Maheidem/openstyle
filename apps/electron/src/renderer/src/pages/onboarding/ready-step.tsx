@@ -17,11 +17,19 @@ export function ReadyStep({
   chips,
   line,
   onFinish,
+  buttonLabel,
+  busy = false,
+  error = null,
 }: {
   chips: ReadyChip[];
   /** The one line under the title. */
   line: string;
   onFinish: () => void;
+  /** Setup again: "Save and close". */
+  buttonLabel?: string;
+  busy?: boolean;
+  /** A text that says the last press failed. */
+  error?: string | null;
 }): React.JSX.Element {
   const { t } = useTranslation();
   return (
@@ -61,9 +69,21 @@ export function ReadyStep({
           </span>
         ))}
       </div>
+      {error && (
+        <p
+          role="alert"
+          className="bg-destructive/10 text-destructive mx-auto mt-4 max-w-[420px] rounded-[10px] px-3 py-2.5 text-[12.5px]"
+        >
+          {error}
+        </p>
+      )}
       <div className="mt-7 flex justify-center">
-        <Button onClick={onFinish} data-testid="onboarding-finish">
-          {t("onboarding.ready.open")}
+        <Button
+          onClick={onFinish}
+          disabled={busy}
+          data-testid="onboarding-finish"
+        >
+          {buttonLabel ?? t("onboarding.ready.open")}
           <ArrowRight data-icon="inline-end" />
         </Button>
       </div>

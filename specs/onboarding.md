@@ -136,3 +136,19 @@ The local settings file holds `onboardingStep` (0 to 7) and `onboardingDraft` (`
 - Whether the Accessibility toggle needs an app restart on macOS, and whether Input Monitoring is needed for the hotkey. The design file listed both as open checks.
 - A change of the voice model after the first press does not cancel the first download.
 - The fit constants are not measured (`fit.ts`). The voice fit uses the same formula and the same constants.
+
+## 11. Run setup again (safe replay)
+
+Owner addition, 2026-11-05. A button "Run setup again" in Settings > Application and the item "Run Setup Again" in the Help menu open `/onboarding?replay=1`.
+
+Rules:
+
+- The replay never deletes or resets data, settings, models, keys, servers, meetings or history. `onboardingComplete` stays true. The saved step and draft are not read and not written.
+- It starts at Language (no Welcome). Language, name and the Enhance switch start with the saved values. Each model starts as "Keep <saved model> · <where>". A source pill changes it.
+- Nothing is saved on the way. Continue only moves to the next step. At the end the button "Save and close" writes what the user changed: the language list (if it changed), the models (`commit`, only a changed pick), the name (if it changed) and `meeting_enhance_auto_run` (if it changed). A model that is on disk is not downloaded again. A changed pick that is not on disk downloads when the user saves.
+- "Cancel" (top right, on every step) and "Back" on the first step leave with no change. A saved model that the user replaces stays in the list of configured models.
+- Try it, "Decide later" and the download footer are not part of the replay.
+
+Test: `tests/onboarding.test.ts`, "run setup again". It seeds a meeting, a history row, two default models and a cloud key. It cancels midway and compares a snapshot of models, keys, settings, meetings, history and the local settings file (equal). Then it changes only the text model and saves (only the text default and the new key change).
+
+Not covered by a test: the Help menu item (a native menu).

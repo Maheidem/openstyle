@@ -270,6 +270,13 @@
       "needsModifier": "Add a modifier or side mouse button · Esc to cancel",
       "release": "Release to save · Esc to cancel",
       "press": "Press a modifier or side mouse button… · Esc to cancel"
+    },
+    "replay": {
+      "line": "Your changes apply when you press Save. Press Cancel to leave with no change.",
+      "save": "Save and close",
+      "keep": "Keep {{name}}",
+      "modelNote": "Your saved models stay as they are until you choose another one and save.",
+      "download": "Openstyle downloads {{size}} when you save."
     }
   },
   "settings": {
@@ -313,7 +320,9 @@
       "advancedModeDesc": "Show developer settings: sampling values, task profiles, memory limits and the LLM inspector.",
       "acknowledgments": "Acknowledgments",
       "acknowledgmentsDesc": "Third-party models and licenses used by Openstyle.",
-      "acknowledgmentsText": "Speaker diarization models are derived from <pyannote>pyannote/speaker-diarization-community-1</pyannote> (CC-BY-4.0) via <fluidaudio>FluidInference/FluidAudio</fluidaudio> (Apache-2.0)."
+      "acknowledgmentsText": "Speaker diarization models are derived from <pyannote>pyannote/speaker-diarization-community-1</pyannote> (CC-BY-4.0) via <fluidaudio>FluidInference/FluidAudio</fluidaudio> (Apache-2.0).",
+      "runSetup": "Run setup again",
+      "runSetupDesc": "Go through the first-run steps again. Nothing changes until you save. Your data and models stay."
     },
     "recording": {
       "hotkey": "Hotkey",

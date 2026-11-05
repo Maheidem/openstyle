@@ -268,6 +268,13 @@
       "needsModifier": "Ajoutez une touche de modification ou un bouton latéral de la souris · Échap pour annuler",
       "release": "Relâchez pour enregistrer · Échap pour annuler",
       "press": "Appuyez sur une touche de modification ou un bouton latéral de la souris… · Échap pour annuler"
+    },
+    "replay": {
+      "line": "Vos changements s'appliquent quand vous appuyez sur Enregistrer. Appuyez sur Annuler pour quitter sans changement.",
+      "save": "Enregistrer et fermer",
+      "keep": "Garder {{name}}",
+      "modelNote": "Vos modèles enregistrés ne changent pas tant que vous n'en choisissez pas un autre et n'enregistrez pas.",
+      "download": "Openstyle télécharge {{size}} quand vous enregistrez."
     }
   },
   "settings": {
@@ -310,7 +317,9 @@
       "advancedModeDesc": "Affiche les réglages développeur : valeurs d'échantillonnage, profils de tâches, limites de mémoire et inspecteur LLM.",
       "acknowledgments": "Remerciements",
       "acknowledgmentsDesc": "Modèles et licences tiers utilisés par Openstyle.",
-      "acknowledgmentsText": "Les modèles de diarisation des locuteurs sont dérivés de <pyannote>pyannote/speaker-diarization-community-1</pyannote> (CC-BY-4.0) via <fluidaudio>FluidInference/FluidAudio</fluidaudio> (Apache-2.0)."
+      "acknowledgmentsText": "Les modèles de diarisation des locuteurs sont dérivés de <pyannote>pyannote/speaker-diarization-community-1</pyannote> (CC-BY-4.0) via <fluidaudio>FluidInference/FluidAudio</fluidaudio> (Apache-2.0).",
+      "runSetup": "Refaire la configuration",
+      "runSetupDesc": "Refaites les étapes de la première configuration. Rien ne change avant l'enregistrement. Vos données et vos modèles restent."
     },
     "recording": {
       "hotkey": "Raccourci clavier",

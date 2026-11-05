@@ -31,7 +31,8 @@ export function SourcePills<T extends string>({
   onChange,
   testId,
 }: {
-  value: T;
+  /** A value that is not in `options` ("keep") marks no pill. */
+  value: string;
   options: { id: T; label: string }[];
   onChange: (id: T) => void;
   testId: string;
@@ -110,6 +111,33 @@ function Row({
       />
       <span className="min-w-0 flex-1">{children}</span>
     </button>
+  );
+}
+
+/** Setup again: leave the saved model as it is. */
+export function KeepRow({
+  on,
+  onPick,
+  name,
+  where,
+  testId,
+}: {
+  on: boolean;
+  onPick: () => void;
+  name: string;
+  where: string | null;
+  testId: string;
+}): React.JSX.Element {
+  const { t } = useTranslation();
+  return (
+    <Row on={on} onPick={onPick} testId={testId}>
+      <span className="flex flex-wrap items-center gap-2">
+        <span className="text-foreground text-[14px] font-semibold">
+          {t("onboarding.replay.keep", { name })}
+        </span>
+        {where && <Chip tone="plain">{where}</Chip>}
+      </span>
+    </Row>
   );
 }
 

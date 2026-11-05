@@ -265,6 +265,13 @@
       "needsModifier": "修飾キーかマウスのサイドボタンを追加します · Escで取り消し",
       "release": "キーを離すと保存します · Escで取り消し",
       "press": "修飾キーかマウスのサイドボタンを押します… · Escで取り消し"
+    },
+    "replay": {
+      "line": "保存を押すと変更が反映されます。キャンセルを押すと変更なしで終了します。",
+      "save": "保存して閉じる",
+      "keep": "{{name}} を使い続ける",
+      "modelNote": "保存済みのモデルは、別のモデルを選んで保存するまで変わりません。",
+      "download": "保存すると {{size}} をダウンロードします。"
     }
   },
   "settings": {
@@ -307,7 +314,9 @@
       "advancedModeDesc": "開発者向け設定を表示します: サンプリング値、タスクプロファイル、メモリ上限、LLM インスペクター。",
       "acknowledgments": "謝辞",
       "acknowledgmentsDesc": "Openstyle が使用するサードパーティ製モデルとライセンス。",
-      "acknowledgmentsText": "話者ダイアライゼーションモデルは、<fluidaudio>FluidInference/FluidAudio</fluidaudio>(Apache-2.0)経由で <pyannote>pyannote/speaker-diarization-community-1</pyannote>(CC-BY-4.0)から派生しています。"
+      "acknowledgmentsText": "話者ダイアライゼーションモデルは、<fluidaudio>FluidInference/FluidAudio</fluidaudio>(Apache-2.0)経由で <pyannote>pyannote/speaker-diarization-community-1</pyannote>(CC-BY-4.0)から派生しています。",
+      "runSetup": "セットアップをもう一度実行",
+      "runSetupDesc": "初回セットアップの手順をもう一度たどります。保存するまで何も変わりません。データとモデルは残ります。"
     },
     "recording": {
       "hotkey": "ホットキー",

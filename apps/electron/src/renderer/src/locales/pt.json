@@ -268,6 +268,13 @@
       "needsModifier": "Adicione uma tecla modificadora ou um botão lateral do mouse · Esc para cancelar",
       "release": "Solte para salvar · Esc para cancelar",
       "press": "Pressione uma tecla modificadora ou um botão lateral do mouse… · Esc para cancelar"
+    },
+    "replay": {
+      "line": "Suas alterações valem quando você pressiona Salvar. Pressione Cancelar para sair sem alterações.",
+      "save": "Salvar e fechar",
+      "keep": "Manter {{name}}",
+      "modelNote": "Seus modelos salvos não mudam até você escolher outro e salvar.",
+      "download": "O Openstyle baixa {{size}} quando você salva."
     }
   },
   "settings": {
@@ -310,7 +317,9 @@
       "advancedModeDesc": "Mostra as configurações de desenvolvedor: valores de amostragem, perfis de tarefas, limites de memória e o inspetor de LLM.",
       "acknowledgments": "Agradecimentos",
       "acknowledgmentsDesc": "Modelos e licenças de terceiros usados pelo Openstyle.",
-      "acknowledgmentsText": "Os modelos de diarização de locutores derivam do <pyannote>pyannote/speaker-diarization-community-1</pyannote> (CC-BY-4.0) via <fluidaudio>FluidInference/FluidAudio</fluidaudio> (Apache-2.0)."
+      "acknowledgmentsText": "Os modelos de diarização de locutores derivam do <pyannote>pyannote/speaker-diarization-community-1</pyannote> (CC-BY-4.0) via <fluidaudio>FluidInference/FluidAudio</fluidaudio> (Apache-2.0).",
+      "runSetup": "Executar a configuração de novo",
+      "runSetupDesc": "Refaça as etapas da primeira configuração. Nada muda até você salvar. Seus dados e modelos ficam."
     },
     "recording": {
       "hotkey": "Atalho",

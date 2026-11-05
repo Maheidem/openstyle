@@ -1,6 +1,6 @@
 import { getClient } from "@renderer/lib/api";
 import { type AvailableModel, VOICE_META } from "@renderer/lib/models";
-import { useCallback, useState } from "react";
+import { useCallback, useRef, useState } from "react";
 import {
   kindFitsRole,
   type ModelRole,
@@ -96,16 +96,23 @@ export function useRemoteSource(
   );
   const [cloudKey, setCloudKeyState] = useState("");
   const [keyTest, setKeyTest] = useState<KeyTest>({ state: "idle" });
+  // A test that is still running must not write its result after the user
+  // changed the field. Each change and each test makes a new number.
+  const serverCall = useRef(0);
+  const keyCall = useRef(0);
 
   const setServerUrl = useCallback((url: string) => {
+    serverCall.current += 1;
     setServerUrlState(url);
     setServerTest({ state: "idle" });
     setServerModel(null);
   }, []);
 
   const testServer = useCallback(async () => {
+    const call = ++serverCall.current;
     setServerTest({ state: "testing" });
     const result = await servers.addServer(serverUrl, serverKey);
+    if (call !== serverCall.current) return;
     let view: ServerView | undefined;
     if (result.ok) {
       view = result.server;
@@ -113,6 +120,7 @@ export function useRemoteSource(
       // The address is saved already. Read it again and use that server.
       const list = (await servers.refetch()) as { data?: ServerView[] };
       view = list.data?.find((s) => s.id === result.existingId);
+      if (call !== serverCall.current) return;
     }
     if (!view) {
       setServerTest({
@@ -131,11 +139,13 @@ export function useRemoteSource(
   }, [role, serverKey, serverUrl, servers]);
 
   const setProvider = useCallback((next: string) => {
+    keyCall.current += 1;
     setProviderState(next);
     setKeyTest({ state: "idle" });
   }, []);
 
   const setCloudKey = useCallback((key: string) => {
+    keyCall.current += 1;
     setCloudKeyState(key);
     setKeyTest({ state: "idle" });
   }, []);
@@ -143,12 +153,14 @@ export function useRemoteSource(
   const testCloud = useCallback(async () => {
     const key = cloudKey.trim();
     if (!key) return;
+    const call = ++keyCall.current;
     setKeyTest({ state: "testing" });
     try {
       const res = await getClient().api.keys.validate.$post({
         json: { provider, key },
       });
       const body = (await res.json()) as { valid?: boolean; error?: string };
+      if (call !== keyCall.current) return;
       if (body.valid) {
         setKeyTest({ state: "ok" });
       } else if (body.error && NETWORK_ERROR.test(body.error)) {
@@ -160,6 +172,7 @@ export function useRemoteSource(
         });
       }
     } catch {
+      if (call !== keyCall.current) return;
       setKeyTest({ state: "offline", message: "Could not reach the app." });
     }
   }, [cloudKey, provider]);

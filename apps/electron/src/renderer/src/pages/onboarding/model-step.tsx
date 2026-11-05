@@ -1,5 +1,5 @@
 import { Button } from "@renderer/components/ui/button";
-import { formatBytes } from "@renderer/lib/models";
+import { displayProviderName, formatBytes } from "@renderer/lib/models";
 import { availableModelsQueryOptions } from "@renderer/lib/query";
 import { useQuery } from "@tanstack/react-query";
 import { ArrowRight, Loader2 } from "lucide-react";
@@ -7,6 +7,7 @@ import { useState } from "react";
 import { useTranslation } from "react-i18next";
 import {
   CloudForm,
+  KeepRow,
   ServerForm,
   SourcePills,
   TextMacRows,
@@ -25,6 +26,7 @@ export function ModelStep({
   models,
   counter,
   commitError,
+  replay = false,
   onBack,
   onContinue,
   onDecideLater,
@@ -36,11 +38,14 @@ export function ModelStep({
   onBack: () => void;
   onContinue: () => void;
   onDecideLater: () => void;
+  /** Setup again: keep the saved models unless the user changes them. */
+  replay?: boolean;
 }): React.JSX.Element {
   const { t } = useTranslation();
   // The long view opens when the user left the suggestion in an earlier visit.
   const [chooseOpen, setChooseOpen] = useState(
-    models.voiceSource !== "mac" ||
+    replay ||
+      models.voiceSource !== "mac" ||
       models.textSource !== "mac" ||
       models.voicePick !== null ||
       models.textPick !== null,
@@ -51,7 +56,7 @@ export function ModelStep({
 
   const total = models.plan.total;
   const button =
-    total > 0
+    total > 0 && !replay
       ? t("onboarding.model.downloadAndContinue", { size: formatBytes(total) })
       : t("common.continue");
   const disabled = models.loading || models.committing || models.blocked;
@@ -94,16 +99,18 @@ export function ModelStep({
         {t("common.back")}
       </Button>
       <div className="flex items-center gap-3">
-        <Button
-          variant="ghost"
-          size="sm"
-          onClick={onDecideLater}
-          disabled={models.committing}
-          className="text-muted-foreground h-auto px-2 py-1 text-[12px] underline"
-          data-testid="onboarding-decide-later"
-        >
-          {t("onboarding.model.decideLater")}
-        </Button>
+        {!replay && (
+          <Button
+            variant="ghost"
+            size="sm"
+            onClick={onDecideLater}
+            disabled={models.committing}
+            className="text-muted-foreground h-auto px-2 py-1 text-[12px] underline"
+            data-testid="onboarding-decide-later"
+          >
+            {t("onboarding.model.decideLater")}
+          </Button>
+        )}
         <Button
           onClick={onContinue}
           disabled={disabled}
@@ -189,23 +196,43 @@ export function ModelStep({
     <div className="w-full max-w-[560px]" data-testid="onboarding-model-choose">
       {header}
       <StepHeading title={t("onboarding.model.chooseTitle")} />
-      <div className="-mt-3 mb-4">
-        <Button
-          size="sm"
-          variant="outline"
-          onClick={() => {
-            models.useRecommendation();
-            setChooseOpen(false);
-          }}
-          data-testid="onboarding-use-recommendation"
-        >
-          {t("onboarding.model.useRecommendation")}
-        </Button>
-      </div>
+      {!replay && (
+        <div className="-mt-3 mb-4">
+          <Button
+            size="sm"
+            variant="outline"
+            onClick={() => {
+              models.useRecommendation();
+              setChooseOpen(false);
+            }}
+            data-testid="onboarding-use-recommendation"
+          >
+            {t("onboarding.model.useRecommendation")}
+          </Button>
+        </div>
+      )}
+      {replay && (
+        <p className="text-muted-foreground -mt-3 mb-4 text-[12.5px]">
+          {t("onboarding.replay.modelNote")}
+        </p>
+      )}
 
       <div className="mono text-muted-foreground mb-2 text-[10.5px] tracking-[0.1em] uppercase">
         {t("onboarding.model.voiceSection")}
       </div>
+      {replay && (
+        <div className="mb-2">
+          <KeepRow
+            testId="onboarding-voice-keep"
+            on={models.voiceSource === "keep"}
+            onPick={() => models.setVoiceSource("keep")}
+            name={
+              models.defaultVoice?.model_name ?? t("onboarding.model.notSet")
+            }
+            where={keepWhere(models.defaultVoice?.provider, t)}
+          />
+        </div>
+      )}
       <SourcePills
         testId="onboarding-voice-source"
         value={models.voiceSource === "later" ? "mac" : models.voiceSource}
@@ -213,7 +240,8 @@ export function ModelStep({
         onChange={(s) => models.setVoiceSource(s)}
       />
       <div className="mt-3">
-        {models.voiceSource === "mac" || models.voiceSource === "later" ? (
+        {models.voiceSource === "keep" ? null : models.voiceSource === "mac" ||
+          models.voiceSource === "later" ? (
           <>
             <VoiceMacRows
               items={models.voiceItems}
@@ -259,6 +287,19 @@ export function ModelStep({
         <p className="text-muted-foreground mt-0 mb-2 text-[12.5px]">
           {t("onboarding.model.textSectionDesc")}
         </p>
+        {replay && (
+          <div className="mb-2">
+            <KeepRow
+              testId="onboarding-text-keep"
+              on={models.textSource === "keep"}
+              onPick={() => models.setTextSource("keep")}
+              name={
+                models.defaultLlm?.model_name ?? t("onboarding.model.notSet")
+              }
+              where={keepWhere(models.defaultLlm?.provider, t)}
+            />
+          </div>
+        )}
         <SourcePills
           testId="onboarding-text-source"
           value={models.textSource}
@@ -266,7 +307,7 @@ export function ModelStep({
           onChange={(s) => models.setTextSource(s)}
         />
         <div className="mt-3">
-          {models.textSource === "mac" ? (
+          {models.textSource === "keep" ? null : models.textSource === "mac" ? (
             <TextMacRows
               items={models.llmItems}
               selectedDefId={
@@ -296,9 +337,35 @@ export function ModelStep({
           )}
         </div>
       </div>
+      {replay && total > 0 && (
+        <p
+          data-testid="onboarding-replay-download"
+          className="text-muted-foreground mt-3 mb-0 text-[12.5px]"
+        >
+          {t("onboarding.replay.download", { size: formatBytes(total) })}
+        </p>
+      )}
       {disk}
       {errorLine}
       {nav}
     </div>
   );
+}
+
+/** Where a saved model runs, as a short word. Null when no model is saved. */
+function keepWhere(
+  provider: string | undefined,
+  t: (key: string) => string,
+): string | null {
+  if (!provider) return null;
+  if (
+    provider === "local-mlx" ||
+    provider === "local-whisper" ||
+    provider === "local-mlx-llm"
+  ) {
+    return t("onboarding.ready.thisMac");
+  }
+  return provider === "server"
+    ? t("onboarding.ready.ownServer")
+    : displayProviderName(provider);
 }

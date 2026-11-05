@@ -268,6 +268,13 @@
       "needsModifier": "Añade una tecla modificadora o un botón lateral del ratón · Esc para cancelar",
       "release": "Suelta para guardar · Esc para cancelar",
       "press": "Pulsa una tecla modificadora o un botón lateral del ratón… · Esc para cancelar"
+    },
+    "replay": {
+      "line": "Tus cambios se aplican cuando pulsas Guardar. Pulsa Cancelar para salir sin cambios.",
+      "save": "Guardar y cerrar",
+      "keep": "Mantener {{name}}",
+      "modelNote": "Tus modelos guardados no cambian hasta que elijas otro y guardes.",
+      "download": "Openstyle descarga {{size}} cuando guardas."
     }
   },
   "settings": {
@@ -310,7 +317,9 @@
       "advancedModeDesc": "Muestra los ajustes de desarrollador: valores de muestreo, perfiles de tareas, límites de memoria y el inspector de LLM.",
       "acknowledgments": "Agradecimientos",
       "acknowledgmentsDesc": "Modelos y licencias de terceros que utiliza Openstyle.",
-      "acknowledgmentsText": "Los modelos de diarización de hablantes derivan de <pyannote>pyannote/speaker-diarization-community-1</pyannote> (CC-BY-4.0) a través de <fluidaudio>FluidInference/FluidAudio</fluidaudio> (Apache-2.0)."
+      "acknowledgmentsText": "Los modelos de diarización de hablantes derivan de <pyannote>pyannote/speaker-diarization-community-1</pyannote> (CC-BY-4.0) a través de <fluidaudio>FluidInference/FluidAudio</fluidaudio> (Apache-2.0).",
+      "runSetup": "Repetir la configuración",
+      "runSetupDesc": "Repite los pasos de la primera configuración. Nada cambia hasta que guardes. Tus datos y modelos se quedan."
     },
     "recording": {
       "hotkey": "Atajo de teclado",

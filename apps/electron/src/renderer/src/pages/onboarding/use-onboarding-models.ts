@@ -81,12 +81,13 @@ export interface OnboardingModels {
   recommendedVoice: VoiceItem | undefined;
   recommendedText: LocalLlmItem | null;
 
-  voiceSource: Source | "later";
-  setVoiceSource: (source: Source | "later") => void;
+  /** "keep" (setup again only): leave the saved model as it is. */
+  voiceSource: Source | "later" | "keep";
+  setVoiceSource: (source: Source | "later" | "keep") => void;
   voicePick: VoicePick | null;
   pickVoice: (pick: VoicePick) => void;
-  textSource: Source;
-  setTextSource: (source: Source) => void;
+  textSource: Source | "keep";
+  setTextSource: (source: Source | "keep") => void;
   /** A catalog id, "none" for "Not now", or null for the recommendation. */
   textPick: string | "none" | null;
   pickText: (pick: string | "none") => void;
@@ -138,6 +139,8 @@ export function useOnboardingModels(
   languages: string[],
   initial: OnboardingDraft,
   downloadStarted: boolean,
+  /** "Run setup again": the choices start as "keep what is saved". */
+  replay = false,
 ): OnboardingModels {
   const queryClient = useQueryClient();
   const servers = useServers();
@@ -148,18 +151,20 @@ export function useOnboardingModels(
   const availableQuery = useQuery(availableModelsQueryOptions());
   const configuredQuery = useQuery(configuredModelsQueryOptions());
 
-  const [voiceSource, setVoiceSourceState] = useState<Source | "later">(
-    initial.voiceSource ?? "mac",
-  );
+  const [voiceSource, setVoiceSourceState] = useState<
+    Source | "later" | "keep"
+  >(replay ? "keep" : (initial.voiceSource ?? "mac"));
   const [voicePick, setVoicePick] = useState<VoicePick | null>(
     initial.voiceSource === "mac" || !initial.voiceSource
       ? parsePick(initial.voiceModel)
       : null,
   );
-  const [textSource, setTextSourceState] = useState<Source>(
-    initial.textSource === "server" || initial.textSource === "cloud"
-      ? initial.textSource
-      : "mac",
+  const [textSource, setTextSourceState] = useState<Source | "keep">(
+    replay
+      ? "keep"
+      : initial.textSource === "server" || initial.textSource === "cloud"
+        ? initial.textSource
+        : "mac",
   );
   const [textPick, setTextPick] = useState<string | null>(
     initial.textSource === "none"
@@ -325,19 +330,19 @@ export function useOnboardingModels(
   const startDownload = useCallback(
     async (kind: "mlx" | "whisper" | "llm", defId: string) => {
       const client = getClient();
-      if (kind === "mlx") {
-        await client.api["mlx-asr"].models[":model"].download.$post({
-          param: { model: defId },
-        });
-      } else if (kind === "whisper") {
-        await client.api.whisper.models[":model"].download.$post({
-          param: { model: defId },
-        });
-      } else {
-        await client.api["mlx-llm"].models[":model"].download.$post({
-          param: { model: defId },
-        });
-      }
+      const res =
+        kind === "mlx"
+          ? await client.api["mlx-asr"].models[":model"].download.$post({
+              param: { model: defId },
+            })
+          : kind === "whisper"
+            ? await client.api.whisper.models[":model"].download.$post({
+                param: { model: defId },
+              })
+            : await client.api["mlx-llm"].models[":model"].download.$post({
+                param: { model: defId },
+              });
+      if (!res.ok) throw new Error("download");
     },
     [],
   );
@@ -397,12 +402,13 @@ export function useOnboardingModels(
       } else if (voiceSource === "cloud") {
         const model = cloudModelFor(available, "voice", voiceRemote.provider);
         if (!model) return "voice-cloud";
-        await client.api.keys.$post({
+        const keyRes = await client.api.keys.$post({
           json: {
             provider: voiceRemote.provider,
             key: voiceRemote.cloudKey.trim(),
           },
         });
+        if (!keyRes.ok) throw new Error("key");
         await saveDefault(
           {
             provider: model.provider_id,
@@ -442,12 +448,13 @@ export function useOnboardingModels(
       } else if (textSource === "cloud") {
         const model = cloudModelFor(available, "llm", textRemote.provider);
         if (!model) return "text-cloud";
-        await client.api.keys.$post({
+        const keyRes = await client.api.keys.$post({
           json: {
             provider: textRemote.provider,
             key: textRemote.cloudKey.trim(),
           },
         });
+        if (!keyRes.ok) throw new Error("key");
         await saveDefault(
           {
             provider: model.provider_id,
@@ -540,14 +547,14 @@ export function useOnboardingModels(
   }, [defaultVoiceItem]);
 
   const setVoiceSource = useCallback(
-    (source: Source | "later") => {
+    (source: Source | "later" | "keep") => {
       setVoiceSourceState(source);
       voiceRemote.reset();
     },
     [voiceRemote],
   );
   const setTextSource = useCallback(
-    (source: Source) => {
+    (source: Source | "keep") => {
       setTextSourceState(source);
       textRemote.reset();
     },
@@ -562,36 +569,32 @@ export function useOnboardingModels(
   }, []);
 
   const toDraft = useCallback((): OnboardingDraft => {
-    const voicePickNow = voicePick ?? recVoicePick;
+    // Only a pick that the user made goes to the draft. A pick that follows
+    // the recommendation must follow it again after a change of language.
     return {
-      voiceSource,
+      voiceSource: voiceSource === "keep" ? undefined : voiceSource,
       voiceModel:
-        voiceSource === "mac"
-          ? `${voicePickNow.engine}:${voicePickNow.defId}`
+        voiceSource === "mac" && voicePick
+          ? `${voicePick.engine}:${voicePick.defId}`
           : voiceSource === "server"
             ? (voiceRemote.serverModel ?? undefined)
             : undefined,
       textSource:
-        textSource === "mac" && textPick === "none" ? "none" : textSource,
+        textSource === "keep"
+          ? undefined
+          : textSource === "mac" && textPick === "none"
+            ? "none"
+            : textSource,
       textModel:
-        textSource === "mac" && textPick !== "none"
-          ? (textPick ?? recommendedText?.defId)
+        textSource === "mac" && textPick && textPick !== "none"
+          ? textPick
           : undefined,
       voiceServerUrl: voiceRemote.serverUrl || undefined,
       textServerUrl: textRemote.serverUrl || undefined,
       voiceProvider: voiceRemote.provider,
       textProvider: textRemote.provider,
     };
-  }, [
-    recVoicePick,
-    recommendedText,
-    textPick,
-    textRemote,
-    textSource,
-    voicePick,
-    voiceRemote,
-    voiceSource,
-  ]);
+  }, [textPick, textRemote, textSource, voicePick, voiceRemote, voiceSource]);
 
   return {
     loading:

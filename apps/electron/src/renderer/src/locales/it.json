@@ -268,6 +268,13 @@
       "needsModifier": "Aggiungi un tasto modificatore o un pulsante laterale del mouse · Esc per annullare",
       "release": "Rilascia per salvare · Esc per annullare",
       "press": "Premi un tasto modificatore o un pulsante laterale del mouse… · Esc per annullare"
+    },
+    "replay": {
+      "line": "Le modifiche si applicano quando premi Salva. Premi Annulla per uscire senza modifiche.",
+      "save": "Salva e chiudi",
+      "keep": "Mantieni {{name}}",
+      "modelNote": "I modelli salvati restano come sono finché non ne scegli un altro e salvi.",
+      "download": "Openstyle scarica {{size}} quando salvi."
     }
   },
   "settings": {
@@ -310,7 +317,9 @@
       "advancedModeDesc": "Mostra le impostazioni per sviluppatori: valori di campionamento, profili delle attività, limiti di memoria e l'ispettore LLM.",
       "acknowledgments": "Ringraziamenti",
       "acknowledgmentsDesc": "Modelli e licenze di terze parti utilizzati da Openstyle.",
-      "acknowledgmentsText": "I modelli di diarizzazione degli speaker derivano da <pyannote>pyannote/speaker-diarization-community-1</pyannote> (CC-BY-4.0) tramite <fluidaudio>FluidInference/FluidAudio</fluidaudio> (Apache-2.0)."
+      "acknowledgmentsText": "I modelli di diarizzazione degli speaker derivano da <pyannote>pyannote/speaker-diarization-community-1</pyannote> (CC-BY-4.0) tramite <fluidaudio>FluidInference/FluidAudio</fluidaudio> (Apache-2.0).",
+      "runSetup": "Ripeti la configurazione",
+      "runSetupDesc": "Ripeti i passaggi della prima configurazione. Nulla cambia finché non salvi. I tuoi dati e i modelli restano."
     },
     "recording": {
       "hotkey": "Scorciatoia",
