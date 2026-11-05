@@ -1,5 +1,12 @@
 # Changelog
 
+## 3.0.0-alpha.2
+
+### New Features ✨
+
+- (meetings) Pause and resume a recording by @Maheidem in [#421](https://github.com/Maheidem/openstyle/pull/421)
+- (onboarding) A simple first run that works by @Maheidem in [#422](https://github.com/Maheidem/openstyle/pull/422)
+
 ## 3.0.0-alpha.1
 
 ### Bug Fixes 🐛
