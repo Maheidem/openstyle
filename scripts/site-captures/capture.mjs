@@ -22,7 +22,9 @@ import { fileURLToPath } from "node:url";
 import { startFakeModelServer } from "./fake-model-server.mjs";
 import { seedDatabase } from "./seed-data.mjs";
 
-// `--only pill` runs just the pill video; `--only dash` just the other run.
+// `--only pill` runs just the pill video; `--only dash` just the dashboard
+// run; `--only onboarding` just the first-run model step; `--only paused`
+// just the paused meeting recording.
 const ONLY = process.argv[2] === "--only" ? process.argv[3] : null;
 
 const REPO = resolve(dirname(fileURLToPath(import.meta.url)), "../..");
@@ -35,6 +37,7 @@ const SERVER_PORT = 8790;
 const MODEL_PORT = 8787;
 const SERVER_URL = `http://127.0.0.1:${SERVER_PORT}`;
 const TOKEN = "site-captures-token-0123456789abcdef0123456789abcdef";
+const FRESH_INSTALL = ONLY === "onboarding"; // first run: no default models
 const PILL_BG = "#18202E"; // video only: webm has no alpha channel
 
 // playwright is a dependency of apps/electron, not of the repo root.
@@ -201,7 +204,9 @@ const defaults = [
   ["local-mlx", "local-mlx/qwen3-0.6b-8bit", "Qwen3 Fast", "voice"],
   ["local-mlx-llm", "local-mlx-llm/gemma-4-e2b-qat-4bit", "Gemma 4 E2B", "llm"],
 ];
-for (const [provider, model_id, model_name, type] of defaults) {
+for (const [provider, model_id, model_name, type] of FRESH_INSTALL
+  ? []
+  : defaults) {
   await api("/api/models/configured", {
     provider,
     model_id,
@@ -215,7 +220,7 @@ seedDatabase(dbPath);
 writeFileSync(
   join(userData, "settings.json"),
   JSON.stringify({
-    onboardingComplete: true,
+    onboardingComplete: !FRESH_INSTALL,
     serverUrl: SERVER_URL,
     serverToken: TOKEN,
   }),
@@ -239,6 +244,9 @@ const launchOptions = {
     OPENSTYLE_DB_PATH: dbPath,
     OPENSTYLE_USER_DATA: userData,
     OPENSTYLE_E2E: "1",
+    // The recorder writes silence and opens no mic, no system audio and no
+    // native helper, so no macOS privacy dialog can appear.
+    ...(ONLY === "paused" ? { OPENSTYLE_E2E_FAKE_MEETING_CAPTURE: "1" } : {}),
     ELECTRON_DISABLE_SECURITY_WARNINGS: "true",
   },
   timeout: 60000,
@@ -267,6 +275,52 @@ async function startRecording(pill) {
   await pill.evaluate(() =>
     window.electron.ipcRenderer.send("e2e:trigger-hotkey-down"),
   );
+}
+
+// 1x webp variant that index.html uses next to a 2x PNG.
+async function makeWebp(png, webp, w, h) {
+  await run("cwebp", [
+    "-quiet",
+    "-q",
+    "82",
+    "-resize",
+    String(w),
+    String(h),
+    join(OUT, png),
+    "-o",
+    join(OUT, webp),
+  ]);
+  record(webp);
+}
+
+// A focused dashboard window on a dark backdrop, 1280x800, as in run 1.
+async function prepareDashboard(app, dash) {
+  await dash.waitForLoadState("domcontentloaded");
+  await app.evaluate(({ BrowserWindow }) => {
+    const w = BrowserWindow.getAllWindows().find((x) => {
+      const u = x.webContents.getURL();
+      return !u.includes("pill") && !u.includes("bar");
+    });
+    w?.setSize(1280, 800);
+  });
+  await dash.evaluate(() => localStorage.setItem("theme", "dark"));
+  await dash.reload({ waitUntil: "domcontentloaded" });
+}
+async function shootDashboard(app, dash, name) {
+  await dash.bringToFront();
+  await app.evaluate(({ BrowserWindow }) => {
+    const w = BrowserWindow.getAllWindows().find((x) => {
+      const u = x.webContents.getURL();
+      return !u.includes("pill") && !u.includes("bar");
+    });
+    w?.focus();
+  });
+  await dash.addStyleTag({
+    content: "html { background: #0c0d0f !important; }",
+  });
+  await sleep(900);
+  await dash.screenshot({ path: join(OUT, name) });
+  record(name);
 }
 
 // ---------------------------------------------------------------------------
@@ -411,6 +465,65 @@ if (!ONLY || ONLY === "dash") {
   } finally {
     await closeApp(app);
   }
+}
+
+// ---------------------------------------------------------------------------
+// First run: the "Recommended for your Mac" model step of a new install.
+// No default model is saved, the app opens on the Welcome step.
+// ---------------------------------------------------------------------------
+if (ONLY === "onboarding") {
+  const app = await electron.launch(launchOptions);
+  try {
+    const dash = await waitForWindow(app, isDashboard, "dashboard window");
+    await prepareDashboard(app, dash);
+    const root = dash.getByTestId("onboarding-root");
+    await root.waitFor({ timeout: 30000 });
+    await dash.getByTestId("onboarding-start").click();
+    await dash.getByRole("button", { name: "Continue" }).click();
+    await dash.getByTestId("onboarding-rec-voice").waitFor({ timeout: 30000 });
+    await dash
+      .getByTestId("onboarding-model-continue")
+      .filter({ hasText: /Download/ })
+      .waitFor({ timeout: 30000 });
+    await shootDashboard(app, dash, "onboarding-model.png");
+  } finally {
+    await closeApp(app);
+  }
+  await makeWebp("onboarding-model.png", "onboarding-model-1600.webp", 1600, 1000);
+}
+
+// ---------------------------------------------------------------------------
+// A meeting recording in the paused state. The recorder runs on the E2E fake
+// capture (silence, no microphone). The page shows "Paused" and a frozen
+// clock.
+// ---------------------------------------------------------------------------
+if (ONLY === "paused") {
+  const app = await electron.launch(launchOptions);
+  try {
+    const dash = await waitForWindow(app, isDashboard, "dashboard window");
+    await prepareDashboard(app, dash);
+    // The boot sweep of orphan recordings runs 3 s after the start. A
+    // recording that starts before it is marked "interrupted".
+    await sleep(6000);
+    await dash.getByRole("link", { name: /^Meetings/ }).click();
+    await dash.waitForURL(/\/meetings/);
+    await dash.getByRole("button", { name: "Start recording" }).first().click();
+    const state = dash.getByTestId("meeting-recording-state");
+    await state.waitFor({ timeout: 30000 });
+    await sleep(4000);
+    await dash.getByTestId("meeting-pause-toggle").click();
+    await dash.getByText("Paused", { exact: true }).first().waitFor({
+      timeout: 15000,
+    });
+    await dash.getByTestId("meeting-paused-hint").waitFor({ timeout: 15000 });
+    await shootDashboard(app, dash, "meeting-paused.png");
+    // Stop the fake recording so the app quits cleanly.
+    await dash.getByTestId("meeting-pause-toggle").click();
+    await dash.getByRole("button", { name: /stop/i }).first().click();
+  } finally {
+    await closeApp(app);
+  }
+  await makeWebp("meeting-paused.png", "meeting-paused-1600.webp", 1600, 1000);
 }
 
 // The 1x webp variants that index.html uses next to each 2x PNG, and the

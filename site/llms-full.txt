@@ -17,10 +17,13 @@ Downloads: https://github.com/Maheidem/openstyle/releases/latest
 - Optional AI cleanup fixes grammar and punctuation and strips filler words.
 - Meetings: Openstyle records your meetings, transcribes them after the call
   and writes a summary. It detects speakers. You can file meetings in folders,
-  tag them and search across all meetings.
+  tag them and search across all meetings. You can pause and resume a
+  recording; paused time does not count.
+- Ask your meetings: an optional page, experimental and off by default, for
+  questions about your meetings. Turn it on in Settings.
 - Import: transcribe audio files.
 - Vocabulary: teach it your names and terms.
-- Tone: set how the cleaned text sounds.
+- Cleanup: set how the cleaned text reads.
 - Transcriptions: find anything you said.
 
 ## Where speech-to-text runs
@@ -29,7 +32,8 @@ You choose where your voice goes:
 
 - Built into Openstyle: models run on your Mac. Speech: Parakeet, Qwen3-ASR,
   SenseVoice, Whisper. Text: Gemma 4. Add more speech models from Hugging
-  Face. Audio stays on your Mac.
+  Face. Audio stays on your Mac. On first run, Openstyle suggests a model
+  that fits your Mac.
 - Your own server: use a server with an OpenAI-compatible transcription
   endpoint, for example oMLX. Audio goes to that server. The AI cleanup LLM
   can run inside the app (built-in Gemma 4), or on oMLX, LM Studio or any
@@ -49,20 +53,23 @@ You choose where your voice goes:
 1. Download the latest .dmg (Apple Silicon) from the
    https://github.com/Maheidem/openstyle/releases page and drag it to
    Applications.
-2. First launch: Apple has not notarized the app, so macOS warns that the
-   developer is unidentified. Right-click the app, choose Open, then choose
-   Open again. If macOS shows no Open button, go to System Settings, Privacy
-   & Security, and choose Open Anyway. Or run this command in Terminal:
-   xattr -cr /Applications/Openstyle.app
-3. You do this once. The app updates itself from inside the app and does not
-   show the warning again. A new .dmg that you download in a browser shows the
-   warning again.
+2. Open Openstyle. Builds are signed with a Developer ID and notarized by
+   Apple. The app updates itself from inside the app.
+
+## First run
+
+- Setup shows "Recommended for your Mac": a voice model and a text model that
+  fit your Mac, in one download.
+- "Choose another" lets you use a model on this Mac, your own server or a
+  cloud provider.
+- "Run setup again" in Settings or the Help menu opens setup again. It does
+  not delete your data.
+- The Models page is always visible.
 
 ## Performance
 
 In tests on an idle Apple silicon Mac, Parakeet transcribed a 3-minute
-recording in under a second. Measured October 2026 with Openstyle 2.10, warm
-model.
+recording in under a second. Measured October 2026, warm model.
 
 ## FAQ
 
@@ -88,12 +95,13 @@ the built-in Gemma 4, or on oMLX, LM Studio or any OpenAI-compatible server.
 
 Does it take meeting notes?
 Yes. It records meetings, transcribes them after the call, writes a summary,
-and detects speakers. You can file meetings in folders, tag them and search
-across all meetings.
+and detects speakers. You can pause and resume a recording. You can file
+meetings in folders, tag them and search across all meetings.
 
 How do updates work?
 Openstyle checks for updates and downloads them in the background. You choose
-when to restart.
+when to restart. The Stable channel is the default. An optional Dev channel
+gives you early builds.
 
 ## Links
 
