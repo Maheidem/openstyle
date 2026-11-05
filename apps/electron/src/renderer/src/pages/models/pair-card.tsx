@@ -79,10 +79,10 @@ export function PairCard({
       <div className="border-border border-t pt-6 min-[820px]:border-l min-[820px]:border-t-0 min-[820px]:pl-6 min-[820px]:pt-0">
         <PairSide
           kicker={t("models.pair.cleanupKicker")}
-          modelName={llmCleanup ? llm?.model_name : undefined}
-          providerName={
-            llmCleanup && llm ? providerLabel(llm, servers, t) : undefined
-          }
+          // The saved model shows also when AI cleanup is off. The dimmed
+          // card says that it is off. "None selected" means: no model.
+          modelName={llm?.model_name}
+          providerName={llm ? providerLabel(llm, servers, t) : undefined}
           cta={llm ? t("models.pair.change") : t("models.pair.pickModel")}
           noneLabel={t("models.pair.noneSelected")}
           toggle={llmCleanup}

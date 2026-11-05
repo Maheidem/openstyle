@@ -1,5 +1,5 @@
 import { getClient } from "@renderer/lib/api";
-import type { AvailableModel } from "@renderer/lib/models";
+import { type AvailableModel, VOICE_META } from "@renderer/lib/models";
 import { useCallback, useState } from "react";
 import {
   kindFitsRole,
@@ -45,13 +45,31 @@ export interface RemoteSource {
   reset: () => void;
 }
 
-/** The first cloud model of a provider for a role, in the order of the catalog. */
+/**
+ * The model that the first run gives to a provider. Voice: the cheapest model
+ * that the provider does not plan to remove (the cost table of the Models page;
+ * a model with no cost comes last). Text: the first model of the line-up of
+ * the provider (the newest capable model), else the first curated model.
+ */
 export function cloudModelFor(
   available: readonly AvailableModel[],
   role: ModelRole,
   provider: string,
 ): AvailableModel | undefined {
-  return available.find((m) => m.type === role && m.provider_id === provider);
+  const own = available.filter(
+    (m) => m.type === role && m.provider_id === provider,
+  );
+  if (role === "voice") {
+    const current = own.filter((m) => !m.notice);
+    const costOf = (m: AvailableModel): number =>
+      VOICE_META[m.model_id]?.cost ?? Number.POSITIVE_INFINITY;
+    return [...(current.length > 0 ? current : own)].sort(
+      (a, b) => costOf(a) - costOf(b),
+    )[0];
+  }
+  const rank = (m: AvailableModel): number =>
+    m.lineup_rank ?? (m.curated ? 1000 : 2000);
+  return [...own].sort((a, b) => rank(a) - rank(b))[0];
 }
 
 const NETWORK_ERROR = /could not reach|timed out/i;

@@ -246,6 +246,7 @@ export function ModelStep({
             kind="voice"
             remote={models.voiceRemote}
             providers={models.voiceProviders}
+            loading={models.cloudLoading}
             modelName={voiceModel?.model_name}
           />
         )}
@@ -289,6 +290,7 @@ export function ModelStep({
               kind="llm"
               remote={models.textRemote}
               providers={models.textProviders}
+              loading={models.cloudLoading}
               modelName={textModel?.model_name}
             />
           )}

@@ -27,7 +27,7 @@ import { isSystemAudioCaptureSupported } from "../system-audio-capture";
 import { currentTrayAppearance, refreshTrayIcon } from "../tray-icon";
 import { trayPopoverPosition } from "../tray-popover-position";
 import { runningVersion } from "../update-channel";
-import { showSettingsWindow } from "./settings-window";
+import { isOnboardingActive, showSettingsWindow } from "./settings-window";
 
 const log = createAppLogger("electron");
 
@@ -301,6 +301,7 @@ export function registerTrayPopoverIpc(deps: {
         state.meetingRecorder !== null &&
         (isSystemAudioCaptureSupported() || isFakeMeetingCapture()),
       update: state.updateDownloadState,
+      onboardingActive: await isOnboardingActive(),
       visible: isTrayPopoverVisible(),
     };
   });

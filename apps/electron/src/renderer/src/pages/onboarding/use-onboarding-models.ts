@@ -69,6 +69,8 @@ interface SavedModel {
 
 export interface OnboardingModels {
   loading: boolean;
+  /** The list of cloud models is not there yet. */
+  cloudLoading: boolean;
   profile: SystemProfile | undefined;
   servers: UseServers;
   /** The voice models of "Choose another", in list order. */
@@ -596,8 +598,10 @@ export function useOnboardingModels(
       !profile ||
       !whisperStatus ||
       (!mlxStatus && mlxQuery.fetchStatus !== "idle") ||
-      (!llmQuery.data && llmQuery.fetchStatus !== "idle") ||
-      !availableQuery.data,
+      (!llmQuery.data && llmQuery.fetchStatus !== "idle"),
+    // The cloud list comes from a call that can be slow (the model registry).
+    // The recommendation does not wait for it.
+    cloudLoading: !availableQuery.data,
     profile,
     servers,
     voiceItems,

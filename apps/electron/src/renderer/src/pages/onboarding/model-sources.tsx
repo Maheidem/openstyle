@@ -420,11 +420,14 @@ export function CloudForm({
   kind,
   remote,
   providers,
+  loading,
   modelName,
 }: {
   kind: ModelRole;
   remote: RemoteSource;
   providers: string[];
+  /** The list of cloud models is not there yet. */
+  loading: boolean;
   /** The model that the provider gives by default, for the "Key works" line. */
   modelName: string | undefined;
 }): React.JSX.Element {
@@ -440,6 +443,11 @@ export function CloudForm({
           `onboarding.model.cloud.${kind === "voice" ? "voiceNote" : "textNote"}`,
         )}
       </p>
+      {loading && providers.length === 0 && (
+        <p className="text-muted-foreground mt-3 mb-0 text-[12.5px]">
+          {t("models.loading")}
+        </p>
+      )}
       <div className="mt-3 flex flex-wrap gap-2">
         {providers.map((p) => (
           <Button

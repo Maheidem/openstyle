@@ -139,3 +139,31 @@ describe("voice fit and the system profile", () => {
     expect(body.voiceFit["local-mlx/qwen3-0.6b-8bit"]).toBeTruthy();
   });
 });
+
+describe("cloud LLM line-up rank", () => {
+  it("is 0 for the first model of a provider and null for an unknown model", async () => {
+    const { cloudLlmLineupRank, CLOUD_LLM_LINEUP } = await import(
+      "../src/lib/cloud-models.js"
+    );
+    const first = CLOUD_LLM_LINEUP[0];
+    expect(cloudLlmLineupRank(first.providerId, first.id)).toBe(0);
+    expect(cloudLlmLineupRank(first.providerId, "not-a-model")).toBeNull();
+  });
+
+  it("is in the entries of GET /api/models/available", async () => {
+    const app = createApp();
+    const res = await app.request("/api/models/available");
+    const body = (await res.json()) as {
+      type: string;
+      lineup_rank?: number;
+    }[];
+    expect(body.some((m) => m.type === "llm" && m.lineup_rank === 0)).toBe(
+      true,
+    );
+    expect(
+      body
+        .filter((m) => m.type === "voice")
+        .every((m) => m.lineup_rank === undefined),
+    ).toBe(true);
+  });
+});

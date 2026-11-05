@@ -6,6 +6,7 @@ import {
   CLOUD_LLM_LINEUP,
   CLOUD_VOICE_LINEUP,
   CURATED_LLM_IDS,
+  cloudLlmLineupRank,
   dismissRetiredNotice,
   legacyNotice,
   listRetiredNotices,
@@ -54,6 +55,8 @@ interface AvailableModel {
   curated?: boolean;
   /** A short note for a model the provider plans to remove. */
   notice?: string;
+  /** Cloud LLM only: the place in the line-up of the provider. 0 is the first. */
+  lineup_rank?: number;
   /**
    * Display name of the LLM gateway fronting this model (e.g. "OpenRouter"),
    * when the provider is an aggregator rather than a first-party vendor. The
@@ -66,6 +69,15 @@ interface AvailableModel {
 function legacyField(providerId: string, modelId: string): { notice?: string } {
   const notice = legacyNotice(providerId, modelId);
   return notice ? { notice } : {};
+}
+
+/** The `lineup_rank` field of a cloud LLM that the line-up holds, or nothing. */
+function lineupRankField(
+  providerId: string,
+  modelId: string,
+): { lineup_rank?: number } {
+  const rank = cloudLlmLineupRank(providerId, modelId);
+  return rank === null ? {} : { lineup_rank: rank };
 }
 
 /** Build the /available entry for a local voice model. */
@@ -125,6 +137,7 @@ const BUILTIN_LLM_MODELS: AvailableModel[] = CLOUD_LLM_LINEUP.map((m) => ({
   cost_input: m.costInput,
   cost_output: m.costOutput,
   curated: true,
+  ...lineupRankField(m.providerId, m.id),
 }));
 
 const models = new Hono()
@@ -165,6 +178,7 @@ const models = new Hono()
               cost_input: model.cost?.input,
               cost_output: model.cost?.output,
               curated: CURATED_LLM_IDS.has(`${providerId}/${model.id}`),
+              ...lineupRankField(providerId, model.id),
               gateway: LLM_GATEWAYS[providerId],
               ...legacyField(providerId, model.id),
             });

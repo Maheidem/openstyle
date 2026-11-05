@@ -283,8 +283,15 @@ test("recommended local path: welcome to ready", async () => {
   await modelsLink.click();
   await page.waitForURL(/\/settings\/models/);
   await expect(page.getByText("Advanced mode is off")).toHaveCount(0);
-  await expect(page.getByText("Qwen3 Fast").first()).toBeVisible();
-  await expect(page.getByText("None selected")).toHaveCount(0);
+  // Both sides name the selected model, also before the weights are on the
+  // disk (audit P14). The Cleanup side is off, but it still names its model.
+  const pair = page
+    .locator("section")
+    .filter({ hasText: "Qwen3 Fast" })
+    .first();
+  await expect(pair).toContainText("Qwen3 Fast", { timeout: 15_000 });
+  await expect(pair).toContainText("Gemma 4 E2B");
+  await expect(pair.getByText("None selected")).toHaveCount(0);
   await shoot(page, "12-models-page");
 });
 
@@ -596,4 +603,25 @@ test("quit and resume", async () => {
   session = await launch(userDataDir);
   ({ page } = session);
   await expect.poll(() => page.url()).toContain("/today");
+});
+
+// ---------------------------------------------------------------------------
+// The tray popover shows "Finish setup" until the first run is complete.
+// ---------------------------------------------------------------------------
+test("the tray popover offers Finish setup while onboarding is open", async () => {
+  session = await launch(newProfile());
+  const { app } = session;
+  await app.evaluate(({ ipcMain }) => {
+    ipcMain.emit("e2e:tray-popover-toggle");
+  });
+  await expect
+    .poll(() => app.windows().some((w) => w.url().includes("tray-popover")), {
+      timeout: 15_000,
+    })
+    .toBe(true);
+  const popover = app.windows().find((w) => w.url().includes("tray-popover"));
+  if (!popover) throw new Error("The tray popover did not open");
+  await expect(popover.getByTestId("tray-popover-finish-setup")).toHaveText(
+    "Finish setup",
+  );
 });

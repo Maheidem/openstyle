@@ -48,10 +48,10 @@ export function HotkeyRebindControl({
   const liveKeys = liveModifiers.map(keyDisplayLabel);
   const draftKeys = capturedCombo ? comboDisplayKeys(capturedCombo) : liveKeys;
   const captureHint = needsModifierOrMouseButton
-    ? "Add a modifier or side mouse button · Esc to cancel"
+    ? t("onboarding.hotkey.needsModifier")
     : canSaveRecording
-      ? "Release to save · Esc to cancel"
-      : "Press a modifier or side mouse button… · Esc to cancel";
+      ? t("onboarding.hotkey.release")
+      : t("onboarding.hotkey.press");
 
   return (
     <div className="mt-5 flex justify-start">

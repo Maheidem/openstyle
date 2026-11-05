@@ -265,6 +265,11 @@
       "subject": "Happy birthday",
       "send": "Send",
       "bodyAria": "Email body"
+    },
+    "hotkey": {
+      "needsModifier": "Add a modifier or side mouse button · Esc to cancel",
+      "release": "Release to save · Esc to cancel",
+      "press": "Press a modifier or side mouse button… · Esc to cancel"
     }
   },
   "settings": {
@@ -2154,7 +2159,8 @@
     },
     "models": {
       "label": "Active models"
-    }
+    },
+    "finishSetup": "Finish setup"
   },
   "ask": {
     "title": "Ask",
