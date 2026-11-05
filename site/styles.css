@@ -223,10 +223,6 @@ img {
   color: var(--line);
 }
 
-.hero-meta-help {
-  flex-basis: 100%;
-}
-
 .hero-props {
   display: flex;
   align-items: center;
@@ -361,7 +357,6 @@ img {
   display: block;
   width: 100%;
   height: auto;
-  aspect-ratio: 1360 / 660;
 }
 
 /* Sections */
@@ -426,6 +421,13 @@ img {
   align-items: center;
 }
 
+.flexible .shot-wide {
+  grid-column: 1 / -1;
+  width: 100%;
+  max-width: 660px;
+  justify-self: center;
+}
+
 /* Meetings */
 
 .meetings-line {
@@ -446,6 +448,13 @@ img {
   flex-direction: column;
   align-items: center;
   gap: 14px;
+}
+
+.meetings-stack .shot-narrow {
+  grid-column: 1 / -1;
+  width: 100%;
+  max-width: 420px;
+  justify-self: center;
 }
 
 .shot-caption {
@@ -591,38 +600,6 @@ img {
   margin: 0;
   font-size: 13.5px;
   color: var(--slate);
-}
-
-/* First launch */
-
-.launch-text {
-  margin: 0 0 14px;
-  max-width: 60ch;
-  font-size: 16px;
-}
-
-.launch-steps {
-  margin: 0 0 14px;
-  padding-left: 22px;
-  max-width: 60ch;
-  font-size: 16px;
-}
-
-.launch-steps li {
-  margin-bottom: 8px;
-}
-
-.launch-code {
-  display: block;
-  margin-top: 8px;
-  padding: 10px 14px;
-  font-family: var(--font-mono);
-  font-size: 13.5px;
-  color: var(--ink);
-  background: var(--surface);
-  border: 1px solid var(--line-soft);
-  border-radius: 8px;
-  overflow-wrap: anywhere;
 }
 
 /* FAQ */

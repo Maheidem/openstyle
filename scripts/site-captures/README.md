@@ -28,6 +28,8 @@ variants and the social card. The dash run needs `cwebp` (Homebrew `webp`).
 | `transcriptions.png` | Transcriptions page with history |
 | `meeting.png` | "Weekly product sync", transcript tab |
 | `meeting-summary.png` | Same meeting, summary tab |
+| `meeting-paused.png` | Recording card in the Paused state (`--only paused`) |
+| `onboarding-model.png` | First-run step "Recommended for your Mac" (`--only onboarding`) |
 | `models-picker.png` | Transcription picker, three tiers |
 | `models-picker-dialog.png` | The picker dialog alone, 1360x660 |
 | `models-builtin.png` | Built into Openstyle list |

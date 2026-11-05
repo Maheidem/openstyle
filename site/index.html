@@ -65,7 +65,7 @@
             "applicationCategory": "ProductivityApplication",
             "url": "https://maheidem.github.io/openstyle/",
             "description": "Free, open source dictation app for Mac on Apple silicon. Hold a key, talk, let go; it types clean text in the app you use. Speech-to-text runs locally with MLX models, on your own server, or on a cloud provider.",
-            "softwareVersion": "2.21.2",
+            "softwareVersion": "3.0.0",
             "offers": {
               "@type": "Offer",
               "price": "0",
@@ -77,7 +77,9 @@
               "https://maheidem.github.io/openstyle/assets/screens/transcriptions.png",
               "https://maheidem.github.io/openstyle/assets/screens/models-picker-dialog.png",
               "https://maheidem.github.io/openstyle/assets/screens/meeting.png",
-              "https://maheidem.github.io/openstyle/assets/screens/meeting-summary.png"
+              "https://maheidem.github.io/openstyle/assets/screens/meeting-summary.png",
+              "https://maheidem.github.io/openstyle/assets/screens/meeting-paused.png",
+              "https://maheidem.github.io/openstyle/assets/screens/onboarding-model.png"
             ],
             "author": {
               "@type": "Person",
@@ -146,7 +148,23 @@
                 "name": "Does Openstyle take meeting notes?",
                 "acceptedAnswer": {
                   "@type": "Answer",
-                  "text": "Yes. It records meetings, transcribes them after the call, writes a summary, and detects speakers. You can file meetings in folders, tag them and search across all meetings."
+                  "text": "Yes. It records meetings, transcribes them after the call, writes a summary, and detects speakers. You can pause and resume a recording. You can file meetings in folders, tag them and search across all meetings."
+                }
+              },
+              {
+                "@type": "Question",
+                "name": "How do updates work?",
+                "acceptedAnswer": {
+                  "@type": "Answer",
+                  "text": "Openstyle checks for updates and downloads them in the background. You choose when to restart. The Stable channel is the default. An optional Dev channel gives you early builds."
+                }
+              },
+              {
+                "@type": "Question",
+                "name": "What happens on the first run?",
+                "acceptedAnswer": {
+                  "@type": "Answer",
+                  "text": "Setup shows Recommended for your Mac: a voice model and a text model that fit your Mac, in one download. Choose another to use a model on this Mac, your own server or a cloud provider. You can run setup again from Settings or the Help menu without losing data. The Models page is always visible."
                 }
               }
             ]
@@ -223,11 +241,10 @@
           </p>
           <p class="hero-meta">
             <span class="hero-meta-group">
-              <span data-version>Version 2.21.2</span>
+              <span data-version>Version 3.0.0</span>
               <span class="meta-sep" aria-hidden="true">&middot;</span>
             </span>
             <span>For Macs with Apple silicon, macOS 14 or later</span>
-            <a class="link-inline hero-meta-help" href="#first-launch">First launch help</a>
           </p>
         </div>
         <div class="hero-demo">
@@ -353,6 +370,7 @@
               <p class="lane-text">
                 Models run on your Mac. Speech: Parakeet, Qwen3-ASR, SenseVoice,
                 Whisper. Text: Gemma 4. Add more speech models from Hugging Face.
+                On first run, Openstyle suggests a model that fits your Mac.
               </p>
             </div>
             <div class="lane lane-dash">
@@ -397,6 +415,32 @@
             </picture>
           </div>
         </figure>
+        <figure class="shot shot-wide">
+          <div class="dialog-card">
+            <picture>
+              <source
+                type="image/webp"
+                srcset="
+                  assets/screens/onboarding-model-660.webp 1x,
+                  assets/screens/onboarding-model.png      2x
+                "
+              />
+              <img
+                src="assets/screens/onboarding-model.png"
+                srcset="
+                  assets/screens/onboarding-model-660.webp 1x,
+                  assets/screens/onboarding-model.png      2x
+                "
+                width="1320"
+                height="680"
+                loading="lazy"
+                decoding="async"
+                alt="The first-run setup. The title is Recommended for your Mac. It shows Voice: Qwen3 Fast and Text: Gemma 4 E2B, a Choose another button and one download button"
+              />
+            </picture>
+          </div>
+          <figcaption class="shot-caption">First run: a model that fits your Mac</figcaption>
+        </figure>
         </div>
       </section>
       <section class="section" id="meetings" aria-labelledby="meetings-title">
@@ -405,8 +449,10 @@
         </h2>
         <p class="meetings-line">
           Openstyle records your meetings, transcribes them after the call and
-          writes a summary. File them in folders, add tags and search across all
-          meetings.
+          writes a summary. Pause and resume a recording; paused time does not
+          count. File meetings in folders, add tags and search across all
+          meetings. An optional Ask page, off by default and experimental, lets
+          you ask questions about your meetings.
         </p>
         <div class="meetings-stack">
           <figure class="shot">
@@ -473,6 +519,32 @@
             </div>
             <figcaption class="shot-caption">Summary</figcaption>
           </figure>
+          <figure class="shot shot-narrow">
+            <div class="dialog-card">
+              <picture>
+                <source
+                  type="image/webp"
+                  srcset="
+                    assets/screens/meeting-paused-280.webp 1x,
+                    assets/screens/meeting-paused.png      2x
+                  "
+                />
+                <img
+                  src="assets/screens/meeting-paused.png"
+                  srcset="
+                    assets/screens/meeting-paused-280.webp 1x,
+                    assets/screens/meeting-paused.png      2x
+                  "
+                  width="560"
+                  height="380"
+                  loading="lazy"
+                  decoding="async"
+                  alt="A meeting recording in the paused state. The card shows Paused, a frozen timer, the text The microphone is off, and the buttons Resume and Stop"
+                />
+              </picture>
+            </div>
+            <figcaption class="shot-caption">Pause and resume</figcaption>
+          </figure>
         </div>
       </section>
       <section class="section section-quiet" id="free-oss" aria-labelledby="free-oss-title">
@@ -493,7 +565,7 @@
           <li class="feature-item">
             <h3 class="feature-name">Meetings</h3>
             <p class="feature-text">
-              Record, transcribe, summarize, file and search meetings
+              Record, pause, transcribe, summarize, file and search meetings
             </p>
           </li>
           <li class="feature-item">
@@ -505,8 +577,8 @@
             <p class="feature-text">Teach it your names and terms</p>
           </li>
           <li class="feature-item">
-            <h3 class="feature-name">Tone</h3>
-            <p class="feature-text">Set how the cleaned text sounds</p>
+            <h3 class="feature-name">Cleanup</h3>
+            <p class="feature-text">Set how the cleaned text reads</p>
           </li>
           <li class="feature-item">
             <h3 class="feature-name">Transcriptions</h3>
@@ -521,34 +593,7 @@
           3-minute recording in under a second.
         </p>
         <p class="speed-caption">
-          Measured October 2026 with Openstyle 2.10, warm model.
-        </p>
-      </section>
-      <section class="section" id="first-launch" aria-labelledby="first-launch-title">
-        <h2 class="section-title" id="first-launch-title">First launch</h2>
-        <p class="launch-text">
-          Apple has not notarized Openstyle. On the first launch, macOS warns
-          that the developer is unidentified. You open the app once to allow
-          it:
-        </p>
-        <ol class="launch-steps">
-          <li>
-            Drag Openstyle to Applications. Right-click the app, choose
-            <strong>Open</strong>, then choose <strong>Open</strong> again.
-          </li>
-          <li>
-            If macOS shows no Open button, go to System Settings, Privacy
-            &amp; Security, and choose <strong>Open Anyway</strong>.
-          </li>
-          <li>
-            Or run this command in Terminal:
-            <code class="launch-code">xattr -cr /Applications/Openstyle.app</code>
-          </li>
-        </ol>
-        <p class="launch-text">
-          You do this once. Openstyle updates itself from inside the app and
-          does not show the warning again. A new .dmg that you download in a
-          browser shows the warning again.
+          Measured October 2026, warm model.
         </p>
       </section>
       <section class="section" id="faq" aria-labelledby="faq-title">
@@ -569,10 +614,21 @@
             </p>
           </details>
           <details class="faq-item">
+            <summary class="faq-question">What happens on the first run?</summary>
+            <p class="faq-answer">
+              Setup shows "Recommended for your Mac". It picks a voice model
+              and a text model that fit your Mac, in one download. Choose
+              another to use a model on this Mac, your own server or a cloud
+              provider. You can run setup again from Settings or the Help menu.
+              Your data stays. The Models page is always visible.
+            </p>
+          </details>
+          <details class="faq-item">
             <summary class="faq-question">How do updates work?</summary>
             <p class="faq-answer">
               Openstyle checks for updates and downloads them in the
-              background. You choose when to restart.
+              background. You choose when to restart. The Stable channel is the
+              default. An optional Dev channel gives you early builds.
             </p>
           </details>
         </div>
