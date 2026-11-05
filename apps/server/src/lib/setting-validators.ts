@@ -290,8 +290,6 @@ const SETTING_VALIDATORS: ReadonlyMap<string, SettingCheck> = new Map([
     SETTINGS_KEYS.chatDeadlineSeconds,
     intRangeCheck(CHAT_SETTING_LIMITS.deadlineSeconds, "Turn deadline"),
   ],
-  // Keep the live transcript at Stop (issue #375): off by default.
-  ["live_keep_transcript_at_stop", checkBooleanFlag],
   // Live captions in the recording pill (issue #375): off by default.
   ["live_captions_pill", checkBooleanFlag],
 ]);

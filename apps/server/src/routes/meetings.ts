@@ -19,7 +19,6 @@ import {
   meetingListResponseSchema,
   meetingStartResponseSchema,
   meetingSummaryVersionsResponseSchema,
-  SETTINGS_KEYS,
   type StartRunResponse,
   SYNC_JSON,
   SYSTEM_WAV,
@@ -34,7 +33,7 @@ import {
   type WavInfo,
   wavDurationMs,
 } from "../lib/audio/wav.js";
-import { getDb, readSetting, withTransaction } from "../lib/db.js";
+import { getDb, withTransaction } from "../lib/db.js";
 import {
   isDictationActive,
   type WaitForDictationIdleOptions,
@@ -74,11 +73,7 @@ import {
   setProgress,
   waitForRelease,
 } from "../lib/meetings/job-registry.js";
-import {
-  readMeetingLanguage,
-  resolveMeetingLanguage,
-} from "../lib/meetings/language.js";
-import { saveLiveTranscript } from "../lib/meetings/live/finish.js";
+import { resolveMeetingLanguage } from "../lib/meetings/language.js";
 import { startLive, stopLive } from "../lib/meetings/live/loop.js";
 import { getLive } from "../lib/meetings/live/store.js";
 import {
@@ -1077,96 +1072,6 @@ async function runTranscribeJob(
   }
 }
 
-/**
- * The steps that the live loop does not do, after Stop saved the live
- * transcript (issue #375): speaker labels for the system channel and the
- * word-timing split of mixed chunks (the aligner), on the audio. It uses the
- * same helpers as the full pass. Never throws. It holds the job slot as a
- * "diarize" job, so no other job runs on the half-finished labels. A failure
- * keeps the live transcript as it is.
- */
-async function runLiveFinishJob(id: string, audioDir: string): Promise<void> {
-  const db = getDb();
-  let handedOff = false;
-  try {
-    if (
-      getMeetingDiarizationEnabledSetting() &&
-      existsSync(join(audioDir, SYSTEM_WAV))
-    ) {
-      const durationRow = db
-        .prepare("SELECT duration_ms FROM meetings WHERE id = ?")
-        .get(id) as { duration_ms: number | null } | undefined;
-      log.info(
-        `meeting ${id}: live transcript, speaker pass started (${durationRow?.duration_ms ?? 0} ms audio)`,
-      );
-      const turns = await runDiarizer(
-        audioDir,
-        durationRow?.duration_ms ?? 0,
-        testOverrides.diarizeDeps ?? createDefaultDiarizeDeps(),
-        false,
-      ).catch((err) => {
-        log.warn(
-          `meeting ${id}: speaker pass failed, the live transcript has no labels: ${String(err)}`,
-        );
-        return null;
-      });
-      if (turns !== null && !isCancelRequested(id)) {
-        const cutTurns = longTurns(turns);
-        const plan = decideAlignPlan({
-          hasTurns: cutTurns.length > 0,
-          language: readMeetingLanguage(id),
-          appleSilicon: testOverrides.appleSilicon ?? isAppleSiliconMac(),
-          canRun: testOverrides.canRunMlx ?? canRunMlxAsr(),
-          alignerReady: testOverrides.alignerReady ?? isAlignerModelReady(),
-        });
-        if (plan.mode === "align") {
-          const systemRows = db
-            .prepare(
-              `SELECT idx, start_ms, end_ms, text FROM meeting_segments
-                WHERE meeting_id = ? AND source = 'system' ORDER BY idx`,
-            )
-            .all(id) as unknown as {
-            idx: number;
-            start_ms: number;
-            end_ms: number;
-            text: string | null;
-          }[];
-          await runAlignPass(
-            id,
-            audioDir,
-            systemRows.map((r) => ({
-              source: "system" as const,
-              idx: r.idx,
-              startMs: r.start_ms,
-              endMs: r.end_ms,
-              text: r.text ?? "",
-              status: "ok" as const,
-            })),
-            turns,
-            plan,
-          );
-          storeDiarizerTurns(id, cutTurns);
-        } else {
-          if (plan.mode === "cut") {
-            log.info(
-              `meeting ${id}: speaker alignment skipped: ${plan.reason}`,
-            );
-          }
-          applyDiarization(id, turns);
-        }
-      }
-    }
-    writeTranscriptMarkdown(id, audioDir);
-    handedOff = startAutoRun(id);
-  } catch (err) {
-    log.error(
-      `meeting ${id}: live transcript finish failed: ${errorMessage(err)}`,
-    );
-  } finally {
-    if (!handedOff) releaseJob(id);
-  }
-}
-
 export type { MeetingRow };
 
 const startSchema = z.object({
@@ -1816,12 +1721,10 @@ const meetings = new Hono()
   .post("/:id/stop", zValidator("json", stopSchema), async (c) => {
     const id = c.req.param("id");
     const { ended_at, duration_ms, status, error } = c.req.valid("json");
-    // Wait for the live loop: the next pass needs the one ASR worker. On a
-    // clean stop the loop first reads the rest of the audio.
-    const keepLive =
-      status === "recorded" &&
-      readSetting(SETTINGS_KEYS.liveKeepTranscriptAtStop) === "true";
-    const live = await stopLive(id, { flush: keepLive });
+    // Wait for the live loop: the next pass needs the one ASR worker. The
+    // live text is never saved as the transcript (specs/live-chat.md 8): a
+    // saved meeting gets the full pass.
+    await stopLive(id);
     const db = getDb();
     const result = db
       .prepare(
@@ -1831,22 +1734,6 @@ const meetings = new Hono()
       )
       .run(ended_at, duration_ms, status, error ?? null, id);
     if (result.changes === 0) return c.json({ error: "Not found" }, 404);
-    // Keep the live transcript (issue #375): the meeting is usable at once.
-    // The speaker and word-timing steps run next, as a job.
-    if (keepLive && live.modelId !== null) {
-      const row = getMeetingRow(id);
-      const saved = saveLiveTranscript(db, id, live.lines, {
-        provider: MLX_ASR_PROVIDER_ID,
-        modelId: live.modelId,
-      });
-      if (saved > 0 && row?.audio_dir) {
-        log.info(`meeting ${id}: saved ${saved} live lines as the transcript`);
-        writeTranscriptMarkdown(id, row.audio_dir);
-        if (claimJob(id, "diarize", { done: 0, total: 0, failed: 0 })) {
-          void runLiveFinishJob(id, row.audio_dir);
-        }
-      }
-    }
     return c.json({ ok: true });
   })
   // Orphan repair: mark a stuck 'recording' row 'interrupted' after the
