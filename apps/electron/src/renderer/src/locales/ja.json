@@ -235,6 +235,7 @@
       "stoppedTitle": "ダウンロードが停止しました。",
       "stopped": "完了したファイルは、この Mac に残ります。",
       "retry": "もう一度試す",
+      "openSource": "モデルの入手先を開く",
       "chooseOther": "別のモデルを選ぶ"
     },
     "ready": {

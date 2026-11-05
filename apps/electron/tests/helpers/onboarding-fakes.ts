@@ -61,6 +61,8 @@ export interface OnboardingFakes {
   finish: () => void;
   /** The next key test answers "not valid". */
   rejectNextKey: () => void;
+  /** The next key test cannot reach the provider (no internet). */
+  offlineNextKey: () => void;
   /** Free disk space of the fake Mac, in bytes. */
   setFreeDisk: (bytes: number) => void;
 }
@@ -90,6 +92,7 @@ export async function installOnboardingFakes(
     "mlx-llm:gemma-4-e4b-qat-4bit": { phase: "idle", ticks: 0 },
   };
   let rejectKey = false;
+  let offlineKey = false;
   let freeDisk = 200 * GIB;
   const fakes: OnboardingFakes = {
     downloads: [],
@@ -101,6 +104,9 @@ export async function installOnboardingFakes(
     },
     rejectNextKey: () => {
       rejectKey = true;
+    },
+    offlineNextKey: () => {
+      offlineKey = true;
     },
     setFreeDisk: (bytes) => {
       freeDisk = bytes;
@@ -358,6 +364,14 @@ export async function installOnboardingFakes(
       key: string;
     };
     fakes.keyTests.push(`${body.provider}:${body.key}`);
+    if (offlineKey) {
+      offlineKey = false;
+      return cors(route, {
+        valid: false,
+        error:
+          "Could not reach anthropic API. Check your network and try again.",
+      });
+    }
     if (rejectKey) {
       rejectKey = false;
       return cors(route, {

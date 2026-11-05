@@ -241,6 +241,7 @@
       "stoppedTitle": "Download stopped.",
       "stopped": "Files that are complete stay on your Mac.",
       "retry": "Try again",
+      "openSource": "Open model source",
       "chooseOther": "Choose another model"
     },
     "ready": {

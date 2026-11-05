@@ -77,6 +77,17 @@ export function DownloadFooter({
             >
               {t("onboarding.footer.retry")}
             </Button>
+            {current?.errorSourceUrl && (
+              <Button
+                size="sm"
+                variant="outline"
+                onClick={() => {
+                  void window.api?.openExternal(current.errorSourceUrl ?? "");
+                }}
+              >
+                {t("onboarding.footer.openSource")}
+              </Button>
+            )}
             <Button size="sm" variant="outline" onClick={onChooseOther}>
               {t("onboarding.footer.chooseOther")}
             </Button>

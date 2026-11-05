@@ -238,6 +238,7 @@
       "stoppedTitle": "O download parou.",
       "stopped": "Os arquivos completos ficam no seu Mac.",
       "retry": "Tentar de novo",
+      "openSource": "Abrir a fonte do modelo",
       "chooseOther": "Escolher outro modelo"
     },
     "ready": {

@@ -238,6 +238,7 @@
       "stoppedTitle": "La descarga se detuvo.",
       "stopped": "Los archivos completos se quedan en tu Mac.",
       "retry": "Reintentar",
+      "openSource": "Abrir la fuente del modelo",
       "chooseOther": "Elegir otro modelo"
     },
     "ready": {

@@ -263,14 +263,11 @@ function OnboardingFlow({
   if (models.defaultVoice && !voiceLater) {
     const local =
       voiceProvider === "local-mlx" || voiceProvider === "local-whisper";
+    // A model on a server or a provider is ready, unless the key test could
+    // not reach the provider ("not tested").
     const ready = local
       ? models.defaultVoiceItem?.status === "ready"
-      : voiceProvider !== undefined &&
-        (voiceProvider === "server" ||
-        models.voiceRemote.keyTest.state !== "idle"
-          ? models.voiceSource !== "cloud" ||
-            models.voiceRemote.keyTest.state === "ok"
-          : true);
+      : models.voiceRemote.keyTest.state !== "offline";
     readyChips.push({
       id: "voice",
       label: t("onboarding.ready.voice", {
@@ -284,8 +281,7 @@ function OnboardingFlow({
     const local = provider === "local-mlx-llm";
     const ready = local
       ? models.defaultTextItem?.status === "ready"
-      : models.textSource !== "cloud" ||
-        models.textRemote.keyTest.state === "ok";
+      : models.textRemote.keyTest.state !== "offline";
     readyChips.push({
       id: "text",
       label: t("onboarding.ready.text", { where: where(provider, local) }),

@@ -625,3 +625,61 @@ test("the tray popover offers Finish setup while onboarding is open", async () =
     "Finish setup",
   );
 });
+
+// ---------------------------------------------------------------------------
+// A Mac with little free disk space: one warning line. The button stays on.
+// ---------------------------------------------------------------------------
+test("low disk space shows a warning and keeps the choice open", async () => {
+  session = await launch(newProfile());
+  const { page, fakes } = session;
+  // 5.5 GB download needs 8.3 GB of room. 6 GB is free.
+  fakes.setFreeDisk(6 * 1000 ** 3);
+  await page.reload();
+  await page.getByTestId("onboarding-start").click();
+  await page.getByRole("button", { name: "Continue" }).click();
+  await expectStep(page, 2);
+  await expect(page.getByTestId("onboarding-disk-warning")).toContainText(
+    "Not enough disk space. You need 8.3 GB. You have 6.0 GB.",
+  );
+  await expect(page.getByTestId("onboarding-model-continue")).toBeEnabled();
+  await shoot(page, "03b-model-low-disk");
+});
+
+// ---------------------------------------------------------------------------
+// A key test that cannot reach the provider does not block. The Ready screen
+// shows the model as not tested (amber chip).
+// ---------------------------------------------------------------------------
+test("a key test with no internet does not block, and Ready says not tested", async () => {
+  session = await launch(newProfile());
+  const { app, page, fakes } = session;
+  await page.getByTestId("onboarding-start").click();
+  await page.getByRole("button", { name: "Continue" }).click();
+  await expectStep(page, 2);
+  await page.getByTestId("onboarding-choose-another").click();
+  await page.getByTestId("onboarding-text-source-cloud").click();
+  fakes.offlineNextKey();
+  await page
+    .getByTestId("onboarding-text-cloud-key")
+    .fill("sk-ant-fake-offline");
+  await page.getByTestId("onboarding-text-cloud-test").click();
+  await expect(page.getByTestId("onboarding-text-cloud-offline")).toContainText(
+    "No internet.",
+  );
+  await shoot(page, "04e-model-key-offline");
+  await expect(page.getByTestId("onboarding-model-continue")).toBeEnabled();
+  await page.getByTestId("onboarding-model-continue").click();
+  await expectStep(page, 3);
+  expect((await configured(app)).find((m) => m.type === "llm")).toMatchObject({
+    provider: "anthropic",
+    is_default: 1,
+  });
+  await page.getByTestId("onboarding-permissions-continue").click();
+  await page.getByTestId("onboarding-try-skip").click();
+  await page.getByTestId("onboarding-name-skip").click();
+  await page.getByTestId("onboarding-enhance-continue").click();
+  await expectStep(page, 7);
+  await expect(page.getByTestId("onboarding-chip-text")).toHaveAttribute(
+    "data-tone",
+    "warn",
+  );
+});

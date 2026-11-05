@@ -218,6 +218,8 @@ export interface DownloadLine {
   bytesTotal: number;
   speedBps: number;
   error?: string;
+  /** A page to open when a proxy or a network rule stops the download. */
+  errorSourceUrl?: string;
 }
 
 export interface DownloadSummary {
@@ -313,6 +315,7 @@ export function voiceLine(
     bytesTotal: p?.bytesTotal ?? item.sizeBytes ?? 0,
     speedBps: p?.speedBps ?? 0,
     error: item.state?.error,
+    errorSourceUrl: item.state?.errorSourceUrl,
   };
 }
 
@@ -328,5 +331,6 @@ export function textLine(item: LocalLlmItem): DownloadLine {
     bytesTotal: p?.bytesTotal ?? item.sizeBytes,
     speedBps: p?.speedBps ?? 0,
     error: item.state.error,
+    errorSourceUrl: item.state.errorSourceUrl,
   };
 }
