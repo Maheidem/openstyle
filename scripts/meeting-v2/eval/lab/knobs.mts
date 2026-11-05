@@ -153,6 +153,15 @@ export const KNOBS: Knob[] = [
     doc: "The most attendee names in the meeting bias (bias-terms.ts). A server without the env override ignores it.",
   },
   {
+    name: "pass",
+    apply: "run",
+    target: "live loop or full pass",
+    default: "full",
+    values: "full | live",
+    check: oneOf("full", "live"),
+    doc: "full = the shipped Re-transcribe pass (run-baseline.mjs). live = the live loop of apps/server/src/lib/meetings/live/loop.ts, replayed on the audio with a virtual clock (live-arm.mts). The live arm has no prompt, no diarization and no align pass.",
+  },
+  {
     name: "attendee_name_form",
     apply: "env",
     target: "OPENSTYLE_ASR_ATTENDEE_NAME_FORM",
@@ -235,6 +244,7 @@ export function resolveKnobs(set: Record<string, unknown>): KnobValues {
 
 /** The run name of run-baseline.mjs for the run knobs. */
 export function runName(kv: KnobValues): string {
+  if (kv.pass === "live") return "LIVE";
   const d = kv.diarization === "on";
   const c = kv.asr_context === "on";
   if (d && !c) return "R0d";
