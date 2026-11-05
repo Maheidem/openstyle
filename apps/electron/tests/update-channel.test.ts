@@ -473,7 +473,10 @@ test("a recording meeting: Switch to Stable and Restart & Update ask, then stop 
       (await page.evaluate(() => window.api.getMeetingStatus())).status,
     ).toBe("idle");
     const firstSaved = await savedMeeting(app, first);
-    expect(firstSaved.status).toBe("recorded");
+    // Stop queues the full pass, so the meeting leaves "recorded" at once.
+    expect(["transcribing", "failed", "transcribed"]).toContain(
+      firstSaved.status,
+    );
     expect(firstSaved.files).toEqual(["mic.wav", "system.wav", "sync.json"]);
     expect(existsSync(downloadedZip(userDataDir, STABLE))).toBe(true);
 
@@ -503,7 +506,9 @@ test("a recording meeting: Switch to Stable and Restart & Update ask, then stop 
       .click();
     expect(await restarted).toBe(true);
     const secondSaved = await savedMeeting(app, second);
-    expect(secondSaved.status).toBe("recorded");
+    expect(["transcribing", "failed", "transcribed"]).toContain(
+      secondSaved.status,
+    );
     expect(secondSaved.files).toEqual(["mic.wav", "system.wav", "sync.json"]);
   } finally {
     await closeApp(app);

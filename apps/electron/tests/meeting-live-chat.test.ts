@@ -224,7 +224,7 @@ test("setting on, no local model: the live view opens in the right pane and says
   expect(after.status).toBe("off");
 });
 
-test("a saved meeting always gets the full pass: no keep-live option, a stored true is ignored", async () => {
+test("a saved meeting always gets the full pass: no keep-live option, a stored true is ignored, Stop queues the pass", async () => {
   test.setTimeout(120_000);
   // The option is gone from Settings. The live chat switch stays.
   await dashboard.goto("app://renderer/settings#meetings");
@@ -239,34 +239,12 @@ test("a saved meeting always gets the full pass: no keep-live option, a stored t
   expect(put.ok).toBe(true);
   const id = await startMeeting();
   await stopMeeting();
-  // Stop saves no live text. The meeting waits as "recorded".
+  // Stop saves no live text. It queues the full pass: the meeting leaves
+  // "recorded" at once, with no click on "Transcribe".
   const detail = (await (await fetch(`${base}/api/meetings/${id}`)).json()) as {
     status: string;
     transcript_source: string | null;
-    segment_counts: { total: number };
   };
-  expect(detail.status).toBe("recorded");
+  expect(["transcribing", "failed", "transcribed"]).toContain(detail.status);
   expect(detail.transcript_source).toBeNull();
-  expect(detail.segment_counts.total).toBe(0);
-  // The full pass starts from the meeting page. It leaves "recorded" at once.
-  await dashboard.goto(`app://renderer/meetings?meeting=${id}`);
-  await dashboard
-    .getByRole("button", { name: "Transcribe", exact: true })
-    .first()
-    .click();
-  await expect
-    .poll(
-      async () =>
-        (
-          (await (await fetch(`${base}/api/meetings/${id}`)).json()) as {
-            status: string;
-          }
-        ).status,
-      { timeout: 30_000 },
-    )
-    .not.toBe("recorded");
-  const after = (await (await fetch(`${base}/api/meetings/${id}`)).json()) as {
-    transcript_source: string | null;
-  };
-  expect(after.transcript_source).toBeNull();
 });

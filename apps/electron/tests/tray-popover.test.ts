@@ -405,7 +405,8 @@ test("the popover never takes focus when its Copy and Start buttons are clicked"
   const res = await fetch(`${embeddedServerUrl(app!)}/api/meetings`);
   const { items } = (await res.json()) as { items: { status: string }[] };
   expect(items).toHaveLength(1);
-  expect(items[0].status).toBe("recorded");
+  // Stop queues the full pass, so the meeting leaves "recorded" at once.
+  expect(["transcribing", "failed", "transcribed"]).toContain(items[0].status);
 
   await app!.evaluate(() => {
     (

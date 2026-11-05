@@ -1734,6 +1734,12 @@ const meetings = new Hono()
       )
       .run(ended_at, duration_ms, status, error ?? null, id);
     if (result.changes === 0) return c.json({ error: "Not found" }, 404);
+    // A saved meeting always gets the full pass (specs/live-chat.md 8). Queue
+    // it on the batch queue, which waits for a running transcription and holds
+    // the one-job rule. A failed stop has no usable audio and queues nothing.
+    // Enhance and Summarize follow through startAutoRun, as for a click on
+    // "Transcribe".
+    if (status === "recorded") batchQueue.enqueue([id], "transcribe", true);
     return c.json({ ok: true });
   })
   // Orphan repair: mark a stuck 'recording' row 'interrupted' after the

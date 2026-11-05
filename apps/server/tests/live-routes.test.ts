@@ -8,7 +8,11 @@ import { MIC_WAV, SYSTEM_WAV } from "@openstyle/validations";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import createApp from "../src/index.js";
 import { deleteSetting, getDb, writeSetting } from "../src/lib/db.js";
-import { hasJob } from "../src/lib/meetings/job-registry.js";
+import {
+  claimJob,
+  hasJob,
+  releaseJob,
+} from "../src/lib/meetings/job-registry.js";
 import { appendChatPair } from "../src/lib/meetings/live/chat-store.js";
 import {
   type LiveDeps,
@@ -17,7 +21,10 @@ import {
 } from "../src/lib/meetings/live/loop.js";
 import { getLive } from "../src/lib/meetings/live/store.js";
 import { LIVE_SAMPLE_RATE } from "../src/lib/meetings/live/tail.js";
-import { __setMeetingsTestOverrides } from "../src/routes/meetings.js";
+import {
+  __batchQueueIdle,
+  __setMeetingsTestOverrides,
+} from "../src/routes/meetings.js";
 import { jsonRequest } from "./helpers/http.js";
 import { resetMeetingTables } from "./helpers/meetings-db.js";
 
@@ -92,6 +99,29 @@ async function waitFor(cond: () => boolean): Promise<void> {
   throw new Error("condition not met");
 }
 
+/** Fake transcriber deps: the full pass writes "full pass text". */
+function fullPassOverrides() {
+  return {
+    createTranscriberDeps: async (extras?: object) => ({
+      getProvider: () => ({
+        providerId: "fake",
+        transcribe: async () => ({ text: "full pass text" }),
+        supportsStreaming: () => false,
+      }),
+      resolveConfig: () => ({
+        providerId: "fake",
+        modelId: "fake-model",
+        apiKey: "key",
+        bias: null,
+      }),
+      sleep: async () => {},
+      backoffBaseMs: 1,
+      maxAttempts: 2,
+      ...extras,
+    }),
+  };
+}
+
 describe("live routes", () => {
   let dir = "";
   beforeEach(() => {
@@ -117,64 +147,30 @@ describe("live routes", () => {
     expect(res.status).toBe(200);
   }
 
-  it("an old stored keep setting of true is ignored: Stop saves no live text and the full pass runs", async () => {
+  it("an old stored keep setting of true is ignored: Stop saves no live text and queues the full pass", async () => {
     // The old setting stays in the database of people who turned it on.
     writeSetting("live_keep_transcript_at_stop", "true");
-    growingWav(
-      join(dir, MIC_WAV),
-      concat(silence(300), speech(1500), silence(3000), speech(2000, 3)),
-    );
-    growingWav(join(dir, SYSTEM_WAV), silence(6800));
-    await startMeeting();
-    await startLive("m-live", dir, stubDeps());
-    await waitFor(() => (getLive("m-live")?.lines.length ?? 0) > 0);
-    const stop = await jsonRequest(app, "POST", "/api/meetings/m-live/stop", {
-      ended_at: Date.now(),
-      duration_ms: 6800,
-      status: "recorded",
-    });
-    expect(stop.status).toBe(200);
-    let detail = (await (await app.request("/api/meetings/m-live")).json()) as {
-      status: string;
-      transcript_source: string | null;
-    };
-    expect(detail.status).toBe("recorded");
-    expect(detail.transcript_source).toBeNull();
-    expect(
-      getDb().prepare("SELECT COUNT(*) AS c FROM meeting_segments").get(),
-    ).toEqual({ c: 0 });
-    expect(hasJob("m-live")).toBe(false);
-
-    // The full pass is the only way to a transcript.
-    __setMeetingsTestOverrides({
-      createTranscriberDeps: async (extras) => ({
-        getProvider: () => ({
-          providerId: "fake",
-          transcribe: async () => ({ text: "full pass text" }),
-          supportsStreaming: () => false,
-        }),
-        resolveConfig: () => ({
-          providerId: "fake",
-          modelId: "fake-model",
-          apiKey: "key",
-          bias: null,
-        }),
-        sleep: async () => {},
-        backoffBaseMs: 1,
-        maxAttempts: 2,
-        ...extras,
-      }),
-    });
+    __setMeetingsTestOverrides(fullPassOverrides());
     try {
-      const run = await app.request("/api/meetings/m-live/transcribe", {
-        method: "POST",
+      growingWav(
+        join(dir, MIC_WAV),
+        concat(silence(300), speech(1500), silence(3000), speech(2000, 3)),
+      );
+      growingWav(join(dir, SYSTEM_WAV), silence(6800));
+      await startMeeting();
+      await startLive("m-live", dir, stubDeps());
+      await waitFor(() => (getLive("m-live")?.lines.length ?? 0) > 0);
+      const stop = await jsonRequest(app, "POST", "/api/meetings/m-live/stop", {
+        ended_at: Date.now(),
+        duration_ms: 6800,
+        status: "recorded",
       });
-      expect(run.status).toBe(202);
-      await waitFor(() => !hasJob("m-live"));
-      detail = (await (await app.request("/api/meetings/m-live")).json()) as {
-        status: string;
-        transcript_source: string | null;
-      };
+      expect(stop.status).toBe(200);
+      // Stop queued the full pass. No call to /transcribe is needed.
+      await __batchQueueIdle();
+      const detail = (await (
+        await app.request("/api/meetings/m-live")
+      ).json()) as { status: string; transcript_source: string | null };
       expect(detail.status).toBe("transcribed");
       expect(detail.transcript_source).toBeNull();
       const texts = getDb()
@@ -209,17 +205,25 @@ describe("live routes", () => {
     ).toEqual({ c: 0 });
   });
 
-  it("a stop with no live loop leaves the meeting recorded", async () => {
-    await startMeeting();
-    const stop = await jsonRequest(app, "POST", "/api/meetings/m-live/stop", {
-      ended_at: Date.now(),
-      duration_ms: 1000,
-    });
-    expect(stop.status).toBe(200);
-    const detail = (await (
-      await app.request("/api/meetings/m-live")
-    ).json()) as { status: string };
-    expect(detail.status).toBe("recorded");
+  it("a stop with no live loop queues the full pass", async () => {
+    __setMeetingsTestOverrides(fullPassOverrides());
+    try {
+      growingWav(join(dir, MIC_WAV), concat(silence(300), speech(2000)));
+      growingWav(join(dir, SYSTEM_WAV), silence(2300));
+      await startMeeting();
+      const stop = await jsonRequest(app, "POST", "/api/meetings/m-live/stop", {
+        ended_at: Date.now(),
+        duration_ms: 2300,
+      });
+      expect(stop.status).toBe(200);
+      await __batchQueueIdle();
+      const detail = (await (
+        await app.request("/api/meetings/m-live")
+      ).json()) as { status: string };
+      expect(detail.status).toBe("transcribed");
+    } finally {
+      __setMeetingsTestOverrides({});
+    }
   });
 
   it("returns the saved chat, also when the setting is off", async () => {

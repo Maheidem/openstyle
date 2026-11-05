@@ -172,12 +172,12 @@ Owner decision 2026-11-05: "Hide the 'keep live' option". A saved meeting always
 What the code does now:
 
 1. The switch is gone from Settings, Meetings. The setting key `live_keep_transcript_at_stop` is removed from the settings keys and from the validators. A stored value `"true"` stays in the database of people who set it. Nothing reads it.
-2. `POST /api/meetings/:id/stop` stops the loop without `flush`, drops the live entry and saves no segment. The meeting is `recorded` with 0 segments. This is the same state as a meeting that has no live loop.
-3. The full pass is the only way to a transcript. It starts when the user selects "Transcribe" on the meeting page (`POST /api/meetings/:id/transcribe`), or from the batch queue. Stop does not start it. This is true for every recording, with or without the live chat.
+2. `POST /api/meetings/:id/stop` stops the loop without `flush`, drops the live entry and saves no segment.
+3. Owner decision 2026-11-05 (12:05): Stop starts the full pass for every recording. With `status: "recorded"` the route queues `transcribe` on the batch queue (`batchQueue.enqueue([id], "transcribe", true)`, `routes/meetings.ts`). It is the job that `POST /:id/transcribe` starts (`startTranscribe`). The queue waits for a transcription that runs, holds the one-job rule and skips a meeting that does not need the stage. Enhance and Summarize follow through `startAutoRun`, so the setting `meeting_enhance_auto_run` still decides them. There is no setting that turns the automatic full pass off. A stop with `status: "failed"` queues nothing. The meeting row shows "Transcribing" at once.
 4. The live chat during the meeting is unchanged. The live text still feeds the live chat and the Live chat tab.
 5. The code that saved live text at Stop and its speaker job (`runLiveFinishJob`) is removed. `saveLiveTranscript` (`live/finish.ts`) and the `flush` option of `stopLive` stay: the Eval Lab live arm (`scripts/meeting-v2/eval/lab/live-arm.mts`) uses them to measure live text. A meeting that an older version saved from live text keeps its mark "From live" until a full transcription replaces it.
 
-Test proof: `apps/server/tests/live-routes.test.ts` (old setting `"true"`, Stop saves nothing, the full pass then writes the transcript) and `apps/electron/tests/meeting-live-chat.test.ts` (no option in Settings, Stop, then "Transcribe" leaves `recorded`).
+Test proof: `apps/server/tests/live-routes.test.ts` (old setting `"true"`, Stop saves no live text, the queued full pass writes the transcript) and `apps/electron/tests/meeting-live-chat.test.ts` (no option in Settings, Stop leaves `recorded` at once).
 
 ### History: the option of 2026-10-30
 
