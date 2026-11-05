@@ -100,12 +100,6 @@ export const SETTINGS_KEYS = {
    */
   chatHotkey: "chat_hotkey",
   /**
-   * Stop saves the live transcript as the transcript of the meeting (mark
-   * "From live"). OFF by default: only the value `"true"` turns it on. It
-   * has an effect only while `live_chat_enabled` is on.
-   */
-  liveKeepTranscriptAtStop: "live_keep_transcript_at_stop",
-  /**
    * Show the last live lines as captions in the recording pill (issue #375).
    * OFF by default: only the value `"true"` turns it on. It has an effect
    * only while `live_chat_enabled` is on.

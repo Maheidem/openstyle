@@ -53,7 +53,7 @@ Rules for the single ASR worker:
 - A tick is skipped while a dictation runs (`isDictationActive()`). The loop counts skipped ticks (`skippedTicks` in the live response).
 - One tick runs at a time. If a tick takes longer than 2 s, the next tick reads the newest audio ("latest wins").
 
-The live store (`live/store.ts`) is in memory only. It holds final lines and one partial for each channel. At Stop the loop first reads the rest of the audio (the open tail too, at most 15 s). The route then saves the final lines as the transcript of the meeting and drops the entry (section 8). A full transcription replaces the live segments. Live lines and full segments are never merged. So there are no duplicate lines.
+The live store (`live/store.ts`) is in memory only. It holds final lines and one partial for each channel. At Stop the route drops the entry. It does not save the lines as a transcript (section 8). The full transcription writes the only segments. Live lines and full segments are never merged. So there are no duplicate lines.
 
 ## 2. Model
 
@@ -123,7 +123,7 @@ UI (hidden while the setting is off). The live view fills the right pane (the me
 - `LiveChatPanel`: input, messages, cite chips (live time, or past meeting title and time). A first answer that takes more than 3 s shows the "warming" text. The line under the title names the provider and model that receive the live text. An error shows its text in the thread. The text "unavailable" shows only when the setting is off.
 - The recording card keeps the timer, the mic and system levels and Stop. With the setting on it also has the "Open live view" link.
 - Settings, Meetings section: a switch "Live transcript and chat (experimental)".
-- After Stop: the meeting detail shows the status "Transcribed" and the mark "From live" next to it, and a "Live chat" tab when the meeting has chat messages.
+- After Stop: the full pass starts at once and the meeting shows "Transcribing". The live text is not saved as the transcript (section 8). The meeting detail shows a "Live chat" tab when the meeting has chat messages. The mark "From live" shows only on a meeting that an older version saved from live text.
 - Strings: `meetings.liveChat.*` and `settings.meetings.liveChat*` in the 7 locales and the template. Models page row: `models.taskProfiles.liveChat`.
 
 E2E seam: `OPENSTYLE_E2E_FAKE_MEETING_AUDIO=<16 kHz mono s16 WAV>`, with `OPENSTYLE_E2E=1` and `OPENSTYLE_E2E_FAKE_MEETING_CAPTURE=1`, streams the file in real time into the mic track. The system track stays silent.
@@ -159,24 +159,29 @@ The proofs are:
 - Experimental. Off by default. The owner decides if it stays.
 - One ASR worker. While a dictation runs, live text pauses.
 - If the dictation model differs from the meeting model, a dictation reloads the worker. Live text then pauses until the meeting model loads again.
-- Live text can differ from the full pass (section 8 has the measured word error). with the option on, Stop saves it as the transcript. "Re-transcribe" replaces it with the full pass.
+- Live text can differ from the full pass (section 8 has the measured word error). Stop never saves it as the transcript. A saved meeting gets the full pass.
 - The language lock needs 10 s of speech. The first lines have auto language until then, and are read again once. A meeting that mixes two languages gets the language of its first 10 s for every later read, like the full pass does for a meeting with more than one declared language.
 - The speech gate uses the Silero model of the app. A breath or a click that Silero marks as speech can still give a short word. The full pass has the same gap.
 - No token streaming. No second ASR worker. No live diarization during the recording (the speaker pass runs after Stop).
 - The claim "30 minutes on a 16 GB Mac without memory pressure" is **not verified**. The test Mac has 128 GB. Section 6 gives the memory of a 10-minute run on this Mac only. The peak of 9.0 GB with the 1.7B ASR model and the chat model loaded together is a warning for a 16 GB Mac. A test on a 16 GB Mac is still open. Only English and one voice for each channel were tested.
 
-## 8. Keep the live transcript at Stop (option, default off)
+## 8. Live text at Stop (decision 2026-11-05: never kept)
 
-Owner decision 2026-10-30: the live text can be kept at Stop. It is an option, **off by default**: setting `live_keep_transcript_at_stop` (only the value `"true"` turns it on), a switch in Settings, Meetings, next to the live chat switch. It has an effect only while `live_chat_enabled` is on. With the option off, Stop does what it did before: the meeting is `recorded`, with 0 segments, and the live text is dropped.
+Owner decision 2026-11-05: "Hide the 'keep live' option". A saved meeting always gets the full pass. Reason: live transcription loses about 29 points on people's names against the full pass. Measured in MLflow experiment `openstyle-lab-asr`, study `live-vs-full-2026-11-05`, silver-14-s36: run `c5cb047816b8` (live) against run `c7887f14c84c` (full).
 
-With the option on:
+What the code does now:
 
-1. `POST /api/meetings/:id/stop` with `status: "recorded"` first stops the loop with `flush`: the loop reads the rest of the audio (the open tail too), for at most 15 s. Then the route saves the final lines as `meeting_segments` (`live/finish.ts`, one row for each line, `idx` for each channel in time order, `status` `ok`) and sets the meeting to `transcribed` with `transcript_source = 'live'` (schema 52). A stop with `status: "failed"`, or a meeting with no live line, saves nothing. The meeting stays `recorded`.
-2. The meeting detail shows the status "Transcribed" and the mark "From live". The mark goes away when a full transcription replaces the segments (`startTranscribe` clears `transcript_source`).
-3. "Re-transcribe" stays available. It runs the full pass and replaces the live segments, as for any transcript.
-4. The steps that the live loop does not do run next, as a job of kind `diarize` that holds the job slot (`runLiveFinishJob`, `routes/meetings.ts`): the speaker pass on the system channel (`runDiarizer`, when the setting is on and `system.wav` exists), then the word-timing split of mixed chunks (`decideAlignPlan`, `runAlignPass`, the same code as the full pass) when the meeting has a declared language, else the speaker labels from the overlap (`applyDiarization`). Then the markdown export, and the auto-run Enhance and Summarize when that setting is on (`startAutoRun`, shared with the full pass). A failure keeps the live transcript as it is.
+1. The switch is gone from Settings, Meetings. The setting key `live_keep_transcript_at_stop` is removed from the settings keys and from the validators. A stored value `"true"` stays in the database of people who set it. Nothing reads it.
+2. `POST /api/meetings/:id/stop` stops the loop without `flush`, drops the live entry and saves no segment.
+3. Owner decision 2026-11-05 (12:05): Stop starts the full pass for every recording. With `status: "recorded"` the route queues `transcribe` on the batch queue (`batchQueue.enqueue([id], "transcribe", true)`, `routes/meetings.ts`). It is the job that `POST /:id/transcribe` starts (`startTranscribe`). The queue waits for a transcription that runs, holds the one-job rule and skips a meeting that does not need the stage. Enhance and Summarize follow through `startAutoRun`, so the setting `meeting_enhance_auto_run` still decides them. There is no setting that turns the automatic full pass off. A stop with `status: "failed"` queues nothing. The meeting row shows "Transcribing" at once.
+4. The live chat during the meeting is unchanged. The live text still feeds the live chat and the Live chat tab.
+5. The code that saved live text at Stop and its speaker job (`runLiveFinishJob`) is removed. `saveLiveTranscript` (`live/finish.ts`) and the `flush` option of `stopLive` stay: the Eval Lab live arm (`scripts/meeting-v2/eval/lab/live-arm.mts`) uses them to measure live text. A meeting that an older version saved from live text keeps its mark "From live" until a full transcription replaces it.
 
-Why an option: see the measurement below. The live text is as good as the full pass on single-language audio, but worse on mixed-language audio.
+Test proof: `apps/server/tests/live-routes.test.ts` (old setting `"true"`, Stop saves no live text, the queued full pass writes the transcript) and `apps/electron/tests/meeting-live-chat.test.ts` (no option in Settings, Stop leaves `recorded` at once).
+
+### History: the option of 2026-10-30
+
+Owner decision 2026-10-30 made the option **off by default**, with a switch in Settings. With the option on, Stop saved the live text as `meeting_segments` and set the meeting to `transcribed` with `transcript_source = 'live'`, then ran the speaker pass and the aligner as a job. The measurements below are from that time. They show word error on scripted audio. They do not measure names, which is why the 2026-11-05 measurement decided against the option.
 
 ### Measured, live text against the full pass (2026-10-30)
 

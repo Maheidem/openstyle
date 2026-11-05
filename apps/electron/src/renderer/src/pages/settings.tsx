@@ -215,7 +215,6 @@ export default function SettingsPage(): React.JSX.Element {
   const [liveChat, setLiveChat] = useState(false);
   // The Ask tab, meeting chat agent (experimental, off by default).
   const [meetingChat, setMeetingChat] = useState(false);
-  const [liveKeep, setLiveKeep] = useState(false);
   const [liveCaptions, setLiveCaptions] = useState(false);
   // The owner name: the first term of the meeting ASR bias. Saved on blur
   // and on Enter; the ref holds the last saved value.
@@ -516,7 +515,6 @@ export default function SettingsPage(): React.JSX.Element {
     }
     if (s[SETTINGS_KEYS.liveChatEnabled] === "true") setLiveChat(true);
     if (s[SETTINGS_KEYS.meetingChatEnabled] === "true") setMeetingChat(true);
-    if (s[SETTINGS_KEYS.liveKeepTranscriptAtStop] === "true") setLiveKeep(true);
     if (s[SETTINGS_KEYS.liveCaptionsPill] === "true") setLiveCaptions(true);
     savedOwnerName.current = s[SETTINGS_KEYS.ownerName] ?? "";
     setOwnerName(savedOwnerName.current);
@@ -824,11 +822,6 @@ export default function SettingsPage(): React.JSX.Element {
     },
     [queryClient],
   );
-
-  const handleLiveKeepToggle = useCallback((enabled: boolean) => {
-    setLiveKeep(enabled);
-    void putSetting(SETTINGS_KEYS.liveKeepTranscriptAtStop, String(enabled));
-  }, []);
 
   const handleLiveCaptionsToggle = useCallback((enabled: boolean) => {
     setLiveCaptions(enabled);
@@ -1477,17 +1470,6 @@ export default function SettingsPage(): React.JSX.Element {
                   onCheckedChange={handleMeetingChatToggle}
                   aria-label={t("settings.meetings.meetingChat")}
                   data-testid="settings-meeting-chat"
-                />
-              </Row>
-              <Row
-                label={t("settings.meetings.liveKeep")}
-                desc={t("settings.meetings.liveKeepDesc")}
-              >
-                <Switch
-                  id="settings-live-keep"
-                  checked={liveKeep}
-                  onCheckedChange={handleLiveKeepToggle}
-                  aria-label={t("settings.meetings.liveKeep")}
                 />
               </Row>
               <Row

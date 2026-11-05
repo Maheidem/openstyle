@@ -8,8 +8,11 @@ import { MIC_WAV, SYSTEM_WAV } from "@openstyle/validations";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import createApp from "../src/index.js";
 import { deleteSetting, getDb, writeSetting } from "../src/lib/db.js";
-import type { DiarizeDeps } from "../src/lib/meetings/diarize.js";
-import { hasJob } from "../src/lib/meetings/job-registry.js";
+import {
+  claimJob,
+  hasJob,
+  releaseJob,
+} from "../src/lib/meetings/job-registry.js";
 import { appendChatPair } from "../src/lib/meetings/live/chat-store.js";
 import {
   type LiveDeps,
@@ -18,7 +21,10 @@ import {
 } from "../src/lib/meetings/live/loop.js";
 import { getLive } from "../src/lib/meetings/live/store.js";
 import { LIVE_SAMPLE_RATE } from "../src/lib/meetings/live/tail.js";
-import { __setMeetingsTestOverrides } from "../src/routes/meetings.js";
+import {
+  __batchQueueIdle,
+  __setMeetingsTestOverrides,
+} from "../src/routes/meetings.js";
 import { jsonRequest } from "./helpers/http.js";
 import { resetMeetingTables } from "./helpers/meetings-db.js";
 
@@ -53,6 +59,7 @@ function concat(...parts: Int16Array[]): Int16Array {
 function growingWav(path: string, pcm: Int16Array): void {
   const header = Buffer.alloc(44);
   header.write("RIFF", 0);
+  header.writeUInt32LE(36 + pcm.length * 2, 4);
   header.write("WAVEfmt ", 8);
   header.writeUInt32LE(16, 16);
   header.writeUInt16LE(1, 20);
@@ -62,6 +69,7 @@ function growingWav(path: string, pcm: Int16Array): void {
   header.writeUInt16LE(2, 32);
   header.writeUInt16LE(16, 34);
   header.write("data", 36);
+  header.writeUInt32LE(pcm.length * 2, 40);
   writeFileSync(path, Buffer.concat([header, Buffer.from(pcm.buffer)]));
 }
 
@@ -91,13 +99,35 @@ async function waitFor(cond: () => boolean): Promise<void> {
   throw new Error("condition not met");
 }
 
+/** Fake transcriber deps: the full pass writes "full pass text". */
+function fullPassOverrides() {
+  return {
+    createTranscriberDeps: async (extras?: object) => ({
+      getProvider: () => ({
+        providerId: "fake",
+        transcribe: async () => ({ text: "full pass text" }),
+        supportsStreaming: () => false,
+      }),
+      resolveConfig: () => ({
+        providerId: "fake",
+        modelId: "fake-model",
+        apiKey: "key",
+        bias: null,
+      }),
+      sleep: async () => {},
+      backoffBaseMs: 1,
+      maxAttempts: 2,
+      ...extras,
+    }),
+  };
+}
+
 describe("live routes", () => {
   let dir = "";
   beforeEach(() => {
     vi.useRealTimers();
     dir = mkdtempSync(join(tmpdir(), "openstyle-live-routes-"));
     writeSetting("meeting_diarization_enabled", "false");
-    writeSetting("live_keep_transcript_at_stop", "true");
   });
   afterEach(async () => {
     await stopLive("m-live");
@@ -117,112 +147,40 @@ describe("live routes", () => {
     expect(res.status).toBe(200);
   }
 
-  it("Stop saves the live lines as the transcript and marks the meeting", async () => {
-    // Speech runs to the end of the file: an open tail that Stop must read.
-    growingWav(
-      join(dir, MIC_WAV),
-      concat(silence(300), speech(1500), silence(3000), speech(2000, 3)),
-    );
-    growingWav(join(dir, SYSTEM_WAV), silence(6800));
-    await startMeeting();
-    await startLive("m-live", dir, stubDeps());
-    await waitFor(() => (getLive("m-live")?.lines.length ?? 0) > 0);
-    const stop = await jsonRequest(app, "POST", "/api/meetings/m-live/stop", {
-      ended_at: Date.now(),
-      duration_ms: 6800,
-      status: "recorded",
-    });
-    expect(stop.status).toBe(200);
-    const detail = (await (
-      await app.request("/api/meetings/m-live")
-    ).json()) as { status: string; transcript_source: string | null };
-    expect(detail.status).toBe("transcribed");
-    expect(detail.transcript_source).toBe("live");
-    const rows = getDb()
-      .prepare(
-        "SELECT source, text, status FROM meeting_segments WHERE meeting_id = 'm-live' ORDER BY start_ms",
-      )
-      .all() as { source: string; text: string; status: string }[];
-    expect(rows).toHaveLength(2);
-    expect(rows.every((r) => r.source === "mic" && r.status === "ok")).toBe(
-      true,
-    );
-    // The speaker job ends and frees the slot.
-    await waitFor(() => !hasJob("m-live"));
-    // The transcript is readable at once.
-    const transcript = (await (
-      await app.request("/api/meetings/m-live/transcript")
-    ).json()) as { segments: { text: string }[] };
-    expect(transcript.segments.length).toBeGreaterThan(0);
-  });
-
-  it("the speaker pass labels the live system lines after Stop", async () => {
-    writeSetting("meeting_diarization_enabled", "true");
-    // The system channel holds one 2.4 s phrase. The fake diarizer says one
-    // speaker talks over the whole phrase.
-    const deps: DiarizeDeps = {
-      resolveBinaryPath: () => "/fake/fluidaudio-diarize",
-      resolveModelsDirPath: () => "/fake/models",
-      execFile: async (_file, args) => ({
-        stdout:
-          args[0] === "--probe"
-            ? "READY"
-            : JSON.stringify([
-                { speakerId: "A", startTimeSeconds: 0, endTimeSeconds: 2.8 },
-              ]),
-        stderr: "",
-      }),
-    };
-    __setMeetingsTestOverrides({ diarizeDeps: deps });
+  it("an old stored keep setting of true is ignored: Stop saves no live text and queues the full pass", async () => {
+    // The old setting stays in the database of people who turned it on.
+    writeSetting("live_keep_transcript_at_stop", "true");
+    __setMeetingsTestOverrides(fullPassOverrides());
     try {
-      growingWav(join(dir, MIC_WAV), silence(3300));
       growingWav(
-        join(dir, SYSTEM_WAV),
-        concat(silence(300), speech(2400, 5), silence(600)),
+        join(dir, MIC_WAV),
+        concat(silence(300), speech(1500), silence(3000), speech(2000, 3)),
       );
+      growingWav(join(dir, SYSTEM_WAV), silence(6800));
       await startMeeting();
       await startLive("m-live", dir, stubDeps());
       await waitFor(() => (getLive("m-live")?.lines.length ?? 0) > 0);
       const stop = await jsonRequest(app, "POST", "/api/meetings/m-live/stop", {
         ended_at: Date.now(),
-        duration_ms: 3300,
+        duration_ms: 6800,
         status: "recorded",
       });
       expect(stop.status).toBe(200);
-      await waitFor(() => !hasJob("m-live"));
-      const rows = getDb()
-        .prepare(
-          "SELECT source, speaker_label FROM meeting_segments WHERE meeting_id = 'm-live'",
-        )
-        .all() as { source: string; speaker_label: string | null }[];
-      expect(rows).toEqual([{ source: "system", speaker_label: "1" }]);
+      // Stop queued the full pass. No call to /transcribe is needed.
+      await __batchQueueIdle();
+      const detail = (await (
+        await app.request("/api/meetings/m-live")
+      ).json()) as { status: string; transcript_source: string | null };
+      expect(detail.status).toBe("transcribed");
+      expect(detail.transcript_source).toBeNull();
+      const texts = getDb()
+        .prepare("SELECT text FROM meeting_segments")
+        .all() as { text: string }[];
+      expect(texts.length).toBeGreaterThan(0);
+      expect(texts.every((r) => r.text === "full pass text")).toBe(true);
     } finally {
       __setMeetingsTestOverrides({});
     }
-  });
-
-  it("with the option off, Stop leaves the meeting recorded with no segments", async () => {
-    deleteSetting("live_keep_transcript_at_stop");
-    growingWav(join(dir, MIC_WAV), concat(silence(300), speech(2000)));
-    growingWav(join(dir, SYSTEM_WAV), silence(2300));
-    await startMeeting();
-    await startLive("m-live", dir, stubDeps());
-    await waitFor(() => (getLive("m-live")?.lines.length ?? 0) > 0);
-    const stop = await jsonRequest(app, "POST", "/api/meetings/m-live/stop", {
-      ended_at: Date.now(),
-      duration_ms: 2300,
-      status: "recorded",
-    });
-    expect(stop.status).toBe(200);
-    const detail = (await (
-      await app.request("/api/meetings/m-live")
-    ).json()) as { status: string; transcript_source: string | null };
-    expect(detail.status).toBe("recorded");
-    expect(detail.transcript_source).toBeNull();
-    expect(
-      getDb().prepare("SELECT COUNT(*) AS c FROM meeting_segments").get(),
-    ).toEqual({ c: 0 });
-    expect(hasJob("m-live")).toBe(false);
   });
 
   it("a failed stop keeps no live transcript", async () => {
@@ -247,17 +205,25 @@ describe("live routes", () => {
     ).toEqual({ c: 0 });
   });
 
-  it("a stop with no live loop leaves the meeting recorded", async () => {
-    await startMeeting();
-    const stop = await jsonRequest(app, "POST", "/api/meetings/m-live/stop", {
-      ended_at: Date.now(),
-      duration_ms: 1000,
-    });
-    expect(stop.status).toBe(200);
-    const detail = (await (
-      await app.request("/api/meetings/m-live")
-    ).json()) as { status: string };
-    expect(detail.status).toBe("recorded");
+  it("a stop with no live loop queues the full pass", async () => {
+    __setMeetingsTestOverrides(fullPassOverrides());
+    try {
+      growingWav(join(dir, MIC_WAV), concat(silence(300), speech(2000)));
+      growingWav(join(dir, SYSTEM_WAV), silence(2300));
+      await startMeeting();
+      const stop = await jsonRequest(app, "POST", "/api/meetings/m-live/stop", {
+        ended_at: Date.now(),
+        duration_ms: 2300,
+      });
+      expect(stop.status).toBe(200);
+      await __batchQueueIdle();
+      const detail = (await (
+        await app.request("/api/meetings/m-live")
+      ).json()) as { status: string };
+      expect(detail.status).toBe("transcribed");
+    } finally {
+      __setMeetingsTestOverrides({});
+    }
   });
 
   it("returns the saved chat, also when the setting is off", async () => {
