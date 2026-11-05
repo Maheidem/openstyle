@@ -12,14 +12,14 @@ The landing page (`site/`) shows real captures of the app. A script makes them i
 ```bash
 pnpm turbo build --filter=@openstyle/server     # only when server code changed
 pnpm --filter @openstyle/electron build         # only when app code changed
-scripts/test-runner/run.sh "$PWD" -- node scripts/site-captures/capture.mjs --only dash   # Node 22+, macOS
+scripts/test-runner/run.sh "$PWD" -- node scripts/site-captures/capture.mjs --only dash   # Node 22+, macOS. Other values: pill, onboarding, paused
 ```
 
 Run the capture only through the Test Runner (live-testing skill). Set `OPENSTYLE_E2E_OMLX_URL=http://127.0.0.1:1` on the same line. Before and after each run, record the TCC count and `stat -f '%N %m %z' ~/Library/Logs/Openstyle/*`. The installed app also writes that folder: if a file changes, search the new lines for `8790`, `8787` and the demo titles. Zero hits means the installed app wrote them.
 
 The script does the following:
 - It starts its own server on `127.0.0.1:8790` and a fake OpenAI-compatible model server on `127.0.0.1:8787`.
-- The server gets a scratch `HOME`, a scratch Hugging Face cache and an empty stand-in file as `OPENSTYLE_MLX_ASR_WORKER`. The server only checks that the worker file exists. So the built-in models show as on a normal Apple silicon Mac, but no model is on disk and no MLX worker can start.
+- The server gets a scratch `HOME`, a scratch Hugging Face cache and a stand-in file as `OPENSTYLE_MLX_ASR_WORKER`. The stand-in is an executable shell script that only sleeps 20 s. The built-in models show as on a normal Apple silicon Mac. Both default models get an empty stub weight file in the SCRATCH cache (`models--<repo>/snapshots/stub/model.safetensors`), so the app shows no "not downloaded" banner. Nothing can run from them. The `onboarding` run has no stubs and no default models: it is a new install.
 - It uses a throwaway profile, and deletes the profile at the end.
 - It writes to `site/assets/screens/`.
 - In a git worktree, check `ls apps/electron/node_modules/electron/dist/Electron.app` first. On 2026-10-06 the worktree's pnpm Electron entry had no `dist/Electron.app` and no `path.txt`, so the launch failed. The fix: copy the same Electron version's folder from the main checkout's `node_modules/.pnpm`. A symlink fails with a macOS sandbox error.
@@ -42,7 +42,9 @@ The only contact with the installed app is the one boot health probe on 4649.
 | `meeting.png` / `meeting-summary.png` | "Weekly product sync": transcript tab and summary tab |
 | `models-picker.png` | The three groups: Built into Openstyle, Your own server, Cloud provider |
 | `models-picker-dialog.png` | The picker dialog alone: its box plus 4 px left and right, 2 px top and bottom, 1360x660 at 2x. Check the size after a run |
-| `*-1600.webp`, `models-picker-dialog-680.webp` | 1x variants for `index.html`, made with `cwebp -q 82 -resize` |
+| `onboarding-model.png` | First-run step "Recommended for your Mac" (voice and text model, "Choose another", download button). Run `--only onboarding`. 1320x680, clipped from the new-install window |
+| `meeting-paused.png` | The recording card in the Paused state ("The microphone is off", Resume, Stop). Run `--only paused`. 560x380, clipped to the card, because the rest of the page can show other warnings |
+| `*-1600.webp`, `models-picker-dialog-680.webp`, `onboarding-model-660.webp`, `meeting-paused-280.webp` | 1x variants for `index.html`, made with `cwebp -q 82 -resize` |
 | `../og-image.png` | The social card (`og-image.mjs`) |
 | `models-builtin.png` / `models-server.png` | The two model lists |
 | `pill-recording.png` | The pill while recording, transparent background, 2x |
@@ -59,13 +61,16 @@ Dashboard shots are 1280x800 at 2x, dark theme.
 - **The pill video:** `recordVideo` only captures CSS pixels (1x) into a padded canvas, so the script runs a CDP screenshot loop at 2x (clip scale 2, ~25 fps for 4 s) and assembles the VP9 webm with ffmpeg at the measured fps.
 - **Dark backdrop:** the glass surfaces are translucent, and a page capture does not include the native vibrancy. Without a backdrop the PNG is half transparent and looks grey and unfocused. The script adds `html { background: #0c0d0f }` before each shot. A CDP `Emulation.setDefaultBackgroundColorOverride` did NOT work for this window (2026-10-22).
 - **Meetings:** the page opens the newest meeting and expands its folder. The script clicks "Expand Product team" only when the folder is still closed.
-- **Seeded settings:** `today.tutorial_hero` is dismissed, `meeting_enhance_prompt_seen`, `advanced_mode` (shows Models in the sidebar) and `llm_cleanup` are `true`.
+- **Seeded settings:** `today.tutorial_hero` is dismissed, `meeting_enhance_prompt_seen` and `llm_cleanup` are `true`. The Models page is always in the sidebar (since 3.0.0); `advanced_mode` does not control it any more.
+- **Paused recording:** the `paused` run sets `OPENSTYLE_E2E_FAKE_MEETING_CAPTURE=1` (the recorder writes silence, no mic, no native helper). It waits 6 s (boot sweep of orphans), starts a recording on the Meetings page, waits 4 s, presses the pause toggle and clips the card. Then it resumes and stops. Quiet mode and the Test Runner still apply.
+- **First run:** the `onboarding` run writes `onboardingComplete: false`, saves no default model, clicks Start and Continue, and waits for the download button.
 - **Navigation:** a direct `goto` to the models route does not render, so the script uses `history.pushState`. The history page can load empty on the first try, so the script reloads up to 4 times until the rows show.
 
 ## Traps
 
 - Without the MLX worker stand-in, the server switches the voice default to Whisper ("Whisper Whisper Fast") and AI cleanup shows "None selected" (2026-10-22).
-- The pill run uses the voice default. The built-in model is not on disk in the scratch cache, so the pill can show "not downloaded". Check the pill shots before you commit them.
+- The pill run uses the voice default. Since 3.0.0 the app starts the worker when a recording begins. A stand-in that was not executable made the pill show "Transcription failed" and moved the crop (2026-11-05). Look at the poster after every pill run. If the pill layout changes, measure `PILL_CROP` again.
+- `og-image.mjs` needs the Playwright headless shell of the installed Playwright version. If it says the executable is missing, run `pnpm exec playwright install chromium-headless-shell` in `apps/electron`.
 - `pnpm install` in a new worktree can leave `electron/dist` with only `LICENSES.chromium.html`. Unpack the cached zip after its SHA-256 matches `checksums.json` (live-testing skill).
 
 ## Rules for the content
@@ -82,7 +87,8 @@ Dashboard shots are 1280x800 at 2x, dark theme.
 2. Check that the meeting transcript fits the 800 px window (13 lines fit).
 3. Check that no image is grey or half transparent, and that no shot shows Remix or Qwen3.8-27B.
 4. The dash run also rewrites `models-picker.png`, `models-builtin.png`, `models-server.png` and `pill-recording.png`. `index.html` does not use them. Restore them with `git checkout` unless the task asks for them.
-5. Commit the images with the site change that uses them. Do not commit the throwaway profile.
+5. Serve `site/` with `python3 -m http.server` and check that every `src`, `srcset` and `href` path of `index.html` returns 200.
+6. Commit the images with the site change that uses them. Do not commit the throwaway profile.
 
 ## For pi children
 

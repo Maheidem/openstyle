@@ -357,7 +357,6 @@ img {
   display: block;
   width: 100%;
   height: auto;
-  aspect-ratio: 1360 / 660;
 }
 
 /* Sections */
@@ -422,6 +421,13 @@ img {
   align-items: center;
 }
 
+.flexible .shot-wide {
+  grid-column: 1 / -1;
+  width: 100%;
+  max-width: 660px;
+  justify-self: center;
+}
+
 /* Meetings */
 
 .meetings-line {
@@ -442,6 +448,13 @@ img {
   flex-direction: column;
   align-items: center;
   gap: 14px;
+}
+
+.meetings-stack .shot-narrow {
+  grid-column: 1 / -1;
+  width: 100%;
+  max-width: 420px;
+  justify-self: center;
 }
 
 .shot-caption {

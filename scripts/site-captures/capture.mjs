@@ -68,8 +68,35 @@ const dbPath = join(userData, "openstyle.db");
 mkdirSync(userData, { recursive: true });
 mkdirSync(join(scratch, "home"), { recursive: true });
 const workerStandIn = join(scratch, "mlx-worker-stand-in");
-writeFileSync(workerStandIn, "");
+// An executable that only waits. The app starts the worker when a recording
+// begins (pill). An empty, non-executable file made that start fail with
+// "Transcription failed" in the pill (3.0.0). The wait ends after 20 s, so no
+// orphan stays after the run.
+writeFileSync(workerStandIn, "#!/bin/sh\nexec sleep 20\n", { mode: 0o755 });
 mkdirSync(OUT, { recursive: true });
+
+// Stub model files in the SCRATCH cache. The app shows a "not downloaded"
+// warning for a selected model that is not on disk. A normal install has
+// both default models, so an empty weight file in each snapshot folder makes
+// the app show no warning. Nothing can run from them. The first-run shot
+// keeps an empty cache: a new install has no model yet.
+if (!FRESH_INSTALL) {
+  for (const hfId of [
+    "mlx-community/Qwen3-ASR-0.6B-8bit",
+    "mlx-community/gemma-4-E2B-it-qat-4bit",
+  ]) {
+    const snap = join(
+      scratch,
+      "hf",
+      "hub",
+      `models--${hfId.replaceAll("/", "--")}`,
+      "snapshots",
+      "stub",
+    );
+    mkdirSync(snap, { recursive: true });
+    writeFileSync(join(snap, "model.safetensors"), "");
+  }
+}
 
 let serverProc = null;
 let modelServer = null;
@@ -306,7 +333,7 @@ async function prepareDashboard(app, dash) {
   await dash.evaluate(() => localStorage.setItem("theme", "dark"));
   await dash.reload({ waitUntil: "domcontentloaded" });
 }
-async function shootDashboard(app, dash, name) {
+async function shootDashboard(app, dash, name, opts = {}) {
   await dash.bringToFront();
   await app.evaluate(({ BrowserWindow }) => {
     const w = BrowserWindow.getAllWindows().find((x) => {
@@ -319,7 +346,7 @@ async function shootDashboard(app, dash, name) {
     content: "html { background: #0c0d0f !important; }",
   });
   await sleep(900);
-  await dash.screenshot({ path: join(OUT, name) });
+  await dash.screenshot({ path: join(OUT, name), ...opts });
   record(name);
 }
 
@@ -485,11 +512,15 @@ if (ONLY === "onboarding") {
       .getByTestId("onboarding-model-continue")
       .filter({ hasText: /Download/ })
       .waitFor({ timeout: 30000 });
-    await shootDashboard(app, dash, "onboarding-model.png");
+    // The step is a small card in a big window: clip to 660x340 CSS px
+    // (1320x680 at 2x) around it.
+    await shootDashboard(app, dash, "onboarding-model.png", {
+      clip: { x: 310, y: 240, width: 660, height: 340 },
+    });
   } finally {
     await closeApp(app);
   }
-  await makeWebp("onboarding-model.png", "onboarding-model-1600.webp", 1600, 1000);
+  await makeWebp("onboarding-model.png", "onboarding-model-660.webp", 660, 340);
 }
 
 // ---------------------------------------------------------------------------
@@ -516,14 +547,19 @@ if (ONLY === "paused") {
       timeout: 15000,
     });
     await dash.getByTestId("meeting-paused-hint").waitFor({ timeout: 15000 });
-    await shootDashboard(app, dash, "meeting-paused.png");
+    // The recording card alone. The rest of the page shows warnings for
+    // models that are not on disk in the scratch cache, so it stays out of
+    // the shot: clip to 280x190 CSS px (560x380 at 2x).
+    await shootDashboard(app, dash, "meeting-paused.png", {
+      clip: { x: 240, y: 105, width: 280, height: 190 },
+    });
     // Stop the fake recording so the app quits cleanly.
     await dash.getByTestId("meeting-pause-toggle").click();
     await dash.getByRole("button", { name: /stop/i }).first().click();
   } finally {
     await closeApp(app);
   }
-  await makeWebp("meeting-paused.png", "meeting-paused-1600.webp", 1600, 1000);
+  await makeWebp("meeting-paused.png", "meeting-paused-280.webp", 280, 190);
 }
 
 // The 1x webp variants that index.html uses next to each 2x PNG, and the
