@@ -4,6 +4,7 @@
 import { join } from "node:path";
 import { app, BrowserWindow, shell } from "electron";
 import icon from "../../../resources/icon.png?asset";
+import { isOnboardingActiveFor, sanitizeStep } from "../../shared/onboarding";
 import { readSettings } from "../local-settings";
 import { state, stopHotkeyRecorderProcess } from "../main-state";
 import { getDashboardURL } from "../renderer-urls";
@@ -127,13 +128,21 @@ async function buildSettingsWindow(initialPath?: string): Promise<void> {
 }
 
 /**
- * Matches the route decision in buildSettingsWindow. Existing users who have
- * configured models are treated as onboarded even if the lightweight setting
- * predates onboardingComplete.
+ * Matches the route decision in buildSettingsWindow. Onboarding stays active
+ * until it is complete, also when the user saved a model on the way. Existing
+ * users who have configured models and no saved step are treated as
+ * onboarded, even if the lightweight setting predates onboardingComplete.
  */
 export async function isOnboardingActive(): Promise<boolean> {
-  if (readSettings().onboardingComplete === true) return false;
-  return (await getConfiguredModelCount()) === 0;
+  const settings = readSettings();
+  // The model count needs the server. Skip the call when the answer is known.
+  if (
+    settings.onboardingComplete === true ||
+    sanitizeStep(settings.onboardingStep) !== null
+  ) {
+    return isOnboardingActiveFor(settings, 0);
+  }
+  return isOnboardingActiveFor(settings, await getConfiguredModelCount());
 }
 
 export function showSettingsWindow(path?: string): void {

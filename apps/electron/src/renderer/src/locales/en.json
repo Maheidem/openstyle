@@ -45,14 +45,147 @@
     "ja": "Japanese"
   },
   "onboarding": {
+    "counter": "Step {{index}} of {{total}} · {{name}}",
+    "stepName": {
+      "language": "Language",
+      "model": "How Openstyle listens",
+      "permissions": "Allow your Mac",
+      "try": "Try it",
+      "name": "Your name",
+      "enhance": "Enhance"
+    },
+    "welcome": {
+      "title": "Talk. Openstyle writes.",
+      "desc": "Hold a key, speak, and the text appears in any app. Your voice can stay on this Mac.",
+      "cardTitle": "Set up takes about 4 minutes",
+      "rows": {
+        "language": "Pick your language",
+        "listen": "Choose how Openstyle listens",
+        "allow": "Allow your Mac",
+        "try": "Try it once"
+      },
+      "oneMinute": "1 min",
+      "note": "You can finish now and change everything later. Nothing downloads before you say yes.",
+      "start": "Start setup"
+    },
+    "language": {
+      "title": "What language do you speak?",
+      "desc": "Pick up to 5. One language gives the best result. We use your pick to suggest a voice model.",
+      "osNote": "Your Mac language is {{language}}, so we selected it.",
+      "autoNote": "Auto-detect is on. Openstyle finds the language for each clip.",
+      "countNote": "{{count}} of {{max}} selected.",
+      "autoDetect": "Auto-detect",
+      "seeAll": "See all",
+      "allLanguages": "All languages"
+    },
+    "model": {
+      "title": "Recommended for your Mac",
+      "voice": "Voice",
+      "text": "Text",
+      "notSet": "Not set",
+      "chooseAnother": "Choose another",
+      "downloadAndContinue": "Download {{size}} and continue",
+      "decideLater": "Decide later",
+      "chooseTitle": "Choose another",
+      "useRecommendation": "Use the recommendation",
+      "voiceSection": "Voice model · needed to dictate",
+      "textSection": "Text model · optional",
+      "textSectionDesc": "Cleanup, Enhance and Ask use it. It can come from a different source than the voice model.",
+      "sources": {
+        "mac": "On this Mac",
+        "server": "My own server",
+        "cloud": "Cloud provider"
+      },
+      "recommended": "Recommended",
+      "fit": {
+        "runs_well": "Runs well",
+        "tight": "Tight fit",
+        "wont_fit": "Won't fit"
+      },
+      "speed": {
+        "1": "Slow",
+        "2": "Slow",
+        "3": "Medium",
+        "4": "Fast",
+        "5": "Very fast"
+      },
+      "quality": {
+        "1": "Basic",
+        "2": "Good",
+        "3": "Better",
+        "4": "High",
+        "5": "Best"
+      },
+      "languages99": "99 languages",
+      "helper": "+ {{size}} helper engine",
+      "changeVoice": "Change voice model",
+      "changeText": "Change text model",
+      "showFewer": "Show fewer",
+      "notNow": "Not now",
+      "optional": "Optional",
+      "notNowDesc": "Cleanup, Enhance and Ask need a text model. You can add one in step 6 or later.",
+      "textMeta": "Runs on this Mac. Private. {{size}}",
+      "qwenWarning": "Qwen3 does not cover every language you picked. Whisper understands 99 languages.",
+      "diskWarning": "Not enough disk space. You need {{need}}. You have {{have}}.",
+      "testing": "Testing...",
+      "testConnection": "Test connection",
+      "testKey": "Test key",
+      "server": {
+        "voiceNote": "Your audio goes to this address only.",
+        "textNote": "Your text goes to this address only.",
+        "failHint": "Check the address, or use another source.",
+        "connected_one": "Connected · {{count}} model found",
+        "connected_other": "Connected · {{count}} models found",
+        "pick": {
+          "voice": "Voice model on this server",
+          "llm": "Text model on this server"
+        },
+        "noModels": {
+          "voice": "This server lists no speech model. Use another source.",
+          "llm": "This server lists no text model. Use another source."
+        }
+      },
+      "cloud": {
+        "voiceNote": "Your key stays on this Mac. Your audio goes to the provider.",
+        "textNote": "Your key stays on this Mac. Your text goes to the provider.",
+        "keyLabel": "{{provider}} API key",
+        "works": {
+          "voice": "Key works · voice model {{model}}",
+          "llm": "Key works · text model {{model}}"
+        },
+        "refusedTitle": "The provider refused this key.",
+        "offline": "No internet. Openstyle cannot test the key. You can continue. The model shows as not tested."
+      },
+      "errors": {
+        "failed": "Openstyle could not save your choice. Try again.",
+        "voice-server": "Test the server and pick a voice model first.",
+        "text-server": "Test the server and pick a text model first.",
+        "voice-cloud": "This provider has no voice model. Use another source.",
+        "text-cloud": "This provider has no text model. Use another source."
+      }
+    },
     "permissions": {
+      "title": "Let Openstyle use your Mac",
+      "desc": "macOS asks you for each one. We say why before it asks. You can say no and still finish.",
       "microphone": {
         "title": "Microphone",
-        "desc": "To hear what you say."
+        "desc": "To hear what you say. Needed to dictate."
       },
       "accessibility": {
         "title": "Accessibility",
-        "desc": "To detect your hotkey and paste into any app."
+        "desc": "To see your hotkey and type the text into any app. Needed to dictate."
+      },
+      "micDeniedTitle": "Microphone is off for Openstyle.",
+      "micDenied": "You said no in the macOS box. Openstyle cannot hear you until you turn it on. macOS never asks twice.",
+      "openSystemSettings": "Open System Settings",
+      "waiting": "Waiting",
+      "accessibilityWaiting": "Turn on Openstyle in the list. Openstyle checks again when you come back to this window.",
+      "checkAgain": "Check again",
+      "checkHint": "Openstyle also checks when you come back to this window.",
+      "without": {
+        "both": "Continue without these",
+        "microphone": "Continue without Microphone",
+        "accessibility": "Continue without Accessibility"
       },
       "keyboardAccess": {
         "title": "Keyboard access",
@@ -63,78 +196,75 @@
       "pasteTool": {
         "title": "Paste tool",
         "desc": "To paste into other apps, install {{tool}}: <code>sudo apt install {{tool}}</code>"
-      },
-      "grantBoth": "Grant both to continue",
-      "grantAccess": "Grant access to continue"
+      }
     },
-    "language": {
-      "titlePrefix": "What language do you ",
-      "titleEmphasis": "speak?",
-      "autoDetect": "Auto-detect",
-      "seeAll": "See all",
-      "allLanguages": "All languages"
+    "try": {
+      "title": "Try it once",
+      "instructionPrefix": "Click in the email. Hold",
+      "instructionSuffix": "({{words}}) and say:",
+      "sayText": "Happy birthday Sam, I will bring cake on Friday.",
+      "worked": "It worked.",
+      "typed_one": "Openstyle typed {{count}} word.",
+      "typed_other": "Openstyle typed {{count}} words.",
+      "modelWait": "Your voice model is still downloading.",
+      "permissionsMissing": "Microphone or Accessibility is off. Dictation cannot start.",
+      "fix": "Fix it",
+      "skip": "Skip, I will try later"
     },
     "name": {
       "title": "What is your name?",
-      "desc": "Meeting transcription uses your name to spell it correctly. It stays on this Mac. You can change it later in Settings.",
+      "desc": "Meeting transcripts use it to spell your name right. It stays on this Mac. You can change it in Settings.",
       "placeholder": "Your full name",
       "skip": "Skip"
     },
-    "modelSetup": {
-      "title": "Download your private voice model",
-      "idleDesc": "{{name}} runs on {{phrase}} and needs a one-time download{{size}}.",
-      "downloading": "Downloading {{name}}…",
-      "downloadingDesc": "This stays on {{phrase}} — nothing is sent to the cloud.",
-      "buildingEngine": "Preparing transcription engine…",
-      "buildingEngineDesc": "Building the local speech engine. This only happens once.",
-      "preparing": "Starting download…",
-      "downloadButton": "Download ({{size}})",
-      "downloadButtonShort": "Download model",
-      "retry": "Try again",
-      "openModelSource": "Open model source",
-      "errorTitle": "Couldn't finish setup",
-      "errorFallback": "Something went wrong while downloading the model.",
-      "waitingToFinish": "Download your voice model to continue",
-      "waitingWhileDownloading": "Finish once the download completes"
-    },
-    "tutorial": {
-      "finish": "Start using Openstyle"
-    },
     "enhance": {
-      "skip": "Skip"
+      "switch": "Enhance",
+      "headOn": "We will enhance your meetings.",
+      "headOff": "Enhance is off.",
+      "subOn": "After each meeting, Openstyle tidies the transcript. It does not change what was said.",
+      "subOff": "Meeting transcripts stay as they are. You can turn Enhance on later in Settings.",
+      "subDownload": "Openstyle downloads {{name}} ({{size}}) when you continue.",
+      "raw": "Raw transcript",
+      "rawText": "um so we should uh ship the thing on friday no wait thursday",
+      "after": "After Enhance",
+      "cleanText": "We should ship it on Thursday."
     },
-    "modelSelector": {
-      "chooseModel": "Choose a model",
-      "allVoiceModels": "All voice models",
-      "cloudApi": "Cloud API",
-      "onDevice": "On-device",
-      "loading": "Loading models…",
-      "cloudNote": "Cloud models need an API key — we'll ask once.",
-      "onDeviceNote": "On-device models run privately on {{phrase}}.",
-      "connect": "Connect {{provider}}",
-      "addKey": "Add your {{provider}} key",
-      "requiredFor": "Required to use {{model}}. Stored in your system keychain — never logged, never sent to us.",
-      "getKey": "Don't have one? Get a {{provider}} key ↗",
-      "saveKey": "Save & use {{provider}}",
-      "keyPlaceholder": "Paste your secret key — e.g. sk-…",
-      "backToModels": "Back to models"
+    "footer": {
+      "worker": "Installing the helper engine",
+      "downloading": {
+        "voice": "Downloading {{name}} in the background",
+        "text": "Downloading {{name}} in the background"
+      },
+      "minutesLeft_one": "About {{count}} min left.",
+      "minutesLeft_other": "About {{count}} min left.",
+      "done": "Your models are ready.",
+      "stoppedTitle": "Download stopped.",
+      "stopped": "Files that are complete stay on your Mac.",
+      "retry": "Try again",
+      "chooseOther": "Choose another model"
+    },
+    "ready": {
+      "title": "Everything is ready",
+      "line": "Hold {{keys}} in any app and speak.",
+      "lineDownloading": "Hold {{keys}} in any app and speak. Dictation starts when the voice model is done.",
+      "lineLater": "Dictation is off. Pick a voice model in Models to start dictating.",
+      "voice": "Voice model · {{where}}",
+      "text": "Text model · {{where}}",
+      "thisMac": "this Mac",
+      "ownServer": "own server",
+      "open": "Open Openstyle"
     },
     "draft": {
       "statusReady": "Ready",
       "statusListening": "Listening…",
       "statusLanded": "Landed in the draft",
-      "skip": "Skip for now",
       "newMessage": "New Message",
       "toLabel": "To",
       "recipientName": "Sam Rivera",
       "recipientEmail": "sam.rivera@example.com",
       "subject": "Happy birthday",
       "send": "Send",
-      "bodyAria": "Email body",
-      "title": "Write with your voice",
-      "instructionPrefix": "Click into the email body, hold",
-      "instructionSuffix": "and say, word for word:",
-      "sayText": "Happy birthday Sam — I'll bring cake on Friday."
+      "bodyAria": "Email body"
     }
   },
   "settings": {
@@ -175,7 +305,7 @@
       "showOnLaunch": "Show dashboard on launch",
       "showOnLaunchDesc": "Open the dashboard window when Openstyle starts.",
       "advancedMode": "Advanced mode",
-      "advancedModeDesc": "Show the Models page for manual voice and cleanup model configuration, and the LLM inspector on meetings.",
+      "advancedModeDesc": "Show developer settings: sampling values, task profiles, memory limits and the LLM inspector.",
       "acknowledgments": "Acknowledgments",
       "acknowledgmentsDesc": "Third-party models and licenses used by Openstyle.",
       "acknowledgmentsText": "Speaker diarization models are derived from <pyannote>pyannote/speaker-diarization-community-1</pyannote> (CC-BY-4.0) via <fluidaudio>FluidInference/FluidAudio</fluidaudio> (Apache-2.0)."
@@ -398,7 +528,14 @@
     "dailyActivity": "Daily activity",
     "heatmapLess": "Less",
     "heatmapMore": "More",
-    "heatmapWords": "{{count}} words"
+    "heatmapWords": "{{count}} words",
+    "setup": {
+      "voice": "Pick a voice model to start dictating.",
+      "voiceAction": "Choose model",
+      "microphone": "Turn on your microphone. Dictation cannot hear you without it.",
+      "accessibility": "Turn on Accessibility. Dictation cannot type into other apps without it.",
+      "openSettings": "Open settings"
+    }
   },
   "history": {
     "filterTitle": "Filter History",
@@ -702,8 +839,6 @@
   },
   "models": {
     "title": "Models",
-    "advancedModeBanner": "Advanced mode is off. Enable it in Settings › Application to keep the Models page in the sidebar.",
-    "advancedModeBannerAction": "Open settings",
     "apiKeys": "API keys",
     "noApiKeys": "No API keys yet — choose a cloud model above and you'll be prompted for a key.",
     "onDevice": "On-device",

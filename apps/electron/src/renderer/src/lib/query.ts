@@ -14,6 +14,7 @@ import {
   type MlxLlmStatus,
   type WhisperStatus,
 } from "./models";
+import type { SystemProfile } from "./onboarding";
 import { IS_MAC } from "./platform";
 
 /** Common staleTime for cached queries (1 hour). */
@@ -48,6 +49,8 @@ export const queryKeys = {
   apiKeys: ["api-keys"] as const,
   /** Own servers with their live probe (`GET /api/servers`). */
   servers: ["servers"] as const,
+  /** The Mac for the first run (`GET /api/system/profile`). */
+  systemProfile: ["system-profile"] as const,
   whisperStatus: ["whisper-status"] as const,
   mlxStatus: ["mlx-status"] as const,
   /** The built-in local LLM (`GET /api/mlx-llm/status`). */
@@ -383,6 +386,19 @@ export function serversQueryOptions() {
     },
     staleTime: 30_000,
   };
+}
+
+/** The Mac for the first run: Apple silicon, RAM, free disk, voice fit. It does not change while the app runs, except the free disk. */
+export function systemProfileQueryOptions() {
+  return queryOptions({
+    queryKey: queryKeys.systemProfile,
+    queryFn: async (): Promise<SystemProfile> => {
+      const res = await getClient().api.system.profile.$get();
+      if (!res.ok) throw new Error("Failed to load the system profile");
+      return (await res.json()) as SystemProfile;
+    },
+    staleTime: 0,
+  });
 }
 
 /**

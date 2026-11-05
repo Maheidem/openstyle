@@ -1,81 +1,128 @@
 import { Button } from "@renderer/components/ui/button";
-import { useState } from "react";
+import { Switch } from "@renderer/components/ui/switch";
+import { ArrowRight } from "lucide-react";
+import { useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { StepHeading } from "./shared";
+import { StepHeader } from "./step-header";
 
-/**
- * Onboarding step for the auto-Enhance choice (specs/meeting-transcription-v2.md
- * §3.2). New users pick it here instead of seeing the one-time prompt on the
- * Meetings page. Same text and same two choices as the prompt
- * (`llmScopeLabel` in pages/meetings/enhance-prompt-dialog.tsx labels the
- * default LLM); the parent writes the settings:
- * - Turn on: `meeting_enhance_auto_run` = "true" + the seen flag
- * - Not now: `meeting_enhance_auto_run` = "false" + the seen flag
- * - Skip: the seen flag only (off stays the default for a missing row)
- */
+const RAW_PHASE_MS = 1800;
+const CLEAN_PHASE_MS = 2600;
+
+/** The clean line fades in under the raw line, then the card resets and repeats. */
+function useEnhanceAnimation(running: boolean): boolean {
+  const [clean, setClean] = useState(false);
+  useEffect(() => {
+    if (!running) {
+      setClean(false);
+      return;
+    }
+    // A reader who asked for less motion sees the end state, with no loop.
+    if (window.matchMedia?.("(prefers-reduced-motion: reduce)").matches) {
+      setClean(true);
+      return;
+    }
+    const timer = window.setTimeout(
+      () => setClean((c) => !c),
+      clean ? CLEAN_PHASE_MS : RAW_PHASE_MS,
+    );
+    return () => window.clearTimeout(timer);
+  }, [running, clean]);
+  return clean;
+}
+
+// ---------------------------------------------------------------------------
+// Step 6 — Enhance. On by default. One headline and a short animation. A small
+// switch in the corner turns it off. One button.
+// ---------------------------------------------------------------------------
 export function EnhanceStep({
-  model,
-  onChoose,
+  counter,
+  enabled,
+  onToggle,
+  download,
   onBack,
+  onContinue,
+  busy,
 }: {
-  /** The default LLM to name, or null when none is configured yet. */
-  model: { name: string; scope: string } | null;
-  onChoose: (choice: "on" | "off" | "skip") => void;
+  counter: { index: number; total: number };
+  enabled: boolean;
+  onToggle: (on: boolean) => void;
+  /** The text model that Continue downloads, when none is set. Null otherwise. */
+  download: { name: string; size: string } | null;
   onBack: () => void;
+  onContinue: () => void;
+  busy: boolean;
 }): React.JSX.Element {
   const { t } = useTranslation();
-  const [busy, setBusy] = useState(false);
-
-  const choose = (choice: "on" | "off" | "skip") => {
-    if (busy) return;
-    setBusy(true);
-    onChoose(choice);
-  };
+  const clean = useEnhanceAnimation(enabled);
 
   return (
     <div className="w-full max-w-[520px]">
-      <StepHeading title={t("meetings.enhancePromptTitle")} />
-      <p className="text-muted-foreground m-0 text-[14px] leading-relaxed">
-        {model
-          ? t("meetings.enhancePromptDesc", {
-              model: model.name,
-              scope: t(`meetings.enhancePromptScope.${model.scope}`),
-            })
-          : t("meetings.enhancePromptNoLlm")}
+      <StepHeader
+        index={counter.index}
+        total={counter.total}
+        label={t("onboarding.stepName.enhance")}
+        right={
+          <div className="text-muted-foreground flex items-center gap-2 text-[12px]">
+            {t("onboarding.enhance.switch")}
+            <Switch
+              checked={enabled}
+              onCheckedChange={onToggle}
+              aria-label={t("onboarding.enhance.switch")}
+              data-testid="onboarding-enhance-switch"
+            />
+          </div>
+        }
+      />
+      <StepHeading
+        title={
+          enabled
+            ? t("onboarding.enhance.headOn")
+            : t("onboarding.enhance.headOff")
+        }
+      />
+      <p
+        data-testid="onboarding-enhance-sub"
+        className="text-muted-foreground -mt-3 mb-0 text-[14px] leading-relaxed"
+      >
+        {!enabled
+          ? t("onboarding.enhance.subOff")
+          : download
+            ? t("onboarding.enhance.subDownload", download)
+            : t("onboarding.enhance.subOn")}
       </p>
-      <div className="mt-7 flex items-center justify-between gap-3">
+      <div className="border-border bg-card mt-5 rounded-[12px] border px-5 py-4">
+        <div className="mono text-muted-foreground text-[10.5px] tracking-[0.1em] uppercase">
+          {t("onboarding.enhance.raw")}
+        </div>
+        <div className="text-muted-foreground mt-0.5 text-[14px]">
+          {t("onboarding.enhance.rawText")}
+        </div>
+        {enabled && (
+          <div data-testid="onboarding-enhance-clean">
+            <div className="mono mt-3.5 text-[10.5px] tracking-[0.1em] text-emerald-700 uppercase dark:text-emerald-300">
+              {t("onboarding.enhance.after")}
+            </div>
+            <div
+              className="text-foreground mt-0.5 min-h-6 text-[16px] font-medium transition-opacity duration-[600ms]"
+              style={{ opacity: clean ? 1 : 0.15 }}
+            >
+              {t("onboarding.enhance.cleanText")}
+            </div>
+          </div>
+        )}
+      </div>
+      <div className="mt-6 flex items-center justify-between gap-3">
         <Button variant="outline" onClick={onBack} disabled={busy}>
           {t("common.back")}
         </Button>
-        <div className="flex gap-2">
-          <Button
-            variant="outline"
-            onClick={() => choose("off")}
-            disabled={busy}
-            data-testid="onboarding-enhance-not-now"
-          >
-            {t("meetings.enhancePromptNotNow")}
-          </Button>
-          {model && (
-            <Button
-              onClick={() => choose("on")}
-              disabled={busy}
-              data-testid="onboarding-enhance-turn-on"
-            >
-              {t("meetings.enhancePromptTurnOn")}
-            </Button>
-          )}
-        </div>
-      </div>
-      <div className="mt-3 flex justify-end">
         <Button
-          variant="ghost"
-          size="sm"
-          onClick={() => choose("skip")}
+          onClick={onContinue}
           disabled={busy}
-          data-testid="onboarding-enhance-skip"
+          data-testid="onboarding-enhance-continue"
         >
-          {t("onboarding.enhance.skip")}
+          {t("common.continue")}
+          <ArrowRight data-icon="inline-end" />
         </Button>
       </div>
     </div>

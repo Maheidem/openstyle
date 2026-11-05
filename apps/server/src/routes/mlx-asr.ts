@@ -103,8 +103,9 @@ const mlxAsr = new Hono()
             // The ISO codes that the model covers. Only Qwen3 ASR has a
             // short list. Other models have no list: the client reads
             // "all languages" (specs/onboarding.md).
-            languages:
-              m.family === "qwen3-asr" ? qwen3LanguageCodes() : undefined,
+            ...(m.family === "qwen3-asr"
+              ? { languages: qwen3LanguageCodes() }
+              : {}),
           }))
         : [],
       setupHint: platformSupported

@@ -269,8 +269,14 @@ export function registerCoreIpc({ logsDir }: { logsDir: string }): void {
     openAccessibilitySettings,
     openMicrophoneSettings,
     completeOnboarding: () => {
-      writeSettings({ onboardingComplete: true });
+      writeSettings({
+        onboardingComplete: true,
+        onboardingStep: undefined,
+        onboardingDraft: undefined,
+      });
     },
+    readSettings,
+    writeSettings,
   });
 
   if ((process.env.OPENSTYLE_E2E ?? process.env.FREESTYLE_E2E) === "1") {

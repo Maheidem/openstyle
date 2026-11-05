@@ -26,7 +26,11 @@ import {
 const log = createAppLogger("electron");
 
 export function resetOnboarding(): void {
-  writeSettings({ onboardingComplete: false });
+  writeSettings({
+    onboardingComplete: false,
+    onboardingStep: undefined,
+    onboardingDraft: undefined,
+  });
   showSettingsWindow("/onboarding");
 }
 

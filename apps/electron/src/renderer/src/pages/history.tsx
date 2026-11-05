@@ -7,6 +7,7 @@ import { DragSpacer } from "@renderer/components/drag-spacer";
 import { MissingModelBanner } from "@renderer/components/missing-model-banner";
 import { RetiredModelNotice } from "@renderer/components/retired-model-notice";
 import { ServerVoiceNotice } from "@renderer/components/server-voice-notice";
+import { SetupCards } from "@renderer/components/setup-cards";
 import { TutorialDemo } from "@renderer/components/tutorial-demo";
 import { Button } from "@renderer/components/ui/button";
 import {
@@ -503,6 +504,7 @@ export default function HistoryPage(): React.JSX.Element {
           {historyPaused && <HistoryPausedNotice />}
           <ServerVoiceNotice />
           <RetiredModelNotice />
+          <SetupCards />
           <MissingModelBanner tasks={["dictation", "cleanup"]} />
           {hero}
           <EmptyState />
@@ -538,6 +540,7 @@ export default function HistoryPage(): React.JSX.Element {
           {historyPaused && <HistoryPausedNotice />}
           <ServerVoiceNotice />
           <RetiredModelNotice />
+          <SetupCards />
           <MissingModelBanner tasks={["dictation", "cleanup"]} />
           {hero}
           {searchRow}

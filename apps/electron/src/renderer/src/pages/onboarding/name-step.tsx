@@ -4,6 +4,7 @@ import { Input } from "@renderer/components/ui/input";
 import { ArrowRight } from "lucide-react";
 import { useTranslation } from "react-i18next";
 import { StepHeading } from "./shared";
+import { StepHeader } from "./step-header";
 
 /**
  * Optional onboarding step for the owner name (setting `owner_name`).
@@ -13,11 +14,13 @@ import { StepHeading } from "./shared";
  * - Skip: nothing is written
  */
 export function NameStep({
+  counter,
   name,
   onNameChange,
   onDone,
   onBack,
 }: {
+  counter: { index: number; total: number };
   name: string;
   onNameChange: (name: string) => void;
   /** The trimmed name, or null for Skip. */
@@ -34,6 +37,11 @@ export function NameStep({
         onDone(name.trim());
       }}
     >
+      <StepHeader
+        index={counter.index}
+        total={counter.total}
+        label={t("onboarding.stepName.name")}
+      />
       <StepHeading title={t("onboarding.name.title")} />
       <p className="text-muted-foreground m-0 text-[14px] leading-relaxed">
         {t("onboarding.name.desc")}
