@@ -79,6 +79,7 @@ export type GatewayErrorKind =
   | "provider_auth"
   | "provider_invalid_request"
   | "model_unavailable"
+  | "model_missing"
   | "engine_not_ready"
   | "deadline_exceeded";
 

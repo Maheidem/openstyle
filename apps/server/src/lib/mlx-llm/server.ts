@@ -205,6 +205,7 @@ function workerFor(def: MlxLlmModelDef): PoolEntry {
   const worker = createMlxHttpWorker<MlxLlmModelDef>({
     logName: "mlx-llm",
     label: "LLM",
+    engine: "mlx-llm",
     overrideEnv: OVERRIDE_ENV,
     getModel: getMlxLlmModel,
     isDownloaded: (d) => isHfSnapshotPresent(d.hfId),

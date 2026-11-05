@@ -11,6 +11,7 @@ import type {
   CleanupOverallTone,
   CleanupPersonalTone,
   CleanupWorkTone,
+  LocalModelRef,
 } from "@openstyle/validations";
 import {
   areAllCleanupTonesOff,
@@ -34,6 +35,7 @@ import {
   type DictationCall,
   recordDictationCalls,
 } from "./dictation/record.js";
+import { emitCleanupSkipped } from "./dictation-notices.js";
 import { buildRewritePrompt, resolveToneStage } from "./editor/prompts.js";
 import { getRewritePromptContext } from "./editor/rewrite-context.js";
 import { isInputOverflow } from "./llm/gateway-errors.js";
@@ -47,6 +49,7 @@ import {
   fitsWindow,
   splitTextToFit,
 } from "./llm/token-budget.js";
+import { isModelNotDownloadedError } from "./mlx-asr/model-not-downloaded.js";
 import {
   getModelCostCached,
   isCleanupModelSupported,
@@ -123,6 +126,11 @@ export interface PostProcessResult {
   outputTokens: number;
   costUsd: number;
   timings?: PostProcessTimings;
+  /**
+   * Cleanup did not run, because its model is not on the disk. The text is the
+   * raw text. The history row keeps the reason.
+   */
+  cleanupSkipped?: "model_missing";
 }
 
 export type PostProcessSource =
@@ -229,6 +237,7 @@ interface CleanupSession {
 async function startCleanupSession(
   rawText: string,
   calls: DictationCall[],
+  onModelMissing: (model: LocalModelRef) => void,
 ): Promise<CleanupSession | null> {
   const resolved = await resolveTaskCall("cleanup", {
     autoMaxOutputTokens: maxOutputTokensForCleanup(rawText),
@@ -240,6 +249,7 @@ async function startCleanupSession(
     log.warn(
       `LLM cleanup skipped: the model ${resolved.modelId} did not start; the raw text is kept: ${errorMessage(err)}`,
     );
+    if (isModelNotDownloadedError(err)) onModelMissing(err.model);
     return null;
   });
   if (!chatModel) return null;
@@ -483,6 +493,7 @@ export async function postProcess(
   }
 
   let cleanedText = normalizedRawText;
+  const skipped: { model: LocalModelRef | null } = { model: null };
   const handoffStart = Date.now();
   const llm = defaults.llm;
   const llmStart = Date.now();
@@ -512,7 +523,14 @@ export async function postProcess(
         );
       } else {
         handoffMs = Date.now() - handoffStart;
-        session = await startCleanupSession(normalizedRawText, calls);
+        session = await startCleanupSession(
+          normalizedRawText,
+          calls,
+          (model) => {
+            skipped.model = model;
+            emitCleanupSkipped(model);
+          },
+        );
         modelReady = session !== null;
       }
     }
@@ -584,5 +602,6 @@ export async function postProcess(
     outputTokens,
     costUsd,
     ...(options.includeTimings ? { timings: { handoffMs, llmMs } } : {}),
+    ...(skipped.model ? { cleanupSkipped: "model_missing" as const } : {}),
   };
 }

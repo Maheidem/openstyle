@@ -51,7 +51,11 @@ const log = createAppLogger("chat-llm");
 const COLD_TIMEOUT_MS = 120_000;
 
 /** Why the gate refused the turn (spec 2.5a, exits X1 and X2). */
-export type ChatGateReason = "no_model" | "provider_not_ready";
+export type ChatGateReason =
+  | "no_model"
+  | "provider_not_ready"
+  /** The selected built-in model is not on the disk. */
+  | "model_missing";
 
 export class ChatGateError extends Error {
   constructor(
@@ -155,8 +159,8 @@ async function runGate(): Promise<CallProfile> {
     }
     if (!isMlxLlmModelDownloaded(def)) {
       throw new ChatGateError(
-        "provider_not_ready",
-        "The local model is not downloaded.",
+        "model_missing",
+        `${def.displayName} is not downloaded.`,
       );
     }
   } else if (provider.ownServer) {

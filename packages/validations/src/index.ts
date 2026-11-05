@@ -20,6 +20,7 @@ export * from "./meeting-responses.js";
 export * from "./meeting-tags.js";
 export * from "./meeting-types.js";
 export * from "./mlx-keep-alive.js";
+export * from "./model-missing.js";
 export * from "./models.js";
 export * from "./notifications.js";
 export * from "./omlx.js";

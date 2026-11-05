@@ -1,8 +1,15 @@
 import { collapseAsrLineBreaks } from "@openstyle/stt";
 import { createAppLogger } from "@openstyle/utils";
-import { MLX_ASR_PROVIDER_ID } from "../../mlx-asr/constants.js";
+import {
+  getMlxAsrModel,
+  MLX_ASR_PROVIDER_ID,
+} from "../../mlx-asr/constants.js";
 import { resolveMlxLanguage } from "../../mlx-asr/language.js";
-import { getMlxModelStatus } from "../../mlx-asr/models.js";
+import { ModelNotDownloadedError } from "../../mlx-asr/model-not-downloaded.js";
+import {
+  getMlxModelStatus,
+  isMlxModelDownloaded,
+} from "../../mlx-asr/models.js";
 import { describeMlxSetupBlocker } from "../../mlx-asr/python.js";
 import {
   applyMlxAsrRetentionPolicy,
@@ -29,6 +36,14 @@ export class MlxLocalTranscriptionProvider implements TranscriptionProvider {
   async transcribe(opts: TranscribeOptions): Promise<TranscribeResult> {
     const modelId = stripProviderPrefix(opts.model);
 
+    // Typed, so the pipeline and the cue can tell a missing model from a fault.
+    const def = getMlxAsrModel(modelId);
+    if (def && !isMlxModelDownloaded(def)) {
+      throw new ModelNotDownloadedError(
+        { engine: "mlx", defId: def.id, name: def.displayName },
+        "MLX ASR model is not downloaded yet.",
+      );
+    }
     if (!canRunMlxAsr()) {
       throw new Error(
         describeMlxSetupBlocker() ??

@@ -37,6 +37,7 @@ let readyDims: number | null = null;
 const worker = createMlxHttpWorker<MlxEmbedModelDef>({
   logName: "mlx-embed",
   label: "embedding",
+  engine: "mlx-embed",
   // TRUSTED-OPERATOR-ONLY escape hatch, same class as OPENSTYLE_MLX_LLM_WORKER:
   // spawn this binary as the embedding worker and skip the managed runtime.
   // Tests use it. Never set it from untrusted input.

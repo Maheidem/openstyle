@@ -372,6 +372,7 @@ export interface AskErrorView {
     | "errOff"
     | "errNoModel"
     | "errProviderNotReady"
+    | "errModelMissing"
     | "errBusy"
     | "errScope"
     | "errWiden"
@@ -396,6 +397,8 @@ export function askErrorView(
         return { key: "errNoModel", action: "models" };
       case "provider_not_ready":
         return { key: "errProviderNotReady", action: "models" };
+      case "model_missing":
+        return { key: "errModelMissing", action: "models" };
       case "busy":
         return { key: "errBusy", action: "retry" };
       case "scope_missing":

@@ -153,7 +153,7 @@ describe("the gate (spec 2.5a)", () => {
     expect((err as ChatGateError).reason).toBe("provider_not_ready");
   });
 
-  it("throws provider_not_ready when the local model is not downloaded", async () => {
+  it("throws model_missing when the local model is not downloaded", async () => {
     db()
       .prepare(
         `INSERT INTO model_configs (provider, model_id, model_name, type, is_default)
@@ -167,7 +167,7 @@ describe("the gate (spec 2.5a)", () => {
         threadId: "t1",
         signal: signal(),
       }).catch((e: unknown) => e);
-      expect((err as ChatGateError).reason).toBe("provider_not_ready");
+      expect((err as ChatGateError).reason).toBe("model_missing");
     } finally {
       if (prev === undefined) delete process.env.HUGGINGFACE_HUB_CACHE;
       else process.env.HUGGINGFACE_HUB_CACHE = prev;

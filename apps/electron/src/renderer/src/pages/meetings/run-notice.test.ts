@@ -1,8 +1,9 @@
-import type {
-  LlmRunInfo,
-  LlmRunStatus,
-  LlmStepInfo,
-  LlmStepStatus,
+import {
+  formatModelMissingDetail,
+  type LlmRunInfo,
+  type LlmRunStatus,
+  type LlmStepInfo,
+  type LlmStepStatus,
 } from "@openstyle/validations";
 import { describe, expect, it } from "vitest";
 import en from "../../locales/en.json";
@@ -542,5 +543,77 @@ describe("a Summarize notice after a newer chained run", () => {
     expect(runNotice(s, false, [chained(50), s])).not.toBeNull();
     const noSummary = run({ id: "e2", startedAt: 300, steps: [] });
     expect(runNotice(s, false, [noSummary, s])).not.toBeNull();
+  });
+});
+
+describe("model missing (owner report 2026-11-05)", () => {
+  const gemma = {
+    engine: "mlx-llm",
+    defId: "gemma-4-e2b-qat-4bit",
+    name: "Gemma 4 E2B",
+  } as const;
+  const missingStep = (key: string, seq: number): LlmStepInfo => ({
+    ...step(key, "failed", "model_missing", seq),
+    errorDetail: formatModelMissingDetail(gemma),
+  });
+
+  it("has a text for the kind, so the card never says internal error", () => {
+    expect(llmErrorKey("model_missing")).toBe(
+      "meetings.llmError.model_missing",
+    );
+    expect(en.meetings.llmError.model_missing).toMatch(/not downloaded/i);
+    expect(en.meetings.llmRun.modelMissing).toContain("{{name}}");
+    expect(en.meetings.llmRun.modelMissing).not.toMatch(/internal/i);
+  });
+
+  it("names the model when every failed step missed it", () => {
+    const n = runNotice(
+      run({
+        status: "failed",
+        errorKind: "model_missing",
+        failedStepCount: 2,
+        llmStepCount: 2,
+        steps: [missingStep("chunk:0", 1), missingStep("chunk:1", 2)],
+      }),
+      false,
+    );
+    expect(n?.missingModel).toEqual(gemma);
+    expect(n?.tone).toBe("destructive");
+    expect(n?.canResume).toBe(false);
+  });
+
+  it("reads the model from the run detail when no step holds it", () => {
+    const n = runNotice(
+      run({
+        status: "failed",
+        errorKind: "model_missing",
+        errorDetail: formatModelMissingDetail(gemma),
+      }),
+      false,
+    );
+    expect(n?.missingModel).toEqual(gemma);
+  });
+
+  it("keeps the lines when another fault came as well", () => {
+    const n = runNotice(
+      run({
+        status: "partial",
+        steps: [
+          missingStep("chunk:0", 1),
+          step("summarize", "failed", "schema", 2),
+        ],
+      }),
+      false,
+    );
+    expect(n?.missingModel).toBeNull();
+    expect(n?.lines.map((l) => l.kind)).toEqual(["model_missing", "schema"]);
+  });
+
+  it("does not name a model for other failures", () => {
+    const n = runNotice(
+      run({ status: "failed", errorKind: "internal" }),
+      false,
+    );
+    expect(n?.missingModel).toBeNull();
   });
 });

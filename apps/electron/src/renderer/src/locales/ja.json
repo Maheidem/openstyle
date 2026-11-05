@@ -410,7 +410,9 @@
     "nerdTok": "{{in}}→{{out}} トークン",
     "nerdCompute": "計算 {{label}}",
     "dismissHero": "閉じる",
-    "selectDate": "選択"
+    "selectDate": "選択",
+    "cleanupSkipped": "整形をスキップ: モデルがありません",
+    "cleanupSkippedHint": "整形用のモデルがダウンロードされていません。このテキストは元のテキストです。モデルでダウンロードしてください。"
   },
   "vocabulary": {
     "title": "ボキャブラリー",
@@ -807,6 +809,25 @@
       "desc": "Openstyle は AI クリーンアップに {{to}} を使います。",
       "action": "変更",
       "dismiss": "閉じる"
+    },
+    "missing": {
+      "title": "{{name}} はダウンロードされていません。",
+      "desc": "Openstyle は次の機能で使います: {{tasks}}。",
+      "action": "モデルでダウンロード",
+      "cardTitle": "選択中でダウンロードされていないモデル",
+      "download": "ダウンロード",
+      "downloading": "ダウンロード中…",
+      "pairWarning": "このモデルはダウンロードされていません。",
+      "rowBadge": "未ダウンロード",
+      "task": {
+        "dictation": "音声入力",
+        "meetingTranscribe": "会議の文字起こし",
+        "cleanup": "テキストの整形",
+        "meetingEnhance": "補正",
+        "meetingSummarize": "要約",
+        "ask": "質問",
+        "search": "検索"
+      }
     }
   },
   "shell": {
@@ -819,7 +840,8 @@
       "help": "ヘルプ",
       "meetings": "ミーティング",
       "import": "インポート",
-      "ask": "質問"
+      "ask": "質問",
+      "modelsMissing": "未ダウンロード: {{count}}"
     },
     "githubRepo": "GitHubリポジトリ"
   },
@@ -1159,7 +1181,9 @@
       "chunks": "区切り {{list}}",
       "resume": "再開",
       "startAgain": "最初からやり直す",
-      "startAgainDiscards": "最初からやり直す。停止した実行の完了済みの作業は破棄されます。"
+      "startAgainDiscards": "最初からやり直す。停止した実行の完了済みの作業は破棄されます。",
+      "modelMissing": "{{name}} はダウンロードされていません。モデルでダウンロードしてください。",
+      "downloadInModels": "モデルでダウンロード"
     },
     "llmError": {
       "length": "モデルが出力の上限に達しました。",
@@ -1175,6 +1199,7 @@
       "provider_invalid_request": "プロバイダーがリクエストを拒否しました。",
       "model_mismatch": "サーバーが別のモデルで応答しました。",
       "model_unavailable": "Openstyleは選択したモデルを使用できません。設定 › モデルを確認してから、もう一度お試しください。",
+      "model_missing": "モデルがダウンロードされていません。モデルでダウンロードしてください。",
       "engine_not_ready": "デバイス上の AI エンジンはまだ準備できていません。アップデートをインストールしています。",
       "deadline_exceeded": "要約が制限時間を超えました。",
       "budget_exceeded": "ミーティングが長すぎるため、要約の上限である24回の呼び出しに収まりません。",
@@ -1441,7 +1466,8 @@
           "no_leads": "停止：すべての部分を検索しました。",
           "error": "停止：エラーです。"
         }
-      }
+      },
+      "errModelMissing": "質問用のモデルがダウンロードされていません。モデルでダウンロードしてください。"
     }
   },
   "help": {

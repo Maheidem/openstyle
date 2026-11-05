@@ -410,7 +410,9 @@
     "nerdTok": "{{in}}→{{out}} tok",
     "nerdCompute": "{{label}} di calcolo",
     "dismissHero": "Chiudi",
-    "selectDate": "Seleziona"
+    "selectDate": "Seleziona",
+    "cleanupSkipped": "Pulizia saltata: modello mancante",
+    "cleanupSkippedHint": "Il modello di pulizia non è scaricato. Questo testo è il testo grezzo. Scarica il modello in Modelli."
   },
   "vocabulary": {
     "title": "Vocabolario",
@@ -806,6 +808,25 @@
       "desc": "Openstyle ora usa {{to}} per la pulizia con IA.",
       "action": "Cambia",
       "dismiss": "Chiudi"
+    },
+    "missing": {
+      "title": "{{name}} non è scaricato.",
+      "desc": "Openstyle ne ha bisogno per: {{tasks}}.",
+      "action": "Scarica in Modelli",
+      "cardTitle": "Modelli scelti che non sono scaricati",
+      "download": "Scarica",
+      "downloading": "Download in corso…",
+      "pairWarning": "Questo modello non è scaricato.",
+      "rowBadge": "Non scaricato",
+      "task": {
+        "dictation": "Dettatura",
+        "meetingTranscribe": "Trascrizione delle riunioni",
+        "cleanup": "Pulizia del testo",
+        "meetingEnhance": "Migliora",
+        "meetingSummarize": "Riassumi",
+        "ask": "Chiedi",
+        "search": "Ricerca"
+      }
     }
   },
   "shell": {
@@ -818,7 +839,8 @@
       "help": "Aiuto",
       "meetings": "Riunioni",
       "import": "Importa",
-      "ask": "Chiedi"
+      "ask": "Chiedi",
+      "modelsMissing": "Non scaricati: {{count}}"
     },
     "githubRepo": "Repository GitHub"
   },
@@ -1158,7 +1180,9 @@
       "chunks": "blocchi {{list}}",
       "resume": "Riprendi",
       "startAgain": "Ricomincia",
-      "startAgainDiscards": "Ricomincia. Il lavoro già terminato dell’esecuzione interrotta viene scartato."
+      "startAgainDiscards": "Ricomincia. Il lavoro già terminato dell’esecuzione interrotta viene scartato.",
+      "modelMissing": "{{name}} non è scaricato. Scaricalo in Modelli.",
+      "downloadInModels": "Scarica in Modelli"
     },
     "llmError": {
       "length": "Il modello ha raggiunto il limite di output.",
@@ -1174,6 +1198,7 @@
       "provider_invalid_request": "Il provider ha rifiutato la richiesta.",
       "model_mismatch": "Il server ha risposto con un altro modello.",
       "model_unavailable": "Openstyle non può usare il modello scelto. Controlla Impostazioni › Modelli e riprova.",
+      "model_missing": "Il modello non è scaricato. Scaricalo in Modelli.",
       "engine_not_ready": "Il motore IA sul dispositivo non è ancora pronto. Sta installando un aggiornamento.",
       "deadline_exceeded": "Il riepilogo ha superato il suo limite di tempo.",
       "budget_exceeded": "La riunione è troppo lunga per il limite di riepilogo di 24 chiamate.",
@@ -1463,7 +1488,8 @@
           "no_leads": "Fermato: tutte le parti sono state cercate.",
           "error": "Fermato: un errore."
         }
-      }
+      },
+      "errModelMissing": "Il modello per Chiedi non è scaricato. Scaricalo in Modelli."
     }
   },
   "help": {

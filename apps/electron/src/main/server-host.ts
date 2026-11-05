@@ -9,6 +9,7 @@ import { DEFAULT_SERVER_PORT } from "@openstyle/validations";
 import { app, dialog, type UtilityProcess, utilityProcess } from "electron";
 import { DEV_SERVER_PORT, devModelCacheDir } from "./flavor";
 import { broadcastServerChanged, state } from "./main-state";
+import { notifyCleanupSkipped } from "./notifications";
 import { probeServerHealth, setServerPort } from "./server-target";
 
 const log = createAppLogger("electron");
@@ -23,6 +24,7 @@ type ParentMessage =
 type ChildMessage =
   | { type: "ready"; port: number }
   | { type: "model-cache-dirs-result"; id: number; dirs: string[] }
+  | { type: "cleanup-skipped"; name: string }
   | { type: "error"; message: string };
 
 const RESTART_BACKOFF_MS = [1000, 2000, 4000, 8000, 16000];
@@ -112,6 +114,9 @@ function handleMessage(message: ChildMessage): void {
     }
     case "model-cache-dirs-result":
       host.modelDirRequests.get(message.id)?.(message.dirs);
+      break;
+    case "cleanup-skipped":
+      notifyCleanupSkipped(message.name);
       break;
     case "error":
       log.error(`Server process error: ${message.message}`);

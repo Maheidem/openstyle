@@ -3,11 +3,12 @@
 // ends only this process. The main process then restarts it.
 //
 // Messages from the parent: shutdown, prefetch-mlx, model-cache-dirs.
-// Messages to the parent: ready, model-cache-dirs-result, error.
+// Messages to the parent: ready, model-cache-dirs-result, cleanup-skipped, error.
 import {
   activateManagedMlxRuntimeForAppVersion,
   closeDb,
   getLocalModelCacheDirs,
+  onCleanupSkipped,
   prefetchManagedMlxRuntimeForAppRelease,
   reconcileUnsupportedMlxVoiceDefault,
   startServer,
@@ -123,6 +124,16 @@ parentPort.on("message", (event) => {
       });
       break;
     }
+  }
+});
+
+// A dictation kept its raw text, because its cleanup model is not on the disk.
+// The server cannot show a message, so it tells the parent.
+onCleanupSkipped((model) => {
+  try {
+    parentPort.postMessage({ type: "cleanup-skipped", name: model.name });
+  } catch {
+    // The parent is gone. Nothing to tell.
   }
 });
 

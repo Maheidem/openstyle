@@ -26,6 +26,7 @@ export function mlxRerankIdleMinutes(): number {
 const worker = createMlxHttpWorker<MlxRerankModelDef>({
   logName: "mlx-rerank",
   label: "reranker",
+  engine: "mlx-rerank",
   // TRUSTED-OPERATOR-ONLY escape hatch, same class as OPENSTYLE_MLX_EMBED_WORKER:
   // spawn this binary as the reranker worker and skip the managed runtime.
   // Tests use it. Never set it from untrusted input.

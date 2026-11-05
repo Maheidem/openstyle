@@ -410,7 +410,9 @@
     "nerdTok": "{{in}}→{{out}} tok",
     "nerdCompute": "{{label}} de calcul",
     "dismissHero": "Ignorer",
-    "selectDate": "Choisir"
+    "selectDate": "Choisir",
+    "cleanupSkipped": "Nettoyage ignoré : modèle manquant",
+    "cleanupSkippedHint": "Le modèle de nettoyage n’est pas téléchargé. Ce texte est le texte brut. Téléchargez le modèle dans Modèles."
   },
   "vocabulary": {
     "title": "Vocabulaire",
@@ -807,6 +809,25 @@
       "desc": "Openstyle utilise maintenant {{to}} pour le nettoyage par IA.",
       "action": "Changer",
       "dismiss": "Ignorer"
+    },
+    "missing": {
+      "title": "{{name}} n’est pas téléchargé.",
+      "desc": "Openstyle en a besoin pour : {{tasks}}.",
+      "action": "Télécharger dans Modèles",
+      "cardTitle": "Modèles choisis qui ne sont pas téléchargés",
+      "download": "Télécharger",
+      "downloading": "Téléchargement…",
+      "pairWarning": "Ce modèle n’est pas téléchargé.",
+      "rowBadge": "Non téléchargé",
+      "task": {
+        "dictation": "Dictée",
+        "meetingTranscribe": "Transcription des réunions",
+        "cleanup": "Nettoyage du texte",
+        "meetingEnhance": "Améliorer",
+        "meetingSummarize": "Résumer",
+        "ask": "Demander",
+        "search": "Recherche"
+      }
     }
   },
   "shell": {
@@ -819,7 +840,8 @@
       "help": "Aide",
       "meetings": "Réunions",
       "import": "Importer",
-      "ask": "Poser une question"
+      "ask": "Poser une question",
+      "modelsMissing": "Non téléchargés : {{count}}"
     },
     "githubRepo": "Dépôt GitHub"
   },
@@ -1159,7 +1181,9 @@
       "chunks": "segments {{list}}",
       "resume": "Reprendre",
       "startAgain": "Recommencer",
-      "startAgainDiscards": "Recommencer. Le travail déjà terminé de l’exécution arrêtée est abandonné."
+      "startAgainDiscards": "Recommencer. Le travail déjà terminé de l’exécution arrêtée est abandonné.",
+      "modelMissing": "{{name}} n’est pas téléchargé. Téléchargez-le dans Modèles.",
+      "downloadInModels": "Télécharger dans Modèles"
     },
     "llmError": {
       "length": "Le modèle a atteint sa limite de sortie.",
@@ -1175,6 +1199,7 @@
       "provider_invalid_request": "Le fournisseur a refusé la requête.",
       "model_mismatch": "Le serveur a répondu avec un autre modèle.",
       "model_unavailable": "Openstyle ne peut pas utiliser le modèle choisi. Vérifiez Réglages › Modèles, puis réessayez.",
+      "model_missing": "Le modèle n’est pas téléchargé. Téléchargez-le dans Modèles.",
       "engine_not_ready": "Le moteur d’IA de l’appareil n’est pas encore prêt. Il installe une mise à jour.",
       "deadline_exceeded": "Le résumé a dépassé sa limite de temps.",
       "budget_exceeded": "La réunion est trop longue pour la limite de résumé de 24 appels.",
@@ -1464,7 +1489,8 @@
           "no_leads": "Arrêt : toutes les parties ont été cherchées.",
           "error": "Arrêt : une erreur."
         }
-      }
+      },
+      "errModelMissing": "Le modèle pour Demander n’est pas téléchargé. Téléchargez-le dans Modèles."
     }
   },
   "help": {

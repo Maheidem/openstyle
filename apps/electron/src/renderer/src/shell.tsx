@@ -2,7 +2,11 @@ import { Badge } from "@renderer/components/ui/badge";
 import { UpdateBanner } from "@renderer/components/update-banner";
 import { LINKS } from "@renderer/lib/links";
 import { IS_MAC, MOD_LABEL } from "@renderer/lib/platform";
-import { configQueryOptions, settingsQueryOptions } from "@renderer/lib/query";
+import {
+  configQueryOptions,
+  missingModelsQueryOptions,
+  settingsQueryOptions,
+} from "@renderer/lib/query";
 import { cn } from "@renderer/lib/utils";
 import { SETTINGS_KEYS } from "@shared/settings-keys";
 import { useQuery } from "@tanstack/react-query";
@@ -46,6 +50,8 @@ type NavItem = {
   shortcut?: string;
   /** Renders in the bottom group of the sidebar instead of the top. */
   footer?: boolean;
+  /** Selected models that are not on the disk. A number above 0 shows a badge. */
+  badge?: number;
 };
 
 const STATIC_NAV: {
@@ -109,6 +115,7 @@ const STATIC_NAV: {
 ];
 
 function NavList({ items }: { items: NavItem[] }): React.JSX.Element {
+  const { t } = useTranslation();
   return (
     <nav
       className="flex flex-col gap-px px-3"
@@ -139,6 +146,19 @@ function NavList({ items }: { items: NavItem[] }): React.JSX.Element {
                   }
                 />
                 <span className="flex-1 truncate">{item.label}</span>
+                {item.badge ? (
+                  <span
+                    role="status"
+                    data-testid="nav-models-missing-badge"
+                    title={t("shell.nav.modelsMissing", { count: item.badge })}
+                    aria-label={t("shell.nav.modelsMissing", {
+                      count: item.badge,
+                    })}
+                    className="mono inline-flex h-4 min-w-4 shrink-0 items-center justify-center rounded-full bg-yellow-400 px-1 text-[9.5px] font-semibold text-yellow-950 dark:bg-yellow-300"
+                  >
+                    {item.badge}
+                  </span>
+                ) : null}
                 {item.shortcut ? (
                   <span
                     className={cn(
@@ -178,19 +198,31 @@ export default function AppShell(): React.JSX.Element {
   const askEnabled =
     meetingsEnabled && settings?.[SETTINGS_KEYS.meetingChatEnabled] === "true";
 
+  // A selected local model that is not on the disk. Checked at start, and
+  // again after each download or delete (those invalidate the `models` key).
+  const { data: missingModels } = useQuery(missingModelsQueryOptions());
+  const missingCount = missingModels?.length ?? 0;
+
   // Filter the static nav (hide Models when advanced mode is off, Meetings
   // when its flag is off) and re-number the Cmd+N shortcuts sequentially so
   // there's no gap when an item is hidden (e.g. Settings becomes Cmd+5 when
-  // Models is absent).
+  // Models is absent). A missing model keeps Models in the sidebar, with a
+  // badge, so the person can always find the fix.
   const staticNav = useMemo(
     () =>
       STATIC_NAV.filter(
         (item) =>
-          (item.to !== "/settings/models" || advancedMode) &&
+          (item.to !== "/settings/models" ||
+            advancedMode ||
+            missingCount > 0) &&
           (item.to !== "/meetings" || meetingsEnabled) &&
           (item.to !== "/ask" || askEnabled),
-      ).map((item, idx) => ({ ...item, shortcut: String(idx + 1) })),
-    [advancedMode, meetingsEnabled, askEnabled],
+      ).map((item, idx) => ({
+        ...item,
+        shortcut: String(idx + 1),
+        ...(item.to === "/settings/models" ? { badge: missingCount } : {}),
+      })),
+    [advancedMode, meetingsEnabled, askEnabled, missingCount],
   );
 
   const navItems: NavItem[] = useMemo(

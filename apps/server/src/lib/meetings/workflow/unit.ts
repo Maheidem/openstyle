@@ -7,6 +7,7 @@ import {
   ContextExceededError,
   GatewayError,
   LengthError,
+  ModelMissingError,
   ReasoningLeakError,
 } from "../../llm/gateway-errors.js";
 import {
@@ -96,7 +97,10 @@ export function failureFromError(
     rawFinishReason: err.facts.rawFinishReason,
     attempt: err.facts.attempt,
     llmCallIds,
-    message: oneLineText(err.message),
+    // A missing model stores its tagged detail, so the card can name it.
+    message: oneLineText(
+      err instanceof ModelMissingError ? err.detail : err.message,
+    ),
   };
 }
 
@@ -531,6 +535,7 @@ export async function runUnitRoute<M, T>(
       // A call that reached the wire but wrote no record is a lost record.
       const neverSent =
         err.kind === "model_unavailable" ||
+        err.kind === "model_missing" ||
         err.kind === "engine_not_ready" ||
         (err instanceof CancelledError && err.phase === "queued") ||
         (err instanceof ContextExceededError && err.source === "estimate");
