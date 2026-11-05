@@ -159,16 +159,17 @@ export function registerCoreIpc({ logsDir }: { logsDir: string }): void {
     broadcastLevel: (event) => {
       broadcastToWindows("meeting:level", event);
     },
-    broadcastStatus: (status, startedAt) => {
+    broadcastStatus: (status, startedAt, pausedAt) => {
       const recording = status === "recording";
       // Show the pill before the event, so its arrival runs on screen. On a
       // stop, the pill stays up until the renderer ends the capsule's exit.
       setPillMeetingRecording(recording);
-      broadcastToWindows("meeting:status-changed", status, startedAt);
+      broadcastToWindows("meeting:status-changed", status, startedAt, pausedAt);
       state.trayPopover?.webContents.send(
         "meeting:status-changed",
         status,
         startedAt,
+        pausedAt,
       );
       refreshTrayIcon();
       // Linux keeps a static tray menu; elsewhere it rebuilds on right-click.

@@ -6,11 +6,17 @@ import type { PillState } from "./constants";
 export interface MeetingCue {
   /** The start time (epoch ms) of the meeting that the capsule shows, or null. */
   startedAt: number | null;
+  /** The time (epoch ms) of the running pause, or null. */
+  pausedAt: number | null;
   /** True while the capsule plays its exit after a stop. */
   leaving: boolean;
 }
 
-const NO_MEETING: MeetingCue = { startedAt: null, leaving: false };
+const NO_MEETING: MeetingCue = {
+  startedAt: null,
+  pausedAt: null,
+  leaving: false,
+};
 
 /**
  * The next cue for a meeting status. A stop keeps the last start time and
@@ -20,12 +26,13 @@ export function nextMeetingCue(
   prev: MeetingCue,
   status: string,
   startedAt: number | null,
+  pausedAt: number | null = null,
 ): MeetingCue {
   if (status === "recording" && startedAt !== null) {
-    return { startedAt, leaving: false };
+    return { startedAt, pausedAt, leaving: false };
   }
   if (prev.startedAt === null || prev.leaving) return prev;
-  return { startedAt: prev.startedAt, leaving: true };
+  return { ...prev, leaving: true };
 }
 
 /**
@@ -44,14 +51,20 @@ export function useMeetingCue(): MeetingCue {
       ?.getMeetingStatus?.()
       .then((s) => {
         if (!cancelled && s.status === "recording")
-          setCue({ startedAt: s.startedAt, leaving: false });
+          setCue({
+            startedAt: s.startedAt,
+            pausedAt: s.pausedAt ?? null,
+            leaving: false,
+          });
       })
       .catch(() => {});
-    const remove = window.api?.onMeetingStatusChanged?.((status, start) => {
-      // An event is newer than the first reply, so ignore that reply.
-      cancelled = true;
-      setCue((prev) => nextMeetingCue(prev, status, start));
-    });
+    const remove = window.api?.onMeetingStatusChanged?.(
+      (status, start, pausedAt) => {
+        // An event is newer than the first reply, so ignore that reply.
+        cancelled = true;
+        setCue((prev) => nextMeetingCue(prev, status, start, pausedAt));
+      },
+    );
     return () => {
       cancelled = true;
       remove?.();

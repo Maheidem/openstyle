@@ -84,12 +84,38 @@ export function registerMeetingIpc({
     return { ok: true };
   });
 
+  // Pause and resume return `{ ok: false, error }` with a user-facing message.
+  ipcMain.handle("meeting:pause", async () => {
+    try {
+      await getMeetingRecorder()?.pause();
+      return { ok: true };
+    } catch (err) {
+      return {
+        ok: false,
+        error: err instanceof Error ? err.message : String(err),
+      };
+    }
+  });
+
+  ipcMain.handle("meeting:resume", async () => {
+    try {
+      await getMeetingRecorder()?.resume();
+      return { ok: true };
+    } catch (err) {
+      return {
+        ok: false,
+        error: err instanceof Error ? err.message : String(err),
+      };
+    }
+  });
+
   ipcMain.handle("meeting:status", () => {
     const meetingRecorder = getMeetingRecorder();
     return {
       status: meetingRecorder?.status ?? "idle",
       meetingId: meetingRecorder?.currentMeetingId ?? null,
       startedAt: meetingRecorder?.recordingStartedAt ?? null,
+      pausedAt: meetingRecorder?.recordingPausedAt ?? null,
       supported: isSystemAudioCaptureSupported() || isFakeMeetingCapture(),
     };
   });

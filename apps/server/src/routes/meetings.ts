@@ -75,6 +75,7 @@ import {
 } from "../lib/meetings/job-registry.js";
 import { resolveMeetingLanguage } from "../lib/meetings/language.js";
 import { startLive, stopLive } from "../lib/meetings/live/loop.js";
+import { setRecordingPaused } from "../lib/meetings/live/pause.js";
 import { getLive } from "../lib/meetings/live/store.js";
 import {
   isMixedChunk,
@@ -1633,6 +1634,25 @@ const meetings = new Hono()
       meetingStartResponseSchema.parse({ ok: true, id, folder_id }),
     );
   })
+  // Pause or resume a running recording. The recorder owns the audio. This
+  // flag only tells the live loop to read no audio while the recorder is
+  // paused. The row status stays 'recording'.
+  .put(
+    "/:id/paused",
+    zValidator("json", z.object({ paused: z.boolean() })),
+    (c) => {
+      const id = c.req.param("id");
+      const { paused } = c.req.valid("json");
+      const row = getDb()
+        .prepare("SELECT status FROM meetings WHERE id = ?")
+        .get(id) as { status: string } | undefined;
+      if (!row || row.status !== "recording") {
+        return c.json({ error: "Not found" }, 404);
+      }
+      setRecordingPaused(id, paused);
+      return c.json({ ok: true, paused });
+    },
+  )
   // Live transcript of a running recording (issue #375). Poll it every second.
   // "off" covers the flag off, no recording and an unknown meeting.
   .get("/:id/live", (c) => {

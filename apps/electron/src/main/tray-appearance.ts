@@ -19,6 +19,8 @@ export interface TrayAppearance {
 export interface TrayStatus {
   /** A meeting records. */
   recording: boolean;
+  /** The recording is paused: the mic is closed. */
+  paused?: boolean;
   /** A meeting job or a model download or load runs or waits. */
   job: boolean;
   /** An update is downloaded and waits for a restart. */
@@ -27,9 +29,17 @@ export interface TrayStatus {
 
 /**
  * The tray look for a status. The recording state wins over a job, and a job
- * wins over a ready update.
+ * wins over a ready update. A paused recording shows the normal logo, not the
+ * red icon, because the mic is closed.
  */
 export function trayAppearance(status: TrayStatus): TrayAppearance {
+  if (status.recording && status.paused) {
+    return {
+      icon: "default",
+      template: true,
+      tooltip: "Openstyle — meeting paused",
+    };
+  }
   if (status.recording) {
     return {
       icon: "recording",

@@ -12,6 +12,14 @@ describe("trayAppearance", () => {
     });
   });
 
+  it("uses the normal template icon while a recording is paused", () => {
+    expect(trayAppearance({ ...idle, recording: true, paused: true })).toEqual({
+      icon: "default",
+      template: true,
+      tooltip: "Openstyle — meeting paused",
+    });
+  });
+
   it("uses the normal template icon at other times", () => {
     expect(trayAppearance(idle)).toEqual({
       icon: "default",

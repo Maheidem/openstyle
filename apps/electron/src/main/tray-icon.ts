@@ -29,6 +29,7 @@ let jobWatch: NodeJS.Timeout | null = null;
 export function currentTrayAppearance(): TrayAppearance {
   const look = trayAppearance({
     recording: state.meetingRecorder?.status === "recording",
+    paused: state.meetingRecorder?.isPaused ?? false,
     job: jobRunning,
     updateReady: state.updateDownloadState === "downloaded",
   });

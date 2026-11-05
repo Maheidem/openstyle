@@ -3,6 +3,7 @@ import {
   acceleratorToCombo,
   keyDisplayLabel,
 } from "@renderer/hooks/use-hotkey-recorder";
+import { useMeetingPause } from "@renderer/hooks/use-meeting-pause";
 import { getClient, initApiBase } from "@renderer/lib/api";
 import { IS_MAC } from "@renderer/lib/platform";
 import { queryKeys } from "@renderer/lib/query";
@@ -15,6 +16,8 @@ import {
   AudioLines,
   Check,
   Copy,
+  Pause,
+  Play,
   Power,
   Settings,
   Square,
@@ -40,6 +43,8 @@ interface MeetingInfo {
   status: MeetingStatus;
   meetingId: string | null;
   startedAt: number | null;
+  /** The time (epoch ms) of the running pause, or null. */
+  pausedAt: number | null;
 }
 
 interface RecentDictation {
@@ -65,6 +70,7 @@ export default function TrayPopoverPage(): React.JSX.Element {
     status: "idle",
     meetingId: null,
     startedAt: null,
+    pausedAt: null,
   });
   const [recent, setRecent] = useState<RecentDictation[] | null>(null);
   // True while the popover shows: the jobs poll runs only then.
@@ -199,7 +205,13 @@ export default function TrayPopoverPage(): React.JSX.Element {
         </div>
         <StatusChip
           status={
-            recording ? "recording" : info?.dictating ? "dictating" : "ready"
+            recording
+              ? meeting.pausedAt !== null
+                ? "paused"
+                : "recording"
+              : info?.dictating
+                ? "dictating"
+                : "ready"
           }
         />
       </header>
@@ -251,10 +263,10 @@ export default function TrayPopoverPage(): React.JSX.Element {
 function StatusChip({
   status,
 }: {
-  status: "ready" | "recording" | "dictating";
+  status: "ready" | "recording" | "paused" | "dictating";
 }): React.JSX.Element {
   const { t } = useTranslation();
-  const live = status !== "ready";
+  const live = status !== "ready" && status !== "paused";
   return (
     <span
       data-testid="tray-popover-status"
@@ -296,8 +308,14 @@ function MeetingControl({
   const [title, setTitle] = useState<string | null>(null);
   // One message per state change, never one per second.
   const [announcement, setAnnouncement] = useState("");
-  const elapsed = useElapsedClock(recording ? meeting.startedAt : null);
+  const paused = recording && meeting.pausedAt !== null;
+  const elapsed = useElapsedClock(
+    recording ? meeting.startedAt : null,
+    paused ? meeting.pausedAt : null,
+  );
+  const pauseControl = useMeetingPause();
   const wasRecording = useRef(recording);
+  const wasPaused = useRef(paused);
 
   useEffect(() => {
     if (wasRecording.current === recording) return;
@@ -310,6 +328,19 @@ function MeetingControl({
       ),
     );
   }, [recording, t]);
+
+  useEffect(() => {
+    if (wasPaused.current === paused) return;
+    wasPaused.current = paused;
+    if (!recording) return;
+    setAnnouncement(
+      t(
+        paused
+          ? "trayPopover.meeting.pausedAnnouncement"
+          : "trayPopover.meeting.resumedAnnouncement",
+      ),
+    );
+  }, [paused, recording, t]);
 
   // The meeting title, when the meeting row has one (a calendar link).
   useEffect(() => {
@@ -363,11 +394,22 @@ function MeetingControl({
       {recording ? (
         <div
           data-testid="tray-popover-recording"
-          className="flex items-center gap-3 rounded-[10px] border border-(--live)/30 bg-(--live-tint) py-2.5 pr-2.5 pl-3"
+          data-paused={paused ? "true" : "false"}
+          className={cn(
+            "flex items-center gap-3 rounded-[10px] border py-2.5 pr-2.5 pl-3",
+            paused
+              ? "border-border bg-muted"
+              : "border-(--live)/30 bg-(--live-tint)",
+          )}
         >
           <span
             aria-hidden="true"
-            className="size-2.5 shrink-0 rounded-full bg-(--live) motion-safe:animate-pulse"
+            className={cn(
+              "size-2.5 shrink-0 rounded-full",
+              paused
+                ? "bg-muted-foreground"
+                : "bg-(--live) motion-safe:animate-pulse",
+            )}
           />
           <div className="min-w-0 flex-1">
             <div
@@ -378,6 +420,14 @@ function MeetingControl({
             >
               {elapsed}
             </div>
+            {paused && (
+              <div
+                className="mt-1 text-[12px] font-medium text-muted-foreground"
+                data-testid="tray-popover-paused"
+              >
+                {t("trayPopover.meeting.paused")}
+              </div>
+            )}
             {title && (
               <div
                 className="mt-1 truncate text-[12px] text-muted-foreground"
@@ -387,6 +437,31 @@ function MeetingControl({
               </div>
             )}
           </div>
+          <button
+            type="button"
+            data-testid="tray-popover-pause-toggle"
+            onClick={() =>
+              void (paused ? pauseControl.resume() : pauseControl.pause())
+            }
+            disabled={busy || pauseControl.busy}
+            aria-label={t(
+              paused
+                ? "trayPopover.meeting.resumeLabel"
+                : "trayPopover.meeting.pauseLabel",
+            )}
+            className="inline-flex h-9 shrink-0 items-center gap-1.5 rounded-full border border-border bg-background px-3 text-[13px] font-medium text-foreground hover:bg-muted disabled:opacity-50"
+          >
+            {paused ? (
+              <Play aria-hidden="true" className="size-3 fill-current" />
+            ) : (
+              <Pause aria-hidden="true" className="size-3 fill-current" />
+            )}
+            {t(
+              paused
+                ? "trayPopover.meeting.resume"
+                : "trayPopover.meeting.pause",
+            )}
+          </button>
           <button
             type="button"
             onClick={() => void stop()}
@@ -412,9 +487,9 @@ function MeetingControl({
           {t("trayPopover.meeting.start")}
         </button>
       )}
-      {error && (
+      {(error ?? pauseControl.error) && (
         <p role="alert" className="mt-2 text-[12px] text-destructive">
-          {error}
+          {error ?? pauseControl.error}
         </p>
       )}
     </section>

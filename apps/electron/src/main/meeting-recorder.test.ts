@@ -12,6 +12,7 @@ import {
   MIC_WAV,
   SYNC_JSON,
   SYSTEM_WAV,
+  trackRatioWarning,
 } from "@openstyle/validations";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { MeetingRecorderDeps } from "./meeting-recorder";
@@ -30,6 +31,7 @@ const mocks = vi.hoisted(() => ({
     options: FakeHelperOptions;
     start: ReturnType<typeof vi.fn>;
     stop: ReturnType<typeof vi.fn>;
+    exited: ReturnType<typeof vi.fn>;
   }[],
   systemCaptures: [] as {
     start: ReturnType<typeof vi.fn>;
@@ -59,6 +61,7 @@ vi.mock("./meeting-capture-helper", () => ({
   MeetingCaptureHelper: class {
     start = vi.fn(() => true);
     stop = vi.fn();
+    exited = vi.fn(async () => {});
     constructor(public options: FakeHelperOptions) {
       mocks.helpers.push(this);
     }
@@ -128,7 +131,14 @@ function readJournal(meetingId: string) {
     micT0: number | null;
     systemT0: number | null;
     sharedClock: boolean;
-    epochs: { reason: string }[];
+    micSamples: number;
+    systemSamples: number;
+    epochs: {
+      reason: string;
+      wallclockMs: number;
+      micSamples: number;
+      systemSamples: number;
+    }[];
   };
 }
 
@@ -324,13 +334,15 @@ describe("MeetingRecorder calendar link", () => {
     const startedAt = startBody(calls).started_at;
     expect(typeof startedAt).toBe("number");
     expect(recorder.recordingStartedAt).toBe(startedAt);
-    expect(broadcastStatus.mock.calls).toEqual([["recording", startedAt]]);
+    expect(broadcastStatus.mock.calls).toEqual([
+      ["recording", startedAt, null],
+    ]);
 
     await recorder.stop();
     expect(recorder.recordingStartedAt).toBeNull();
     expect(broadcastStatus.mock.calls.slice(1)).toEqual([
-      ["finalizing", null],
-      ["idle", null],
+      ["finalizing", null, null],
+      ["idle", null, null],
     ]);
   });
 
@@ -691,5 +703,409 @@ describe("MeetingRecorder live chat (issue #375)", () => {
     vi.stubEnv("OPENSTYLE_E2E_FAKE_MEETING_AUDIO", file);
     const { readFakeMeetingAudioPcm } = await import("./fake-meeting-capture");
     expect(readFakeMeetingAudioPcm()).toBeNull();
+  });
+});
+
+describe("MeetingRecorder pause and resume", () => {
+  beforeEach(() => {
+    mocks.userData = mkdtempSync(join(tmpdir(), "openstyle-recorder-test-"));
+    mocks.helpers.length = 0;
+    mocks.systemCaptures.length = 0;
+  });
+
+  afterEach(() => {
+    vi.useRealTimers();
+    vi.restoreAllMocks();
+    vi.unstubAllEnvs();
+    rmSync(mocks.userData, { recursive: true, force: true });
+  });
+
+  interface Call {
+    path: string;
+    method?: string;
+    body: Record<string, unknown> | undefined;
+  }
+
+  function fetchWith(calls: Call[], settings: Record<string, string> = {}) {
+    return async (path: string, init?: RequestInit) => {
+      calls.push({
+        path,
+        method: init?.method,
+        body: init?.body ? JSON.parse(init.body as string) : undefined,
+      });
+      if (path.startsWith("/settings/")) {
+        const value = settings[path.slice("/settings/".length)];
+        if (value !== undefined) {
+          return new Response(JSON.stringify({ value }));
+        }
+      }
+      return new Response("{}");
+    };
+  }
+
+  /** Start with the native helper that has printed READY. */
+  async function startRunning(
+    extra: Parameters<typeof createRecorder>[0] = {},
+  ) {
+    const made = createRecorder(extra);
+    const { started, helper } = await startWithHelper(made.recorder);
+    helper.options.onReady?.();
+    const meetingId = await started;
+    return { ...made, meetingId, helper };
+  }
+
+  /** Start the helper of a resume() and print READY. */
+  async function resumeWithReady(
+    recorder: InstanceType<typeof MeetingRecorder>,
+    helperCount: number,
+  ) {
+    const resumed = recorder.resume();
+    await vi.waitFor(() => expect(mocks.helpers).toHaveLength(helperCount));
+    mocks.helpers[helperCount - 1].options.onReady?.();
+    await resumed;
+    return mocks.helpers[helperCount - 1];
+  }
+
+  /** Wait for a condition on the real timers. A fake Date stays still. */
+  async function until(cond: () => boolean): Promise<void> {
+    for (let i = 0; i < 400 && !cond(); i++) {
+      await new Promise((r) => setTimeout(r, 5));
+    }
+    expect(cond()).toBe(true);
+  }
+
+  const wavBytes = (id: string, name: string) =>
+    statSync(join(mocks.userData, MEETINGS_DIR_NAME, id, name)).size;
+
+  it("closes the helper on pause, waits for its exit and broadcasts the paused time", async () => {
+    const calls: Call[] = [];
+    const { recorder, helper, broadcastStatus, meetingId } = await startRunning(
+      { serverFetch: fetchWith(calls) },
+    );
+    helper.options.onFrame("M", FRAME);
+    helper.options.onFrame("S", FRAME);
+
+    await recorder.pause();
+
+    expect(helper.stop).toHaveBeenCalledTimes(1);
+    expect(helper.exited).toHaveBeenCalledTimes(1);
+    expect(recorder.status).toBe("recording");
+    expect(recorder.isPaused).toBe(true);
+    const last = broadcastStatus.mock.calls.at(-1) as [
+      string,
+      number,
+      number | null,
+    ];
+    expect(last[0]).toBe("recording");
+    expect(last[2]).toBe(recorder.recordingPausedAt);
+    expect(typeof last[2]).toBe("number");
+    // The server learns about the pause. The meeting row stays "recording".
+    expect(
+      calls.find((c) => c.path === `/meetings/${meetingId}/paused`)?.body,
+    ).toEqual({ paused: true });
+    await recorder.stop();
+  });
+
+  it("drops late frames while paused", async () => {
+    const { recorder, helper, meetingId } = await startRunning();
+    helper.options.onFrame("M", FRAME);
+    helper.options.onFrame("S", FRAME);
+    await recorder.pause();
+    helper.options.onFrame("M", FRAME);
+    helper.options.onFrame("S", FRAME);
+    await recorder.stop();
+    expect(readJournal(meetingId).micSamples).toBe(1600);
+    expect(readJournal(meetingId).systemSamples).toBe(1600);
+  });
+
+  it("adds the same silence to the shorter track at the pause, so the tracks stay aligned", async () => {
+    const { recorder, helper, meetingId } = await startRunning();
+    // The two channels stop at slightly different samples: 3 vs 2 frames.
+    for (let i = 0; i < 3; i++) helper.options.onFrame("M", FRAME);
+    for (let i = 0; i < 2; i++) helper.options.onFrame("S", FRAME);
+    await recorder.pause();
+
+    const resumeHelper = await resumeWithReady(recorder, 2);
+    for (let i = 0; i < 4; i++) resumeHelper.options.onFrame("M", FRAME);
+    for (let i = 0; i < 4; i++) resumeHelper.options.onFrame("S", FRAME);
+    await recorder.stop();
+
+    const journal = readJournal(meetingId);
+    // 3 + 4 frames on each track, 1600 samples per 100 ms frame.
+    expect(journal.micSamples).toBe(7 * 1600);
+    expect(journal.systemSamples).toBe(7 * 1600);
+    expect(journal.micSamples).toBe(journal.systemSamples);
+    // Both files hold the same bytes: 44 byte header + 2 byte samples.
+    expect(wavBytes(meetingId, MIC_WAV)).toBe(44 + 7 * 3200);
+    expect(wavBytes(meetingId, SYSTEM_WAV)).toBe(44 + 7 * 3200);
+    // The ratio check of packages/validations finds no problem.
+    expect(
+      trackRatioWarning(journal.micSamples, journal.systemSamples, 16000),
+    ).toBeNull();
+    // The paused time is not in the tracks: no silence for the gap.
+    expect(journal.epochs.map((e) => e.reason)).toEqual([
+      "start",
+      "pause",
+      "resume",
+    ]);
+    expect(journal.epochs[1]).toMatchObject({
+      micSamples: 3 * 1600,
+      systemSamples: 3 * 1600,
+    });
+    expect(journal.epochs[2]).toMatchObject({
+      micSamples: 3 * 1600,
+      systemSamples: 3 * 1600,
+    });
+    expect(journal.sharedClock).toBe(true);
+  });
+
+  it("opens the same mic again on resume", async () => {
+    const { recorder, helper } = await startRunning();
+    await recorder.pause();
+    const again = await resumeWithReady(recorder, 2);
+    expect(again.options.mic).toEqual(helper.options.mic);
+    expect(recorder.isPaused).toBe(false);
+    await recorder.stop();
+  });
+
+  it("counts recorded time only: the clock and the saved duration skip the paused time", async () => {
+    const calls: Call[] = [];
+    const { recorder, helper } = await startRunning({
+      serverFetch: fetchWith(calls),
+    });
+    const startedAt = recorder.recordingStartedAt as number;
+    vi.useFakeTimers({ toFake: ["Date"] });
+    vi.setSystemTime(startedAt + 10_000);
+    await recorder.pause();
+    expect(recorder.recordingPausedAt).toBe(startedAt + 10_000);
+    // The clock of the UI is frozen: pausedAt - startedAt = 10 s.
+    expect((recorder.recordingPausedAt as number) - startedAt).toBe(10_000);
+
+    vi.setSystemTime(startedAt + 70_000);
+    const resumed = recorder.resume();
+    await until(() => mocks.helpers.length === 2);
+    mocks.helpers[1].options.onReady?.();
+    await resumed;
+    // 60 s were paused. The start time moves 60 s later.
+    expect(recorder.recordingStartedAt).toBe(startedAt + 60_000);
+    expect(recorder.recordingPausedAt).toBeNull();
+
+    vi.setSystemTime(startedAt + 80_000);
+    await recorder.stop();
+    const stop = calls.find((c) => c.path.endsWith("/stop"));
+    // 80 s on the wall clock, 60 s paused: 20 s recorded.
+    expect(stop?.body?.duration_ms).toBe(20_000);
+    expect(stop?.body?.ended_at).toBe(startedAt + 80_000);
+    void helper;
+  });
+
+  it("a stop during a pause ends the pause and saves the recorded time", async () => {
+    const calls: Call[] = [];
+    const { recorder, meetingId } = await startRunning({
+      serverFetch: fetchWith(calls),
+    });
+    const startedAt = recorder.recordingStartedAt as number;
+    vi.useFakeTimers({ toFake: ["Date"], now: startedAt + 5_000 });
+    await recorder.pause();
+    vi.setSystemTime(startedAt + 305_000);
+    await recorder.stop();
+    const stop = calls.find((c) => c.path.endsWith("/stop"));
+    expect(stop?.body).toMatchObject({
+      duration_ms: 5_000,
+      status: "recorded",
+    });
+    expect(recorder.status).toBe("idle");
+    expect(recorder.isPaused).toBe(false);
+    expect(readJournal(meetingId).epochs.map((e) => e.reason)).toEqual([
+      "start",
+      "pause",
+    ]);
+  });
+
+  it("does not count the paused time toward the max duration", async () => {
+    const calls: Call[] = [];
+    const timeouts = vi.spyOn(globalThis, "setTimeout");
+    const { recorder } = await startRunning({
+      serverFetch: fetchWith(calls, { meeting_max_duration_hours: "1" }),
+    });
+    const HOUR = 3_600_000;
+    const longTimers = () =>
+      timeouts.mock.calls
+        .map(([, ms]) => ms as number)
+        .filter((ms) => ms > 1_000_000);
+    expect(longTimers().at(-1)).toBeGreaterThan(HOUR - 5_000);
+    const timerAtStart = (recorder as unknown as { maxDurationTimer: unknown })
+      .maxDurationTimer;
+    expect(timerAtStart).not.toBeNull();
+
+    const startedAt = recorder.recordingStartedAt as number;
+    vi.useFakeTimers({ toFake: ["Date"], now: startedAt + 600_000 });
+    await recorder.pause();
+    // No ceiling timer runs while paused.
+    expect(
+      (recorder as unknown as { maxDurationTimer: unknown }).maxDurationTimer,
+    ).toBeNull();
+
+    // Pause for two hours. Then resume: 10 min of the hour are used.
+    vi.setSystemTime(startedAt + 600_000 + 2 * HOUR);
+    const resumed = recorder.resume();
+    await until(() => mocks.helpers.length === 2);
+    mocks.helpers[1].options.onReady?.();
+    await resumed;
+    const left = longTimers().at(-1) as number;
+    expect(left).toBeLessThanOrEqual(HOUR - 600_000);
+    expect(left).toBeGreaterThan(HOUR - 600_000 - 5_000);
+    expect(recorder.status).toBe("recording");
+    await recorder.stop();
+  });
+
+  it("does not stamp a sleep epoch while paused", async () => {
+    const electron = await import("electron");
+    const { recorder, meetingId } = await startRunning();
+    const onCall = (electron.powerMonitor.on as ReturnType<typeof vi.fn>).mock
+      .calls;
+    const listener = onCall.filter(([name]) => name === "resume").at(-1)?.[1] as
+      | (() => void)
+      | undefined;
+    expect(listener).toBeTypeOf("function");
+    await recorder.pause();
+    listener?.();
+    await recorder.stop();
+    expect(readJournal(meetingId).epochs.map((e) => e.reason)).toEqual([
+      "start",
+      "pause",
+    ]);
+  });
+
+  it("falls back to the old capture path when the helper does not start again", async () => {
+    const { recorder, createCaptureWindow, meetingId } = await startRunning();
+    await recorder.pause();
+    const resumed = recorder.resume();
+    await vi.waitFor(() => expect(mocks.helpers).toHaveLength(2));
+    mocks.helpers[1].options.onError?.("ERR_DEVICE_LOST");
+    await resumed;
+
+    expect(createCaptureWindow).toHaveBeenCalledTimes(1);
+    expect(mocks.systemCaptures).toHaveLength(1);
+    expect(recorder.isPaused).toBe(false);
+    await recorder.stop();
+    expect(readJournal(meetingId).epochs.map((e) => e.reason)).toEqual([
+      "start",
+      "pause",
+      "fallback",
+      "resume",
+    ]);
+  });
+
+  it("stays paused with a clear message when no capture starts, and the recording can still be stopped and saved", async () => {
+    const calls: Call[] = [];
+    const { recorder, createCaptureWindow, helper, meetingId } =
+      await startRunning({ serverFetch: fetchWith(calls) });
+    helper.options.onFrame("M", FRAME);
+    helper.options.onFrame("S", FRAME);
+    await recorder.pause();
+    createCaptureWindow.mockImplementation(() => {
+      throw new Error("no window");
+    });
+
+    const resumed = recorder.resume();
+    await vi.waitFor(() => expect(mocks.helpers).toHaveLength(2));
+    mocks.helpers[1].options.onError?.("ERR_MIC_NOT_FOUND");
+    await expect(resumed).rejects.toThrow(/microphone did not start again/);
+
+    // Still paused, still "recording", no half-started capture.
+    expect(recorder.status).toBe("recording");
+    expect(recorder.isPaused).toBe(true);
+
+    await recorder.stop();
+    const stop = calls.find((c) => c.path.endsWith("/stop"));
+    expect(stop?.body).toMatchObject({ status: "recorded" });
+    expect(recorder.status).toBe("idle");
+    // The audio from before the pause is on disk.
+    expect(wavBytes(meetingId, MIC_WAV)).toBe(44 + 3200);
+    expect(wavBytes(meetingId, SYSTEM_WAV)).toBe(44 + 3200);
+  });
+
+  it("can resume again after a failed resume", async () => {
+    const { recorder, createCaptureWindow } = await startRunning();
+    await recorder.pause();
+    createCaptureWindow.mockImplementationOnce(() => {
+      throw new Error("no window");
+    });
+    const failed = recorder.resume();
+    await vi.waitFor(() => expect(mocks.helpers).toHaveLength(2));
+    mocks.helpers[1].options.onError?.("ERR_MIC_NOT_FOUND");
+    await expect(failed).rejects.toThrow();
+    expect(recorder.isPaused).toBe(true);
+
+    // The usesFallback flag is now set, so the next try uses the window.
+    await recorder.resume();
+    expect(recorder.isPaused).toBe(false);
+    await recorder.stop();
+  });
+
+  it("refuses pause and resume when nothing records, and ignores a double pause", async () => {
+    const { recorder } = createRecorder();
+    await expect(recorder.pause()).rejects.toThrow(/no running recording/);
+    await expect(recorder.resume()).rejects.toThrow(/no running recording/);
+
+    const running = await startRunning();
+    await running.recorder.resume(); // not paused: no-op
+    await running.recorder.pause();
+    await running.recorder.pause(); // already paused: no-op
+    expect(running.helper.stop).toHaveBeenCalledTimes(1);
+    await running.recorder.stop();
+  });
+
+  it("pauses and resumes the fallback capture without padding the gap", async () => {
+    const { recorder, createCaptureWindow } = createRecorder();
+    const { started, helper } = await startWithHelper(recorder);
+    helper.options.onError?.("ERR_PERMISSION_DENIED"); // native fails: fallback
+    const meetingId = await started;
+    expect(createCaptureWindow).toHaveBeenCalledTimes(1);
+    const windowAtStart = createCaptureWindow.mock.results[0].value;
+
+    recorder.handleMicChunk(FRAME);
+    await recorder.pause();
+    expect(windowAtStart.destroy).toHaveBeenCalled();
+    expect(mocks.systemCaptures[0].stop).toHaveBeenCalled();
+    // A late chunk from the closed window is dropped.
+    recorder.handleMicChunk(FRAME);
+
+    await recorder.resume();
+    expect(createCaptureWindow).toHaveBeenCalledTimes(2);
+    expect(mocks.systemCaptures).toHaveLength(2);
+    recorder.handleMicChunk(FRAME);
+    await recorder.stop();
+
+    // 2 mic chunks only: the pause gap has no silence.
+    expect(readJournal(meetingId).micSamples).toBe(2 * 1600);
+    expect(readJournal(meetingId).epochs.map((e) => e.reason)).toEqual([
+      "start",
+      "pause",
+      "resume",
+    ]);
+  });
+
+  it("pauses and resumes the E2E fake capture", async () => {
+    vi.stubEnv("OPENSTYLE_E2E", "1");
+    vi.stubEnv("OPENSTYLE_E2E_FAKE_MEETING_CAPTURE", "1");
+    const { recorder } = createRecorder();
+    const meetingId = await recorder.start();
+    await vi.waitFor(() => expect(readJournal(meetingId).micT0).not.toBeNull());
+    await recorder.pause();
+    expect(recorder.isPaused).toBe(true);
+    await recorder.resume();
+    expect(recorder.isPaused).toBe(false);
+    await new Promise((r) => setTimeout(r, 350));
+    await recorder.stop();
+    expect(mocks.helpers).toHaveLength(0);
+    const journal = readJournal(meetingId);
+    expect(journal.epochs.map((e) => e.reason)).toEqual([
+      "start",
+      "pause",
+      "resume",
+    ]);
+    expect(journal.micSamples).toBe(journal.systemSamples);
   });
 });

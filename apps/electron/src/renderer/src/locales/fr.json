@@ -1489,7 +1489,13 @@
         }
       },
       "errModelMissing": "Le modèle pour Demander n’est pas téléchargé. Téléchargez-le dans Modèles."
-    }
+    },
+    "pause": "Pause",
+    "resume": "Reprendre",
+    "paused": "En pause",
+    "pausedHint": "Le microphone est éteint. Rien n'est enregistré.",
+    "pauseFailed": "L'enregistrement ne s'est pas mis en pause. Essayez encore.",
+    "resumeFailed": "Le microphone n'a pas redémarré. Vérifiez le microphone et sélectionnez Reprendre. Vous pouvez aussi arrêter l'enregistrement. L'audio déjà enregistré est sauvegardé."
   },
   "help": {
     "hotkeys": {
@@ -1569,7 +1575,8 @@
       "preparingMic": "Préparation du microphone",
       "listening": "À l'écoute",
       "transcribing": "Transcription en cours",
-      "meetingRecording": "Enregistrement de la réunion"
+      "meetingRecording": "Enregistrement de la réunion",
+      "meetingPaused": "Enregistrement de la réunion en pause"
     },
     "error": {
       "timedOut": "La transcription a expiré",
@@ -1585,7 +1592,10 @@
       "recordingFailedTitle": "Échec de l'enregistrement",
       "micDenied": "Accès au microphone refusé",
       "noAudioCaptured": "Aucun son capturé. Essayez de réenregistrer."
-    }
+    },
+    "pauseMeeting": "Mettre en pause l'enregistrement de la réunion",
+    "resumeMeeting": "Reprendre l'enregistrement de la réunion",
+    "paused": "En pause"
   },
   "errorBoundary": {
     "eyebrow": "Un problème est survenu",
@@ -1606,7 +1616,8 @@
     "status": {
       "ready": "Prêt",
       "recording": "Enregistrement",
-      "dictating": "Dictée"
+      "dictating": "Dictée",
+      "paused": "En pause"
     },
     "meeting": {
       "section": "Enregistrement de réunion",
@@ -1616,7 +1627,14 @@
       "elapsed": "Durée d’enregistrement",
       "started": "Enregistrement de la réunion démarré",
       "stopped": "Enregistrement de la réunion arrêté",
-      "startFailed": "L’enregistrement de la réunion n’a pas démarré."
+      "startFailed": "L’enregistrement de la réunion n’a pas démarré.",
+      "pause": "Pause",
+      "resume": "Reprendre",
+      "pauseLabel": "Mettre en pause l'enregistrement de la réunion",
+      "resumeLabel": "Reprendre l'enregistrement de la réunion",
+      "paused": "En pause",
+      "pausedAnnouncement": "Enregistrement de la réunion en pause",
+      "resumedAnnouncement": "Enregistrement de la réunion repris"
     },
     "recent": {
       "title": "Dictées récentes",

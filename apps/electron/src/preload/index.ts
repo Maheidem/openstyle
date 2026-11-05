@@ -95,11 +95,19 @@ const api = {
     ipcRenderer.invoke("meeting:devices"),
   stopMeetingRecording: (): Promise<{ ok: boolean }> =>
     ipcRenderer.invoke("meeting:stop"),
+  /** Pause the running recording. It closes the mic. */
+  pauseMeetingRecording: (): Promise<{ ok: boolean; error?: string }> =>
+    ipcRenderer.invoke("meeting:pause"),
+  /** Resume a paused recording. `error` is a user-facing message. */
+  resumeMeetingRecording: (): Promise<{ ok: boolean; error?: string }> =>
+    ipcRenderer.invoke("meeting:resume"),
   getMeetingStatus: (): Promise<{
     status: "idle" | "recording" | "finalizing";
     meetingId: string | null;
     /** Recording start time (epoch ms) while recording, else null. */
     startedAt: number | null;
+    /** The time (epoch ms) of the running pause, else null. */
+    pausedAt: number | null;
     supported: boolean;
   }> => ipcRenderer.invoke("meeting:status"),
   /** TCC probe: briefly run the system-audio pipeline to detect denial. */
@@ -128,9 +136,17 @@ const api = {
     listen<
       [event: { meetingId: string; source: "mic" | "system"; rms: number }]
     >("meeting:level"),
-  /** `startedAt` is the recording start time (epoch ms) while recording. */
+  /**
+   * `startedAt` is the recording start time (epoch ms) while recording. The
+   * paused time is added to it. `pausedAt` is the time of the running pause,
+   * else null. The clock shows `(pausedAt ?? now) - startedAt`.
+   */
   onMeetingStatusChanged: listen<
-    [status: "idle" | "recording" | "finalizing", startedAt: number | null]
+    [
+      status: "idle" | "recording" | "finalizing",
+      startedAt: number | null,
+      pausedAt: number | null,
+    ]
   >("meeting:status-changed"),
   showErrorDialog: (title: string, message: string): Promise<void> =>
     ipcRenderer.invoke("dialog:show-error", title, message),

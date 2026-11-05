@@ -165,6 +165,20 @@ describe("planTrackRepair", () => {
         }),
       ),
     ).toBeNull();
+    // A pause starts a new helper: its SYNC counts restart from zero.
+    expect(
+      planTrackRepair(
+        journal({
+          mic,
+          system,
+          epochs: [
+            { reason: "start" },
+            { reason: "pause" },
+            { reason: "resume" },
+          ],
+        }),
+      ),
+    ).toBeNull();
     expect(
       planTrackRepair(
         journal({ mic, system, repair: { fromRate: 48000, toRate: 16000 } }),

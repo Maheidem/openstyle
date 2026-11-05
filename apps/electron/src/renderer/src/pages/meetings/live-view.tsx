@@ -15,13 +15,16 @@ export function LiveView({
   meetingId,
   title,
   startedAt,
+  pausedAt,
 }: {
   meetingId: string;
   title: string | null;
   startedAt: number | null;
+  /** The time (epoch ms) of the running pause, or null. */
+  pausedAt: number | null;
 }): React.JSX.Element {
   const { t } = useTranslation();
-  const elapsed = useElapsedClock(startedAt);
+  const elapsed = useElapsedClock(startedAt, pausedAt);
   return (
     <div
       className="@container flex h-full min-h-[34rem] flex-col"
@@ -35,6 +38,14 @@ export function LiveView({
           {title || t("meetings.untitled")}
         </h2>
         <StatusBadge status="recording" />
+        {pausedAt !== null && (
+          <span
+            className="text-muted-foreground shrink-0 text-[12px] font-medium"
+            data-testid="live-view-paused"
+          >
+            {t("meetings.paused")}
+          </span>
+        )}
         <span
           className="mono text-muted-foreground shrink-0 text-[12px] tabular-nums"
           data-testid="live-view-elapsed"

@@ -2,6 +2,7 @@ import type { MeetingListItem } from "@openstyle/validations";
 import { Badge } from "@renderer/components/ui/badge";
 import { Button } from "@renderer/components/ui/button";
 import { useCopyToClipboard } from "@renderer/hooks/use-copy-to-clipboard";
+import { useRecordingPaused } from "@renderer/hooks/use-recording-paused";
 import { cn } from "@renderer/lib/utils";
 import type { TFunction } from "i18next";
 import { Check, Clock, Copy, RefreshCw } from "lucide-react";
@@ -39,8 +40,29 @@ export const STATUS_BADGE_VARIANT: Record<string, "destructive" | "outline"> = {
 export const LIVE_STATUSES = new Set(["recording", "transcribing"]);
 
 export function StatusBadge({ status }: { status: string }): React.JSX.Element {
+  // Only a recording can be paused. The other badges need no status event.
+  return status === "recording" ? (
+    <RecordingStatusBadge />
+  ) : (
+    <StatusBadgeView status={status} paused={false} />
+  );
+}
+
+/** A paused recording keeps the status "recording". The badge says Paused,
+ * because the mic is closed. */
+function RecordingStatusBadge(): React.JSX.Element {
+  return <StatusBadgeView status="recording" paused={useRecordingPaused()} />;
+}
+
+function StatusBadgeView({
+  status,
+  paused,
+}: {
+  status: string;
+  paused: boolean;
+}): React.JSX.Element {
   const { t } = useTranslation();
-  const live = LIVE_STATUSES.has(status);
+  const live = LIVE_STATUSES.has(status) && !paused;
   const variant = STATUS_BADGE_VARIANT[status] ?? "outline";
   return (
     <Badge
@@ -55,7 +77,7 @@ export function StatusBadge({ status }: { status: string }): React.JSX.Element {
       {live && (
         <span className="h-[5px] w-[5px] shrink-0 animate-pulse rounded-full bg-[var(--live)]" />
       )}
-      {t(`meetings.status.${status}`, status)}
+      {paused ? t("meetings.paused") : t(`meetings.status.${status}`, status)}
     </Badge>
   );
 }

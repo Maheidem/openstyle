@@ -226,6 +226,15 @@ export class MeetingCaptureHelper {
     }
   }
 
+  /** Resolves when the helper process has exited. Resolves at once when none runs. */
+  exited(): Promise<void> {
+    const proc = this.process;
+    if (!proc || proc.exitCode !== null || proc.signalCode !== null) {
+      return Promise.resolve();
+    }
+    return new Promise((resolve) => proc.once("close", () => resolve()));
+  }
+
   /** Stop capturing: SIGTERM, then SIGKILL after a grace period. */
   stop(): void {
     this.stopped = true;

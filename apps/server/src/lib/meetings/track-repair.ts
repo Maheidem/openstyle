@@ -11,7 +11,7 @@
  *
  * The repair runs only when all of these are true:
  *   - the native helper recorded both tracks on one clock (sharedClock),
- *     and the recording did not change to the fallback path;
+ *     and the recording did not change to the fallback path or pause;
  *   - the ratio is outside 0.95..1.05 (trackRatioWarning) and within
  *     RATE_MATCH_TOLERANCE of a factor between two candidate rates;
  *   - every SYNC interval of MIN_INTERVAL_MS or more shows the system track
@@ -156,7 +156,13 @@ export function planTrackRepair(
   if (journal.repair !== undefined) return null;
   if (journal.sharedClock !== true) return null;
   const epochs = Array.isArray(journal.epochs) ? journal.epochs : [];
-  if (epochs.some((e) => (e as { reason?: unknown })?.reason === "fallback")) {
+  // A pause starts a new helper. Its SYNC markers count from zero again.
+  if (
+    epochs.some((e) => {
+      const reason = (e as { reason?: unknown })?.reason;
+      return reason === "fallback" || reason === "pause";
+    })
+  ) {
     return null;
   }
   const ratio = trackRatioWarning(

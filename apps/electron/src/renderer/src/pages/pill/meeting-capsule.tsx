@@ -1,9 +1,11 @@
 import { useElapsedClock } from "@renderer/hooks/use-elapsed-clock";
+import { useMeetingPause } from "@renderer/hooks/use-meeting-pause";
 import { type CSSProperties, useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { CANCEL_SIZE, INK } from "../pill-motion";
 import {
   LIVE,
+  PAUSED,
   PILL_HEIGHT,
   pillInnerStyle,
   SURFACE,
@@ -20,6 +22,7 @@ import { type Caption, useLiveCaptions } from "./live-captions";
  */
 export function MeetingCapsule({
   startedAt,
+  pausedAt,
   leaving,
   layerClass,
   riseBy,
@@ -27,6 +30,8 @@ export function MeetingCapsule({
   pillAlign,
 }: {
   startedAt: number;
+  /** The time (epoch ms) of the running pause, or null. */
+  pausedAt: number | null;
   /** True after a stop: play the quiet exit (the dictation's `quiet`). */
   leaving: boolean;
   layerClass: string;
@@ -35,10 +40,18 @@ export function MeetingCapsule({
   pillAlign: "start" | "end";
 }): React.JSX.Element {
   const { t } = useTranslation();
-  const elapsed = useElapsedClock(startedAt);
+  const elapsed = useElapsedClock(startedAt, pausedAt);
+  const paused = pausedAt !== null;
+  const pauseControl = useMeetingPause();
   const [stopping, setStopping] = useState(false);
   const { caption, shown: captionShown } = useLiveCaptions();
-  const label = t("pill.status.meetingRecording");
+  const label = t(
+    paused ? "pill.status.meetingPaused" : "pill.status.meetingRecording",
+  );
+  const toggleLabel = t(paused ? "pill.resumeMeeting" : "pill.pauseMeeting");
+  // A failed resume keeps the recording paused. The words go to the tooltip
+  // and the live region, as for every pill state.
+  const toggleTitle = pauseControl.error ?? toggleLabel;
 
   // Mount one frame hidden, then show, so the arrival transition runs (the
   // same handshake as the dictation capsule).
@@ -59,7 +72,7 @@ export function MeetingCapsule({
   return (
     <>
       <span className="sr-only" role="status" aria-live="polite">
-        {label}
+        {pauseControl.error ?? label}
       </span>
       {caption && (
         <CaptionBox
@@ -76,6 +89,7 @@ export function MeetingCapsule({
           data-show={entered}
           data-exit={leaving ? "quiet" : undefined}
           data-testid="pill-meeting"
+          data-paused={paused ? "true" : "false"}
           title={label}
           style={{
             ...pillInnerStyle,
@@ -83,21 +97,36 @@ export function MeetingCapsule({
             transformOrigin,
             marginBottom: pillAlign === "end" ? 8 : 0,
             marginTop: pillAlign === "start" ? 8 : 0,
-            gap: 8,
+            gap: paused ? 6 : 8,
             padding: "0 7px 0 12px",
           }}
         >
-          <span
-            className="pill-live-dot"
-            aria-hidden="true"
-            style={{
-              width: 8,
-              height: 8,
-              borderRadius: 4,
-              background: LIVE,
-              flexShrink: 0,
-            }}
-          />
+          {paused ? (
+            <span
+              data-testid="pill-meeting-paused"
+              style={{
+                fontSize: 10,
+                fontWeight: 600,
+                lineHeight: 1,
+                color: PAUSED,
+                whiteSpace: "nowrap",
+              }}
+            >
+              {t("pill.paused")}
+            </span>
+          ) : (
+            <span
+              className="pill-live-dot"
+              aria-hidden="true"
+              style={{
+                width: 8,
+                height: 8,
+                borderRadius: 4,
+                background: LIVE,
+                flexShrink: 0,
+              }}
+            />
+          )}
           <span
             data-testid="pill-meeting-elapsed"
             style={{
@@ -106,11 +135,69 @@ export function MeetingCapsule({
               lineHeight: 1,
               letterSpacing: "0.01em",
               fontVariantNumeric: "tabular-nums",
-              color: "rgba(245, 241, 228, 0.85)",
+              color: paused
+                ? "rgba(245, 241, 228, 0.55)"
+                : "rgba(245, 241, 228, 0.85)",
             }}
           >
             {elapsed}
           </span>
+          <button
+            type="button"
+            className="pill-cancel inline-flex items-center justify-center"
+            data-testid="pill-meeting-toggle"
+            onClick={() =>
+              void (paused ? pauseControl.resume() : pauseControl.pause())
+            }
+            disabled={pauseControl.busy || stopping}
+            aria-label={toggleLabel}
+            title={toggleTitle}
+            style={
+              {
+                width: CANCEL_SIZE,
+                height: CANCEL_SIZE,
+                padding: 0,
+                flexShrink: 0,
+                cursor: "default",
+                WebkitAppRegion: "no-drag",
+              } as CSSProperties
+            }
+          >
+            <svg
+              className="pill-cancel-glyph"
+              width={CANCEL_SIZE}
+              height={CANCEL_SIZE}
+              viewBox="0 0 16 16"
+              aria-hidden="true"
+              style={{ opacity: 0.6 }}
+            >
+              {paused ? (
+                <path
+                  d="M5.5 4.2v7.6a.6.6 0 0 0 .9.5l6-3.8a.6.6 0 0 0 0-1l-6-3.8a.6.6 0 0 0-.9.5z"
+                  fill={INK}
+                />
+              ) : (
+                <>
+                  <rect
+                    x="4.5"
+                    y="4"
+                    width="2.6"
+                    height="8"
+                    rx="0.8"
+                    fill={INK}
+                  />
+                  <rect
+                    x="8.9"
+                    y="4"
+                    width="2.6"
+                    height="8"
+                    rx="0.8"
+                    fill={INK}
+                  />
+                </>
+              )}
+            </svg>
+          </button>
           <button
             type="button"
             className="pill-cancel inline-flex items-center justify-center"

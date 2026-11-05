@@ -1489,7 +1489,13 @@
         }
       },
       "errModelMissing": "El modelo para Preguntar no está descargado. Descárgalo en Modelos."
-    }
+    },
+    "pause": "Pausar",
+    "resume": "Reanudar",
+    "paused": "En pausa",
+    "pausedHint": "El micrófono está apagado. No se graba nada.",
+    "pauseFailed": "La grabación no se pausó. Inténtelo de nuevo.",
+    "resumeFailed": "El micrófono no se inició de nuevo. Revise el micrófono y seleccione Reanudar. También puede detener la grabación. El audio grabado hasta ahora está guardado."
   },
   "help": {
     "hotkeys": {
@@ -1569,7 +1575,8 @@
       "preparingMic": "Preparando el micrófono",
       "listening": "Escuchando",
       "transcribing": "Transcribiendo",
-      "meetingRecording": "Grabando la reunión"
+      "meetingRecording": "Grabando la reunión",
+      "meetingPaused": "Grabación de la reunión en pausa"
     },
     "error": {
       "timedOut": "La transcripción agotó el tiempo de espera",
@@ -1585,7 +1592,10 @@
       "recordingFailedTitle": "Falló la grabación",
       "micDenied": "Acceso al micrófono denegado",
       "noAudioCaptured": "No se capturó audio. Intenta grabar de nuevo."
-    }
+    },
+    "pauseMeeting": "Pausar la grabación de la reunión",
+    "resumeMeeting": "Reanudar la grabación de la reunión",
+    "paused": "En pausa"
   },
   "errorBoundary": {
     "eyebrow": "Algo salió mal",
@@ -1606,7 +1616,8 @@
     "status": {
       "ready": "Listo",
       "recording": "Grabando",
-      "dictating": "Dictando"
+      "dictating": "Dictando",
+      "paused": "En pausa"
     },
     "meeting": {
       "section": "Grabación de reunión",
@@ -1616,7 +1627,14 @@
       "elapsed": "Tiempo de grabación",
       "started": "Grabación de reunión iniciada",
       "stopped": "Grabación de reunión detenida",
-      "startFailed": "La grabación de la reunión no se inició."
+      "startFailed": "La grabación de la reunión no se inició.",
+      "pause": "Pausar",
+      "resume": "Reanudar",
+      "pauseLabel": "Pausar la grabación de la reunión",
+      "resumeLabel": "Reanudar la grabación de la reunión",
+      "paused": "En pausa",
+      "pausedAnnouncement": "Grabación de la reunión en pausa",
+      "resumedAnnouncement": "Grabación de la reunión reanudada"
     },
     "recent": {
       "title": "Dictados recientes",

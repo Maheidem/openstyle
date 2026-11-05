@@ -137,6 +137,7 @@ describe("folder views", () => {
       supported: true,
       meetingId: null,
       startedAt: null,
+      pausedAt: null,
       error: null,
       devices: null,
       pendingDevices: null,

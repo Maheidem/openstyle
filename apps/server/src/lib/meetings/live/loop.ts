@@ -44,6 +44,7 @@ import {
 } from "../segmenter.js";
 import { createDefaultTranscriberDeps } from "../transcriber.js";
 import { attachSpeechSpans, detectSpeechSpans } from "../vad.js";
+import { isRecordingPaused, setRecordingPaused } from "./pause.js";
 import {
   addFinalLine,
   countSkippedTick,
@@ -482,6 +483,8 @@ async function lockLanguage(state: LoopState): Promise<void> {
 }
 
 async function tick(state: LoopState, closeAfterMs?: number): Promise<void> {
+  // A paused recording writes no audio. The final tick at stop still runs.
+  if (closeAfterMs === undefined && isRecordingPaused(state.meetingId)) return;
   // The single ASR worker serves dictation first.
   if (state.deps.isDictationActive()) {
     countSkippedTick(state.meetingId);
@@ -605,5 +608,6 @@ export async function stopLive(
     log.info(`Live loop stopped for ${meetingId}`);
   }
   dropLive(meetingId);
+  setRecordingPaused(meetingId, false);
   return { lines, modelId };
 }

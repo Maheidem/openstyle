@@ -582,6 +582,7 @@ export default function MeetingsPage(): React.JSX.Element {
                 meetingId={recordingId}
                 title={openMeeting?.title ?? null}
                 startedAt={recorder.startedAt}
+                pausedAt={recorder.pausedAt}
               />
             ) : activeId ? (
               <MeetingDetailView
