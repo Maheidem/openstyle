@@ -114,3 +114,31 @@ export function fitMachine(workerGpuCapBytes: number | null): {
       gpuOverride ?? (ramOverride == null ? workerGpuCapBytes : null),
   };
 }
+
+/** The bytes in a catalog RAM text such as "~1.5 GB". Null when it does not parse. */
+export function parseRamRequiredBytes(text: string): number | null {
+  const match = /([0-9]+(?:\.[0-9]+)?)\s*GB/i.exec(text);
+  if (!match) return null;
+  return Math.round(Number(match[1]) * GIB);
+}
+
+/**
+ * The fit label of a voice model on this Mac. It uses the same formula as the
+ * LLM label. The model peak is the `ramRequired` text of the catalog. The
+ * speech model has no GPU cap and no ASR worker term: it is the worker. The
+ * constants are not measured (see the top of this file).
+ */
+export function computeVoiceFit(
+  ramRequired: string,
+  ramBytes: number,
+): MlxLlmFitLabel {
+  const peakBytes = parseRamRequiredBytes(ramRequired);
+  if (peakBytes == null) return "runs_well";
+  return computeMlxLlmFit({
+    peakBytes,
+    ramBytes,
+    gpuCapBytes: null,
+    localAsr: false,
+    neverWontFit: false,
+  }).label;
+}

@@ -20,6 +20,7 @@ import {
   validateCustomModel,
 } from "../lib/mlx-asr/custom-validate.js";
 import { CustomModelError } from "../lib/mlx-asr/hf-http.js";
+import { qwen3LanguageCodes } from "../lib/mlx-asr/language.js";
 import {
   cancelMlxDownload,
   clearMlxDownloadError,
@@ -99,6 +100,11 @@ const mlxAsr = new Hono()
             quality: m.quality,
             quantized: m.quantized,
             custom: m.custom,
+            // The ISO codes that the model covers. Only Qwen3 ASR has a
+            // short list. Other models have no list: the client reads
+            // "all languages" (specs/onboarding.md).
+            languages:
+              m.family === "qwen3-asr" ? qwen3LanguageCodes() : undefined,
           }))
         : [],
       setupHint: platformSupported

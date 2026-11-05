@@ -21,6 +21,7 @@ import search from "./search.js";
 import servers from "./servers.js";
 import settings from "./settings.js";
 import streamRoute from "./stream.js";
+import system from "./system.js";
 import transcribe, { transcribePreWarmRoute } from "./transcribe.js";
 import transcribeFile from "./transcribe-file.js";
 import vocabulary from "./vocabulary.js";
@@ -62,7 +63,8 @@ const apiRouter = new Hono()
   .route("/whisper", whisper)
   .route("/mlx-asr", mlxAsr)
   .route("/mlx-llm", mlxLlm)
-  .route("/mlx-embed", mlxEmbed);
+  .route("/mlx-embed", mlxEmbed)
+  .route("/system", system);
 
 const router = new Hono()
   .route("/api", apiRouter)
