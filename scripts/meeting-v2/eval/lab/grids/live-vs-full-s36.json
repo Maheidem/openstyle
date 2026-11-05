@@ -1,0 +1,8 @@
+{
+  "name": "live-vs-full-s36",
+  "description": "Live loop replay (pass=live) against the full Re-transcribe pass (pass=full), shipped config, owner name set, all 14 meetings of silver-14-s36.",
+  "stage": "asr",
+  "corpus": "silver-14-s36",
+  "base": { "owner_name": "env" },
+  "cells": [{ "pass": "live" }, { "pass": "full" }]
+}

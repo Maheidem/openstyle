@@ -54,6 +54,10 @@
     "scripts/meeting-v2/eval/silver/wer.mts",
     "scripts/meeting-v2/eval/silver/experiments/nemotron/entities.mts",
     "scripts/meeting-v2/eval/silver/witness/ctxterms.mts",
+    // Eval Lab live arm: runtime.mts starts it with node by path, so no import
+    // reaches these two files.
+    "scripts/meeting-v2/eval/lab/live-arm.mts",
+    "scripts/meeting-v2/eval/lab/ts-transform-register.mjs",
     "apps/electron/src/preload/*.d.ts",
     // Kept on purpose: specs/lean-audit-2026-09.md T0-5 keeps this entry.
     "apps/electron/src/renderer/src/components/ui/card.tsx",

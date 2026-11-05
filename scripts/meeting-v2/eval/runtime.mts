@@ -631,20 +631,49 @@ export async function ensureTranscribed(opts: {
         console.log(
           `transcribing ${id.slice(0, 8)} with ${voice.model_id} (asr hash ${hashes[id]})`,
         );
+        // Run "LIVE" (Eval Lab knob pass=live) replays the live loop
+        // (lab/live-arm.mts) instead of the full pass. It needs the
+        // electron cwd (the VAD binary and models resolve from there).
+        const live = run === "LIVE";
         const rc = await runChild(
           process.execPath,
-          [
-            join(repoRoot, "scripts", "meeting-v2", "run-baseline.mjs"),
-            "--meeting",
-            id,
-            "--run",
-            run,
-            "--port",
-            String(port),
-            "--hf-cache",
-            hfCache,
-          ],
+          live
+            ? [
+                // Node type stripping cannot run the server source (parameter
+                // properties): this hook transforms it.
+                "--import",
+                join(
+                  repoRoot,
+                  "scripts",
+                  "meeting-v2",
+                  "eval",
+                  "lab",
+                  "ts-transform-register.mjs",
+                ),
+                join(
+                  repoRoot,
+                  "scripts",
+                  "meeting-v2",
+                  "eval",
+                  "lab",
+                  "live-arm.mts",
+                ),
+                "--meeting",
+                id,
+              ]
+            : [
+                join(repoRoot, "scripts", "meeting-v2", "run-baseline.mjs"),
+                "--meeting",
+                id,
+                "--run",
+                run,
+                "--port",
+                String(port),
+                "--hf-cache",
+                hfCache,
+              ],
           serverEnv(hfCache, { SCRATCH: work, HOME: SERVER_HOME }),
+          live ? join(repoRoot, "apps", "electron") : repoRoot,
         );
         if (rc !== 0)
           throw new Error(`run-baseline failed for ${id.slice(0, 8)}`);

@@ -319,6 +319,8 @@ async function cmdRun() {
       "lab.macos": code.machine.macos,
       "lab.node": code.machine.node,
       "lab.started_at": startedAt,
+      // Optional study label (for example live-vs-full-2026-11-05).
+      ...(process.env.LAB_STUDY ? { study: process.env.LAB_STUDY } : {}),
     };
     const runId = await ml.createRun(
       expId,
