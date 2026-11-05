@@ -1,5 +1,24 @@
 # Changelog
 
+## 2.25.0-alpha.18
+
+### New Features ✨
+
+- (chat) D22 Ask tool loop behind chat_engine (P3) by @Maheidem in [#416](https://github.com/Maheidem/openstyle/pull/416)
+
+### Bug Fixes 🐛
+
+- (chat) Research quality — Send fan-out, citations, grouped lists (D21.1) by @Maheidem in [#413](https://github.com/Maheidem/openstyle/pull/413)
+
+### Documentation 📚
+
+- (chat) D22 Ask as a tool loop over a better index by @Maheidem in [#415](https://github.com/Maheidem/openstyle/pull/415)
+
+### Internal Changes 🔧
+
+- (chat-eval) Cloud provider chat model (eval only) by @Maheidem in [#414](https://github.com/Maheidem/openstyle/pull/414)
+- (eval) LFM3 study harness (eval only) by @Maheidem in [#417](https://github.com/Maheidem/openstyle/pull/417)
+
 ## 2.25.0-alpha.17
 
 ### New Features ✨
