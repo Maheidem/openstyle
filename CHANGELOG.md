@@ -1,5 +1,16 @@
 # Changelog
 
+## 3.0.0-alpha.1
+
+### Bug Fixes 🐛
+
+- (meetings) Always use the full pass for a saved meeting by @Maheidem in [#420](https://github.com/Maheidem/openstyle/pull/420)
+- Show a clear cue when a selected local model is missing by @Maheidem in [#418](https://github.com/Maheidem/openstyle/pull/418)
+
+### Internal Changes 🔧
+
+- (eval) Live arm for the Eval Lab (live vs full pass) by @Maheidem in [#419](https://github.com/Maheidem/openstyle/pull/419)
+
 ## 2.25.0-alpha.18
 
 ### New Features ✨
