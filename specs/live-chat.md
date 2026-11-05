@@ -123,7 +123,7 @@ UI (hidden while the setting is off). The live view fills the right pane (the me
 - `LiveChatPanel`: input, messages, cite chips (live time, or past meeting title and time). A first answer that takes more than 3 s shows the "warming" text. The line under the title names the provider and model that receive the live text. An error shows its text in the thread. The text "unavailable" shows only when the setting is off.
 - The recording card keeps the timer, the mic and system levels and Stop. With the setting on it also has the "Open live view" link.
 - Settings, Meetings section: a switch "Live transcript and chat (experimental)".
-- After Stop: the meeting is "Recorded". The live text is not saved as the transcript (section 8). The meeting detail shows a "Live chat" tab when the meeting has chat messages. The mark "From live" shows only on a meeting that an older version saved from live text.
+- After Stop: the full pass starts at once and the meeting shows "Transcribing". The live text is not saved as the transcript (section 8). The meeting detail shows a "Live chat" tab when the meeting has chat messages. The mark "From live" shows only on a meeting that an older version saved from live text.
 - Strings: `meetings.liveChat.*` and `settings.meetings.liveChat*` in the 7 locales and the template. Models page row: `models.taskProfiles.liveChat`.
 
 E2E seam: `OPENSTYLE_E2E_FAKE_MEETING_AUDIO=<16 kHz mono s16 WAV>`, with `OPENSTYLE_E2E=1` and `OPENSTYLE_E2E_FAKE_MEETING_CAPTURE=1`, streams the file in real time into the mic track. The system track stays silent.
