@@ -77,7 +77,9 @@
               "https://maheidem.github.io/openstyle/assets/screens/transcriptions.png",
               "https://maheidem.github.io/openstyle/assets/screens/models-picker-dialog.png",
               "https://maheidem.github.io/openstyle/assets/screens/meeting.png",
-              "https://maheidem.github.io/openstyle/assets/screens/meeting-summary.png"
+              "https://maheidem.github.io/openstyle/assets/screens/meeting-summary.png",
+              "https://maheidem.github.io/openstyle/assets/screens/meeting-paused.png",
+              "https://maheidem.github.io/openstyle/assets/screens/onboarding-model.png"
             ],
             "author": {
               "@type": "Person",
@@ -413,6 +415,39 @@
             </picture>
           </div>
         </figure>
+        <figure class="shot">
+            <div class="mac">
+              <div class="mac-bar" aria-hidden="true">
+                <span class="mac-dots">
+                  <span class="mac-dot mac-dot-close"></span>
+                  <span class="mac-dot mac-dot-min"></span>
+                  <span class="mac-dot mac-dot-max"></span>
+                </span>
+              </div>
+              <picture>
+                <source
+                  type="image/webp"
+                  srcset="
+                    assets/screens/onboarding-model-1600.webp 1x,
+                    assets/screens/onboarding-model.png       2x
+                  "
+                />
+                <img
+                  src="assets/screens/onboarding-model.png"
+                  srcset="
+                    assets/screens/onboarding-model-1600.webp 1x,
+                    assets/screens/onboarding-model.png       2x
+                  "
+                  width="1280"
+                  height="800"
+                  loading="lazy"
+                  decoding="async"
+                  alt="The first-run setup with Recommended for your Mac: a voice model and a text model that fit the Mac, and a Choose another button"
+                />
+              </picture>
+            </div>
+            <figcaption class="shot-caption">First run: a model that fits your Mac</figcaption>
+          </figure>
         </div>
       </section>
       <section class="section" id="meetings" aria-labelledby="meetings-title">
@@ -490,6 +525,39 @@
               </picture>
             </div>
             <figcaption class="shot-caption">Summary</figcaption>
+          </figure>
+          <figure class="shot">
+            <div class="mac">
+              <div class="mac-bar" aria-hidden="true">
+                <span class="mac-dots">
+                  <span class="mac-dot mac-dot-close"></span>
+                  <span class="mac-dot mac-dot-min"></span>
+                  <span class="mac-dot mac-dot-max"></span>
+                </span>
+              </div>
+              <picture>
+                <source
+                  type="image/webp"
+                  srcset="
+                    assets/screens/meeting-paused-1600.webp 1x,
+                    assets/screens/meeting-paused.png       2x
+                  "
+                />
+                <img
+                  src="assets/screens/meeting-paused.png"
+                  srcset="
+                    assets/screens/meeting-paused-1600.webp 1x,
+                    assets/screens/meeting-paused.png       2x
+                  "
+                  width="1280"
+                  height="800"
+                  loading="lazy"
+                  decoding="async"
+                  alt="A meeting recording in the paused state, with the Paused label and a frozen timer"
+                />
+              </picture>
+            </div>
+            <figcaption class="shot-caption">Pause and resume</figcaption>
           </figure>
         </div>
       </section>

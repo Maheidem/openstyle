@@ -20,5 +20,13 @@
       <image:loc>https://maheidem.github.io/openstyle/assets/screens/meeting-summary.png</image:loc>
       <image:title>The written summary of the Weekly product sync meeting</image:title>
     </image:image>
+    <image:image>
+      <image:loc>https://maheidem.github.io/openstyle/assets/screens/meeting-paused.png</image:loc>
+      <image:title>A meeting recording in the paused state, with the Paused label and a frozen timer</image:title>
+    </image:image>
+    <image:image>
+      <image:loc>https://maheidem.github.io/openstyle/assets/screens/onboarding-model.png</image:loc>
+      <image:title>The first-run setup with Recommended for your Mac</image:title>
+    </image:image>
   </url>
 </urlset>
