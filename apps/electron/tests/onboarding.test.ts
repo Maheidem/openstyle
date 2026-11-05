@@ -1,8 +1,8 @@
-import { execFileSync } from "node:child_process";
 import { mkdtempSync, readFileSync, writeFileSync } from "node:fs";
 import { createServer, type Server } from "node:http";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { DatabaseSync } from "node:sqlite";
 import {
   type ElectronApplication,
   expect,
@@ -733,11 +733,15 @@ test("run setup again: cancel changes nothing, a save changes only the pick", as
   await expect.poll(async () => (await configured(first.app)).length).toBe(0);
   await closeApp(first.app);
   const db = join(userDataDir, "freestyle.db");
-  execFileSync("sqlite3", [
-    db,
-    "INSERT INTO meetings (id, title, started_at, ended_at, duration_ms, status, created_at) VALUES ('seed-meeting','Seed meeting',1,2,1,'transcribed',1);" +
-      "INSERT INTO transcription_history (raw_text, cleaned_text, voice_provider, voice_model) VALUES ('seed words','seed words','local-whisper','small-q5_1');",
-  ]);
+  const seed = new DatabaseSync(db);
+  try {
+    seed.exec(
+      "INSERT INTO meetings (id, title, started_at, ended_at, duration_ms, status, created_at) VALUES ('seed-meeting','Seed meeting',1,2,1,'transcribed',1);" +
+        "INSERT INTO transcription_history (raw_text, cleaned_text, voice_provider, voice_model) VALUES ('seed words','seed words','local-whisper','small-q5_1');",
+    );
+  } finally {
+    seed.close();
+  }
 
   session = await launch(userDataDir);
   const { app, page, fakes } = session;
