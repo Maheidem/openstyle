@@ -42,75 +42,239 @@
     "ja": "Japonais"
   },
   "onboarding": {
+    "counter": "Étape {{index}} sur {{total}} · {{name}}",
+    "stepName": {
+      "language": "Langue",
+      "model": "Comment Openstyle écoute",
+      "permissions": "Autoriser votre Mac",
+      "try": "Essayer",
+      "name": "Votre nom",
+      "enhance": "Améliorer"
+    },
+    "welcome": {
+      "title": "Vous parlez. Openstyle écrit.",
+      "desc": "Maintenez une touche, parlez, et le texte apparaît dans n'importe quelle app. Votre voix peut rester sur ce Mac.",
+      "cardTitle": "La configuration prend environ 4 minutes",
+      "rows": {
+        "language": "Choisir votre langue",
+        "listen": "Choisir comment Openstyle écoute",
+        "allow": "Autoriser votre Mac",
+        "try": "Essayer une fois"
+      },
+      "oneMinute": "1 min",
+      "note": "Vous pouvez terminer maintenant et tout changer plus tard. Rien ne se télécharge sans votre accord.",
+      "start": "Commencer la configuration"
+    },
+    "language": {
+      "title": "Quelle langue parlez-vous ?",
+      "desc": "Choisissez jusqu'à 5 langues. Avec une seule langue, le résultat est meilleur. Nous utilisons votre choix pour suggérer un modèle vocal.",
+      "osNote": "La langue de votre Mac est {{language}}. Nous l'avons sélectionnée.",
+      "autoNote": "La détection automatique est activée. Openstyle trouve la langue de chaque extrait.",
+      "countNote": "{{count}} sur {{max}} sélectionnées.",
+      "autoDetect": "Détection automatique",
+      "seeAll": "Tout voir",
+      "allLanguages": "Toutes les langues"
+    },
+    "model": {
+      "title": "Recommandé pour votre Mac",
+      "voice": "Voix",
+      "text": "Texte",
+      "notSet": "Non défini",
+      "chooseAnother": "Choisir un autre",
+      "downloadAndContinue": "Télécharger {{size}} et continuer",
+      "decideLater": "Décider plus tard",
+      "chooseTitle": "Choisir un autre",
+      "useRecommendation": "Utiliser la recommandation",
+      "voiceSection": "Modèle vocal · requis pour dicter",
+      "textSection": "Modèle de texte · facultatif",
+      "textSectionDesc": "Nettoyage, Améliorer et Poser une question l'utilisent. Il peut venir d'une autre source que le modèle vocal.",
+      "sources": {
+        "mac": "Sur ce Mac",
+        "server": "Mon propre serveur",
+        "cloud": "Fournisseur cloud"
+      },
+      "recommended": "Recommandé",
+      "fit": {
+        "runs_well": "Fonctionne bien",
+        "tight": "Juste",
+        "wont_fit": "Ne tient pas"
+      },
+      "speed": {
+        "1": "Lent",
+        "2": "Lent",
+        "3": "Moyen",
+        "4": "Rapide",
+        "5": "Très rapide"
+      },
+      "quality": {
+        "1": "Basique",
+        "2": "Bonne",
+        "3": "Meilleure",
+        "4": "Élevée",
+        "5": "Maximale"
+      },
+      "languages99": "99 langues",
+      "helper": "+ {{size}} moteur auxiliaire",
+      "changeVoice": "Changer le modèle vocal",
+      "changeText": "Changer le modèle de texte",
+      "showFewer": "Afficher moins",
+      "notNow": "Pas maintenant",
+      "optional": "Facultatif",
+      "notNowDesc": "Nettoyage, Améliorer et Poser une question ont besoin d'un modèle de texte. Vous pouvez en ajouter un à l'étape 6 ou plus tard.",
+      "textMeta": "Fonctionne sur ce Mac. Privé. {{size}}",
+      "qwenWarning": "Qwen3 ne couvre pas toutes les langues choisies. Whisper comprend 99 langues.",
+      "diskWarning": "Espace disque insuffisant. Il faut {{need}}. Vous avez {{have}}.",
+      "testing": "Test en cours...",
+      "testConnection": "Tester la connexion",
+      "testKey": "Tester la clé",
+      "server": {
+        "voiceNote": "Votre audio va uniquement à cette adresse.",
+        "textNote": "Votre texte va uniquement à cette adresse.",
+        "failHint": "Vérifiez l'adresse ou utilisez une autre source.",
+        "connected_one": "Connecté · {{count}} modèle trouvé",
+        "connected_other": "Connecté · {{count}} modèles trouvés",
+        "pick": {
+          "voice": "Modèle vocal sur ce serveur",
+          "llm": "Modèle de texte sur ce serveur"
+        },
+        "noModels": {
+          "voice": "Ce serveur ne liste aucun modèle vocal. Utilisez une autre source.",
+          "llm": "Ce serveur ne liste aucun modèle de texte. Utilisez une autre source."
+        }
+      },
+      "cloud": {
+        "voiceNote": "Votre clé reste sur ce Mac. Votre audio va au fournisseur.",
+        "textNote": "Votre clé reste sur ce Mac. Votre texte va au fournisseur.",
+        "keyLabel": "Clé API {{provider}}",
+        "works": {
+          "voice": "La clé fonctionne · modèle vocal {{model}}",
+          "llm": "La clé fonctionne · modèle de texte {{model}}"
+        },
+        "refusedTitle": "Le fournisseur a refusé cette clé.",
+        "offline": "Pas d'internet. Openstyle ne peut pas tester la clé. Vous pouvez continuer. Le modèle s'affiche comme non testé."
+      },
+      "errors": {
+        "failed": "Openstyle n'a pas pu enregistrer votre choix. Réessayez.",
+        "voice-server": "Testez d'abord le serveur et choisissez un modèle vocal.",
+        "text-server": "Testez d'abord le serveur et choisissez un modèle de texte.",
+        "voice-cloud": "Ce fournisseur n'a pas de modèle vocal. Utilisez une autre source.",
+        "text-cloud": "Ce fournisseur n'a pas de modèle de texte. Utilisez une autre source."
+      }
+    },
     "permissions": {
+      "title": "Autorisez Openstyle à utiliser votre Mac",
+      "desc": "macOS vous demande pour chaque point. Nous expliquons pourquoi avant. Vous pouvez refuser et terminer quand même.",
       "microphone": {
         "title": "Microphone",
-        "desc": "Pour entendre ce que vous dites."
+        "desc": "Pour entendre ce que vous dites. Requis pour dicter."
       },
       "accessibility": {
         "title": "Accessibilité",
-        "desc": "Pour détecter votre raccourci et coller dans n'importe quelle app."
+        "desc": "Pour détecter votre raccourci et écrire le texte dans n'importe quelle app. Requis pour dicter."
+      },
+      "micDeniedTitle": "Le microphone est désactivé pour Openstyle.",
+      "micDenied": "Vous avez refusé dans la fenêtre macOS. Openstyle ne peut pas vous entendre tant que vous ne l'activez pas. macOS ne demande jamais deux fois.",
+      "openSystemSettings": "Ouvrir les Réglages Système",
+      "waiting": "En attente",
+      "accessibilityWaiting": "Activez Openstyle dans la liste. Openstyle vérifie à nouveau quand vous revenez à cette fenêtre.",
+      "checkAgain": "Vérifier à nouveau",
+      "checkHint": "Openstyle vérifie aussi quand vous revenez à cette fenêtre.",
+      "without": {
+        "both": "Continuer sans ces accès",
+        "microphone": "Continuer sans Microphone",
+        "accessibility": "Continuer sans Accessibilité"
       },
       "keyboardAccess": {
         "title": "Accès au clavier",
         "descGranted": "Pour détecter votre raccourci dans n'importe quelle app.",
-        "descDenied": "Pour détecter votre raccourci dans n'importe quelle app, exécutez <code>sudo usermod -aG input $USER</code> dans un terminal, puis déconnectez-vous et reconnectez-vous.",
-        "toggleNote": "En attendant, le raccourci ne fonctionne qu'en mode bascule."
+        "descDenied": "Pour détecter votre raccourci dans n'importe quelle app, exécutez <code>sudo usermod -aG input $USER</code> dans un terminal. Puis fermez votre session et rouvrez-la.",
+        "toggleNote": " Jusque-là, le raccourci fonctionne seulement en mode bascule."
       },
       "pasteTool": {
         "title": "Outil de collage",
         "desc": "Pour coller dans d'autres apps, installez {{tool}} : <code>sudo apt install {{tool}}</code>"
-      },
-      "grantBoth": "Accordez les deux pour continuer",
-      "grantAccess": "Accordez l'accès pour continuer"
+      }
     },
-    "language": {
-      "titlePrefix": "Quelle langue ",
-      "titleEmphasis": "parlez-vous ?",
-      "autoDetect": "Détection automatique"
+    "try": {
+      "title": "Essayer une fois",
+      "instructionPrefix": "Cliquez dans l'e-mail. Maintenez",
+      "instructionSuffix": "({{words}}) et dites :",
+      "sayText": "Joyeux anniversaire Sam, j'apporte un gâteau vendredi.",
+      "worked": "Ça a marché.",
+      "typed_one": "Openstyle a écrit {{count}} mot.",
+      "typed_other": "Openstyle a écrit {{count}} mots.",
+      "modelWait": "Votre modèle vocal est encore en téléchargement.",
+      "permissionsMissing": "Microphone ou Accessibilité est désactivé. La dictée ne peut pas démarrer.",
+      "fix": "Corriger",
+      "skip": "Passer, j'essaierai plus tard"
     },
     "name": {
-      "title": "Comment vous appelez-vous ?",
-      "desc": "La transcription des réunions utilise votre nom pour bien l’écrire. Il reste sur ce Mac. Vous pourrez le modifier plus tard dans les Réglages.",
+      "title": "Quel est votre nom ?",
+      "desc": "La transcription des réunions utilise votre nom pour bien l'écrire. Il reste sur ce Mac. Vous pouvez le changer dans les Réglages.",
       "placeholder": "Votre nom complet",
       "skip": "Passer"
     },
-    "tutorial": {
-      "almostReady": "Presque prêt — ",
-      "finish": "Commencer à utiliser Openstyle"
+    "enhance": {
+      "switch": "Améliorer",
+      "headOn": "Nous allons améliorer vos réunions.",
+      "headOff": "Améliorer est désactivé.",
+      "subOn": "Après chaque réunion, Openstyle met la transcription au propre. Il ne change pas ce qui a été dit.",
+      "subOff": "Les transcriptions de réunion restent telles quelles. Vous pouvez activer Améliorer plus tard dans les Réglages.",
+      "subDownload": "Openstyle télécharge {{name}} ({{size}}) quand vous continuez.",
+      "raw": "Transcription brute",
+      "rawText": "euh donc on devrait euh livrer le truc vendredi non attends jeudi",
+      "after": "Après Améliorer",
+      "cleanText": "On devrait le livrer jeudi."
     },
-    "modelSelector": {
-      "chooseModel": "Choisir un modèle",
-      "allVoiceModels": "Tous les modèles vocaux",
-      "cloudApi": "API Cloud",
-      "onDevice": "Sur l'appareil",
-      "loading": "Chargement des modèles…",
-      "cloudNote": "Les modèles cloud nécessitent une clé API — nous la demanderons une fois.",
-      "onDeviceNote": "Les modèles sur l'appareil s'exécutent en privé sur {{phrase}}.",
-      "connect": "Connecter {{provider}}",
-      "addKey": "Ajoutez votre clé {{provider}}",
-      "requiredFor": "Requis pour utiliser {{model}}. Stocké dans votre trousseau système — jamais enregistré, jamais envoyé.",
-      "getKey": "Vous n'en avez pas ? Obtenez une clé {{provider}} ↗",
-      "saveKey": "Enregistrer et utiliser {{provider}}",
-      "keyPlaceholder": "Collez votre clé secrète — ex. sk-…",
-      "backToModels": "Retour aux modèles"
+    "footer": {
+      "worker": "Installation du moteur auxiliaire",
+      "downloading": {
+        "voice": "Téléchargement de {{name}} en arrière-plan",
+        "text": "Téléchargement de {{name}} en arrière-plan"
+      },
+      "minutesLeft_one": "Environ {{count}} min restante.",
+      "minutesLeft_other": "Environ {{count}} min restantes.",
+      "done": "Vos modèles sont prêts.",
+      "stoppedTitle": "Le téléchargement s'est arrêté.",
+      "stopped": "Les fichiers complets restent sur votre Mac.",
+      "retry": "Réessayer",
+      "openSource": "Ouvrir la source du modèle",
+      "chooseOther": "Choisir un autre modèle"
+    },
+    "ready": {
+      "title": "Tout est prêt",
+      "line": "Maintenez {{keys}} dans n'importe quelle app et parlez.",
+      "lineDownloading": "Maintenez {{keys}} dans n'importe quelle app et parlez. La dictée démarre quand le modèle vocal est prêt.",
+      "lineLater": "La dictée est désactivée. Choisissez un modèle vocal dans Modèles pour dicter.",
+      "voice": "Modèle vocal · {{where}}",
+      "text": "Modèle de texte · {{where}}",
+      "thisMac": "ce Mac",
+      "ownServer": "serveur personnel",
+      "open": "Ouvrir Openstyle"
     },
     "draft": {
       "statusReady": "Prêt",
-      "statusListening": "À l'écoute…",
-      "statusLanded": "Arrivé dans le brouillon",
-      "skip": "Passer pour l'instant",
+      "statusListening": "Écoute…",
+      "statusLanded": "Dans le brouillon",
       "newMessage": "Nouveau message",
       "toLabel": "À",
       "recipientName": "Sam Rivera",
       "recipientEmail": "sam.rivera@example.com",
       "subject": "Joyeux anniversaire",
       "send": "Envoyer",
-      "bodyAria": "Corps du message",
-      "title": "Écrivez avec votre voix",
-      "instructionPrefix": "Cliquez dans l'e-mail, maintenez",
-      "instructionSuffix": "et dites, mot pour mot :",
-      "sayText": "Joyeux anniversaire Sam — j'apporte un gâteau vendredi."
+      "bodyAria": "Corps de l'e-mail"
+    },
+    "hotkey": {
+      "needsModifier": "Ajoutez une touche de modification ou un bouton latéral de la souris · Échap pour annuler",
+      "release": "Relâchez pour enregistrer · Échap pour annuler",
+      "press": "Appuyez sur une touche de modification ou un bouton latéral de la souris… · Échap pour annuler"
+    },
+    "replay": {
+      "line": "Vos changements s'appliquent quand vous appuyez sur Enregistrer. Appuyez sur Annuler pour quitter sans changement.",
+      "save": "Enregistrer et fermer",
+      "keep": "Garder {{name}}",
+      "modelNote": "Vos modèles enregistrés ne changent pas tant que vous n'en choisissez pas un autre et n'enregistrez pas.",
+      "download": "Openstyle télécharge {{size}} quand vous enregistrez."
     }
   },
   "settings": {
@@ -150,9 +314,12 @@
       "launchAtStartupDesc": "Démarre Openstyle automatiquement quand vous vous connectez à votre ordinateur.",
       "showOnLaunch": "Afficher le tableau de bord au lancement",
       "showOnLaunchDesc": "Ouvre la fenêtre du tableau de bord quand Openstyle démarre.",
+      "advancedModeDesc": "Affiche les réglages développeur : valeurs d'échantillonnage, profils de tâches, limites de mémoire et inspecteur LLM.",
       "acknowledgments": "Remerciements",
       "acknowledgmentsDesc": "Modèles et licences tiers utilisés par Openstyle.",
-      "acknowledgmentsText": "Les modèles de diarisation des locuteurs sont dérivés de <pyannote>pyannote/speaker-diarization-community-1</pyannote> (CC-BY-4.0) via <fluidaudio>FluidInference/FluidAudio</fluidaudio> (Apache-2.0)."
+      "acknowledgmentsText": "Les modèles de diarisation des locuteurs sont dérivés de <pyannote>pyannote/speaker-diarization-community-1</pyannote> (CC-BY-4.0) via <fluidaudio>FluidInference/FluidAudio</fluidaudio> (Apache-2.0).",
+      "runSetup": "Refaire la configuration",
+      "runSetupDesc": "Refaites les étapes de la première configuration. Rien ne change avant l'enregistrement. Vos données et vos modèles restent."
     },
     "recording": {
       "hotkey": "Raccourci clavier",
@@ -352,7 +519,14 @@
     "dailyActivity": "Activité quotidienne",
     "heatmapLess": "Moins",
     "heatmapMore": "Plus",
-    "heatmapWords": "{{count}} mots"
+    "heatmapWords": "{{count}} mots",
+    "setup": {
+      "voice": "Choisissez un modèle vocal pour commencer à dicter.",
+      "voiceAction": "Choisir un modèle",
+      "microphone": "Activez votre microphone. Sans lui, la dictée ne peut pas vous entendre.",
+      "accessibility": "Activez Accessibilité. Sans elle, la dictée ne peut pas écrire dans d'autres apps.",
+      "openSettings": "Ouvrir les réglages"
+    }
   },
   "history": {
     "filterTitle": "Filtrer l'historique",
@@ -1686,7 +1860,8 @@
     },
     "models": {
       "label": "Modèles actifs"
-    }
+    },
+    "finishSetup": "Terminer la configuration"
   },
   "ask": {
     "title": "Poser une question",

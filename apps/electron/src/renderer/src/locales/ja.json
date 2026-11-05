@@ -42,75 +42,236 @@
     "ja": "日本語"
   },
   "onboarding": {
+    "counter": "ステップ {{index}} / {{total}} · {{name}}",
+    "stepName": {
+      "language": "言語",
+      "model": "Openstyle の聞き取り方",
+      "permissions": "Mac の許可",
+      "try": "試す",
+      "name": "お名前",
+      "enhance": "強化"
+    },
+    "welcome": {
+      "title": "話すだけ。Openstyle が書きます。",
+      "desc": "キーを押したまま話すと、どのアプリにもテキストが入ります。音声はこの Mac の中にとどめられます。",
+      "cardTitle": "セットアップは約 4 分です",
+      "rows": {
+        "language": "言語を選ぶ",
+        "listen": "Openstyle の聞き取り方を選ぶ",
+        "allow": "Mac を許可する",
+        "try": "1 回試す"
+      },
+      "oneMinute": "1 分",
+      "note": "今すぐ終えて、あとからすべて変更できます。「はい」と言うまで何もダウンロードしません。",
+      "start": "セットアップを始める"
+    },
+    "language": {
+      "title": "話す言語は何ですか？",
+      "desc": "最大 5 つまで選べます。言語が 1 つのほうが結果は良くなります。選んだ言語から音声モデルを提案します。",
+      "osNote": "Mac の言語は {{language}} です。この言語を選択しました。",
+      "autoNote": "自動検出がオンです。Openstyle が録音ごとに言語を判定します。",
+      "countNote": "{{max}} 件中 {{count}} 件を選択中です。",
+      "autoDetect": "自動検出",
+      "seeAll": "すべて表示",
+      "allLanguages": "すべての言語"
+    },
+    "model": {
+      "title": "お使いの Mac のおすすめ",
+      "voice": "音声",
+      "text": "テキスト",
+      "notSet": "未設定",
+      "chooseAnother": "別のモデルを選ぶ",
+      "downloadAndContinue": "{{size}} をダウンロードして続ける",
+      "decideLater": "あとで決める",
+      "chooseTitle": "別のモデルを選ぶ",
+      "useRecommendation": "おすすめを使う",
+      "voiceSection": "音声モデル · 音声入力に必要",
+      "textSection": "テキストモデル · 任意",
+      "textSectionDesc": "クリーンアップ、強化、質問がこのモデルを使います。音声モデルとは別の提供元にできます。",
+      "sources": {
+        "mac": "この Mac",
+        "server": "自分のサーバー",
+        "cloud": "クラウドプロバイダー"
+      },
+      "recommended": "おすすめ",
+      "fit": {
+        "runs_well": "快適に動作",
+        "tight": "ぎりぎり",
+        "wont_fit": "動作不可"
+      },
+      "speed": {
+        "1": "遅い",
+        "2": "遅い",
+        "3": "普通",
+        "4": "速い",
+        "5": "とても速い"
+      },
+      "quality": {
+        "1": "基本",
+        "2": "良い",
+        "3": "より良い",
+        "4": "高い",
+        "5": "最高"
+      },
+      "languages99": "99 言語",
+      "helper": "+ {{size}} ヘルパーエンジン",
+      "changeVoice": "音声モデルを変更",
+      "changeText": "テキストモデルを変更",
+      "showFewer": "表示を減らす",
+      "notNow": "今はしない",
+      "optional": "任意",
+      "notNowDesc": "クリーンアップ、強化、質問にはテキストモデルが必要です。ステップ 6 またはあとで追加できます。",
+      "textMeta": "この Mac で動作します。プライベートです。{{size}}",
+      "qwenWarning": "Qwen3 は選んだ言語のすべてには対応していません。Whisper は 99 言語に対応しています。",
+      "diskWarning": "ディスクの空き容量が足りません。{{need}} が必要です。空きは {{have}} です。",
+      "testing": "テスト中...",
+      "testConnection": "接続をテスト",
+      "testKey": "キーをテスト",
+      "server": {
+        "voiceNote": "音声は、このアドレスだけに送られます。",
+        "textNote": "テキストは、このアドレスだけに送られます。",
+        "failHint": "アドレスを確認するか、別の提供元を使ってください。",
+        "connected_other": "接続済み · {{count}} 件のモデルが見つかりました",
+        "pick": {
+          "voice": "このサーバーの音声モデル",
+          "llm": "このサーバーのテキストモデル"
+        },
+        "noModels": {
+          "voice": "このサーバーには音声モデルがありません。別の提供元を使ってください。",
+          "llm": "このサーバーにはテキストモデルがありません。別の提供元を使ってください。"
+        }
+      },
+      "cloud": {
+        "voiceNote": "キーはこの Mac にとどまります。音声はプロバイダーに送られます。",
+        "textNote": "キーはこの Mac にとどまります。テキストはプロバイダーに送られます。",
+        "keyLabel": "{{provider}} の API キー",
+        "works": {
+          "voice": "キーは有効です · 音声モデル {{model}}",
+          "llm": "キーは有効です · テキストモデル {{model}}"
+        },
+        "refusedTitle": "プロバイダーがこのキーを拒否しました。",
+        "offline": "インターネットに接続されていません。Openstyle はキーをテストできません。続けることはできます。モデルは未テストと表示されます。"
+      },
+      "errors": {
+        "failed": "Openstyle は選択を保存できませんでした。もう一度試してください。",
+        "voice-server": "先にサーバーをテストして、音声モデルを選んでください。",
+        "text-server": "先にサーバーをテストして、テキストモデルを選んでください。",
+        "voice-cloud": "このプロバイダーには音声モデルがありません。別の提供元を使ってください。",
+        "text-cloud": "このプロバイダーにはテキストモデルがありません。別の提供元を使ってください。"
+      }
+    },
     "permissions": {
+      "title": "Openstyle に Mac の使用を許可する",
+      "desc": "macOS が項目ごとに確認します。確認の前に、理由を説明します。許可しなくても、セットアップは完了できます。",
       "microphone": {
         "title": "マイク",
-        "desc": "あなたの発言を音声認識するため。"
+        "desc": "あなたの声を聞き取るため。音声入力に必要です。"
       },
       "accessibility": {
         "title": "アクセシビリティ",
-        "desc": "ホットキーを検出し、任意のアプリにテキストを貼り付けるため。"
+        "desc": "ホットキーを検出し、どのアプリにもテキストを入力するため。音声入力に必要です。"
+      },
+      "micDeniedTitle": "Openstyle のマイクがオフです。",
+      "micDenied": "macOS のダイアログで許可しませんでした。オンにするまで、Openstyle は声を聞き取れません。macOS は 2 回は確認しません。",
+      "openSystemSettings": "システム設定を開く",
+      "waiting": "待機中",
+      "accessibilityWaiting": "リストで Openstyle をオンにしてください。このウィンドウに戻ると、Openstyle が再確認します。",
+      "checkAgain": "再確認",
+      "checkHint": "このウィンドウに戻ったときにも、Openstyle が確認します。",
+      "without": {
+        "both": "許可せずに続ける",
+        "microphone": "マイクなしで続ける",
+        "accessibility": "アクセシビリティなしで続ける"
       },
       "keyboardAccess": {
-        "title": "キーボードへのアクセス",
-        "descGranted": "任意のアプリでホットキーを検出するため。",
-        "descDenied": "任意のアプリでホットキーを検出するには、ターミナルで <code>sudo usermod -aG input $USER</code> を実行し、ログアウトしてから再度ログインしてください。",
-        "toggleNote": " それまでは、ホットキーはトグル（切り替え）モードでのみ動作します。"
+        "title": "キーボードアクセス",
+        "descGranted": "どのアプリでもホットキーを検出するため。",
+        "descDenied": "どのアプリでもホットキーを検出するには、ターミナルで <code>sudo usermod -aG input $USER</code> を実行します。そのあと、ログアウトして再ログインします。",
+        "toggleNote": "それまでは、ホットキーはトグルモードでのみ動作します。"
       },
       "pasteTool": {
         "title": "貼り付けツール",
-        "desc": "他のアプリへ貼り付けるには、{{tool}} をインストールしてください：<code>sudo apt install {{tool}}</code>"
-      },
-      "grantBoth": "続行するには両方を許可してください",
-      "grantAccess": "続行するにはアクセスを許可してください"
+        "desc": "他のアプリに貼り付けるには、{{tool}} をインストールします: <code>sudo apt install {{tool}}</code>"
+      }
     },
-    "language": {
-      "titlePrefix": "普段お使いの",
-      "titleEmphasis": "言語は何ですか？",
-      "autoDetect": "自動検出"
+    "try": {
+      "title": "1 回試す",
+      "instructionPrefix": "メール本文をクリックします。",
+      "instructionSuffix": "（{{words}}）を押したまま、次のように話します。",
+      "sayText": "誕生日おめでとう、Sam。金曜にケーキを持っていきます。",
+      "worked": "成功しました。",
+      "typed_other": "Openstyle が {{count}} 語を入力しました。",
+      "modelWait": "音声モデルはまだダウンロード中です。",
+      "permissionsMissing": "マイクまたはアクセシビリティがオフです。音声入力を開始できません。",
+      "fix": "修正する",
+      "skip": "スキップして、あとで試す"
     },
     "name": {
-      "title": "お名前を教えてください",
-      "desc": "ミーティングの文字起こしで名前を正しく表記するために使います。この Mac の外には送られません。あとで設定から変更できます。",
+      "title": "お名前は何ですか？",
+      "desc": "ミーティングの文字起こしで名前を正しく表記するために使います。この Mac の外には送られません。設定から変更できます。",
       "placeholder": "フルネーム",
       "skip": "スキップ"
     },
-    "tutorial": {
-      "almostReady": "準備完了まであと少し — ",
-      "finish": "Openstyle の使用を開始"
+    "enhance": {
+      "switch": "強化",
+      "headOn": "ミーティングを強化します。",
+      "headOff": "強化はオフです。",
+      "subOn": "ミーティングのあとに、Openstyle が文字起こしを整えます。話した内容は変えません。",
+      "subOff": "ミーティングの文字起こしは、そのまま残ります。強化は、あとで設定からオンにできます。",
+      "subDownload": "続けると、Openstyle が {{name}}（{{size}}）をダウンロードします。",
+      "raw": "元の文字起こし",
+      "rawText": "えーと それで あの 金曜に出そう あ いや待って 木曜",
+      "after": "強化後",
+      "cleanText": "木曜に出しましょう。"
     },
-    "modelSelector": {
-      "chooseModel": "モデルを選択",
-      "allVoiceModels": "すべての音声モデル",
-      "cloudApi": "クラウド API",
-      "onDevice": "オンデバイス（ローカル）",
-      "loading": "モデルを読み込み中...",
-      "cloudNote": "クラウドモデルには API キーが必要です（一度だけ入力を求められます）。",
-      "onDeviceNote": "オンデバイスモデルは、{{phrase}} 上でプライベートに実行されます。",
-      "connect": "{{provider}} に接続",
-      "addKey": "{{provider}} のキーを追加",
-      "requiredFor": "{{model}} を使用するために必要です。システムキーチェーンに安全に保存されます（ログへの記録や弊社への送信は一切行われません）。",
-      "getKey": "キーをお持ちでない場合：{{provider}} のキーを取得 ↗",
-      "saveKey": "保存して {{provider}} を使用",
-      "keyPlaceholder": "シークレットキーを貼り付け（例: sk-…）",
-      "backToModels": "モデル一覧に戻る"
+    "footer": {
+      "worker": "ヘルパーエンジンをインストール中",
+      "downloading": {
+        "voice": "{{name}} をバックグラウンドでダウンロード中",
+        "text": "{{name}} をバックグラウンドでダウンロード中"
+      },
+      "minutesLeft_other": "残り約 {{count}} 分です。",
+      "done": "モデルの準備ができました。",
+      "stoppedTitle": "ダウンロードが停止しました。",
+      "stopped": "完了したファイルは、この Mac に残ります。",
+      "retry": "もう一度試す",
+      "openSource": "モデルの入手先を開く",
+      "chooseOther": "別のモデルを選ぶ"
+    },
+    "ready": {
+      "title": "準備ができました",
+      "line": "どのアプリでも {{keys}} を押したまま話してください。",
+      "lineDownloading": "どのアプリでも {{keys}} を押したまま話してください。音声モデルが完了すると、音声入力が始まります。",
+      "lineLater": "音声入力はオフです。モデルで音声モデルを選ぶと、音声入力を始められます。",
+      "voice": "音声モデル · {{where}}",
+      "text": "テキストモデル · {{where}}",
+      "thisMac": "この Mac",
+      "ownServer": "自分のサーバー",
+      "open": "Openstyle を開く"
     },
     "draft": {
       "statusReady": "準備完了",
       "statusListening": "聞き取り中…",
       "statusLanded": "下書きに入力されました",
-      "skip": "今はスキップ",
       "newMessage": "新規メッセージ",
       "toLabel": "宛先",
       "recipientName": "Sam Rivera",
       "recipientEmail": "sam.rivera@example.com",
-      "subject": "お誕生日おめでとう",
+      "subject": "誕生日おめでとう",
       "send": "送信",
-      "bodyAria": "メール本文",
-      "title": "声で書こう",
-      "instructionPrefix": "メール本文をクリックし、",
-      "instructionSuffix": "を押しながら、次のとおりに言ってみましょう:",
-      "sayText": "Samさん、お誕生日おめでとう。金曜日にケーキを持っていきます。"
+      "bodyAria": "メール本文"
+    },
+    "hotkey": {
+      "needsModifier": "修飾キーかマウスのサイドボタンを追加します · Escで取り消し",
+      "release": "キーを離すと保存します · Escで取り消し",
+      "press": "修飾キーかマウスのサイドボタンを押します… · Escで取り消し"
+    },
+    "replay": {
+      "line": "保存を押すと変更が反映されます。キャンセルを押すと変更なしで終了します。",
+      "save": "保存して閉じる",
+      "keep": "{{name}} を使い続ける",
+      "modelNote": "保存済みのモデルは、別のモデルを選んで保存するまで変わりません。",
+      "download": "保存すると {{size}} をダウンロードします。"
     }
   },
   "settings": {
@@ -150,9 +311,12 @@
       "launchAtStartupDesc": "コンピューターにログインした際、自動的に Openstyle を起動します。",
       "showOnLaunch": "起動時にダッシュボードを表示",
       "showOnLaunchDesc": "Openstyle の起動時にダッシュボードウィンドウを開きます。",
+      "advancedModeDesc": "開発者向け設定を表示します: サンプリング値、タスクプロファイル、メモリ上限、LLM インスペクター。",
       "acknowledgments": "謝辞",
       "acknowledgmentsDesc": "Openstyle が使用するサードパーティ製モデルとライセンス。",
-      "acknowledgmentsText": "話者ダイアライゼーションモデルは、<fluidaudio>FluidInference/FluidAudio</fluidaudio>(Apache-2.0)経由で <pyannote>pyannote/speaker-diarization-community-1</pyannote>(CC-BY-4.0)から派生しています。"
+      "acknowledgmentsText": "話者ダイアライゼーションモデルは、<fluidaudio>FluidInference/FluidAudio</fluidaudio>(Apache-2.0)経由で <pyannote>pyannote/speaker-diarization-community-1</pyannote>(CC-BY-4.0)から派生しています。",
+      "runSetup": "セットアップをもう一度実行",
+      "runSetupDesc": "初回セットアップの手順をもう一度たどります。保存するまで何も変わりません。データとモデルは残ります。"
     },
     "recording": {
       "hotkey": "ホットキー",
@@ -352,7 +516,14 @@
     "dailyActivity": "日別アクティビティ",
     "heatmapLess": "少",
     "heatmapMore": "多",
-    "heatmapWords": "{{count}}語"
+    "heatmapWords": "{{count}}語",
+    "setup": {
+      "voice": "音声入力を始めるには、音声モデルを選んでください。",
+      "voiceAction": "モデルを選ぶ",
+      "microphone": "マイクをオンにしてください。オフの間は、音声入力があなたの声を聞き取れません。",
+      "accessibility": "アクセシビリティをオンにしてください。オフの間は、音声入力が他のアプリに入力できません。",
+      "openSettings": "設定を開く"
+    }
   },
   "history": {
     "filterTitle": "履歴を絞り込み",
@@ -1663,7 +1834,8 @@
     },
     "models": {
       "label": "使用中のモデル"
-    }
+    },
+    "finishSetup": "セットアップを完了"
   },
   "ask": {
     "title": "質問",

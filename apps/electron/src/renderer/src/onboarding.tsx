@@ -1,306 +1,633 @@
 import { normalizeLanguageList } from "@openstyle/validations";
-import { getClient } from "@renderer/lib/api";
+import { Button } from "@renderer/components/ui/button";
+import { formatAcceleratorKeys } from "@renderer/hooks/use-hotkey-recorder";
 import { defaultLanguage } from "@renderer/lib/languages";
-import type { ConfiguredModel } from "@renderer/lib/models";
+import { displayProviderName, formatBytes } from "@renderer/lib/models";
 import {
-  pollUntil,
-  requestMicAccess,
-  resolveMicStatus,
-} from "@renderer/lib/permissions";
-import { IS_LINUX } from "@renderer/lib/platform";
-import {
-  configQueryOptions,
-  queryKeys,
-  settingsQueryOptions,
-} from "@renderer/lib/query";
+  type FlowOptions,
+  nextStep,
+  prevStep,
+  resumeStep,
+  STEP,
+  stepCounter,
+} from "@renderer/lib/onboarding";
+import { configQueryOptions, settingsQueryOptions } from "@renderer/lib/query";
 import { putSetting } from "@renderer/lib/settings";
-import { llmScopeLabel } from "@renderer/pages/meetings/enhance-prompt-dialog";
-import { DraftStep } from "@renderer/pages/onboarding/draft-step";
+import { DownloadFooter } from "@renderer/pages/onboarding/download-footer";
 import { EnhanceStep } from "@renderer/pages/onboarding/enhance-step";
 import { LanguageStep } from "@renderer/pages/onboarding/language-step";
+import { ModelStep } from "@renderer/pages/onboarding/model-step";
 import { NameStep } from "@renderer/pages/onboarding/name-step";
+import { PermissionsStep } from "@renderer/pages/onboarding/permissions-step";
 import {
-  type LinuxSetup,
-  PermissionsStep,
-} from "@renderer/pages/onboarding/permissions-step";
-import { useOnboardingModel } from "@renderer/pages/onboarding/use-onboarding-model";
+  type ReadyChip,
+  ReadyStep,
+} from "@renderer/pages/onboarding/ready-step";
+import { hotkeyWords, TryStep } from "@renderer/pages/onboarding/try-step";
+import { useOnboardingModels } from "@renderer/pages/onboarding/use-onboarding-models";
+import { usePermissions } from "@renderer/pages/onboarding/use-permissions";
+import { WelcomeStep } from "@renderer/pages/onboarding/welcome-step";
 import { useQuery } from "@tanstack/react-query";
-import { useCallback, useEffect, useRef, useState } from "react";
-import { useNavigate } from "react-router";
+import { useCallback, useEffect, useState } from "react";
+import { useTranslation } from "react-i18next";
+import { useNavigate, useSearchParams } from "react-router";
 import { getDefaultHotkey } from "../../shared/hotkey-defaults";
+import type { OnboardingState } from "../../shared/onboarding";
 import { SETTINGS_KEYS } from "../../shared/settings-keys";
-
-type Step = "permissions" | "language" | "draft" | "name" | "enhance";
 
 const DEFAULT_HOTKEY =
   (typeof window !== "undefined" && window.api?.defaultHotkey) ||
   getDefaultHotkey();
 
-export default function OnboardingPage(): React.JSX.Element {
-  const navigate = useNavigate();
-  const [step, setStep] = useState<Step>("permissions");
-  const model = useOnboardingModel();
-
-  // The default LLM the enhance step names (specs/meeting-transcription-v2.md
-  // §3.2). null when none is configured: the step then shows the unnamed
-  // variant of the text.
-  const { data: modelConfigs } = useQuery({
-    queryKey: queryKeys.models.configured,
-    queryFn: async () => {
-      const res = await getClient().api.models.configured.$get();
-      if (!res.ok) throw new Error("Failed to load configured models");
-      return (await res.json()) as ConfiguredModel[];
-    },
-  });
-  const defaultLlm = (modelConfigs ?? []).find(
-    (m) => m.type === "llm" && m.is_default === 1,
-  );
-  const enhanceLlmScope = llmScopeLabel(defaultLlm?.provider);
-  const enhanceModel =
-    defaultLlm && enhanceLlmScope
-      ? { name: defaultLlm.model_name, scope: enhanceLlmScope }
-      : null;
-
-  // The name and auto-Enhance onboarding steps only make sense when Meeting
-  // Mode is on — the same `flags?.meetings === true` gate the app shell uses
-  // to show the Meetings nav item (shell.tsx). When the flag is off there is
-  // no Meetings feature, so onboarding finishes right after the draft step.
+// The saved step and draft come from the main process. Nothing renders before
+// they are there, so the first screen is the right one after a quit.
+export default function OnboardingPage(): React.JSX.Element | null {
+  const [saved, setSaved] = useState<OnboardingState | null>(null);
+  const [params] = useSearchParams();
+  // "Run setup again": the safe replay (specs/onboarding.md section 11).
+  const replay = params.get("replay") === "1";
   const { data: config } = useQuery(configQueryOptions());
-  const meetingsEnabled = config?.flags?.meetings === true;
+  const { data: settings } = useQuery(settingsQueryOptions());
 
-  // Permissions state
-  const [micStatus, setMicStatus] = useState<string>("unknown");
-  const [accessibilityStatus, setAccessibilityStatus] = useState(false);
-  const [linuxSetup, setLinuxSetup] = useState<LinuxSetup | null>(null);
-  const cancelMicPollRef = useRef<(() => void) | null>(null);
-  const cancelAccessibilityPollRef = useRef<(() => void) | null>(null);
+  useEffect(() => {
+    if (replay) return;
+    let cancelled = false;
+    void (window.api?.getOnboardingState() ?? Promise.resolve(null))
+      .catch(() => null)
+      .then((state) => {
+        if (!cancelled) setSaved(state ?? { step: 0, draft: {} });
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [replay]);
 
-  // Language state
+  if (!config || !settings) return null;
+  if (replay) {
+    return (
+      <OnboardingFlow
+        key="replay"
+        replay
+        saved={{
+          step: STEP.language,
+          draft: { languages: storedLanguages(settings) },
+        }}
+        meetings={config.flags?.meetings === true}
+        storedOwnerName={settings[SETTINGS_KEYS.ownerName] ?? ""}
+        storedHotkey={settings[SETTINGS_KEYS.hotkey]}
+        storedEnhance={settings[SETTINGS_KEYS.meetingEnhanceAutoRun] === "true"}
+        storedLanguages={storedLanguages(settings)}
+      />
+    );
+  }
+  if (!saved) return null;
+  return (
+    <OnboardingFlow
+      saved={saved}
+      meetings={config.flags?.meetings === true}
+      storedOwnerName={settings[SETTINGS_KEYS.ownerName] ?? ""}
+      storedHotkey={settings[SETTINGS_KEYS.hotkey]}
+      storedEnhance={false}
+      storedLanguages={[]}
+    />
+  );
+}
+
+/** The saved language list of the settings (a JSON array of codes). */
+function storedLanguages(settings: Record<string, string>): string[] {
+  try {
+    const value = JSON.parse(settings[SETTINGS_KEYS.languages] ?? "[]");
+    return Array.isArray(value)
+      ? value.filter((c): c is string => typeof c === "string")
+      : [];
+  } catch {
+    return [];
+  }
+}
+
+function OnboardingFlow({
+  saved,
+  meetings,
+  storedOwnerName,
+  storedHotkey,
+  storedEnhance,
+  storedLanguages: savedLanguages,
+  replay = false,
+}: {
+  saved: OnboardingState;
+  meetings: boolean;
+  storedOwnerName: string;
+  storedHotkey: string | undefined;
+  /** Setup again: the saved state of the auto Enhance setting. */
+  storedEnhance: boolean;
+  /** Setup again: the saved language list. */
+  storedLanguages: string[];
+  /** Setup again: change nothing until the user saves at the end. */
+  replay?: boolean;
+}): React.JSX.Element {
+  const { t } = useTranslation();
+  const navigate = useNavigate();
+
+  // ---- Choices of the user ------------------------------------------------
   const [languages, setLanguages] = useState<string[]>(() => {
-    // Seed from the OS language when it's a real code; "auto" starts empty.
+    if (saved.draft.languages) return saved.draft.languages;
+    // Seed from the OS language when it is a real code; "auto" starts empty.
     const guess = defaultLanguage();
     return guess === "auto" ? [] : [guess];
   });
-
-  // Hotkey recorder state (draft step).
-  const [hotkey, setHotkey] = useState(DEFAULT_HOTKEY);
-
-  // The practice email body, lifted so it survives the draft→enhance step
-  // transition (and Back).
-  const [draftBody, setDraftBody] = useState("");
-
-  // The owner name field of the name step, lifted so it survives Back.
-  // null until the user types: the stored value (if any) shows until then.
+  const [osLanguage] = useState<string | null>(() => {
+    if (replay) return null;
+    const guess = defaultLanguage();
+    return guess === "auto" ? null : guess;
+  });
+  const [languagesTouched, setLanguagesTouched] = useState(
+    saved.draft.languages !== undefined,
+  );
+  const [downloadStarted, setDownloadStarted] = useState(
+    saved.draft.downloadStarted === true,
+  );
+  const [hotkey, setHotkey] = useState(storedHotkey ?? DEFAULT_HOTKEY);
+  const [body, setBody] = useState("");
   const [ownerName, setOwnerName] = useState<string | null>(null);
+  const [enhance, setEnhance] = useState<boolean | null>(
+    replay ? storedEnhance : (saved.draft.enhance ?? null),
+  );
+  const [dictated, setDictated] = useState(false);
+  const [commitError, setCommitError] = useState<string | null>(null);
+  const [busy, setBusy] = useState(false);
 
-  const handleHotkeyRecorded = useCallback((accelerator: string) => {
-    setHotkey(accelerator);
-    void putSetting(SETTINGS_KEYS.hotkey, accelerator);
-  }, []);
+  const models = useOnboardingModels(
+    languages,
+    saved.draft,
+    downloadStarted,
+    replay,
+  );
+  const voiceLater = models.voiceSource === "later";
+  // Setup again does not test dictation (the hotkey would save at once).
+  const flow: FlowOptions = { meetings, voiceLater: voiceLater || replay };
 
-  // Load permissions
+  const [step, setStep] = useState<number>(() =>
+    replay
+      ? STEP.language
+      : resumeStep(saved.step, {
+          meetings,
+          voiceLater: saved.draft.voiceSource === "later",
+        }),
+  );
+
+  const permissions = usePermissions(
+    step === STEP.permissions || step === STEP.tryIt || step === STEP.ready,
+  );
+  const permsOk =
+    permissions.micStatus === "granted" &&
+    (window.api?.platform !== "darwin" || permissions.accessibilityStatus);
+
+  // The finished dictation: the pill reports it after it delivered the text.
   useEffect(() => {
-    resolveMicStatus()
-      .then(setMicStatus)
-      .catch(() => {});
-    window.api
-      ?.checkAccessibilityPermission()
-      .then(setAccessibilityStatus)
-      .catch(() => {});
-    if (IS_LINUX) {
-      window.api
-        ?.checkLinuxSetup()
-        .then((setup) => setup && setLinuxSetup(setup))
-        .catch(() => {});
+    if (step !== STEP.tryIt) return;
+    return window.api?.onTranscriptionDone(() => setDictated(true));
+  }, [step]);
+
+  // Back on the model step after "Decide later": the voice source is open again.
+  useEffect(() => {
+    if (step === STEP.model && models.voiceSource === "later") {
+      models.setVoiceSource("mac");
     }
-  }, []);
+  }, [step, models.voiceSource, models.setVoiceSource]);
 
-  // Saved hotkey, read from the shared settings cache (deduped with every other
-  // settings consumer instead of a dedicated GET /api/settings/:key).
-  const { data: settingsData } = useQuery(settingsQueryOptions());
-  useEffect(() => {
-    const value = settingsData?.[SETTINGS_KEYS.hotkey];
-    if (value) setHotkey(value);
-  }, [settingsData]);
-
-  const requestMic = useCallback(async () => {
-    const status = await requestMicAccess();
-    if (status) setMicStatus(status);
-  }, []);
-
-  const recheckLinuxSetup = useCallback(async () => {
-    const setup = await window.api?.checkLinuxSetup();
-    if (setup) setLinuxSetup(setup);
-  }, []);
-
-  const openMicSettings = useCallback(() => {
-    window.api?.openMicSettings();
-    cancelMicPollRef.current?.();
-    cancelMicPollRef.current = pollUntil(
-      async () => (await window.api?.checkMicPermission()) === "granted",
-      () => setMicStatus("granted"),
-    );
-  }, []);
-
-  const openAccessibility = useCallback(() => {
-    window.api?.openAccessibilitySettings();
-    cancelAccessibilityPollRef.current?.();
-    cancelAccessibilityPollRef.current = pollUntil(
-      async () => !!(await window.api?.checkAccessibilityPermission()),
-      () => setAccessibilityStatus(true),
-    );
-  }, []);
-
-  // Stop any permission poll when the page unmounts.
-  useEffect(
-    () => () => {
-      cancelMicPollRef.current?.();
-      cancelAccessibilityPollRef.current?.();
+  const go = useCallback(
+    (
+      to: number,
+      draft?: Parameters<typeof window.api.setOnboardingState>[0]["draft"],
+    ) => {
+      setStep(to);
+      // Setup again saves nothing on the way.
+      if (!replay) void window.api?.setOnboardingState({ step: to, draft });
     },
-    [],
+    [replay],
   );
 
-  // Persist the language list (the transcribe path reads it per request).
-  const persistLanguages = useCallback((next: string[]) => {
-    void putSetting(SETTINGS_KEYS.languages, JSON.stringify(next));
-  }, []);
-
-  const toggleLanguage = useCallback(
-    (code: string) => {
-      setLanguages((prev) => {
-        const next = prev.includes(code)
-          ? prev.filter((c) => c !== code)
-          : normalizeLanguageList([...prev, code]);
-        persistLanguages(next);
-        return next;
-      });
-    },
-    [persistLanguages],
+  const draftNow = useCallback(
+    () => ({
+      ...models.toDraft(),
+      languages,
+      downloadStarted,
+      enhance: enhance ?? undefined,
+    }),
+    [models, languages, downloadStarted, enhance],
   );
 
-  const clearLanguages = useCallback(() => {
-    setLanguages([]);
-    persistLanguages([]);
-  }, [persistLanguages]);
+  // ---- Language -----------------------------------------------------------
+  const toggleLanguage = (code: string): void => {
+    setLanguagesTouched(true);
+    setLanguages((prev) =>
+      prev.includes(code)
+        ? prev.filter((c) => c !== code)
+        : normalizeLanguageList([...prev, code]),
+    );
+  };
 
-  const finishSetup = useCallback(() => {
+  const continueLanguage = (): void => {
+    // The transcribe path reads this setting for each request. Setup again
+    // writes it at the end.
+    if (!replay) {
+      void putSetting(SETTINGS_KEYS.languages, JSON.stringify(languages));
+    }
+    go(nextStep(step, flow), { ...draftNow(), languages });
+  };
+
+  // ---- Model --------------------------------------------------------------
+  const continueModel = async (): Promise<void> => {
+    setCommitError(null);
+    if (replay) {
+      // Setup again saves and downloads at the end, when the user saves.
+      go(nextStep(step, flow));
+      return;
+    }
+    const error = await models.commit();
+    if (error) {
+      setCommitError(error);
+      return;
+    }
+    const local = !!models.chosenVoice || !!models.chosenText;
+    if (local) setDownloadStarted(true);
+    go(nextStep(step, flow), {
+      ...draftNow(),
+      downloadStarted: local || downloadStarted,
+    });
+  };
+
+  const decideLater = async (): Promise<void> => {
+    // Nothing downloads and no voice model stays saved.
+    try {
+      await models.clearVoiceDefault();
+    } catch {
+      setCommitError("failed");
+      return;
+    }
+    models.setVoiceSource("later");
+    setDownloadStarted(false);
+    const draft = {
+      ...draftNow(),
+      voiceSource: "later" as const,
+      downloadStarted: false,
+    };
+    // The footer also offers "Decide later" on later steps. Only the Model
+    // step moves on. Another step stays where it is.
+    if (step === STEP.model) {
+      go(nextStep(step, { meetings, voiceLater: true }), draft);
+    } else {
+      void window.api?.setOnboardingState({ step, draft });
+    }
+  };
+
+  const chooseOtherAfterStop = (): void => {
+    setCommitError(null);
+    go(STEP.model, draftNow());
+  };
+
+  // ---- Name and Enhance ---------------------------------------------------
+  const finishName = async (name: string | null): Promise<void> => {
+    if (!replay && name !== null && name !== storedOwnerName) {
+      await putSetting(SETTINGS_KEYS.ownerName, name);
+    }
+    go(nextStep(step, flow), draftNow());
+  };
+
+  const hasTextModel = models.defaultLlm != null;
+  const enhanceOn = enhance ?? hasTextModel;
+  const enhanceDownload =
+    enhanceOn && !hasTextModel && models.recommendedText
+      ? {
+          name: models.recommendedText.name,
+          size: formatBytes(models.recommendedText.sizeBytes),
+        }
+      : null;
+
+  const finishEnhance = async (): Promise<void> => {
+    if (replay) {
+      go(nextStep(step, flow));
+      return;
+    }
+    setBusy(true);
+    try {
+      if (enhanceOn && !hasTextModel && models.recommendedText) {
+        await models.startRecommendedText();
+        setDownloadStarted(true);
+      }
+      await putSetting(
+        SETTINGS_KEYS.meetingEnhanceAutoRun,
+        enhanceOn ? "true" : "false",
+      );
+      await putSetting(SETTINGS_KEYS.meetingEnhancePromptSeen, "true");
+      go(nextStep(step, flow), { ...draftNow(), enhance: enhanceOn });
+    } catch {
+      setCommitError("failed");
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const finishSetup = (): void => {
     window.api?.setOnboardingComplete();
     navigate("/today", { replace: true });
-  }, [navigate]);
+  };
 
-  // The name step writes `owner_name` only when Continue changes it. Skip
-  // writes nothing, so a missing row keeps meaning "no name".
-  const storedOwnerName = settingsData?.[SETTINGS_KEYS.ownerName] ?? "";
-  const handleNameDone = useCallback(
-    async (name: string | null) => {
-      if (name !== null && name !== storedOwnerName) {
-        await putSetting(SETTINGS_KEYS.ownerName, name);
-      }
-      setStep("enhance");
-    },
-    [storedOwnerName],
-  );
+  // ---- Setup again --------------------------------------------------------
+  // Cancel and close change nothing. The user saves at the end. Only what the
+  // user changed is written. Nothing is deleted.
+  const cancelReplay = (): void => {
+    void navigate("/settings", { replace: true });
+  };
 
-  // Specs/meeting-transcription-v2.md §3.2: turn on and not now both write
-  // the auto-run setting (explicit off included); Skip writes only the seen
-  // flag, so a missing row keeps meaning off.
-  const handleEnhanceChoice = useCallback(
-    async (choice: "on" | "off" | "skip") => {
-      if (choice === "on") {
-        await putSetting(SETTINGS_KEYS.meetingEnhanceAutoRun, "true");
-      } else if (choice === "off") {
-        await putSetting(SETTINGS_KEYS.meetingEnhanceAutoRun, "false");
+  const applyReplay = async (): Promise<void> => {
+    setBusy(true);
+    setCommitError(null);
+    try {
+      if (JSON.stringify(languages) !== JSON.stringify(savedLanguages)) {
+        await putSetting(SETTINGS_KEYS.languages, JSON.stringify(languages));
       }
-      await putSetting(SETTINGS_KEYS.meetingEnhancePromptSeen, "true");
-      finishSetup();
-    },
-    [finishSetup],
-  );
+      const error = await models.commit();
+      if (error) {
+        setCommitError(error);
+        return;
+      }
+      if (ownerName !== null && ownerName !== storedOwnerName) {
+        await putSetting(SETTINGS_KEYS.ownerName, ownerName);
+      }
+      if (enhance !== null && enhance !== storedEnhance) {
+        if (enhance && !hasTextModel && models.textSource === "keep") {
+          await models.startRecommendedText();
+        }
+        await putSetting(
+          SETTINGS_KEYS.meetingEnhanceAutoRun,
+          enhance ? "true" : "false",
+        );
+      }
+      navigate("/settings", { replace: true });
+    } catch {
+      setCommitError("failed");
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  // ---- Ready screen -------------------------------------------------------
+  const readyChips: ReadyChip[] = [];
+  const where = (provider: string | undefined, isLocal: boolean): string =>
+    isLocal
+      ? t("onboarding.ready.thisMac")
+      : provider === "server"
+        ? t("onboarding.ready.ownServer")
+        : displayProviderName(provider ?? "");
+  const voiceProvider = models.defaultVoice?.provider;
+  // Setup again: a changed choice shows as it will be after the save.
+  const changedVoice = replay && models.voiceSource !== "keep";
+  const changedText = replay && models.textSource !== "keep";
+  if (changedVoice && models.voiceSource !== "later") {
+    const src = models.voiceSource;
+    readyChips.push({
+      id: "voice",
+      label: t("onboarding.ready.voice", {
+        where:
+          src === "mac"
+            ? t("onboarding.ready.thisMac")
+            : src === "server"
+              ? t("onboarding.ready.ownServer")
+              : displayProviderName(models.voiceRemote.provider),
+      }),
+      tone:
+        src === "mac" && models.chosenVoice?.status !== "ready" ? "warn" : "ok",
+    });
+  }
+  if (models.defaultVoice && !voiceLater && !changedVoice) {
+    const local =
+      voiceProvider === "local-mlx" || voiceProvider === "local-whisper";
+    // A model on a server or a provider is ready, unless the key test could
+    // not reach the provider ("not tested").
+    const ready = local
+      ? models.defaultVoiceItem?.status === "ready"
+      : models.voiceRemote.keyTest.state !== "offline";
+    readyChips.push({
+      id: "voice",
+      label: t("onboarding.ready.voice", {
+        where: where(voiceProvider, local),
+      }),
+      tone: ready ? "ok" : "warn",
+    });
+  }
+  if (changedText && !(models.textSource === "mac" && !models.chosenText)) {
+    const src = models.textSource;
+    readyChips.push({
+      id: "text",
+      label: t("onboarding.ready.text", {
+        where:
+          src === "mac"
+            ? t("onboarding.ready.thisMac")
+            : src === "server"
+              ? t("onboarding.ready.ownServer")
+              : displayProviderName(models.textRemote.provider),
+      }),
+      tone:
+        src === "mac" && models.chosenText?.status !== "ready" ? "warn" : "ok",
+    });
+  }
+  if (models.defaultLlm && !changedText) {
+    const provider = models.defaultLlm.provider;
+    const local = provider === "local-mlx-llm";
+    const ready = local
+      ? models.defaultTextItem?.status === "ready"
+      : models.textRemote.keyTest.state !== "offline";
+    readyChips.push({
+      id: "text",
+      label: t("onboarding.ready.text", { where: where(provider, local) }),
+      tone: ready ? "ok" : "warn",
+    });
+  }
+  if (permissions.micStatus === "granted") {
+    readyChips.push({
+      id: "mic",
+      label: t("onboarding.permissions.microphone.title"),
+      tone: "ok",
+    });
+  }
+  if (permissions.accessibilityStatus) {
+    readyChips.push({
+      id: "accessibility",
+      label: t("onboarding.permissions.accessibility.title"),
+      tone: "ok",
+    });
+  }
+  if (meetings && enhanceOn && step === STEP.ready) {
+    readyChips.push({
+      id: "enhance",
+      label: t("onboarding.enhance.switch"),
+      tone: "ok",
+    });
+  }
+
+  const words = hotkeyWords(formatAcceleratorKeys(hotkey));
+  const voiceDownloading =
+    models.defaultVoiceItem && models.defaultVoiceItem.status !== "ready";
+  const readyLine = replay
+    ? t("onboarding.replay.line")
+    : voiceLater || !models.defaultVoice
+      ? t("onboarding.ready.lineLater")
+      : voiceDownloading
+        ? t("onboarding.ready.lineDownloading", { keys: words })
+        : t("onboarding.ready.line", { keys: words });
+
+  const counter = stepCounter(step, flow);
+  const showFooter = !replay && step >= STEP.model && step <= STEP.ready;
 
   return (
     <div className="glass-window-shell glass-content flex h-screen flex-col">
       <div
-        className="h-9 shrink-0"
+        className="flex h-9 shrink-0 items-center justify-end px-4"
         style={{ WebkitAppRegion: "drag" } as React.CSSProperties}
-      />
+      >
+        {replay && (
+          <Button
+            variant="ghost"
+            size="sm"
+            onClick={cancelReplay}
+            disabled={busy}
+            data-testid="onboarding-cancel"
+            style={{ WebkitAppRegion: "no-drag" } as React.CSSProperties}
+          >
+            {t("common.cancel")}
+          </Button>
+        )}
+      </div>
 
       <div
         className="flex min-h-0 flex-1 flex-col items-center justify-center overflow-auto px-6 py-8"
         style={{ WebkitAppRegion: "no-drag" } as React.CSSProperties}
+        data-testid="onboarding-root"
+        data-step={step}
       >
-        {step === "permissions" && (
-          <PermissionsStep
-            micStatus={micStatus}
-            accessibilityStatus={accessibilityStatus}
-            linuxSetup={linuxSetup}
-            onRequestMic={requestMic}
-            onOpenMicSettings={openMicSettings}
-            onOpenAccessibility={openAccessibility}
-            onRecheckLinuxSetup={recheckLinuxSetup}
-            onContinue={() => {
-              setStep("language");
-            }}
-          />
+        {step === STEP.welcome && (
+          <WelcomeStep onStart={() => go(nextStep(step, flow), draftNow())} />
         )}
 
-        {step === "language" && (
+        {step === STEP.language && counter && (
           <LanguageStep
             languages={languages}
+            osLanguage={osLanguage}
+            touched={languagesTouched}
+            counter={counter}
             onToggle={toggleLanguage}
-            onClear={clearLanguages}
-            localModel={model.localModel}
-            onDownloadLocal={model.download}
-            onRetryLocal={model.download}
-            onBack={() => {
-              setStep("permissions");
+            onClear={() => {
+              setLanguagesTouched(true);
+              setLanguages([]);
             }}
-            onContinue={() => {
-              // Persist even when the pre-selected locale was never toggled.
-              persistLanguages(languages);
-              setStep("draft");
-            }}
+            onBack={() => (replay ? cancelReplay() : go(prevStep(step, flow)))}
+            onContinue={continueLanguage}
           />
         )}
 
-        {step === "draft" && (
-          <DraftStep
+        {step === STEP.model && counter && (
+          <ModelStep
+            models={models}
+            counter={counter}
+            commitError={commitError}
+            replay={replay}
+            onBack={() => go(prevStep(step, flow), draftNow())}
+            onContinue={() => void continueModel()}
+            onDecideLater={() => void decideLater()}
+          />
+        )}
+
+        {step === STEP.permissions && counter && (
+          <PermissionsStep
+            counter={counter}
+            micStatus={permissions.micStatus}
+            accessibilityStatus={permissions.accessibilityStatus}
+            accessibilityWaiting={permissions.accessibilityWaiting}
+            linuxSetup={permissions.linuxSetup}
+            onRequestMic={() => void permissions.requestMic()}
+            onOpenMicSettings={permissions.openMicSettings}
+            onOpenAccessibility={permissions.openAccessibility}
+            onCheckAgain={() => void permissions.checkAgain()}
+            onRecheckLinuxSetup={() => void permissions.recheckLinuxSetup()}
+            onBack={() => go(prevStep(step, flow))}
+            onContinue={() => go(nextStep(step, flow))}
+          />
+        )}
+
+        {step === STEP.tryIt && counter && (
+          <TryStep
+            counter={counter}
             hotkey={hotkey}
-            onHotkeyRecorded={handleHotkeyRecorded}
-            localModel={model.localModel}
-            onDownloadLocal={model.download}
-            onRetryLocal={model.download}
-            blockedReason={model.blockedReason}
-            body={draftBody}
-            onBodyChange={setDraftBody}
-            onBack={() => {
-              setStep("language");
+            onHotkeyRecorded={(accelerator) => {
+              setHotkey(accelerator);
+              void putSetting(SETTINGS_KEYS.hotkey, accelerator);
             }}
-            onContinue={() => {
-              // Meeting Mode flag off → no name or Enhance step, finish here.
-              if (meetingsEnabled) setStep("name");
-              else finishSetup();
-            }}
-            isLastStep={!meetingsEnabled}
+            body={body}
+            onBodyChange={setBody}
+            dictated={dictated}
+            permissionsMissing={!permsOk}
+            modelWait={
+              models.downloads.current?.kind === "voice" &&
+              (models.downloads.state === "running" ||
+                models.downloads.state === "failed")
+                ? {
+                    percent: models.downloads.percent,
+                    secondsLeft: models.downloads.secondsLeft,
+                  }
+                : null
+            }
+            onFixPermissions={() => go(STEP.permissions)}
+            onBack={() => go(prevStep(step, flow))}
+            onContinue={() => go(nextStep(step, flow))}
+            onSkip={() => go(nextStep(step, flow))}
           />
         )}
 
-        {step === "name" && (
+        {step === STEP.name && counter && (
           <NameStep
+            counter={counter}
             name={ownerName ?? storedOwnerName}
             onNameChange={setOwnerName}
-            onDone={(name) => void handleNameDone(name)}
-            onBack={() => setStep("draft")}
+            onDone={(name) => void finishName(name)}
+            onBack={() => go(prevStep(step, flow))}
           />
         )}
 
-        {step === "enhance" && (
+        {step === STEP.enhance && counter && (
           <EnhanceStep
-            model={enhanceModel}
-            onChoose={(choice) => void handleEnhanceChoice(choice)}
-            onBack={() => setStep("name")}
+            counter={counter}
+            enabled={enhanceOn}
+            onToggle={setEnhance}
+            download={enhanceDownload}
+            busy={busy}
+            onBack={() => go(prevStep(step, flow))}
+            onContinue={() => void finishEnhance()}
+          />
+        )}
+
+        {step === STEP.ready && (
+          <ReadyStep
+            chips={readyChips}
+            line={readyLine}
+            onFinish={replay ? () => void applyReplay() : finishSetup}
+            buttonLabel={replay ? t("onboarding.replay.save") : undefined}
+            busy={busy}
+            error={
+              replay && commitError ? t("onboarding.model.errors.failed") : null
+            }
           />
         )}
       </div>
+
+      {showFooter && (
+        <DownloadFooter
+          summary={models.downloads}
+          onRetry={() => void models.retryDownloads()}
+          onChooseOther={chooseOtherAfterStop}
+          onDecideLater={() => void decideLater()}
+        />
+      )}
     </div>
   );
 }

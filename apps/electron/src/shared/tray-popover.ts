@@ -13,6 +13,8 @@ export interface TrayPopoverState {
   /** True when the meetings flag is on and this Mac can record a meeting. */
   meetingsAvailable: boolean;
   update: "idle" | "downloading" | "downloaded";
+  /** True while the first run is not complete. The popover shows "Finish setup". */
+  onboardingActive: boolean;
   /** True while the popover shows. The page polls jobs only then. */
   visible: boolean;
 }

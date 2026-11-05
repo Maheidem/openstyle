@@ -19,8 +19,14 @@ export type AddServerError =
   | "failed";
 
 export type AddServerResult =
-  | { ok: true }
-  | { ok: false; error: AddServerError; message?: string };
+  | { ok: true; server: ServerView }
+  | {
+      ok: false;
+      error: AddServerError;
+      message?: string;
+      /** The id of the saved server that has this address (`duplicate` only). */
+      existingId?: string;
+    };
 
 export interface UseServers {
   servers: ServerView[];
@@ -68,10 +74,20 @@ export function useServers(): UseServers {
             ...(list ?? []),
             added,
           ]);
-          return { ok: true };
+          return { ok: true, server: added };
         }
-        const body = (await res.json()) as { code?: string; error?: string };
-        if (res.status === 409) return { ok: false, error: "duplicate" };
+        const body = (await res.json()) as {
+          code?: string;
+          error?: string;
+          id?: string;
+        };
+        if (res.status === 409) {
+          return {
+            ok: false,
+            error: "duplicate",
+            existingId: (body as { id?: string }).id,
+          };
+        }
         if (body.error && ADD_ERRORS.has(body.error)) {
           return { ok: false, error: body.error as AddServerError };
         }

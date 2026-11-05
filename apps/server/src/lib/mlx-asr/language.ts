@@ -43,3 +43,14 @@ export function resolveMlxLanguage(
   const name = ISO_LANGUAGE_NAMES[language];
   return name && QWEN3_LANGUAGE_NAMES.has(name) ? name : undefined;
 }
+
+/**
+ * The ISO codes of the languages that Qwen3 ASR covers: the codes of the app
+ * language table whose name is in the Qwen3 set. The onboarding rule for the
+ * voice model reads this list.
+ */
+export function qwen3LanguageCodes(): string[] {
+  return Object.entries(ISO_LANGUAGE_NAMES)
+    .filter(([, name]) => QWEN3_LANGUAGE_NAMES.has(name))
+    .map(([code]) => code);
+}

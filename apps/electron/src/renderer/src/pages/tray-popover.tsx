@@ -216,6 +216,17 @@ export default function TrayPopoverPage(): React.JSX.Element {
         />
       </header>
 
+      {info?.onboardingActive && (
+        <button
+          type="button"
+          data-testid="tray-popover-finish-setup"
+          onClick={() => window.api.openFromTrayPopover("app")}
+          className="inline-flex h-9 w-full items-center justify-center rounded-full bg-foreground px-3.5 text-[13px] font-medium text-background hover:bg-foreground/90"
+        >
+          {t("trayPopover.finishSetup")}
+        </button>
+      )}
+
       {info?.meetingsAvailable && (
         <MeetingControl
           meeting={meeting}

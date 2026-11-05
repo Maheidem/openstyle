@@ -65,6 +65,15 @@ describe("locale files", () => {
   // for all groups: the key exists and keeps the placeholders of en.json. The
   // comment above each group says why the group exists.
   const KEY_GROUPS: Record<string, string[]> = {
+    // The first run (specs/onboarding.md) and the setup cards of the home
+    // screen. Every locale carries them, or a new user sees English in the
+    // middle of a translated screen. The singular plural form ("_one") is
+    // checked on its own, because Japanese has no singular form.
+    "first-run-onboarding": Object.keys(en).filter(
+      (key) =>
+        (key.startsWith("onboarding.") || key.startsWith("today.setup.")) &&
+        !key.endsWith("_one"),
+    ),
     "meeting-folders": Object.keys(en).filter((key) =>
       key.startsWith("meetings.folders."),
     ),
@@ -439,6 +448,46 @@ describe("locale files", () => {
       "settings.network.statusUnauthorized",
     ],
   };
+
+  it.each(
+    localeFiles.filter((f) => f !== "ja.json"),
+  )("%s carries the singular plural forms of the first run", (file) => {
+    const flat = flatten(load(file));
+    for (const key of Object.keys(en).filter(
+      (k) => k.startsWith("onboarding.") && k.endsWith("_one"),
+    )) {
+      expect(flat[key], `${file} is missing "${key}"`).toBeTruthy();
+      expect(placeholders(flat[key])).toEqual(placeholders(en[key]));
+    }
+  });
+
+  // Every literal key that the first-run code asks for exists in en.json.
+  it("en.json has every onboarding key that the code uses", () => {
+    const root = join(LOCALES_DIR, "..");
+    const files = [
+      join(root, "onboarding.tsx"),
+      join(root, "components/setup-cards.tsx"),
+      ...readdirSync(join(root, "pages/onboarding"))
+        .filter((f) => f.endsWith(".tsx") || f.endsWith(".ts"))
+        .map((f) => join(root, "pages/onboarding", f)),
+    ];
+    const missing: string[] = [];
+    for (const file of files) {
+      const source = readFileSync(file, "utf8");
+      for (const m of source.matchAll(
+        /\bt\(\s*["`](onboarding|today\.setup)[^"`$]*["`]/g,
+      )) {
+        const key = m[0].replace(/^t\(\s*["`]/, "").replace(/["`]$/, "");
+        const hit =
+          key in en ||
+          `${key}_other` in en ||
+          // A key built from a word, such as `onboarding.stepName.${x}`.
+          false;
+        if (!hit) missing.push(`${file}: ${key}`);
+      }
+    }
+    expect(missing).toEqual([]);
+  });
 
   describe.each(Object.entries(KEY_GROUPS))("%s keys", (_name, keys) => {
     it.each([

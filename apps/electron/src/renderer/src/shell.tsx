@@ -186,10 +186,9 @@ export default function AppShell(): React.JSX.Element {
   const [isFullscreen, setIsFullscreen] = useState(false);
   const { t } = useTranslation();
 
-  // Advanced mode gates the Models page. Read from the shared settings cache so
-  // toggling it in Settings updates the sidebar without a full refetch.
+  // Read from the shared settings cache so a change in Settings updates the
+  // sidebar without a full refetch.
   const { data: settings } = useQuery(settingsQueryOptions());
-  const advancedMode = settings?.[SETTINGS_KEYS.advancedMode] === "true";
 
   // Meeting Mode is behind the server-owned `meetings` feature flag.
   const { data: config } = useQuery(configQueryOptions());
@@ -203,18 +202,14 @@ export default function AppShell(): React.JSX.Element {
   const { data: missingModels } = useQuery(missingModelsQueryOptions());
   const missingCount = missingModels?.length ?? 0;
 
-  // Filter the static nav (hide Models when advanced mode is off, Meetings
-  // when its flag is off) and re-number the Cmd+N shortcuts sequentially so
-  // there's no gap when an item is hidden (e.g. Settings becomes Cmd+5 when
-  // Models is absent). A missing model keeps Models in the sidebar, with a
-  // badge, so the person can always find the fix.
+  // Filter the static nav (hide Meetings when its flag is off, Ask when the
+  // chat is off) and re-number the Cmd+N shortcuts sequentially so there's no
+  // gap when an item is hidden. Models is always in the sidebar. A missing
+  // model puts a badge on it, so the person can always find the fix.
   const staticNav = useMemo(
     () =>
       STATIC_NAV.filter(
         (item) =>
-          (item.to !== "/settings/models" ||
-            advancedMode ||
-            missingCount > 0) &&
           (item.to !== "/meetings" || meetingsEnabled) &&
           (item.to !== "/ask" || askEnabled),
       ).map((item, idx) => ({
@@ -222,7 +217,7 @@ export default function AppShell(): React.JSX.Element {
         shortcut: String(idx + 1),
         ...(item.to === "/settings/models" ? { badge: missingCount } : {}),
       })),
-    [advancedMode, meetingsEnabled, askEnabled, missingCount],
+    [meetingsEnabled, askEnabled, missingCount],
   );
 
   const navItems: NavItem[] = useMemo(

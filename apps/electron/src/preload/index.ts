@@ -19,6 +19,7 @@ import type {
   ConfirmedDevices,
   MeetingDevicePlan,
 } from "../shared/meeting-devices";
+import type { OnboardingDraft, OnboardingState } from "../shared/onboarding";
 import type { OpenAppCandidate } from "../shared/open-apps";
 import {
   normalizePillCancelMode,
@@ -217,6 +218,14 @@ const api = {
     ipcRenderer.send("permissions:open-mic-settings"),
   setOnboardingComplete: (): void =>
     ipcRenderer.send("onboarding:set-complete"),
+  /** The saved step and draft of the first run (resume after a quit). */
+  getOnboardingState: (): Promise<OnboardingState> =>
+    ipcRenderer.invoke("onboarding:get-state"),
+  /** Save the step and merge the draft. Call it at every Continue. */
+  setOnboardingState: (patch: {
+    step?: number;
+    draft?: OnboardingDraft;
+  }): Promise<void> => ipcRenderer.invoke("onboarding:set-state", patch),
   startHotkeyRecording: (): void => ipcRenderer.send("hotkey-record:start"),
   stopHotkeyRecording: (hotkey?: string): void =>
     ipcRenderer.send("hotkey-record:stop", hotkey),

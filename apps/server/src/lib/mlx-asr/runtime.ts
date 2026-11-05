@@ -110,6 +110,15 @@ const PINNED_WORKER_DIGESTS: Record<string, string> = {
 // the time.
 const PINNED_LATEST_WORKER_TAG = "1.0.1";
 
+/**
+ * The size of the worker archive of the release asset
+ * `mlx_asr_worker-darwin-arm64.tar.gz`. Measured on 2026-11-05 on release
+ * 3.0.0-alpha.1: 173,960,624 bytes. The onboarding adds it to the size of
+ * the download button. It is an estimate: the real size changes per release
+ * by less than 0.1 percent.
+ */
+export const MLX_WORKER_ARCHIVE_BYTES = 174_000_000;
+
 export interface MlxRuntimeDownloadStatus {
   available: boolean;
   downloading: boolean;

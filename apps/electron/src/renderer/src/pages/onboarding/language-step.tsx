@@ -3,32 +3,34 @@ import {
   LanguageMultiPickerDialog,
   useLanguageOptions,
 } from "@renderer/components/language-combobox";
-import { ModelSetupPanel } from "@renderer/components/model-setup-panel";
 import { Button } from "@renderer/components/ui/button";
-import type { VoiceItem } from "@renderer/lib/models";
 import { ArrowRight } from "lucide-react";
 import { useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
+import { StepHeading } from "./shared";
+import { StepHeader } from "./step-header";
 
 // ---------------------------------------------------------------------------
-// Step 3 — Language (the model sets itself up in the background)
+// Step 1 — Language. The pick feeds the voice model suggestion of step 2.
 // ---------------------------------------------------------------------------
 export function LanguageStep({
   languages,
+  osLanguage,
+  touched,
+  counter,
   onToggle,
   onClear,
-  localModel,
-  onDownloadLocal,
-  onRetryLocal,
   onBack,
   onContinue,
 }: {
   languages: string[];
+  /** The code of the OS language when it was pre-selected, else null. */
+  osLanguage: string | null;
+  /** The user changed the list. The OS note then gives way to the count. */
+  touched: boolean;
+  counter: { index: number; total: number };
   onToggle: (id: string) => void;
   onClear: () => void;
-  localModel: VoiceItem | undefined;
-  onDownloadLocal: () => void;
-  onRetryLocal: () => void;
   onBack: () => void;
   onContinue: () => void;
 }): React.JSX.Element {
@@ -58,14 +60,30 @@ export function LanguageStep({
     [languages, pills, options],
   );
 
+  const osLabel = options.find((l) => l.code === osLanguage)?.label;
+  const note =
+    !touched && osLabel
+      ? t("onboarding.language.osNote", { language: osLabel })
+      : languages.length === 0
+        ? t("onboarding.language.autoNote")
+        : t("onboarding.language.countNote", {
+            count: languages.length,
+            max: MAX_LANGUAGES,
+          });
+
   return (
     <div className="w-full max-w-[560px]">
-      <h1 className="display text-foreground m-0 mb-7 text-center text-[56px] leading-[0.95] font-normal tracking-[-0.025em]">
-        {t("onboarding.language.titlePrefix")}
-        {t("onboarding.language.titleEmphasis")}
-      </h1>
+      <StepHeader
+        index={counter.index}
+        total={counter.total}
+        label={t("onboarding.stepName.language")}
+      />
+      <StepHeading title={t("onboarding.language.title")} />
+      <p className="text-muted-foreground -mt-3 mb-5 text-[14px] leading-relaxed">
+        {t("onboarding.language.desc")}
+      </p>
 
-      <div className="flex flex-wrap justify-center gap-2">
+      <div className="flex flex-wrap gap-2">
         <Button
           variant={languages.length === 0 ? "default" : "outline"}
           size="sm"
@@ -118,11 +136,12 @@ export function LanguageStep({
         options={options}
       />
 
-      <ModelSetupPanel
-        model={localModel}
-        onDownload={onDownloadLocal}
-        onRetry={onRetryLocal}
-      />
+      <p
+        className="text-muted-foreground mt-3 mb-0 text-[12.5px]"
+        data-testid="onboarding-language-note"
+      >
+        {note}
+      </p>
 
       <div className="mt-7 flex items-center justify-between">
         <Button variant="outline" onClick={onBack}>

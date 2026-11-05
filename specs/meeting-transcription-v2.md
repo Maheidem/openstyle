@@ -149,6 +149,8 @@ On an echo, the transcriber calls the provider once more for the same chunk with
 
 **New users: onboarding step.** Onboarding gets a step that asks the auto Enhance question, with the same text and the same two choices as the dialog below. The step writes `meeting_enhance_auto_run` (`"true"` or `"false"`) and sets `meeting_enhance_prompt_seen` = `"true"`. Keep the step short and skippable. Skip writes only the seen flag (off stays the default).
 
+**Changed 2026-11-05 (owner decision, `specs/onboarding.md`).** The onboarding step of new users now has Enhance on by default, with a small switch to turn it off, and no "Not now" and no "Skip" button. The step writes `meeting_enhance_auto_run` and the seen flag at Continue. Existing users keep the one-time prompt below.
+
 **Existing users: one-time prompt.** Users who finished onboarding before this version never see the onboarding step. Condition: the user has at least one meeting (recorded or imported) in status `transcribed` or `summarized`, there is no `meeting_enhance_auto_run` row, and `meeting_enhance_prompt_seen` is not `"true"`. The Meetings page then shows a dialog once:
 - It offers to turn on auto Enhance.
 - It says that the meeting text goes to the default LLM, and names that model as "local" (provider `local-mlx`), "your own server" (provider `server`) or "cloud" (any other provider).

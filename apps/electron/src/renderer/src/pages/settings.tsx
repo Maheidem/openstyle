@@ -188,6 +188,7 @@ function parseLanguagesSetting(s: Record<string, string>): string[] {
 // ---------------------------------------------------------------------------
 
 export default function SettingsPage(): React.JSX.Element {
+  const navigate = useNavigate();
   const { t } = useTranslation();
   const { theme, setTheme } = useTheme();
   const [devices, setDevices] = useState<AudioDevice[]>([]);
@@ -1034,6 +1035,19 @@ export default function SettingsPage(): React.JSX.Element {
                   checked={showOnLaunch}
                   onCheckedChange={handleShowOnLaunchToggle}
                 />
+              </Row>
+              <Row
+                label={t("settings.application.runSetup")}
+                desc={t("settings.application.runSetupDesc")}
+              >
+                <Button
+                  variant="outline"
+                  size="sm"
+                  data-testid="settings-run-setup"
+                  onClick={() => navigate("/onboarding?replay=1")}
+                >
+                  {t("settings.application.runSetup")}
+                </Button>
               </Row>
               <Row
                 label={t("settings.application.advancedMode")}

@@ -395,6 +395,12 @@ export function rebuildMenus(): void {
           label: "Openstyle Help",
           click: () => showSettingsWindow("/help"),
         },
+        {
+          // The safe replay of the first run. It changes nothing until the
+          // user saves (specs/onboarding.md section 11).
+          label: "Run Setup Again",
+          click: () => showSettingsWindow("/onboarding?replay=1"),
+        },
       ],
     },
   ]);

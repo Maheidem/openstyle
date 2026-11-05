@@ -6,6 +6,12 @@
  */
 
 import { ipcMain, systemPreferences } from "electron";
+import {
+  type OnboardingState,
+  readOnboardingState,
+  sanitizeDraft,
+  sanitizeStep,
+} from "../shared/onboarding";
 import { checkLinuxSetup } from "./linux-setup";
 
 interface RegisterPermissionsIpcOptions {
@@ -14,6 +20,22 @@ interface RegisterPermissionsIpcOptions {
   openMicrophoneSettings: () => void;
   /** Runs when the renderer reports that onboarding is complete. */
   completeOnboarding: () => void;
+  /** The local settings file (step and draft of the first run). */
+  readSettings: () => Record<string, unknown>;
+  writeSettings: (patch: Record<string, unknown>) => void;
+}
+
+/**
+ * E2E seam: OPENSTYLE_E2E_PERMISSIONS=granted|denied makes the permission
+ * checks answer without the OS (a CI Mac has no grants, and a request raises a
+ * system dialog). It works only in E2E mode.
+ */
+function fakePermission(): "granted" | "denied" | null {
+  if ((process.env.OPENSTYLE_E2E ?? process.env.FREESTYLE_E2E) !== "1") {
+    return null;
+  }
+  const value = process.env.OPENSTYLE_E2E_PERMISSIONS;
+  return value === "granted" || value === "denied" ? value : null;
 }
 
 export function registerPermissionsIpc({
@@ -21,8 +43,12 @@ export function registerPermissionsIpc({
   openAccessibilitySettings,
   openMicrophoneSettings,
   completeOnboarding,
+  readSettings,
+  writeSettings,
 }: RegisterPermissionsIpcOptions): void {
   ipcMain.handle("permissions:check-mic", async () => {
+    const fake = fakePermission();
+    if (fake) return fake;
     if (process.platform === "linux") {
       // Linux has no OS-level mic permission API; the renderer resolves the
       // real state with a getUserMedia probe (see lib/permissions.ts).
@@ -33,6 +59,8 @@ export function registerPermissionsIpc({
   });
 
   ipcMain.handle("permissions:request-mic", async () => {
+    const fake = fakePermission();
+    if (fake) return fake;
     if (process.platform === "darwin") {
       const granted = await systemPreferences.askForMediaAccess("microphone");
       return granted ? "granted" : "denied";
@@ -46,6 +74,8 @@ export function registerPermissionsIpc({
   });
 
   ipcMain.handle("permissions:check-accessibility", async () => {
+    const fake = fakePermission();
+    if (fake) return fake === "granted";
     return hasAccessibilityPermission();
   });
 
@@ -67,4 +97,28 @@ export function registerPermissionsIpc({
   ipcMain.on("onboarding:set-complete", () => {
     completeOnboarding();
   });
+
+  // The saved step and draft of the first run. The renderer writes them at
+  // every Continue and reads them at start (resume after a quit).
+  ipcMain.handle(
+    "onboarding:get-state",
+    (): OnboardingState => readOnboardingState(readSettings()),
+  );
+
+  ipcMain.handle(
+    "onboarding:set-state",
+    (_event, patch: { step?: unknown; draft?: unknown }) => {
+      const next: Record<string, unknown> = {};
+      const step = sanitizeStep(patch?.step);
+      if (step !== null) next.onboardingStep = step;
+      if (patch?.draft !== undefined) {
+        // A patch merges into the saved draft: a field that is not in it stays.
+        next.onboardingDraft = {
+          ...readOnboardingState(readSettings()).draft,
+          ...sanitizeDraft(patch.draft),
+        };
+      }
+      if (Object.keys(next).length > 0) writeSettings(next);
+    },
+  );
 }

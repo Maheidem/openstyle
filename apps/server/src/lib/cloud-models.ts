@@ -234,6 +234,21 @@ export function cloudLlmPrices(
   };
 }
 
+/**
+ * The place of a cloud LLM in the line-up of its provider (0 is the first:
+ * the newest capable model). Null when the line-up does not hold the model.
+ * The first run takes the lowest rank as the default text model of a provider.
+ */
+export function cloudLlmLineupRank(
+  providerId: string,
+  modelId: string,
+): number | null {
+  const id = stripModelPrefix(providerId, modelId);
+  const own = CLOUD_LLM_LINEUP.filter((m) => m.providerId === providerId);
+  const at = own.findIndex((m) => m.id === id);
+  return at < 0 ? null : at;
+}
+
 /** True when the line-up holds this cloud LLM, with or without the prefix. */
 export function isLineupCloudLlm(providerId: string, modelId: string): boolean {
   return CURATED_LLM_IDS.has(

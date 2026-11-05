@@ -411,8 +411,8 @@ test("the cue goes away when the model folder is there", async () => {
   await page.waitForLoadState("load");
   await expect(page.getByTestId("missing-model-banner")).toHaveCount(0);
   await expect(page.getByTestId("nav-models-missing-badge")).toHaveCount(0);
-  // Advanced mode is off, so Models leaves the sidebar again.
-  await expect(page.getByRole("link", { name: /^Models/ })).toHaveCount(0);
+  // Models stays in the sidebar with advanced mode off. The badge is gone.
+  await expect(page.getByRole("link", { name: /^Models/ })).toBeVisible();
 
   await page.goto("app://renderer/settings/models");
   await page.waitForLoadState("load");

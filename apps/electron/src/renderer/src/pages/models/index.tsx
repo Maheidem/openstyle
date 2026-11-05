@@ -27,10 +27,10 @@ import {
 import { cn, ON_DEVICE_PHRASE } from "@renderer/lib/utils";
 import { SETTINGS_KEYS } from "@shared/settings-keys";
 import { useQuery } from "@tanstack/react-query";
-import { CheckCircle, Info, Key, Loader2, Pencil, Trash2 } from "lucide-react";
+import { CheckCircle, Key, Loader2, Pencil, Trash2 } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import { Trans, useTranslation } from "react-i18next";
-import { useNavigate, useSearchParams } from "react-router";
+import { useSearchParams } from "react-router";
 import { MeetingModelRow } from "./meeting-model-row";
 import { MissingModelsCard } from "./missing-models-card";
 import { MlxWarmingDialog } from "./mlx-memory-section";
@@ -46,7 +46,6 @@ import { recommendedVoiceKey } from "./voice-helpers";
 export default function ModelsPage(): React.JSX.Element {
   const { t } = useTranslation();
   const m = useModels();
-  const navigate = useNavigate();
   const [searchParams, setSearchParams] = useSearchParams();
 
   // Advanced mode gates this page in the sidebar. When it's off, the page can
@@ -277,11 +276,6 @@ export default function ModelsPage(): React.JSX.Element {
   return (
     <PageShell>
       <PageHeader title={t("models.title")} />
-      {!advancedMode && (
-        <AdvancedModeBanner
-          onEnable={() => navigate("/settings#application")}
-        />
-      )}
       <div className="space-y-6">
         <MissingModelsCard m={m} />
         <PairCard
@@ -590,32 +584,6 @@ export default function ModelsPage(): React.JSX.Element {
         />
       )}
     </PageShell>
-  );
-}
-
-function AdvancedModeBanner({
-  onEnable,
-}: {
-  onEnable: () => void;
-}): React.JSX.Element {
-  const { t } = useTranslation();
-  return (
-    <div className="border-border mb-6 flex items-start gap-3 rounded-lg border bg-muted/40 px-4 py-3">
-      <Info className="text-muted-foreground mt-0.5 size-4 shrink-0" />
-      <div className="min-w-0 flex-1">
-        <p className="text-foreground/90 text-[13px] leading-relaxed">
-          {t("models.advancedModeBanner")}
-        </p>
-      </div>
-      <Button
-        variant="outline"
-        size="sm"
-        className="shrink-0"
-        onClick={onEnable}
-      >
-        {t("models.advancedModeBannerAction")}
-      </Button>
-    </div>
   );
 }
 

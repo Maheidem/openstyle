@@ -3,6 +3,7 @@ import { getDb, withTransaction } from "../db.js";
 import { WHISPER_MODELS, WHISPER_PROVIDER_ID } from "../whisper/constants.js";
 import { getModelStatus as getWhisperModelStatus } from "../whisper/models.js";
 import { MLX_ASR_PROVIDER_ID } from "./constants.js";
+import { isMlxRuntimeInstallable } from "./runtime.js";
 import { canRunMlxAsr, stopMlxServer } from "./server.js";
 
 const log = createAppLogger("mlx-asr");
@@ -24,9 +25,13 @@ function pickWhisperFallbackId(): string {
 /**
  * If the default voice model is MLX but this machine cannot run MLX (e.g. Intel Mac),
  * switch the default to local Whisper so transcription keeps working.
+ *
+ * A Mac that cannot run MLX yet, but can install the MLX worker runtime, keeps
+ * its MLX default. The first MLX model download installs the worker. Without
+ * this rule, a fresh install flips back to Whisper before the worker exists.
  */
 export function reconcileUnsupportedMlxVoiceDefault(): boolean {
-  if (canRunMlxAsr()) return false;
+  if (canRunMlxAsr() || isMlxRuntimeInstallable()) return false;
 
   const db = getDb();
   const voice = db

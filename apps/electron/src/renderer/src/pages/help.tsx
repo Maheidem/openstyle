@@ -93,21 +93,18 @@ function HotkeyRow({
  * Mirrors shell.tsx's STATIC_NAV order + labelKeys + visibility gates (icons
  * omitted — the mockup's nav-shortcut-item has no icon, only label + kbd),
  * since that list isn't exported for reuse. Gating matches shell.tsx
- * exactly: Models only when advanced mode is on, Meetings only when the
- * server's `meetings` flag is on.
+ * exactly: Models always, Meetings only when the server's `meetings` flag is
+ * on.
  */
 const NAV_SHORTCUT_ITEMS: {
   labelKey: string;
-  hidden?: (ctx: {
-    advancedMode: boolean;
-    meetingsEnabled: boolean;
-  }) => boolean;
+  hidden?: (ctx: { meetingsEnabled: boolean }) => boolean;
 }[] = [
   { labelKey: "shell.nav.today" },
   { labelKey: "shell.nav.meetings", hidden: (ctx) => !ctx.meetingsEnabled },
   { labelKey: "shell.nav.vocabulary" },
   { labelKey: "shell.nav.tone" },
-  { labelKey: "shell.nav.models", hidden: (ctx) => !ctx.advancedMode },
+  { labelKey: "shell.nav.models" },
   { labelKey: "shell.nav.settings" },
   { labelKey: "shell.nav.help" },
 ];
@@ -125,16 +122,15 @@ export default function HelpPage(): React.JSX.Element {
     getDefaultHotkey();
 
   // Same visibility gates shell.tsx uses to filter+renumber its Cmd+N list.
-  const advancedMode = settings?.[SETTINGS_KEYS.advancedMode] === "true";
   const { data: config } = useQuery(configQueryOptions());
   const meetingsEnabled = config?.flags?.meetings === true;
 
   const navShortcuts = useMemo(
     () =>
       NAV_SHORTCUT_ITEMS.filter(
-        (item) => !item.hidden?.({ advancedMode, meetingsEnabled }),
+        (item) => !item.hidden?.({ meetingsEnabled }),
       ).map((item, idx) => ({ ...item, shortcut: idx + 1 })),
-    [advancedMode, meetingsEnabled],
+    [meetingsEnabled],
   );
 
   // Matches shell.tsx's Cmd/Ctrl+1..9 handler, which accepts metaKey OR
