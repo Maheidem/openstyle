@@ -23,6 +23,13 @@ vi.mock("../src/lib/mlx-asr/constants.js", async (importOriginal) => ({
   isAppleSiliconMac: () => true,
 }));
 
+// The speech default of an Intel or Linux machine is reset to whisper. This
+// test needs the MLX speech default to stay.
+vi.mock("../src/lib/mlx-asr/server.js", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("../src/lib/mlx-asr/server.js")>()),
+  canRunMlxAsr: () => true,
+}));
+
 import createApp from "../src/index.js";
 import { deleteSetting, getDb, writeSetting } from "../src/lib/db.js";
 import { onCleanupSkipped } from "../src/lib/dictation-notices.js";
