@@ -267,6 +267,35 @@ export function buildTrayContextMenu(): Menu {
                   void state.meetingRecorder?.stop();
                 },
               },
+          ...(state.meetingRecorder.status === "recording"
+            ? [
+                state.meetingRecorder.isPaused
+                  ? {
+                      label: "Resume meeting recording",
+                      click: (): void => {
+                        void state.meetingRecorder?.resume().catch((err) => {
+                          log.error(`Meeting resume failed: ${String(err)}`);
+                          dialog.showErrorBox(
+                            "Meeting recording",
+                            err instanceof Error ? err.message : String(err),
+                          );
+                        });
+                      },
+                    }
+                  : {
+                      label: "Pause meeting recording",
+                      click: (): void => {
+                        void state.meetingRecorder?.pause().catch((err) => {
+                          log.error(`Meeting pause failed: ${String(err)}`);
+                          dialog.showErrorBox(
+                            "Meeting recording",
+                            err instanceof Error ? err.message : String(err),
+                          );
+                        });
+                      },
+                    },
+              ]
+            : []),
         ]
       : []),
     ...(is.dev ? devMenuItems() : []),

@@ -1466,7 +1466,13 @@
         }
       },
       "errModelMissing": "質問用のモデルがダウンロードされていません。モデルでダウンロードしてください。"
-    }
+    },
+    "pause": "一時停止",
+    "resume": "再開",
+    "paused": "一時停止中",
+    "pausedHint": "マイクはオフです。何も録音されません。",
+    "pauseFailed": "録音を一時停止できませんでした。もう一度試してください。",
+    "resumeFailed": "マイクが再び始まりませんでした。マイクを確認して、再開を選んでください。録音を停止することもできます。ここまでの音声は保存されています。"
   },
   "help": {
     "hotkeys": {
@@ -1546,7 +1552,8 @@
       "preparingMic": "マイクを準備中",
       "listening": "聞き取り中",
       "transcribing": "文字起こし中",
-      "meetingRecording": "会議を録音中"
+      "meetingRecording": "会議を録音中",
+      "meetingPaused": "会議の録音は一時停止中です"
     },
     "error": {
       "timedOut": "文字起こしがタイムアウトしました",
@@ -1562,7 +1569,10 @@
       "recordingFailedTitle": "録音に失敗しました",
       "micDenied": "マイクへのアクセスが拒否されました",
       "noAudioCaptured": "音声が録音されませんでした。もう一度録音してください。"
-    }
+    },
+    "pauseMeeting": "会議の録音を一時停止",
+    "resumeMeeting": "会議の録音を再開",
+    "paused": "一時停止中"
   },
   "errorBoundary": {
     "eyebrow": "問題が発生しました",
@@ -1583,7 +1593,8 @@
     "status": {
       "ready": "準備完了",
       "recording": "録音中",
-      "dictating": "音声入力中"
+      "dictating": "音声入力中",
+      "paused": "一時停止中"
     },
     "meeting": {
       "section": "会議の録音",
@@ -1593,7 +1604,14 @@
       "elapsed": "録音時間",
       "started": "会議の録音を開始しました",
       "stopped": "会議の録音を停止しました",
-      "startFailed": "会議の録音を開始できませんでした。"
+      "startFailed": "会議の録音を開始できませんでした。",
+      "pause": "一時停止",
+      "resume": "再開",
+      "pauseLabel": "会議の録音を一時停止",
+      "resumeLabel": "会議の録音を再開",
+      "paused": "一時停止中",
+      "pausedAnnouncement": "会議の録音を一時停止しました",
+      "resumedAnnouncement": "会議の録音を再開しました"
     },
     "recent": {
       "title": "最近の音声入力",

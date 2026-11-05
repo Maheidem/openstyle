@@ -1822,7 +1822,13 @@
         }
       },
       "errModelMissing": "The model for Ask is not downloaded. Download it in Models."
-    }
+    },
+    "pause": "Pause",
+    "resume": "Resume",
+    "paused": "Paused",
+    "pausedHint": "The microphone is off. Nothing is recorded.",
+    "pauseFailed": "The recording did not pause. Try again.",
+    "resumeFailed": "The microphone did not start again. Check the microphone and select Resume. You can also stop the recording. The audio so far is saved."
   },
   "help": {
     "hotkeys": {
@@ -1902,7 +1908,8 @@
       "preparingMic": "Preparing microphone",
       "listening": "Listening",
       "transcribing": "Transcribing",
-      "meetingRecording": "Recording meeting"
+      "meetingRecording": "Recording meeting",
+      "meetingPaused": "Meeting recording paused"
     },
     "error": {
       "timedOut": "Transcription timed out",
@@ -1918,7 +1925,10 @@
       "recordingFailedTitle": "Recording Failed",
       "micDenied": "Mic access denied",
       "noAudioCaptured": "No audio captured. Try recording again."
-    }
+    },
+    "pauseMeeting": "Pause meeting recording",
+    "resumeMeeting": "Resume meeting recording",
+    "paused": "Paused"
   },
   "errorBoundary": {
     "eyebrow": "Something went wrong",
@@ -1939,7 +1949,8 @@
     "status": {
       "ready": "Ready",
       "recording": "Recording",
-      "dictating": "Dictating"
+      "dictating": "Dictating",
+      "paused": "Paused"
     },
     "meeting": {
       "section": "Meeting recording",
@@ -1949,7 +1960,14 @@
       "elapsed": "Recording time",
       "started": "Meeting recording started",
       "stopped": "Meeting recording stopped",
-      "startFailed": "The meeting recording did not start."
+      "startFailed": "The meeting recording did not start.",
+      "pause": "Pause",
+      "resume": "Resume",
+      "pauseLabel": "Pause meeting recording",
+      "resumeLabel": "Resume meeting recording",
+      "paused": "Paused",
+      "pausedAnnouncement": "Meeting recording paused",
+      "resumedAnnouncement": "Meeting recording resumed"
     },
     "recent": {
       "title": "Recent dictations",

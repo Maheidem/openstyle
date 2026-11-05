@@ -1488,7 +1488,13 @@
         }
       },
       "errModelMissing": "Il modello per Chiedi non è scaricato. Scaricalo in Modelli."
-    }
+    },
+    "pause": "Pausa",
+    "resume": "Riprendi",
+    "paused": "In pausa",
+    "pausedHint": "Il microfono è spento. Non si registra nulla.",
+    "pauseFailed": "La registrazione non è andata in pausa. Riprova.",
+    "resumeFailed": "Il microfono non si è riavviato. Controlla il microfono e seleziona Riprendi. Puoi anche fermare la registrazione. L'audio registrato finora è salvato."
   },
   "help": {
     "hotkeys": {
@@ -1568,7 +1574,8 @@
       "preparingMic": "Preparazione del microfono",
       "listening": "In ascolto",
       "transcribing": "Trascrizione in corso",
-      "meetingRecording": "Registrazione della riunione"
+      "meetingRecording": "Registrazione della riunione",
+      "meetingPaused": "Registrazione della riunione in pausa"
     },
     "error": {
       "timedOut": "La trascrizione è scaduta",
@@ -1584,7 +1591,10 @@
       "recordingFailedTitle": "Registrazione non riuscita",
       "micDenied": "Accesso al microfono negato",
       "noAudioCaptured": "Nessun audio acquisito. Prova a registrare di nuovo."
-    }
+    },
+    "pauseMeeting": "Metti in pausa la registrazione della riunione",
+    "resumeMeeting": "Riprendi la registrazione della riunione",
+    "paused": "In pausa"
   },
   "errorBoundary": {
     "eyebrow": "Qualcosa è andato storto",
@@ -1605,7 +1615,8 @@
     "status": {
       "ready": "Pronto",
       "recording": "Registrazione",
-      "dictating": "Dettatura"
+      "dictating": "Dettatura",
+      "paused": "In pausa"
     },
     "meeting": {
       "section": "Registrazione riunione",
@@ -1615,7 +1626,14 @@
       "elapsed": "Durata della registrazione",
       "started": "Registrazione della riunione avviata",
       "stopped": "Registrazione della riunione fermata",
-      "startFailed": "La registrazione della riunione non è partita."
+      "startFailed": "La registrazione della riunione non è partita.",
+      "pause": "Pausa",
+      "resume": "Riprendi",
+      "pauseLabel": "Metti in pausa la registrazione della riunione",
+      "resumeLabel": "Riprendi la registrazione della riunione",
+      "paused": "In pausa",
+      "pausedAnnouncement": "Registrazione della riunione in pausa",
+      "resumedAnnouncement": "Registrazione della riunione ripresa"
     },
     "recent": {
       "title": "Dettature recenti",

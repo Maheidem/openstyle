@@ -99,12 +99,27 @@ describe("meeting status IPC", () => {
       status: "recording",
       currentMeetingId: "meeting-1",
       recordingStartedAt: 1_760_000_000_000,
+      recordingPausedAt: null,
     };
     expect(await mocks.api!.getMeetingStatus()).toEqual({
       status: "recording",
       meetingId: "meeting-1",
       startedAt: 1_760_000_000_000,
+      pausedAt: null,
       supported: true,
+    });
+  });
+
+  it("sends the pause time while a recording is paused", async () => {
+    mocks.recorder = {
+      status: "recording",
+      currentMeetingId: "meeting-1",
+      recordingStartedAt: 1_760_000_005_000,
+      recordingPausedAt: 1_760_000_020_000,
+    };
+    expect(await mocks.api!.getMeetingStatus()).toMatchObject({
+      startedAt: 1_760_000_005_000,
+      pausedAt: 1_760_000_020_000,
     });
   });
 
@@ -113,12 +128,38 @@ describe("meeting status IPC", () => {
       status: "idle",
       currentMeetingId: null,
       recordingStartedAt: null,
+      recordingPausedAt: null,
     };
     expect(await mocks.api!.getMeetingStatus()).toEqual({
       status: "idle",
       meetingId: null,
       startedAt: null,
+      pausedAt: null,
       supported: true,
+    });
+  });
+});
+
+describe("meeting pause IPC", () => {
+  it("calls pause and resume of the recorder", async () => {
+    const pause = vi.fn(async () => {});
+    const resume = vi.fn(async () => {});
+    mocks.recorder = { pause, resume };
+    expect(await mocks.api!.pauseMeetingRecording()).toEqual({ ok: true });
+    expect(await mocks.api!.resumeMeetingRecording()).toEqual({ ok: true });
+    expect(pause).toHaveBeenCalledTimes(1);
+    expect(resume).toHaveBeenCalledTimes(1);
+  });
+
+  it("returns the message of a failed resume", async () => {
+    mocks.recorder = {
+      resume: vi.fn(async () => {
+        throw new Error("The microphone did not start again.");
+      }),
+    };
+    expect(await mocks.api!.resumeMeetingRecording()).toEqual({
+      ok: false,
+      error: "The microphone did not start again.",
     });
   });
 });

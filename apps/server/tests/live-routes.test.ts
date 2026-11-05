@@ -19,6 +19,7 @@ import {
   startLive,
   stopLive,
 } from "../src/lib/meetings/live/loop.js";
+import { isRecordingPaused } from "../src/lib/meetings/live/pause.js";
 import { getLive } from "../src/lib/meetings/live/store.js";
 import { LIVE_SAMPLE_RATE } from "../src/lib/meetings/live/tail.js";
 import {
@@ -181,6 +182,76 @@ describe("live routes", () => {
     } finally {
       __setMeetingsTestOverrides({});
     }
+  });
+
+  it("a paused recording is not read by the live loop, and resume starts it again", async () => {
+    growingWav(
+      join(dir, MIC_WAV),
+      concat(silence(300), speech(1500), silence(3000), speech(2000, 3)),
+    );
+    growingWav(join(dir, SYSTEM_WAV), silence(6800));
+    await startMeeting();
+    const pause = await jsonRequest(app, "PUT", "/api/meetings/m-live/paused", {
+      paused: true,
+    });
+    expect(pause.status).toBe(200);
+    const deps = stubDeps();
+    await startLive("m-live", dir, deps);
+    // Several ticks pass (tickMs is 20 ms). A paused loop reads no audio.
+    await new Promise((r) => setTimeout(r, 300));
+    expect(deps.transcribe).not.toHaveBeenCalled();
+    expect(getLive("m-live")?.lines ?? []).toEqual([]);
+    const resume = await jsonRequest(
+      app,
+      "PUT",
+      "/api/meetings/m-live/paused",
+      { paused: false },
+    );
+    expect(resume.status).toBe(200);
+    await waitFor(() => (getLive("m-live")?.lines.length ?? 0) > 0);
+    expect(deps.transcribe).toHaveBeenCalled();
+  });
+
+  it("the pause route refuses an unknown meeting and a stopped recording", async () => {
+    const unknown = await jsonRequest(app, "PUT", "/api/meetings/nope/paused", {
+      paused: true,
+    });
+    expect(unknown.status).toBe(404);
+    await startMeeting();
+    await jsonRequest(app, "POST", "/api/meetings/m-live/stop", {
+      ended_at: Date.now(),
+      duration_ms: 0,
+      status: "failed",
+      error: "test",
+    });
+    const stopped = await jsonRequest(
+      app,
+      "PUT",
+      "/api/meetings/m-live/paused",
+      {
+        paused: true,
+      },
+    );
+    expect(stopped.status).toBe(404);
+  });
+
+  it("a stop clears the paused flag and still runs", async () => {
+    growingWav(join(dir, MIC_WAV), concat(silence(300), speech(2000)));
+    growingWav(join(dir, SYSTEM_WAV), silence(2300));
+    await startMeeting();
+    await startLive("m-live", dir, stubDeps());
+    await jsonRequest(app, "PUT", "/api/meetings/m-live/paused", {
+      paused: true,
+    });
+    expect(isRecordingPaused("m-live")).toBe(true);
+    const stop = await jsonRequest(app, "POST", "/api/meetings/m-live/stop", {
+      ended_at: Date.now(),
+      duration_ms: 2300,
+      status: "failed",
+      error: "test",
+    });
+    expect(stop.status).toBe(200);
+    expect(isRecordingPaused("m-live")).toBe(false);
   });
 
   it("a failed stop keeps no live transcript", async () => {

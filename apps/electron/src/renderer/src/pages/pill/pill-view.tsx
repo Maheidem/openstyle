@@ -86,6 +86,7 @@ export function PillView({
         meetingCue.startedAt !== null && (
           <MeetingCapsule
             startedAt={meetingCue.startedAt}
+            pausedAt={meetingCue.pausedAt}
             leaving={meetingCue.leaving}
             layerClass={layerClass}
             riseBy={riseBy}

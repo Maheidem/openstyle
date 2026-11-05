@@ -141,6 +141,8 @@ export const BLUR = "blur(20px) saturate(120%)";
 export const ALERT = "#F87171";
 /** Live/recording accent — bars and dot while actively capturing audio. */
 export const LIVE = "#E4574D";
+/** The Paused state of the meeting capsule (the mic is closed). */
+export const PAUSED = "#E0A33A";
 /**
  * The waveform is solid at full opacity in every state — level is expressed
  * by bar height alone, so nothing here is dimmed to encode it. Color is the

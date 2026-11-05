@@ -10,6 +10,7 @@ import {
 } from "@renderer/components/ui/dialog";
 import { Progress } from "@renderer/components/ui/progress";
 import { useElapsedClock } from "@renderer/hooks/use-elapsed-clock";
+import { useMeetingPause } from "@renderer/hooks/use-meeting-pause";
 import { queryKeys, settingsQueryOptions } from "@renderer/lib/query";
 import { cn } from "@renderer/lib/utils";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
@@ -18,6 +19,8 @@ import {
   Folder,
   Mic,
   MonitorSpeaker,
+  Pause,
+  Play,
   RefreshCw,
   Square,
 } from "lucide-react";
@@ -100,6 +103,8 @@ export function useRecorder(folderId: string | null = null): {
   meetingId: string | null;
   /** Recording start time (epoch ms) from the main process, or null. */
   startedAt: number | null;
+  /** The time (epoch ms) of the running pause, or null. */
+  pausedAt: number | null;
   start: () => Promise<void>;
   stop: () => Promise<void>;
   error: string | null;
@@ -118,6 +123,7 @@ export function useRecorder(folderId: string | null = null): {
   const [supported, setSupported] = useState(false);
   const [meetingId, setMeetingId] = useState<string | null>(null);
   const [startedAt, setStartedAt] = useState<number | null>(null);
+  const [pausedAt, setPausedAt] = useState<number | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [devices, setDevices] = useState<MeetingDevicePlan | null>(null);
   const [pendingDevices, setPendingDevices] =
@@ -150,17 +156,21 @@ export function useRecorder(folderId: string | null = null): {
       setSupported(s.supported);
       setMeetingId(s.meetingId);
       setStartedAt(s.startedAt);
+      setPausedAt(s.pausedAt ?? null);
     });
-    const remove = window.api?.onMeetingStatusChanged?.((next, start) => {
-      setStatus(next);
-      setStartedAt(start);
-      if (next === "idle") {
-        setMeetingId(null);
-        void queryClient.invalidateQueries({
-          queryKey: queryKeys.meetings.all,
-        });
-      }
-    });
+    const remove = window.api?.onMeetingStatusChanged?.(
+      (next, start, paused) => {
+        setStatus(next);
+        setStartedAt(start);
+        setPausedAt(paused ?? null);
+        if (next === "idle") {
+          setMeetingId(null);
+          void queryClient.invalidateQueries({
+            queryKey: queryKeys.meetings.all,
+          });
+        }
+      },
+    );
     return () => {
       cancelled = true;
       remove?.();
@@ -228,6 +238,7 @@ export function useRecorder(folderId: string | null = null): {
     supported,
     meetingId,
     startedAt,
+    pausedAt,
     start,
     stop,
     error,
@@ -427,7 +438,12 @@ export function RecordingCard({
   const finalizing = recorder.status === "finalizing";
   // The start time comes from the main process, so this timer and the pill
   // show the same time, also after the page mounts again.
-  const elapsed = useElapsedClock(recording ? recorder.startedAt : null);
+  const paused = recording && recorder.pausedAt !== null;
+  const elapsed = useElapsedClock(
+    recording ? recorder.startedAt : null,
+    paused ? recorder.pausedAt : null,
+  );
+  const pauseControl = useMeetingPause();
 
   useEffect(() => {
     if (!recording) {
@@ -497,14 +513,25 @@ export function RecordingCard({
 
   return (
     <Card className={cn("mb-6 p-5", compact && "mb-4 p-3.5")}>
-      <div className="flex items-center gap-4">
-        <div className="min-w-0 flex-1">
+      <div className="flex flex-wrap items-center gap-x-4 gap-y-2.5">
+        <div className="min-w-[11rem] flex-1">
           {recording ? (
             <div className="flex flex-col gap-2.5">
               <div className="flex items-center gap-2.5">
-                <span className="inline-block h-2 w-2 animate-pulse rounded-full bg-[var(--live)]" />
-                <span className="text-foreground text-[13px] font-medium">
-                  {t("meetings.recording")}
+                <span
+                  className={cn(
+                    "inline-block h-2 w-2 rounded-full",
+                    paused
+                      ? "bg-muted-foreground"
+                      : "animate-pulse bg-[var(--live)]",
+                  )}
+                />
+                <span
+                  className="text-foreground text-[13px] font-medium"
+                  data-testid="meeting-recording-state"
+                  data-paused={paused ? "true" : "false"}
+                >
+                  {paused ? t("meetings.paused") : t("meetings.recording")}
                 </span>
                 <span
                   className="mono text-muted-foreground text-[12px] tabular-nums"
@@ -513,18 +540,38 @@ export function RecordingCard({
                   {elapsed}
                 </span>
               </div>
-              <LevelMeter
-                icon={<Mic className="text-muted-foreground h-3.5 w-3.5" />}
-                label={t("meetings.micLevel")}
-                level={micLevel}
-              />
-              <LevelMeter
-                icon={
-                  <MonitorSpeaker className="text-muted-foreground h-3.5 w-3.5" />
-                }
-                label={t("meetings.systemLevel")}
-                level={systemLevel}
-              />
+              {paused ? (
+                <p
+                  className="text-muted-foreground m-0 text-[12px]"
+                  data-testid="meeting-paused-hint"
+                >
+                  {t("meetings.pausedHint")}
+                </p>
+              ) : (
+                <>
+                  <LevelMeter
+                    icon={<Mic className="text-muted-foreground h-3.5 w-3.5" />}
+                    label={t("meetings.micLevel")}
+                    level={micLevel}
+                  />
+                  <LevelMeter
+                    icon={
+                      <MonitorSpeaker className="text-muted-foreground h-3.5 w-3.5" />
+                    }
+                    label={t("meetings.systemLevel")}
+                    level={systemLevel}
+                  />
+                </>
+              )}
+              {pauseControl.error && (
+                <p
+                  role="alert"
+                  className="text-destructive m-0 text-[12px]"
+                  data-testid="meeting-pause-error"
+                >
+                  {pauseControl.error}
+                </p>
+              )}
             </div>
           ) : (
             <div>
@@ -547,28 +594,50 @@ export function RecordingCard({
             </div>
           )}
         </div>
-        {recording || recorder.status === "finalizing" ? (
-          <Button
-            variant="destructive"
-            size="sm"
-            onClick={() => void recorder.stop()}
-            disabled={recorder.status === "finalizing"}
-          >
-            <Square data-icon="inline-start" />
-            {recorder.status === "finalizing"
-              ? t("meetings.finalizing")
-              : t("meetings.stop")}
-          </Button>
-        ) : (
-          <Button
-            size="sm"
-            onClick={() => void recorder.start()}
-            disabled={!recorder.supported || recorder.starting || !targetReady}
-          >
-            <Mic data-icon="inline-start" />
-            {t("meetings.start")}
-          </Button>
-        )}
+        <div className="flex shrink-0 items-center gap-2">
+          {recording && (
+            <Button
+              variant="outline"
+              size="sm"
+              data-testid="meeting-pause-toggle"
+              onClick={() =>
+                void (paused ? pauseControl.resume() : pauseControl.pause())
+              }
+              disabled={pauseControl.busy}
+            >
+              {paused ? (
+                <Play data-icon="inline-start" />
+              ) : (
+                <Pause data-icon="inline-start" />
+              )}
+              {paused ? t("meetings.resume") : t("meetings.pause")}
+            </Button>
+          )}
+          {recording || recorder.status === "finalizing" ? (
+            <Button
+              variant="destructive"
+              size="sm"
+              onClick={() => void recorder.stop()}
+              disabled={recorder.status === "finalizing"}
+            >
+              <Square data-icon="inline-start" />
+              {recorder.status === "finalizing"
+                ? t("meetings.finalizing")
+                : t("meetings.stop")}
+            </Button>
+          ) : (
+            <Button
+              size="sm"
+              onClick={() => void recorder.start()}
+              disabled={
+                !recorder.supported || recorder.starting || !targetReady
+              }
+            >
+              <Mic data-icon="inline-start" />
+              {t("meetings.start")}
+            </Button>
+          )}
+        </div>
       </div>
       {recording && onOpenLive && (
         <Button

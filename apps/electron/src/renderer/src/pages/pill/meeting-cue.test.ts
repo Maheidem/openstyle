@@ -25,8 +25,8 @@ describe("pillSurface", () => {
 
 describe("nextMeetingCue", () => {
   const startedAt = 1_760_000_000_000;
-  const none = { startedAt: null, leaving: false };
-  const live = { startedAt, leaving: false };
+  const none = { startedAt: null, pausedAt: null, leaving: false };
+  const live = { startedAt, pausedAt: null, leaving: false };
 
   it("shows a meeting that starts to record", () => {
     expect(nextMeetingCue(none, "recording", startedAt)).toEqual(live);
@@ -35,6 +35,7 @@ describe("nextMeetingCue", () => {
   it("keeps the start time and plays the exit after a stop", () => {
     expect(nextMeetingCue(live, "finalizing", null)).toEqual({
       startedAt,
+      pausedAt: null,
       leaving: true,
     });
   });
@@ -52,7 +53,30 @@ describe("nextMeetingCue", () => {
     const leaving = nextMeetingCue(live, "finalizing", null);
     expect(nextMeetingCue(leaving, "recording", startedAt + 5)).toEqual({
       startedAt: startedAt + 5,
+      pausedAt: null,
       leaving: false,
     });
+  });
+
+  it("keeps the meeting on screen while it is paused, and stops the clock", () => {
+    expect(
+      nextMeetingCue(live, "recording", startedAt, startedAt + 4000),
+    ).toEqual({ startedAt, pausedAt: startedAt + 4000, leaving: false });
+  });
+
+  it("starts the clock again on resume with the later start time", () => {
+    const paused = nextMeetingCue(
+      live,
+      "recording",
+      startedAt,
+      startedAt + 4000,
+    );
+    expect(nextMeetingCue(paused, "recording", startedAt + 9000, null)).toEqual(
+      {
+        startedAt: startedAt + 9000,
+        pausedAt: null,
+        leaving: false,
+      },
+    );
   });
 });

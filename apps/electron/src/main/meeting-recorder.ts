@@ -20,6 +20,10 @@
  * process reads server-owned data (see serverClient() in index.ts).
  *
  * State machine: idle -> recording -> finalizing -> idle.
+ *
+ * Pause is a flag inside "recording", not a status. A pause closes the mic and
+ * the system capture. Both tracks get no samples while paused, so the saved
+ * audio holds recorded time only (specs/meeting-mode.md, "Pause and resume").
  */
 
 import { randomUUID } from "node:crypto";
@@ -85,6 +89,11 @@ const CALENDAR_LOOKUP_MAX_MS = 1500;
 /** Mic RMS is forwarded to the UI at the same cadence as system LEVELs. */
 const LEVEL_INTERVAL_MS = 200;
 /**
+ * The most that a pause waits for the capture helper to exit. The helper
+ * needs this time to close the mic. The recorder shows "Paused" after that.
+ */
+const PAUSE_EXIT_WAIT_MS = 4000;
+/**
  * The native helper must print READY within this time, or the recorder
  * stops waiting. A mic permission prompt can delay READY, so a late READY
  * is not an error. Only an error or an exit before this time starts the
@@ -101,8 +110,12 @@ export interface MeetingLevelEvent {
 }
 
 interface SyncEpoch {
-  /** Why this epoch was stamped. "fallback": the native helper stopped. */
-  reason: "start" | "resume" | "fallback";
+  /**
+   * Why this epoch was stamped. "fallback": the native helper stopped.
+   * "pause": the user paused. "resume": the capture runs again after a
+   * pause or after a sleep. A pause gap holds no samples in the tracks.
+   */
+  reason: "start" | "resume" | "fallback" | "pause";
   wallclockMs: number;
   micSamples: number;
   systemSamples: number;
@@ -234,11 +247,14 @@ export interface MeetingRecorderDeps {
   /**
    * Broadcast a `meeting:status` change to interested renderer windows.
    * `startedAt` is the recording start time (epoch ms) while the status is
-   * "recording", else null.
+   * "recording", else null. While a recording is paused, `pausedAt` is the
+   * time (epoch ms) of the pause, else null. The clock shows
+   * `(pausedAt ?? now) - startedAt`.
    */
   broadcastStatus: (
     status: MeetingRecorderStatus,
     startedAt: number | null,
+    pausedAt: number | null,
   ) => void;
   /**
    * The calendar event that runs now, or null (specs/calendar-eventkit.md).
@@ -254,6 +270,20 @@ export class MeetingRecorder {
   private meetingId: string | null = null;
   private meetingDir: string | null = null;
   private startedAt = 0;
+  /** The time (epoch ms) of the running pause, or null. */
+  private pausedAt: number | null = null;
+  /** The total of the finished pauses, in ms. */
+  private pausedTotalMs = 0;
+  /** The recorded-time ceiling, in ms. Set when the recording starts. */
+  private maxDurationMs = 0;
+  /** True while resume() starts the capture. */
+  private resuming = false;
+  /** True while pause() waits for the capture helper to exit. */
+  private pausing = false;
+  /** True when the fallback path captures (set at start or at failover). */
+  private usesFallback = false;
+  /** The audio position of the fake capture, in samples. */
+  private fakeAudioPos = 0;
   private micWav: WavWriter | null = null;
   private systemWav: WavWriter | null = null;
   private systemCapture: SystemAudioCapture | null = null;
@@ -301,10 +331,24 @@ export class MeetingRecorder {
 
   /**
    * The start time (epoch ms) of the running recording, or null when the
-   * status is not "recording". All timers show the elapsed time from it.
+   * status is not "recording". The paused time is added, so
+   * `now - recordingStartedAt` is the recorded time. All timers show the
+   * elapsed time from it.
    */
   get recordingStartedAt(): number | null {
-    return this._status === "recording" ? this.startedAt : null;
+    return this._status === "recording"
+      ? this.startedAt + this.pausedTotalMs
+      : null;
+  }
+
+  /** The time (epoch ms) of the running pause, or null. */
+  get recordingPausedAt(): number | null {
+    return this._status === "recording" ? this.pausedAt : null;
+  }
+
+  /** True while the recording is paused. */
+  get isPaused(): boolean {
+    return this._status === "recording" && this.pausedAt !== null;
   }
 
   /**
@@ -324,7 +368,15 @@ export class MeetingRecorder {
 
   private setStatus(status: MeetingRecorderStatus): void {
     this._status = status;
-    this.deps.broadcastStatus(status, this.recordingStartedAt);
+    this.broadcast();
+  }
+
+  private broadcast(): void {
+    this.deps.broadcastStatus(
+      this._status,
+      this.recordingStartedAt,
+      this.recordingPausedAt,
+    );
   }
 
   private async api(
@@ -518,6 +570,11 @@ export class MeetingRecorder {
     this.meetingId = id;
     this.meetingDir = dir;
     this.startedAt = startedAt;
+    this.pausedAt = null;
+    this.pausedTotalMs = 0;
+    this.resuming = false;
+    this.usesFallback = false;
+    this.fakeAudioPos = 0;
     this.lastError = null;
     this.micNeedsPad = false;
     this.systemNeedsPad = false;
@@ -560,6 +617,7 @@ export class MeetingRecorder {
       log.info(
         "Meeting capture path: fallback (hidden capture window + macos-system-audio)",
       );
+      this.usesFallback = true;
       this.startFallbackCapture();
     }
 
@@ -579,17 +637,15 @@ export class MeetingRecorder {
       liveChat ? LIVE_FLUSH_INTERVAL_MS : FLUSH_INTERVAL_MS,
     );
 
-    // Auto-stop ceiling.
-    const maxMs = await this.readMaxDurationMs();
-    this.maxDurationTimer = setTimeout(() => {
-      log.info("Max meeting duration reached; auto-stopping");
-      void this.stop();
-    }, maxMs);
+    // Auto-stop ceiling. It counts recorded time only: a pause stops it.
+    this.maxDurationMs = await this.readMaxDurationMs();
+    this.armMaxDurationTimer();
 
     // On resume from sleep, stamp a new timeline epoch: the channels carry no
     // samples for the gap, so the merge must re-anchor to wallclock here.
     this.resumeListener = () => {
-      if (!this.journal) return;
+      // A paused recording has no capture. The resume() call stamps its own epoch.
+      if (!this.journal || this.pausedAt !== null) return;
       this.journal.epochs.push({
         reason: "resume",
         wallclockMs: Date.now(),
@@ -604,6 +660,25 @@ export class MeetingRecorder {
     if (devices.plan) await this.rememberMeetingDevices(devices.plan);
     log.info(`Meeting recording started: ${id}`);
     return id;
+  }
+
+  /** Stop the recording at the ceiling of the recorded time. */
+  private armMaxDurationTimer(): void {
+    if (this.maxDurationTimer) clearTimeout(this.maxDurationTimer);
+    const left = this.maxDurationMs - this.recordedMs(Date.now());
+    this.maxDurationTimer = setTimeout(
+      () => {
+        log.info("Max meeting duration reached; auto-stopping");
+        void this.stop();
+      },
+      Math.max(0, left),
+    );
+  }
+
+  /** The recorded time at `now`, in ms. A running pause does not count. */
+  private recordedMs(now: number): number {
+    const running = this.pausedAt === null ? 0 : now - this.pausedAt;
+    return now - this.startedAt - this.pausedTotalMs - running;
   }
 
   /**
@@ -728,6 +803,7 @@ export class MeetingRecorder {
     log.warn("Native meeting capture failed after start. Using the fallback.");
     capture.stop();
     this.nativeCapture = null;
+    this.usesFallback = true;
     this.micNeedsPad = true;
     this.systemNeedsPad = true;
     this.journal?.epochs.push({
@@ -754,7 +830,13 @@ export class MeetingRecorder {
     const t0 = channel === "mic" ? journal?.micT0 : journal?.systemT0;
     if (!journal || !wav || t0 === null || t0 === undefined) return;
     const have = channel === "mic" ? journal.micSamples : journal.systemSamples;
-    const gap = silenceGapSamples(t0, untilMs, have, SAMPLE_RATE);
+    // The paused time is not in the tracks, so it is not in the gap.
+    const gap = silenceGapSamples(
+      t0,
+      untilMs - this.pausedTotalMs,
+      have,
+      SAMPLE_RATE,
+    );
     if (gap === 0) return;
     wav.append(Buffer.alloc(gap * BYTES_PER_SAMPLE));
     if (channel === "mic") journal.micSamples += gap;
@@ -814,6 +896,7 @@ export class MeetingRecorder {
     const t0 = Date.now();
     let written = 0;
     // Optional file for the mic track (issue #375). Silence after its end.
+    // After a pause, the file goes on where it stopped.
     const audio = readFakeMeetingAudioPcm();
     this.fakeCaptureTimer = setInterval(() => {
       const due =
@@ -821,14 +904,15 @@ export class MeetingRecorder {
       if (due <= 0) return;
       const silence = Buffer.alloc(due * BYTES_PER_SAMPLE);
       let mic = silence;
-      if (audio && written * BYTES_PER_SAMPLE < audio.length) {
-        const from = written * BYTES_PER_SAMPLE;
+      if (audio && this.fakeAudioPos * BYTES_PER_SAMPLE < audio.length) {
+        const from = this.fakeAudioPos * BYTES_PER_SAMPLE;
         mic = Buffer.concat([
           audio.subarray(from, from + silence.length),
           silence,
         ]).subarray(0, silence.length);
       }
       written += due;
+      this.fakeAudioPos += due;
       this.handleNativeFrame("M", mic);
       this.handleNativeFrame("S", silence);
     }, 100);
@@ -845,6 +929,7 @@ export class MeetingRecorder {
    */
   private handleNativeFrame(channel: "M" | "S", pcm: Buffer): void {
     if (this._status !== "recording" || !this.journal) return;
+    if (this.isCaptureClosed()) return;
     if (pcm.length === 0) return;
     if (this.journal.micT0 === null && this.journal.systemT0 === null) {
       const t0 = Date.now();
@@ -864,9 +949,19 @@ export class MeetingRecorder {
     }
   }
 
+  /**
+   * True while a pause holds the capture closed. A chunk that arrives then
+   * is a late one from the closed capture, and it is dropped. While the
+   * capture starts again (resume), chunks are accepted.
+   */
+  private isCaptureClosed(): boolean {
+    return this.pausedAt !== null && !this.resuming;
+  }
+
   /** Mic PCM16 chunk delivered from the capture window over IPC. */
   handleMicChunk(chunk: Buffer): void {
     if (this._status !== "recording" || !this.micWav || !this.journal) return;
+    if (this.isCaptureClosed()) return;
     if (this.journal.micT0 === null) {
       // t0 = wallclock of the FIRST delivered sample, not window-spawn time.
       this.journal.micT0 = Date.now();
@@ -894,6 +989,7 @@ export class MeetingRecorder {
   private handleSystemChunk(chunk: Buffer): void {
     if (this._status !== "recording" || !this.systemWav || !this.journal)
       return;
+    if (this.isCaptureClosed()) return;
     if (this.journal.systemT0 === null) {
       this.journal.systemT0 = Date.now();
       void this.writeJournal();
@@ -907,6 +1003,26 @@ export class MeetingRecorder {
   }
 
   /**
+   * Close every capture source: the fake timer, the native helper, the
+   * system helper and the mic window. It is synchronous. The WAV files stay
+   * open. Returns the native helper that was stopped, or null.
+   */
+  private stopCaptureSources(): MeetingCaptureHelper | null {
+    if (this.fakeCaptureTimer) clearInterval(this.fakeCaptureTimer);
+    this.fakeCaptureTimer = null;
+    const native = this.nativeCapture;
+    native?.stop();
+    this.nativeCapture = null;
+    this.systemCapture?.stop();
+    this.systemCapture = null;
+    if (this.captureWindow && !this.captureWindow.isDestroyed()) {
+      this.captureWindow.destroy();
+    }
+    this.captureWindow = null;
+    return native;
+  }
+
+  /**
    * Stop the timers and capture sources, then finalize the WAV files. It is
    * synchronous and does not change the status. Returns the finalize error,
    * or null.
@@ -916,21 +1032,11 @@ export class MeetingRecorder {
     this.flushTimer = null;
     if (this.maxDurationTimer) clearTimeout(this.maxDurationTimer);
     this.maxDurationTimer = null;
-    if (this.fakeCaptureTimer) clearInterval(this.fakeCaptureTimer);
-    this.fakeCaptureTimer = null;
     if (this.resumeListener) {
       powerMonitor.removeListener("resume", this.resumeListener);
       this.resumeListener = null;
     }
-
-    this.nativeCapture?.stop();
-    this.nativeCapture = null;
-    this.systemCapture?.stop();
-    this.systemCapture = null;
-    if (this.captureWindow && !this.captureWindow.isDestroyed()) {
-      this.captureWindow.destroy();
-    }
-    this.captureWindow = null;
+    this.stopCaptureSources();
 
     let finalizeError: unknown = null;
     try {
@@ -944,6 +1050,172 @@ export class MeetingRecorder {
     return finalizeError;
   }
 
+  /** Tell the server about a pause or a resume. A failure is not fatal. */
+  private async notifyPaused(paused: boolean): Promise<void> {
+    if (!this.meetingId) return;
+    try {
+      await this.api(`/meetings/${this.meetingId}/paused`, {
+        method: "PUT",
+        body: { paused },
+      });
+    } catch (err) {
+      log.warn(`Failed to send the paused flag: ${errorMessage(err)}`);
+    }
+  }
+
+  /**
+   * Add silence to the shorter track, so that both tracks hold the same
+   * number of samples. The two captures stop at slightly different samples.
+   * This keeps the tracks aligned across the pause.
+   */
+  private equalizeTracks(): void {
+    const journal = this.journal;
+    if (!journal) return;
+    const diff = journal.micSamples - journal.systemSamples;
+    if (diff === 0) return;
+    const shorter = diff > 0 ? this.systemWav : this.micWav;
+    shorter?.append(Buffer.alloc(Math.abs(diff) * BYTES_PER_SAMPLE));
+    if (diff > 0) journal.systemSamples += diff;
+    else journal.micSamples -= diff;
+  }
+
+  /**
+   * Pause the recording. It closes the mic and the system capture, so the
+   * macOS mic indicator goes off. Both tracks get no samples until
+   * resume(). Throws with a user-facing message on refusal.
+   */
+  async pause(): Promise<void> {
+    if (this._status !== "recording" || this.starting || !this.journal) {
+      throw new Error("There is no running recording to pause");
+    }
+    if (this.pausedAt !== null) return;
+    if (this.resuming) throw new Error("The recording is starting again");
+    const now = Date.now();
+    // The pause starts here. Frames that arrive later are dropped.
+    this.pausedAt = now;
+    this.pausing = true;
+    const native = this.stopCaptureSources();
+    try {
+      if (native) {
+        // Wait until the helper process has exited: then the mic is closed.
+        await Promise.race([
+          native.exited(),
+          new Promise<void>((resolve) => {
+            setTimeout(resolve, PAUSE_EXIT_WAIT_MS).unref?.();
+          }),
+        ]);
+      }
+    } finally {
+      this.pausing = false;
+    }
+    // The user may have stopped the recording while the helper exited.
+    if (this.pausedAt !== now || !this.journal) return;
+    try {
+      this.micWav?.flush();
+      this.systemWav?.flush();
+    } catch (err) {
+      log.error(`WAV flush failed: ${String(err)}`);
+    }
+    // The shared clock of the native helper makes the tracks the same length.
+    // The fallback tracks have their own T0, so their lengths differ by design.
+    if (!this.usesFallback) this.equalizeTracks();
+    this.journal.epochs.push({
+      reason: "pause",
+      wallclockMs: now,
+      micSamples: this.journal.micSamples,
+      systemSamples: this.journal.systemSamples,
+    });
+    if (this.maxDurationTimer) clearTimeout(this.maxDurationTimer);
+    this.maxDurationTimer = null;
+    await this.writeJournal();
+    await this.notifyPaused(true);
+    log.info(`Meeting recording paused: ${this.meetingId}`);
+    this.broadcast();
+  }
+
+  /**
+   * Resume a paused recording. It starts the capture again. When the capture
+   * cannot start, it throws with a user-facing message. The recording then
+   * stays paused: the user can try again or stop it, and the audio that
+   * exists is saved.
+   */
+  async resume(): Promise<void> {
+    const meetingId = this.meetingId;
+    if (this._status !== "recording" || !meetingId || !this.journal) {
+      throw new Error("There is no running recording to resume");
+    }
+    if (this.pausedAt === null) return;
+    if (this.resuming || this.pausing) {
+      throw new Error("The recording is changing state. Try again.");
+    }
+    const pausedAt = this.pausedAt;
+    this.resuming = true;
+    try {
+      const started = await this.startCaptureAfterPause(meetingId);
+      // The user may have stopped the recording while the capture started.
+      if (!this.resuming || !this.isRecording(meetingId)) return;
+      if (!started) {
+        this.stopCaptureSources();
+        const message =
+          "The microphone did not start again. Check the microphone, then try Resume. You can also stop the recording: the audio so far is saved.";
+        this.lastError = this.lastError ?? "capture: resume failed";
+        throw new Error(message);
+      }
+      // The pause ends when the capture runs, so the start time of the
+      // helper is paused time, not recorded time.
+      const now = Date.now();
+      this.pausedTotalMs += now - pausedAt;
+      this.pausedAt = null;
+      if (this.journal) {
+        this.journal.epochs.push({
+          reason: "resume",
+          wallclockMs: now,
+          micSamples: this.journal.micSamples,
+          systemSamples: this.journal.systemSamples,
+        });
+      }
+      this.armMaxDurationTimer();
+      await this.writeJournal();
+      await this.notifyPaused(false);
+      log.info(`Meeting recording resumed: ${meetingId}`);
+      this.broadcast();
+    } finally {
+      this.resuming = false;
+    }
+  }
+
+  /**
+   * Start the capture after a pause. Same order as at the start: the native
+   * helper first, then the fallback path. Returns false when nothing runs.
+   */
+  private async startCaptureAfterPause(meetingId: string): Promise<boolean> {
+    if (isFakeMeetingCapture()) {
+      this.startFakeCapture();
+      return true;
+    }
+    if (!this.usesFallback) {
+      const mic = this.devices?.mic;
+      if (
+        mic !== undefined &&
+        (await this.startNativeCapture(meetingId, mic))
+      ) {
+        return true;
+      }
+      if (!this.isRecording(meetingId) || !this.resuming) return false;
+      log.warn(
+        "Native capture did not start after the pause. Using the fallback.",
+      );
+      this.usesFallback = true;
+      this.journal?.epochs.push({
+        reason: "fallback",
+        wallclockMs: Date.now(),
+        micSamples: this.journal.micSamples,
+        systemSamples: this.journal.systemSamples,
+      });
+    }
+    return this.startFallbackCapture();
+  }
+
   /** Stop the recording and finalize files + DB row. */
   async stop(
     status: "recorded" | "failed" = "recorded",
@@ -951,6 +1223,14 @@ export class MeetingRecorder {
   ): Promise<void> {
     if (this._status !== "recording") return;
     const meetingId = this.meetingId;
+    // A stop during a pause ends the pause now. The paused time is not
+    // recorded time.
+    this.resuming = false;
+    const endedAt = Date.now();
+    if (this.pausedAt !== null) {
+      this.pausedTotalMs += endedAt - this.pausedAt;
+      this.pausedAt = null;
+    }
     this.setStatus("finalizing");
 
     const finalizeError = this.teardown();
@@ -963,14 +1243,14 @@ export class MeetingRecorder {
     await this.writeJournal();
     if (this.journal) logTrackRatio(this.journal);
 
-    const endedAt = Date.now();
     if (meetingId) {
       try {
         await this.api(`/meetings/${meetingId}/stop`, {
           method: "POST",
           body: {
             ended_at: endedAt,
-            duration_ms: endedAt - this.startedAt,
+            // Recorded time only: the paused time is not in it.
+            duration_ms: endedAt - this.startedAt - this.pausedTotalMs,
             status,
             error: error ?? this.lastError ?? undefined,
           },
@@ -984,6 +1264,8 @@ export class MeetingRecorder {
     this.meetingDir = null;
     this.journal = null;
     this.devices = null;
+    this.pausedAt = null;
+    this.pausedTotalMs = 0;
     this.setStatus("idle");
     log.info(`Meeting recording stopped: ${meetingId} (${status})`);
   }

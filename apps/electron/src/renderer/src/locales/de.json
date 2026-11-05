@@ -1489,7 +1489,13 @@
         }
       },
       "errModelMissing": "Das Modell für Fragen ist nicht heruntergeladen. Lade es in Modelle herunter."
-    }
+    },
+    "pause": "Pausieren",
+    "resume": "Fortsetzen",
+    "paused": "Pausiert",
+    "pausedHint": "Das Mikrofon ist aus. Es wird nichts aufgenommen.",
+    "pauseFailed": "Die Aufnahme wurde nicht pausiert. Versuchen Sie es noch einmal.",
+    "resumeFailed": "Das Mikrofon wurde nicht wieder gestartet. Prüfen Sie das Mikrofon und wählen Sie Fortsetzen. Sie können die Aufnahme auch beenden. Das bisherige Audio ist gespeichert."
   },
   "help": {
     "hotkeys": {
@@ -1569,7 +1575,8 @@
       "preparingMic": "Mikrofon wird vorbereitet",
       "listening": "Höre zu",
       "transcribing": "Transkribiere",
-      "meetingRecording": "Meeting wird aufgenommen"
+      "meetingRecording": "Meeting wird aufgenommen",
+      "meetingPaused": "Meeting-Aufnahme pausiert"
     },
     "error": {
       "timedOut": "Zeitüberschreitung bei der Transkription",
@@ -1585,7 +1592,10 @@
       "recordingFailedTitle": "Aufnahme fehlgeschlagen",
       "micDenied": "Mikrofonzugriff verweigert",
       "noAudioCaptured": "Kein Audio aufgenommen. Versuchen Sie die Aufnahme erneut."
-    }
+    },
+    "pauseMeeting": "Meeting-Aufnahme pausieren",
+    "resumeMeeting": "Meeting-Aufnahme fortsetzen",
+    "paused": "Pausiert"
   },
   "errorBoundary": {
     "eyebrow": "Etwas ist schiefgelaufen",
@@ -1606,7 +1616,8 @@
     "status": {
       "ready": "Bereit",
       "recording": "Aufnahme",
-      "dictating": "Diktat"
+      "dictating": "Diktat",
+      "paused": "Pausiert"
     },
     "meeting": {
       "section": "Meeting-Aufnahme",
@@ -1616,7 +1627,14 @@
       "elapsed": "Aufnahmedauer",
       "started": "Meeting-Aufnahme gestartet",
       "stopped": "Meeting-Aufnahme gestoppt",
-      "startFailed": "Die Meeting-Aufnahme wurde nicht gestartet."
+      "startFailed": "Die Meeting-Aufnahme wurde nicht gestartet.",
+      "pause": "Pausieren",
+      "resume": "Fortsetzen",
+      "pauseLabel": "Meeting-Aufnahme pausieren",
+      "resumeLabel": "Meeting-Aufnahme fortsetzen",
+      "paused": "Pausiert",
+      "pausedAnnouncement": "Meeting-Aufnahme pausiert",
+      "resumedAnnouncement": "Meeting-Aufnahme fortgesetzt"
     },
     "recent": {
       "title": "Letzte Diktate",
