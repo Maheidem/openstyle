@@ -25,6 +25,8 @@ export function PairCard({
   onConfigureWarming,
   onConfigureLlmWarming,
   onConfigureSampling,
+  voiceMissing,
+  llmMissing,
 }: {
   voice: ConfiguredModel | undefined;
   /** The default voice model is on an own server and cannot transcribe. */
@@ -41,6 +43,10 @@ export function PairCard({
   onConfigureLlmWarming?: () => void;
   /** When set, shows a sampling link below the cleanup button (local LLM only). */
   onConfigureSampling?: () => void;
+  /** The selected speech model is not on the disk. */
+  voiceMissing?: boolean;
+  /** The selected built-in LLM is not on the disk. */
+  llmMissing?: boolean;
 }): React.JSX.Element {
   const { t } = useTranslation();
 
@@ -53,7 +59,9 @@ export function PairCard({
         warning={
           voiceCannotTranscribe
             ? t("models.servers.cannotTranscribe")
-            : undefined
+            : voiceMissing
+              ? t("models.missing.pairWarning")
+              : undefined
         }
         cta={t("models.pair.changeVoiceShort")}
         ctaAriaLabel={t("models.pair.changeVoice")}
@@ -80,6 +88,7 @@ export function PairCard({
           toggle={llmCleanup}
           onToggle={onToggleCleanup}
           onChange={onChangeLlm}
+          warning={llmMissing ? t("models.missing.pairWarning") : undefined}
           dimmed={!llmCleanup}
           warmingAction={
             onConfigureLlmWarming

@@ -35,12 +35,15 @@ import {
   SelectValue,
 } from "@renderer/components/ui/select";
 import { Switch } from "@renderer/components/ui/switch";
+import { missingForTask } from "@renderer/lib/missing-models";
 import {
   type ConfiguredModel,
   type LocalLlmItem,
   MLX_LLM_PROVIDER_ID,
 } from "@renderer/lib/models";
+import { missingModelsQueryOptions } from "@renderer/lib/query";
 import { cn } from "@renderer/lib/utils";
+import { useQuery } from "@tanstack/react-query";
 import { ChevronDown, ChevronRight } from "lucide-react";
 import { useState } from "react";
 import { useTranslation } from "react-i18next";
@@ -296,6 +299,13 @@ function TaskRow({
   onRequestDeletePreset: (preset: LlmParameterPreset) => void;
 }): React.JSX.Element {
   const { t } = useTranslation();
+  const { data: missingModels } = useQuery(missingModelsQueryOptions());
+  // The Ask task has the id `meetingChat`. The live chat has no cue.
+  const missingTask =
+    taskId === "meetingChat" ? "ask" : taskId === "liveChat" ? null : taskId;
+  const taskMissing =
+    missingTask !== null &&
+    missingForTask(missingModels, missingTask) !== undefined;
   const builtinModels = llmModels.filter(
     (c) => c.provider === MLX_LLM_PROVIDER_ID,
   );
@@ -556,6 +566,14 @@ function TaskRow({
           </div>
         </div>
         <div className="flex shrink-0 items-center gap-2 pt-0.5">
+          {taskMissing && (
+            <span
+              className="rounded border border-yellow-500/35 bg-yellow-300/15 px-1.5 py-0.5 text-[11px] font-medium text-yellow-950 dark:border-yellow-300/35 dark:bg-yellow-400/15 dark:text-yellow-100"
+              data-testid={`task-model-missing-${taskId}`}
+            >
+              {t("models.missing.rowBadge")}
+            </span>
+          )}
           {builtinModel && keepReady && (
             <span
               className="text-muted-foreground text-[11px]"

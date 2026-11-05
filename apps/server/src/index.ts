@@ -257,6 +257,7 @@ export async function startServer(
 }
 
 export { closeDb, writeSetting } from "./lib/db.js";
+export { onCleanupSkipped } from "./lib/dictation-notices.js";
 export { stopTracing } from "./lib/llm/tracing.js";
 export { getLocalModelCacheDirs } from "./lib/local-model-dirs.js";
 export { stopMlxServer } from "./lib/mlx-asr/server.js";

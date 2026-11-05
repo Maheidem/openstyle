@@ -21,6 +21,8 @@ export interface ProcessedHistoryEntry extends RawHistoryEntry {
   inputTokens: number;
   outputTokens: number;
   costUsd: number;
+  /** The cleanup did not run: its model is not on the disk. */
+  cleanupSkipped?: "model_missing" | null;
 }
 
 export function isHistoryPaused(): boolean {
@@ -57,8 +59,8 @@ export function saveProcessedHistory(entry: ProcessedHistoryEntry): boolean {
   getDb()
     .prepare(
       `INSERT INTO transcription_history
-         (raw_text, cleaned_text, voice_provider, voice_model, llm_provider, llm_model, duration_ms, audio_duration_ms, input_tokens, output_tokens, cost_usd, fixes_count)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+         (raw_text, cleaned_text, voice_provider, voice_model, llm_provider, llm_model, duration_ms, audio_duration_ms, input_tokens, output_tokens, cost_usd, fixes_count, cleanup_skipped)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
     )
     .run(
       entry.rawText,
@@ -73,6 +75,7 @@ export function saveProcessedHistory(entry: ProcessedHistoryEntry): boolean {
       entry.outputTokens,
       entry.costUsd,
       countFixes(entry.rawText, entry.cleanedText),
+      entry.cleanupSkipped ?? null,
     );
 
   return true;

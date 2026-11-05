@@ -455,7 +455,9 @@
     "copyText": "Copy text",
     "delete": "Delete",
     "subtitle": "Everything you've dictated, in one searchable place.",
-    "selectDate": "Select"
+    "selectDate": "Select",
+    "cleanupSkipped": "Cleanup skipped: model missing",
+    "cleanupSkippedHint": "The cleanup model is not downloaded. This text is the raw text. Download the model in Models."
   },
   "vocabulary": {
     "title": "Vocabulary",
@@ -971,6 +973,25 @@
       "desc": "Openstyle now uses {{to}} for AI cleanup.",
       "action": "Change",
       "dismiss": "Dismiss"
+    },
+    "missing": {
+      "title": "{{name}} is not downloaded.",
+      "desc": "Openstyle needs it for: {{tasks}}.",
+      "action": "Download in Models",
+      "cardTitle": "Selected models that are not downloaded",
+      "download": "Download",
+      "downloading": "Downloading…",
+      "pairWarning": "This model is not downloaded.",
+      "rowBadge": "Not downloaded",
+      "task": {
+        "dictation": "Dictation",
+        "meetingTranscribe": "Meeting transcription",
+        "cleanup": "Text cleanup",
+        "meetingEnhance": "Enhance",
+        "meetingSummarize": "Summarize",
+        "ask": "Ask",
+        "search": "Search"
+      }
     }
   },
   "shell": {
@@ -983,7 +1004,8 @@
       "help": "Help",
       "meetings": "Meetings",
       "import": "Import",
-      "ask": "Ask"
+      "ask": "Ask",
+      "modelsMissing": "Not downloaded: {{count}}"
     },
     "githubRepo": "GitHub repo"
   },
@@ -1340,7 +1362,9 @@
       "chunks": "chunks {{list}}",
       "resume": "Resume",
       "startAgain": "Start again",
-      "startAgainDiscards": "Start again. This discards the finished work of the stopped run."
+      "startAgainDiscards": "Start again. This discards the finished work of the stopped run.",
+      "modelMissing": "{{name}} is not downloaded. Download it in Models.",
+      "downloadInModels": "Download in Models"
     },
     "llmError": {
       "length": "The model reached its output limit.",
@@ -1356,6 +1380,7 @@
       "provider_invalid_request": "The provider refused the request.",
       "model_mismatch": "The server answered with another model.",
       "model_unavailable": "Openstyle cannot use the chosen model. Check Settings > Models, then try again.",
+      "model_missing": "The model is not downloaded. Download it in Models.",
       "engine_not_ready": "The on-device AI engine is not ready yet. It is installing an update.",
       "deadline_exceeded": "The summary took longer than its time limit.",
       "budget_exceeded": "The meeting is too long to summarize in one run.",
@@ -1782,7 +1807,8 @@
           "no_leads": "Stopped: every part was searched.",
           "error": "Stopped: an error."
         }
-      }
+      },
+      "errModelMissing": "The model for Ask is not downloaded. Download it in Models."
     }
   },
   "help": {

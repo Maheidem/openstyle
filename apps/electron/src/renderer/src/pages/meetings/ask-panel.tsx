@@ -6,6 +6,7 @@ import {
   type ChatThreadDetail,
   type ChatWider,
 } from "@openstyle/validations";
+import { MissingModelBanner } from "@renderer/components/missing-model-banner";
 import { Button } from "@renderer/components/ui/button";
 import {
   Select,
@@ -336,6 +337,7 @@ export function AskPanel({
 
   const conversation = (
     <div className="flex min-w-0 flex-1 flex-col gap-3">
+      <MissingModelBanner tasks={["ask", "search"]} className="mb-0" />
       <div
         ref={listRef}
         className={cn(

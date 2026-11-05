@@ -588,3 +588,35 @@ describe("meetings.inspector keys", () => {
     expect(en[`meetings.inspector.verdict.${code}`]).toBeTruthy();
   });
 });
+
+describe("model missing cue (owner report 2026-11-05)", () => {
+  // Every locale carries the cue texts, with the placeholders of en.json. The
+  // cue is the fix for a silent failure, so it must not fall back to English.
+  const keys = Object.keys(en).filter(
+    (key) =>
+      key.startsWith("models.missing.") ||
+      key === "meetings.llmRun.modelMissing" ||
+      key === "meetings.llmRun.downloadInModels" ||
+      key === "meetings.llmError.model_missing" ||
+      key === "meetings.ask.errModelMissing" ||
+      key === "history.cleanupSkipped" ||
+      key === "history.cleanupSkippedHint" ||
+      key === "shell.nav.modelsMissing",
+  );
+
+  it("has the keys in en.json", () => {
+    expect(keys.length).toBeGreaterThanOrEqual(19);
+  });
+
+  for (const file of localeFiles) {
+    it(`${file} has each key with the same placeholders`, () => {
+      const flat = flatten(load(file));
+      for (const key of keys) {
+        expect(flat[key], `${file} ${key}`).toBeTruthy();
+        expect(placeholders(flat[key] ?? ""), `${file} ${key}`).toEqual(
+          placeholders(en[key] ?? ""),
+        );
+      }
+    });
+  }
+});

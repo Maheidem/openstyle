@@ -5,6 +5,7 @@ import {
   PageShell,
 } from "@renderer/components/page-chrome";
 import { Button } from "@renderer/components/ui/button";
+import { missingForTask, missingForTasks } from "@renderer/lib/missing-models";
 import type {
   ApiKeyEntry,
   AvailableModel,
@@ -19,7 +20,10 @@ import {
   formatMemoryGb,
   MLX_LLM_PROVIDER_ID,
 } from "@renderer/lib/models";
-import { settingsQueryOptions } from "@renderer/lib/query";
+import {
+  missingModelsQueryOptions,
+  settingsQueryOptions,
+} from "@renderer/lib/query";
 import { cn, ON_DEVICE_PHRASE } from "@renderer/lib/utils";
 import { SETTINGS_KEYS } from "@shared/settings-keys";
 import { useQuery } from "@tanstack/react-query";
@@ -28,6 +32,7 @@ import { useEffect, useRef, useState } from "react";
 import { Trans, useTranslation } from "react-i18next";
 import { useNavigate, useSearchParams } from "react-router";
 import { MeetingModelRow } from "./meeting-model-row";
+import { MissingModelsCard } from "./missing-models-card";
 import { MlxWarmingDialog } from "./mlx-memory-section";
 import { ConfirmDialog, type ModalState, ModelModal } from "./model-modal";
 import { PairCard } from "./pair-card";
@@ -50,6 +55,7 @@ export default function ModelsPage(): React.JSX.Element {
   const { data: settings } = useQuery(settingsQueryOptions());
   const advancedMode = settings?.[SETTINGS_KEYS.advancedMode] === "true";
 
+  const { data: missingModels } = useQuery(missingModelsQueryOptions());
   const [modal, setModal] = useState<ModalState | null>(null);
   const [saving, setSaving] = useState(false);
   const [keyError, setKeyError] = useState<string | null>(null);
@@ -277,6 +283,7 @@ export default function ModelsPage(): React.JSX.Element {
         />
       )}
       <div className="space-y-6">
+        <MissingModelsCard m={m} />
         <PairCard
           voice={m.defaultVoice}
           voiceCannotTranscribe={voiceCannotTranscribe(
@@ -296,6 +303,16 @@ export default function ModelsPage(): React.JSX.Element {
             showMlxLlmWarming ? () => setLlmWarmingOpen(true) : undefined
           }
           onConfigureSampling={showParams ? onOpenCleanupParams : undefined}
+          voiceMissing={
+            missingForTask(missingModels, "dictation") !== undefined
+          }
+          llmMissing={
+            missingForTasks(missingModels, [
+              "cleanup",
+              "meetingEnhance",
+              "meetingSummarize",
+            ]).length > 0
+          }
         />
 
         {/* I3 (specs/meeting-transcription-v2.md §3.3): the meeting

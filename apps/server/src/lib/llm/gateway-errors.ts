@@ -1,4 +1,9 @@
-import type { LlmParamsLedger } from "@openstyle/validations";
+import {
+  formatModelMissingDetail,
+  type LlmParamsLedger,
+  type LocalModelRef,
+} from "@openstyle/validations";
+import { isModelNotDownloadedError } from "../mlx-asr/model-not-downloaded.js";
 import type {
   GatewayErrorKind,
   GatewayStepId,
@@ -278,6 +283,23 @@ export class ModelUnavailableError extends GatewayError {
   }
 }
 
+/**
+ * The model that the task needs is selected, but its files are not on the
+ * disk. Final: a retry cannot help, and every other unit of the run hits the
+ * same fault. The UI shows "<name> is not downloaded" with a Download action.
+ * `detail` is the text that the run step stores (`formatModelMissingDetail`).
+ */
+export class ModelMissingError extends GatewayError {
+  readonly kind = "model_missing";
+  readonly model: LocalModelRef;
+  readonly detail: string;
+  constructor(init: Init & { model: LocalModelRef }) {
+    super({ ...init, runWide: true });
+    this.model = init.model;
+    this.detail = formatModelMissingDetail(init.model);
+  }
+}
+
 export type ProviderReason =
   | "timeout"
   | "rate_limited"
@@ -372,6 +394,14 @@ function startErrorCode(err: unknown): string | null {
 export function modelUnavailableFrom(err: unknown, facts: CallFacts): unknown {
   if (err instanceof ModelUnavailableError) return err;
   if (err instanceof EngineNotReadyError) return err;
+  if (err instanceof ModelMissingError) return err;
+  if (isModelNotDownloadedError(err)) {
+    return new ModelMissingError({
+      message: `${err.model.name} is not downloaded.`,
+      facts,
+      model: err.model,
+    });
+  }
   const text = err instanceof Error ? err.message : String(err);
   const code = startErrorCode(err);
   if (code === "runtime-update-pending") {

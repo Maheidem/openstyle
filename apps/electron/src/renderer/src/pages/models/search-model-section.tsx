@@ -46,6 +46,8 @@ export function SearchModelSection(): React.JSX.Element | null {
   const refresh = async (): Promise<void> => {
     await queryClient.invalidateQueries({ queryKey: queryKeys.mlxEmbedStatus });
     await queryClient.invalidateQueries({ queryKey: queryKeys.models.diskUse });
+    // A download or a delete changes which selected models are missing.
+    await queryClient.invalidateQueries({ queryKey: queryKeys.models.missing });
   };
   const models = getClient().api["mlx-embed"].models[":model"];
   const call = (p: Promise<unknown>): void => {

@@ -22,6 +22,7 @@ interface HistoryRow {
   output_tokens: number;
   cost_usd: number;
   fixes_count: number;
+  cleanup_skipped: string | null;
   created_at: string;
 }
 

@@ -10,6 +10,7 @@ type PickerEnv =
 type E2eCounterName =
   | "importCalls"
   | "importNotifications"
+  | "cleanupSkippedNotifications"
   | "meetingImportCalls";
 
 /** Reads one counter from the main process. Returns 0 if it is not set yet. */

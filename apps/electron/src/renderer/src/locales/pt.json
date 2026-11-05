@@ -410,7 +410,9 @@
     "nerdTok": "{{in}}→{{out}} tok",
     "nerdCompute": "{{label}} de computação",
     "dismissHero": "Dispensar",
-    "selectDate": "Selecionar"
+    "selectDate": "Selecionar",
+    "cleanupSkipped": "Limpeza ignorada: modelo ausente",
+    "cleanupSkippedHint": "O modelo de limpeza não está baixado. Este texto é o texto original. Baixe o modelo em Modelos."
   },
   "vocabulary": {
     "title": "Vocabulário",
@@ -806,6 +808,25 @@
       "desc": "O Openstyle agora usa {{to}} para a limpeza com IA.",
       "action": "Alterar",
       "dismiss": "Dispensar"
+    },
+    "missing": {
+      "title": "{{name}} não está baixado.",
+      "desc": "O Openstyle precisa dele para: {{tasks}}.",
+      "action": "Baixar em Modelos",
+      "cardTitle": "Modelos escolhidos que não estão baixados",
+      "download": "Baixar",
+      "downloading": "Baixando…",
+      "pairWarning": "Este modelo não está baixado.",
+      "rowBadge": "Não baixado",
+      "task": {
+        "dictation": "Ditado",
+        "meetingTranscribe": "Transcrição de reuniões",
+        "cleanup": "Limpeza de texto",
+        "meetingEnhance": "Melhorar",
+        "meetingSummarize": "Resumir",
+        "ask": "Perguntar",
+        "search": "Busca"
+      }
     }
   },
   "shell": {
@@ -818,7 +839,8 @@
       "help": "Ajuda",
       "meetings": "Reuniões",
       "import": "Importar",
-      "ask": "Perguntar"
+      "ask": "Perguntar",
+      "modelsMissing": "Não baixados: {{count}}"
     },
     "githubRepo": "Repositório do GitHub"
   },
@@ -1158,7 +1180,9 @@
       "chunks": "trechos {{list}}",
       "resume": "Retomar",
       "startAgain": "Começar de novo",
-      "startAgainDiscards": "Começar de novo. Isso descarta o trabalho já concluído da execução parada."
+      "startAgainDiscards": "Começar de novo. Isso descarta o trabalho já concluído da execução parada.",
+      "modelMissing": "{{name}} não está baixado. Baixe em Modelos.",
+      "downloadInModels": "Baixar em Modelos"
     },
     "llmError": {
       "length": "O modelo atingiu o limite de saída.",
@@ -1174,6 +1198,7 @@
       "provider_invalid_request": "O provedor recusou a solicitação.",
       "model_mismatch": "O servidor respondeu com outro modelo.",
       "model_unavailable": "O Openstyle não pode usar o modelo escolhido. Verifique Configurações › Modelos e tente de novo.",
+      "model_missing": "O modelo não está baixado. Baixe em Modelos.",
       "engine_not_ready": "O motor de IA do dispositivo ainda não está pronto. Ele está instalando uma atualização.",
       "deadline_exceeded": "O resumo levou mais tempo que o seu limite de tempo.",
       "budget_exceeded": "A reunião é longa demais para o limite de resumo de 24 chamadas.",
@@ -1463,7 +1488,8 @@
           "no_leads": "Parou: todas as partes foram buscadas.",
           "error": "Parou: um erro."
         }
-      }
+      },
+      "errModelMissing": "O modelo para Perguntar não está baixado. Baixe em Modelos."
     }
   },
   "help": {

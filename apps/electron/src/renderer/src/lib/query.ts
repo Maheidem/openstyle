@@ -42,6 +42,8 @@ export const queryKeys = {
     configured: ["models", "configured"] as const,
     /** The disk use of each downloaded app model (`GET /api/models/disk-usage`). */
     diskUse: ["models", "disk-use"] as const,
+    /** The selected local models that are not on the disk (`GET /api/models/missing`). */
+    missing: ["models", "missing"] as const,
   },
   apiKeys: ["api-keys"] as const,
   /** Own servers with their live probe (`GET /api/servers`). */
@@ -199,6 +201,24 @@ export function modelDiskUseQueryOptions() {
       return await res.json();
     },
     staleTime: 0,
+  });
+}
+
+/**
+ * The selected local models that are not on the disk. The server only stats
+ * files, so a fresh read on each mount and window focus is cheap. A download
+ * or a delete invalidates the `models` family, which includes this key.
+ */
+export function missingModelsQueryOptions() {
+  return queryOptions({
+    queryKey: queryKeys.models.missing,
+    queryFn: async () => {
+      const res = await getClient().api.models.missing.$get();
+      if (!res.ok) throw new Error("Failed to load the missing models");
+      return await res.json();
+    },
+    staleTime: 0,
+    refetchOnWindowFocus: true,
   });
 }
 

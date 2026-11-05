@@ -4,6 +4,7 @@ import {
   parseHistoryFilters,
 } from "@openstyle/validations";
 import { DragSpacer } from "@renderer/components/drag-spacer";
+import { MissingModelBanner } from "@renderer/components/missing-model-banner";
 import { RetiredModelNotice } from "@renderer/components/retired-model-notice";
 import { ServerVoiceNotice } from "@renderer/components/server-voice-notice";
 import { TutorialDemo } from "@renderer/components/tutorial-demo";
@@ -502,6 +503,7 @@ export default function HistoryPage(): React.JSX.Element {
           {historyPaused && <HistoryPausedNotice />}
           <ServerVoiceNotice />
           <RetiredModelNotice />
+          <MissingModelBanner tasks={["dictation", "cleanup"]} />
           {hero}
           <EmptyState />
         </div>
@@ -536,6 +538,7 @@ export default function HistoryPage(): React.JSX.Element {
           {historyPaused && <HistoryPausedNotice />}
           <ServerVoiceNotice />
           <RetiredModelNotice />
+          <MissingModelBanner tasks={["dictation", "cleanup"]} />
           {hero}
           {searchRow}
           {feed}
@@ -1205,6 +1208,19 @@ const FeedItem = memo(function FeedItem({
           </TooltipTrigger>
           <TooltipContent>{modelLabel}</TooltipContent>
         </Tooltip>
+        {entry.cleanup_skipped === "model_missing" && (
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <span
+                data-testid="history-cleanup-skipped"
+                className="mono shrink-0 cursor-default rounded-[5px] border border-yellow-500/35 bg-yellow-300/15 px-[7px] py-[2px] text-[9px] font-medium tracking-[0.06em] text-yellow-950 uppercase dark:border-yellow-300/35 dark:bg-yellow-400/15 dark:text-yellow-100"
+              >
+                {t("history.cleanupSkipped")}
+              </span>
+            </TooltipTrigger>
+            <TooltipContent>{t("history.cleanupSkippedHint")}</TooltipContent>
+          </Tooltip>
+        )}
         <div className="flex-1" />
         {/* Copy/delete sit before the duration so the actions don't leave a
             reserved blank at the far-right edge when not hovering. */}

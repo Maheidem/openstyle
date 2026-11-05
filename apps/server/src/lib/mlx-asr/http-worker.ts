@@ -7,6 +7,7 @@ import {
   isAppleSiliconMac,
   MLX_UNSUPPORTED_PLATFORM_REASON,
 } from "./constants.js";
+import { ModelNotDownloadedError } from "./model-not-downloaded.js";
 import {
   findPythonExecutable,
   getMlxAsrServerScriptPath,
@@ -72,6 +73,8 @@ export interface MlxHttpWorkerOptions<D extends MlxHttpModelDef> {
   logName: string;
   /** The words in messages, for example "LLM" ("The local LLM worker ..."). */
   label: string;
+  /** The engine name that the Models page uses for these models. */
+  engine: "mlx-llm" | "mlx-embed" | "mlx-rerank";
   /** TRUSTED-OPERATOR-ONLY env var with a worker binary to run instead. */
   overrideEnv: string;
   getModel: (id: string) => D | undefined;
@@ -219,9 +222,11 @@ export function createMlxHttpWorker<D extends MlxHttpModelDef>(
     if (!(workerProcess && currentModelId === modelId && workerReady)) {
       await stop();
       if (!opts.isDownloaded(def)) {
-        throw new Error(
-          `The local model ${def.displayName} is not downloaded. Download it under Models.`,
-        );
+        throw new ModelNotDownloadedError({
+          engine: opts.engine,
+          defId: def.id,
+          name: def.displayName,
+        });
       }
       currentModelId = modelId;
       lastError = null;

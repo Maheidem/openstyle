@@ -271,6 +271,10 @@ describe("askErrorView", () => {
       key: "errProviderNotReady",
       action: "models",
     });
+    expect(askErrorView(409, "model_missing")).toEqual({
+      key: "errModelMissing",
+      action: "models",
+    });
     expect(askErrorView(409, "busy")).toEqual({
       key: "errBusy",
       action: "retry",

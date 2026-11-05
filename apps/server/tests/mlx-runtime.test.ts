@@ -409,6 +409,7 @@ describe("server and worker version contract", () => {
     const worker = createMlxHttpWorker({
       logName: "mlx-llm",
       label: "LLM",
+      engine: "mlx-llm",
       overrideEnv: "OPENSTYLE_TEST_NO_OVERRIDE",
       getModel: (id) => (id === "m" ? def : undefined),
       isDownloaded: () => true,

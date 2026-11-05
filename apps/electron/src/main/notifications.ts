@@ -36,6 +36,31 @@ export function notifyImportComplete(fileName: string): void {
   notify("Transcript ready", `“${fileName}” has been transcribed.`, "/today");
 }
 
+// A dictation kept its raw text, because the cleanup model is not on the disk.
+// The notice shows once for each app session, so a missing model does not fire
+// a banner for every dictation. A click opens the Models page. English-only
+// copy from main, like the other main notifications. The renderer shows the
+// lasting cue (Models badge, banners, History mark).
+let cleanupSkippedNotified = false;
+export function notifyCleanupSkipped(modelName: string): void {
+  if (cleanupSkippedNotified) return;
+  cleanupSkippedNotified = true;
+  // Counted before the quiet-mode guard so E2E can assert that the notice fired.
+  if ((process.env.OPENSTYLE_E2E ?? process.env.FREESTYLE_E2E) === "1") {
+    const g = globalThis as {
+      __openstyleE2E?: { cleanupSkippedNotifications?: number };
+    };
+    g.__openstyleE2E ??= {};
+    g.__openstyleE2E.cleanupSkippedNotifications =
+      (g.__openstyleE2E.cleanupSkippedNotifications ?? 0) + 1;
+  }
+  notify(
+    "Text cleanup was skipped",
+    `${modelName} is not downloaded. Your text is not cleaned. Download the model in Models.`,
+    "/settings/models",
+  );
+}
+
 // Rate-limited so a broken paste backend doesn't fire a notification per
 // dictation.
 const PASTE_FAILED_NOTIFY_INTERVAL_MS = 30_000;

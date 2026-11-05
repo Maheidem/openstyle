@@ -1,8 +1,10 @@
-import type {
-  LlmRunInfo,
-  LlmRunKind,
-  LlmSkipReason,
-  LlmStepInfo,
+import {
+  type LlmRunInfo,
+  type LlmRunKind,
+  type LlmSkipReason,
+  type LlmStepInfo,
+  type LocalModelRef,
+  parseModelMissingDetail,
 } from "@openstyle/validations";
 
 // Pure helpers for the run notices of the meeting detail view
@@ -25,6 +27,7 @@ const KNOWN_ERROR_KINDS: ReadonlySet<string> = new Set([
   "provider_invalid_request",
   "model_mismatch",
   "model_unavailable",
+  "model_missing",
   "engine_not_ready",
   "deadline_exceeded",
   "budget_exceeded",
@@ -80,6 +83,32 @@ export interface RunNotice {
    * the engine is ready, so the notice is neutral and has its own text.
    */
   waitingForEngine: boolean;
+  /**
+   * The run failed because its model is not on the disk. The view then shows
+   * "<name> is not downloaded" with a button that opens the Models page at
+   * this model, instead of one line for each failed step.
+   */
+  missingModel: LocalModelRef | null;
+}
+
+/**
+ * The model that a failed run missed, or null. It is set only when every
+ * failure line is `model_missing`: a run with another fault as well keeps its
+ * lines. The step detail names the model (`formatModelMissingDetail`).
+ */
+export function missingModelOf(run: LlmRunInfo): LocalModelRef | null {
+  const lines = noticeLines(run);
+  if (lines.length === 0 || lines.some((l) => l.kind !== "model_missing")) {
+    return null;
+  }
+  for (const step of run.steps) {
+    if (step.errorKind !== "model_missing") continue;
+    const ref = parseModelMissingDetail(step.errorDetail);
+    if (ref) return ref;
+  }
+  return run.errorKind === "model_missing"
+    ? parseModelMissingDetail(run.errorDetail)
+    : null;
 }
 
 /**
@@ -264,6 +293,7 @@ export function runNotice(
     canResume: interrupted,
     startAgainDiscards: interrupted,
     waitingForEngine,
+    missingModel: interrupted || waitingForEngine ? null : missingModelOf(run),
   };
 }
 

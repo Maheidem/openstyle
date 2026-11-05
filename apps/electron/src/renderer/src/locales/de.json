@@ -410,7 +410,9 @@
     "nerdTok": "{{in}}→{{out}} Tok.",
     "nerdCompute": "{{label}} Rechenzeit",
     "dismissHero": "Schließen",
-    "selectDate": "Auswählen"
+    "selectDate": "Auswählen",
+    "cleanupSkipped": "Bereinigung übersprungen: Modell fehlt",
+    "cleanupSkippedHint": "Das Bereinigungsmodell ist nicht heruntergeladen. Dieser Text ist der Rohtext. Lade das Modell in Modelle herunter."
   },
   "vocabulary": {
     "title": "Vokabular",
@@ -807,6 +809,25 @@
       "desc": "Openstyle nutzt jetzt {{to}} für die KI-Bereinigung.",
       "action": "Ändern",
       "dismiss": "Schließen"
+    },
+    "missing": {
+      "title": "{{name}} ist nicht heruntergeladen.",
+      "desc": "Openstyle braucht es für: {{tasks}}.",
+      "action": "In Modelle herunterladen",
+      "cardTitle": "Gewählte Modelle, die nicht heruntergeladen sind",
+      "download": "Herunterladen",
+      "downloading": "Lädt herunter…",
+      "pairWarning": "Dieses Modell ist nicht heruntergeladen.",
+      "rowBadge": "Nicht heruntergeladen",
+      "task": {
+        "dictation": "Diktat",
+        "meetingTranscribe": "Meeting-Transkription",
+        "cleanup": "Textbereinigung",
+        "meetingEnhance": "Verbessern",
+        "meetingSummarize": "Zusammenfassen",
+        "ask": "Fragen",
+        "search": "Suche"
+      }
     }
   },
   "shell": {
@@ -819,7 +840,8 @@
       "help": "Hilfe",
       "meetings": "Meetings",
       "import": "Import",
-      "ask": "Fragen"
+      "ask": "Fragen",
+      "modelsMissing": "Nicht heruntergeladen: {{count}}"
     },
     "githubRepo": "GitHub-Repository"
   },
@@ -1159,7 +1181,9 @@
       "chunks": "Abschnitte {{list}}",
       "resume": "Fortsetzen",
       "startAgain": "Neu starten",
-      "startAgainDiscards": "Neu starten. Dabei geht die fertige Arbeit des angehaltenen Laufs verloren."
+      "startAgainDiscards": "Neu starten. Dabei geht die fertige Arbeit des angehaltenen Laufs verloren.",
+      "modelMissing": "{{name}} ist nicht heruntergeladen. Lade es in Modelle herunter.",
+      "downloadInModels": "In Modelle herunterladen"
     },
     "llmError": {
       "length": "Das Modell hat sein Ausgabelimit erreicht.",
@@ -1175,6 +1199,7 @@
       "provider_invalid_request": "Der Anbieter hat die Anfrage abgelehnt.",
       "model_mismatch": "Der Server hat mit einem anderen Modell geantwortet.",
       "model_unavailable": "Openstyle kann das gewählte Modell nicht verwenden. Prüfen Sie Einstellungen › Modelle und versuchen Sie es erneut.",
+      "model_missing": "Das Modell ist nicht heruntergeladen. Lade es in Modelle herunter.",
       "engine_not_ready": "Die KI-Engine auf dem Gerät ist noch nicht bereit. Sie installiert ein Update.",
       "deadline_exceeded": "Die Zusammenfassung hat ihr Zeitlimit überschritten.",
       "budget_exceeded": "Das Meeting ist zu lang für das Zusammenfassungslimit von 24 Aufrufen.",
@@ -1464,7 +1489,8 @@
           "no_leads": "Gestoppt: Alle Teile wurden durchsucht.",
           "error": "Gestoppt: ein Fehler."
         }
-      }
+      },
+      "errModelMissing": "Das Modell für Fragen ist nicht heruntergeladen. Lade es in Modelle herunter."
     }
   },
   "help": {

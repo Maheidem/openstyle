@@ -30,6 +30,7 @@ import { getMlxLlmModelStatus } from "../lib/mlx-llm/models.js";
 import { reconcileRemovedMlxLlmModels } from "../lib/mlx-llm/reconcile.js";
 import { applyMlxLlmRetentionPolicy } from "../lib/mlx-llm/server.js";
 import { listModelDiskUse } from "../lib/model-disk-usage.js";
+import { listMissingModels } from "../lib/model-missing.js";
 import {
   DEPRECATED_STATUS,
   fetchModelsFromRegistry,
@@ -239,6 +240,8 @@ const models = new Hono()
   })
   // The real disk use of each downloaded app model and the total.
   .get("/disk-usage", (c) => c.json(listModelDiskUse()))
+  // The selected local models that are not on the disk (stat calls only).
+  .get("/missing", async (c) => c.json(await listMissingModels()))
   // Replacements of retired default models that the app has not shown yet.
   .get("/retired-notices", (c) => {
     reconcileRetiredCloudLlmModels();

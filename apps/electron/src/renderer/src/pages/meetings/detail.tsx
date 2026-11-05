@@ -5,6 +5,7 @@ import type {
 } from "@openstyle/validations";
 import { InlineNotice } from "@renderer/components/inline-notice";
 import { Markdown } from "@renderer/components/markdown";
+import { MissingModelBanner } from "@renderer/components/missing-model-banner";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -31,6 +32,7 @@ import {
   formatClockMs,
   formatTimestamp,
 } from "@renderer/lib/format";
+import { modelsPathFor } from "@renderer/lib/missing-models";
 import {
   llmRunsLatestQueryOptions,
   queryKeys,
@@ -46,6 +48,7 @@ import {
   ChevronLeft,
   CircleSlash,
   Clock,
+  Download,
   Ellipsis,
   FolderOpen,
   NotebookPen,
@@ -60,6 +63,7 @@ import {
 import { DropdownMenu } from "radix-ui";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
+import { useNavigate } from "react-router";
 import { SETTINGS_KEYS } from "../../../../shared/settings-keys";
 import { AskTab } from "./ask-tab";
 import { CalendarChip } from "./calendar-card";
@@ -1089,6 +1093,9 @@ export function MeetingDetailView({
           <span>{t("meetings.summarizeCancelled")}</span>
         </InlineNotice>
       )}
+      <MissingModelBanner
+        tasks={["meetingTranscribe", "meetingEnhance", "meetingSummarize"]}
+      />
       {enhanceNotice && (
         <RunNoticeView
           notice={enhanceNotice}
@@ -1674,6 +1681,8 @@ function RunNoticeView({
   onShowDetails?: () => void;
 }): React.JSX.Element {
   const { t } = useTranslation();
+  const navigate = useNavigate();
+  const missingModel = notice.missingModel;
   const lineText = (line: RunNotice["lines"][number]): string => {
     const reason = t(llmErrorKey(line.kind));
     if (line.node === null) return reason;
@@ -1709,12 +1718,14 @@ function RunNoticeView({
         <span>
           {notice.waitingForEngine
             ? t(engineNotReadyTextKey(notice.kind))
-            : t(noticeTextKey(notice.kind, notice.status), {
-                failed: notice.failedSteps,
-                total: notice.totalSteps,
-              })}
+            : missingModel
+              ? t("meetings.llmRun.modelMissing", { name: missingModel.name })
+              : t(noticeTextKey(notice.kind, notice.status), {
+                  failed: notice.failedSteps,
+                  total: notice.totalSteps,
+                })}
         </span>
-        {notice.lines.length > 0 && (
+        {notice.lines.length > 0 && !missingModel && (
           <ul className="m-0 list-none space-y-1 p-0">
             {notice.lines.map((line) => (
               <li
@@ -1727,6 +1738,17 @@ function RunNoticeView({
           </ul>
         )}
         <span className="flex min-w-0 flex-wrap gap-2">
+          {missingModel && (
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => navigate(modelsPathFor(missingModel))}
+              data-testid="meetings-run-download-model"
+            >
+              <Download data-icon="inline-start" />
+              {t("meetings.llmRun.downloadInModels")}
+            </Button>
+          )}
           {notice.canResume && (
             <Button
               variant="outline"

@@ -412,6 +412,7 @@ const stream = new Hono().get(
                       inputTokens: pp.inputTokens,
                       outputTokens: pp.outputTokens,
                       costUsd: pp.costUsd,
+                      cleanupSkipped: pp.cleanupSkipped ?? null,
                     });
                   } catch (err) {
                     log.error(`Failed to save history: ${err}`);

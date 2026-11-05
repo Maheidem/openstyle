@@ -11,7 +11,7 @@ const DEFAULT_CLOUD_URL = "https://service.freestylevoice.com";
 // reports 26). Migrations only run while currentVersion < SCHEMA_VERSION, so a
 // fork migration numbered below that is silently skipped for anyone arriving
 // from upstream. Keep this above the highest upstream version we have seen.
-const SCHEMA_VERSION = 56;
+const SCHEMA_VERSION = 57;
 
 // Legacy default format-rule patterns (used only by pre-v12 migrations below):
 // domain/phrase entries match as substrings of url+title+app; bare words match
@@ -1470,6 +1470,21 @@ function applyMigrations(db: DatabaseSync, currentVersion: number): void {
         written_at INTEGER NOT NULL
       );
     `);
+  }
+
+  if (currentVersion < 57 && tableExists(db, "transcription_history")) {
+    // Why a dictation kept its raw text: the cleanup model was not on the disk
+    // (`model_missing`). NULL for every other row.
+    const hasColumn = (
+      db.prepare("PRAGMA table_info(transcription_history)").all() as {
+        name: string;
+      }[]
+    ).some((col) => col.name === "cleanup_skipped");
+    if (!hasColumn) {
+      db.exec(
+        "ALTER TABLE transcription_history ADD COLUMN cleanup_skipped TEXT",
+      );
+    }
   }
 
   // Upsert schema version
