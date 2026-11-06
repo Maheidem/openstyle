@@ -31,6 +31,7 @@ import {
   trustedOriginMiddleware,
 } from "./lib/trusted-origin.js";
 import { sweepStaleWhisperServer } from "./lib/whisper/pid-file.js";
+import { createMcpRoute } from "./mcp/index.js";
 import routes from "./routes";
 
 const httpLog = createAppLogger("http");
@@ -130,6 +131,11 @@ function createApp() {
     })
     .get("/", (c) => c.text("Openstyle API"))
     .route("/", routes);
+
+  // MCP for agents (specs/mcp.md). Its tools call the routes above through
+  // app.fetch. Mounted outside the chain: AppType (the renderer RPC client
+  // type) does not include it.
+  app.route("/mcp", createMcpRoute(app.fetch));
 
   return app;
 }

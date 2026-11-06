@@ -44,7 +44,9 @@ export function generateAuthToken(): string {
 }
 
 // Liveness endpoint stays open so health probes work without a token.
-const EXEMPT_PATHS = new Set(["/api/health"]);
+// `/mcp` has its own, stricter check (src/mcp/index.ts): a separate token, a
+// loopback Host and no trusted-origin fallback.
+const EXEMPT_PATHS = new Set(["/api/health", "/mcp"]);
 
 /**
  * Enforces bearer-token auth whenever a token is configured — always, once
