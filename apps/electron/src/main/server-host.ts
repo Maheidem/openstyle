@@ -7,12 +7,12 @@ import { is } from "@electron-toolkit/utils";
 import { createAppLogger } from "@openstyle/utils";
 import { DEFAULT_SERVER_PORT } from "@openstyle/validations";
 import { app, dialog, type UtilityProcess, utilityProcess } from "electron";
-import { type AgentChangeMessage, applyAgentChange } from "./agent-changes";
 import {
   type AppSettingsRequestMessage,
   type AppSettingsResultMessage,
   handleAppSettingsRequest,
 } from "./agent-app-settings";
+import { type AgentChangeMessage, applyAgentChange } from "./agent-changes";
 import { DEV_SERVER_PORT, devModelCacheDir } from "./flavor";
 import { broadcastServerChanged, state } from "./main-state";
 import {
