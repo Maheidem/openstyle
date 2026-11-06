@@ -45,6 +45,55 @@ Thanks to the Freestyle authors and contributors for the original work.
 - **Translation** — speak one language, paste another.
 - **Vocabulary** — teach it names and jargon it would otherwise get wrong.
 
+## Use with your AI agent (MCP)
+
+Openstyle has an MCP server. An AI agent on your Mac (Claude Code, pi or
+Codex) can then work with your Openstyle data:
+
+- Read meetings, transcripts, summaries, folders, Ask threads and dictations.
+- Change meeting items: the title, notes, attendees, tags, speakers, the
+  summary, the enhanced transcript, folders and open items.
+- Help with the setup: vocabulary, settings and model downloads.
+
+To connect an agent:
+
+1. Open Openstyle.
+2. Go to Settings > Agents (MCP). Agent access is on by default.
+3. Click `Add to Claude Code`, `Add to pi` or `Add to Codex`. Openstyle runs
+   the agent's own CLI to add itself.
+4. Start a new agent session (in pi, run `/reload`).
+
+If the one-click add does not work, run the command for your agent in
+Terminal. The Stable app registers as `openstyle`. The Dev app registers as
+`openstyle-dev`, so you can add both. The launcher is inside the app:
+
+```sh
+# Stable (Openstyle.app)
+claude mcp add-json -s user openstyle '{"type":"stdio","command":"/Applications/Openstyle.app/Contents/Resources/mcp/openstyle-mcp","args":[]}'
+pi mcp add openstyle -- "/Applications/Openstyle.app/Contents/Resources/mcp/openstyle-mcp"
+codex mcp add openstyle -- "/Applications/Openstyle.app/Contents/Resources/mcp/openstyle-mcp"
+
+# Dev (Openstyle Dev.app)
+claude mcp add-json -s user openstyle-dev '{"type":"stdio","command":"/Applications/Openstyle Dev.app/Contents/Resources/mcp/openstyle-mcp","args":[]}'
+pi mcp add openstyle-dev -- "/Applications/Openstyle Dev.app/Contents/Resources/mcp/openstyle-mcp"
+codex mcp add openstyle-dev -- "/Applications/Openstyle Dev.app/Contents/Resources/mcp/openstyle-mcp"
+```
+
+Settings > Agents (MCP) shows the exact command with the path of your app.
+
+Rules:
+
+- The app must run. When it does not run, the agent gets "Openstyle is not
+  running. Start the app, then try again."
+- Every delete asks first. A delete tool does nothing until the agent calls it
+  again with `confirm: true`, after you agree.
+- API keys stay hidden. No tool reads or writes them.
+- The server listens only on your Mac (127.0.0.1) and needs a token that the
+  app makes at each start. The switch in Settings > Agents (MCP) turns agent
+  access off.
+
+The full tool list and the design are in [`specs/mcp.md`](specs/mcp.md).
+
 ## Requirements
 
 - macOS 14 (Sonoma) or later. The published build is Apple Silicon (arm64) only.

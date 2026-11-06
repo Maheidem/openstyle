@@ -29,7 +29,8 @@ import { closeApp, embeddedServerUrl } from "./helpers/e2e-app";
 //   - set_setting chat_hotkey changes the live chat hotkey;
 //   - Settings > Agents (MCP) adds Openstyle to stub CLIs (claude, pi, codex);
 //   - the Ready card of onboarding shows the found tools;
-//   - after the quit, the bridge answers "Openstyle is not running".
+//   - after the quit, the bridge lists only openstyle_status, and a tool call
+//     gives "Openstyle is not running" as a tool error.
 // All data is fictional. Set OPENSTYLE_EVIDENCE_DIR for the screenshots.
 // ---------------------------------------------------------------------------
 
@@ -361,14 +362,21 @@ test("agents work with Openstyle through the MCP bridge", async () => {
     await closeApp(b.app);
   }
 
-  // --- After the quit: mcp.json is gone, the bridge answers "not running" --
+  // --- After the quit: mcp.json is gone. The bridge gives openstyle_status,
+  // and each tool call gives "not running" as a tool error (specs/mcp.md 5).
   expect(existsSync(join(b.userDataDir, "mcp.json"))).toBe(false);
   if (client) {
     for (let i = 0; i < 2; i++) {
       // The bridge stays alive: a second call gets the same answer.
-      await expect(client.listTools()).rejects.toThrow(
-        "Openstyle is not running. Start the app, then try again.",
-      );
+      const listed = (await client.listTools()).tools.map((t) => t.name);
+      expect(listed).toEqual(["openstyle_status"]);
+      for (const name of ["openstyle_status", "list_meetings"]) {
+        const result = await client.callTool({ name, arguments: {} });
+        expect(result.isError).toBe(true);
+        expect(textOf(result)).toBe(
+          "Openstyle is not running. Start the app, then try again.",
+        );
+      }
     }
     await client.close();
   }

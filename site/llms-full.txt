@@ -25,6 +25,15 @@ Downloads: https://github.com/Maheidem/openstyle/releases/latest
 - Vocabulary: teach it your names and terms.
 - Cleanup: set how the cleaned text reads.
 - Transcriptions: find anything you said.
+- Use with your AI agent (MCP): Openstyle has an MCP server for agents on
+  your Mac (Claude Code, pi, Codex). An agent can read your meetings,
+  transcripts, summaries, folders, Ask threads and dictations. It can change
+  meeting items (title, notes, attendees, tags, speakers, summary, enhanced
+  transcript, folders, open items) and help with vocabulary, settings and
+  model downloads. Open Settings > Agents (MCP) and click "Add to Claude
+  Code", "Add to pi" or "Add to Codex". The Stable app registers as
+  "openstyle" and the Dev app as "openstyle-dev". The app must run. Every
+  delete needs your OK first. No tool reads or writes API keys.
 
 ## Where speech-to-text runs
 
