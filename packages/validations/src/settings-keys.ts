@@ -38,6 +38,12 @@ export const SETTINGS_KEYS = {
    */
   meetingAsrContext: "meeting_asr_context",
   /**
+   * Agent access through MCP (`/mcp`, specs/mcp.md). ON by default (owner
+   * decision 2026-11-06): a missing row means on, and only `"false"` turns
+   * it off.
+   */
+  mcpEnabled: "mcp_enabled",
+  /**
    * Issue #169: JSON memory of the meeting audio devices. It holds the last
    * macOS default input that was not a transient Bluetooth default, and the
    * mic and output of the last recording. Main reads and writes it.

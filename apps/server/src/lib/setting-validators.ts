@@ -292,6 +292,8 @@ const SETTING_VALIDATORS: ReadonlyMap<string, SettingCheck> = new Map([
   ],
   // Live captions in the recording pill (issue #375): off by default.
   ["live_captions_pill", checkBooleanFlag],
+  // Agent access through MCP (specs/mcp.md): on by default, same contract.
+  [SETTINGS_KEYS.mcpEnabled, checkBooleanFlag],
 ]);
 
 /**
