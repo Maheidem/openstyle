@@ -1,5 +1,49 @@
 # Changelog
 
+## 3.1.0-alpha.1
+
+### New Features ✨
+
+#### Electron
+
+- Added: Settings > Agents (MCP) and a one-click "Connect your agent" card in onboarding for Claude Code, pi and Codex. by @Maheidem in [#428](https://github.com/Maheidem/openstyle/pull/428)
+- 🤖 Generated with [Claude Code](https://claude.com/claude-code) by @Maheidem in [#428](https://github.com/Maheidem/openstyle/pull/428)
+- https://claude.ai/code/session_01GvDDGT4vkdAZbUZMXdZgFz by @Maheidem in [#428](https://github.com/Maheidem/openstyle/pull/428)
+
+#### Server
+
+- Added: agents can rewrite summaries (old versions kept), fix enhanced transcripts, set attendees, manage open items, rename or delete Ask threads, and change app settings through MCP. by @Maheidem in [#427](https://github.com/Maheidem/openstyle/pull/427)
+- 🤖 Generated with [Claude Code](https://claude.com/claude-code) by @Maheidem in [#427](https://github.com/Maheidem/openstyle/pull/427)
+- https://claude.ai/code/session_01GvDDGT4vkdAZbUZMXdZgFz by @Maheidem in [#427](https://github.com/Maheidem/openstyle/pull/427)
+- Added: an MCP endpoint so agent tools (Claude Code, pi) can read and change meetings, folders, vocabulary and settings. by @Maheidem in [#426](https://github.com/Maheidem/openstyle/pull/426)
+- 🤖 Generated with [Claude Code](https://claude.com/claude-code) by @Maheidem in [#426](https://github.com/Maheidem/openstyle/pull/426)
+- https://claude.ai/code/session_01GvDDGT4vkdAZbUZMXdZgFz by @Maheidem in [#426](https://github.com/Maheidem/openstyle/pull/426)
+
+### Documentation 📚
+
+#### Mcp
+
+- Internal spec only (no user change). by @Maheidem in [#425](https://github.com/Maheidem/openstyle/pull/425)
+- 🤖 Generated with [Claude Code](https://claude.com/claude-code) by @Maheidem in [#425](https://github.com/Maheidem/openstyle/pull/425)
+- https://claude.ai/code/session_01GvDDGT4vkdAZbUZMXdZgFz by @Maheidem in [#425](https://github.com/Maheidem/openstyle/pull/425)
+
+#### Other
+
+- (site) Show Openstyle 3.0.0 on the landing page by @Maheidem in [#423](https://github.com/Maheidem/openstyle/pull/423)
+
+### Internal Changes 🔧
+
+#### Mcp
+
+- Added: a README section on how to use Openstyle with an AI agent (MCP). by @Maheidem in [#430](https://github.com/Maheidem/openstyle/pull/430)
+- Changed: when Openstyle is not running or agent access is off, the agent now gets a clear message instead of a failed server. by @Maheidem in [#430](https://github.com/Maheidem/openstyle/pull/430)
+- 🤖 Generated with [Claude Code](https://claude.com/claude-code) by @Maheidem in [#430](https://github.com/Maheidem/openstyle/pull/430)
+- https://claude.ai/code/session_01GvDDGT4vkdAZbUZMXdZgFz by @Maheidem in [#430](https://github.com/Maheidem/openstyle/pull/430)
+
+#### Other
+
+- (pages) Update Pages actions to v5 by @Maheidem in [#424](https://github.com/Maheidem/openstyle/pull/424)
+
 ## 3.0.0
 
 - No documented changes.
