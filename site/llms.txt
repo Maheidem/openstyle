@@ -20,6 +20,7 @@
 - Optional AI cleanup of the transcript with an LLM
 - Meetings: records (pause and resume), transcribes after the call, writes a summary, speaker detection, folders, tags and search across all meetings. An optional Ask page (experimental, off by default) answers questions about your meetings
 - Custom vocabulary and cleanup
+- MCP server for AI agents: Claude Code, pi and Codex can read meetings, transcripts and dictations, change meeting items, and help with vocabulary, settings and models. One click in Settings > Agents (MCP) adds Openstyle to the agent. The app must run; every delete asks first; API keys stay hidden
 - In tests on an idle Apple silicon Mac, Parakeet transcribed a 3-minute recording in under a second (measured October 2026, warm model)
 
 ## Full content

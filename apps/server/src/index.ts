@@ -188,8 +188,9 @@ export interface RunningServer {
 /**
  * Start the Openstyle HTTP server.
  *
- * Shared by the Electron main process (loopback, in-process) and the
- * standalone container entrypoint (see startup.ts).
+ * Shared by the Electron utility process (loopback; main forks it with
+ * utilityProcess.fork, apps/electron/src/main/server-host.ts) and the
+ * standalone entrypoint (see startup.ts).
  */
 export async function startServer(
   options: StartServerOptions = {},
