@@ -5,6 +5,7 @@ import type {
   MeetingImportResult,
 } from "@openstyle/validations";
 import { contextBridge, ipcRenderer, webUtils } from "electron";
+import type { AgentRow, AgentTool, McpStatus } from "../shared/agents";
 import type {
   ActiveAudioPlaybackMode,
   AudioPlaybackMode,
@@ -396,6 +397,20 @@ const api = {
   linkEventToNextStart: (eventId: string | null): Promise<boolean> =>
     ipcRenderer.invoke("tray-popover:link-next-start", eventId),
   onTrayScheduleChanged: listen("tray-popover:schedule-changed"),
+  // --- Agents (MCP), specs/mcp.md 6.3 and 7.2 ---
+  /** An agent changed data through MCP. Read the data again. */
+  onDataChanged: listen("data:changed"),
+  /** The port, the launcher path and the MCP server name of this app. */
+  getMcpStatus: (): Promise<McpStatus> => ipcRenderer.invoke("mcp:status"),
+  /** One row for each agent tool. The first call reads the shell PATH. */
+  listAgents: (): Promise<AgentRow[]> => ipcRenderer.invoke("agents:list"),
+  /** Find the agent tools again ("Check again"). */
+  rescanAgents: (): Promise<AgentRow[]> => ipcRenderer.invoke("agents:rescan"),
+  /** Run the add command of the tool, then check the entry. */
+  addAgent: (tool: AgentTool): Promise<AgentRow> =>
+    ipcRenderer.invoke("agents:add", tool),
+  removeAgent: (tool: AgentTool): Promise<AgentRow> =>
+    ipcRenderer.invoke("agents:remove", tool),
 };
 
 // The renderer types read `Window.api` from this type (see index.d.ts).

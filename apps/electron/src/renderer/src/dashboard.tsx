@@ -34,6 +34,11 @@ const TonePage = lazy(() => import("@renderer/pages/tone"));
 const VocabularyPage = lazy(() => import("@renderer/pages/vocabulary"));
 
 const queryClient = createQueryClient();
+// An agent changed data through MCP (specs/mcp.md 6.3). The default
+// staleTime is one hour, so read every query again.
+window.api?.onDataChanged(() => {
+  void queryClient.invalidateQueries();
+});
 
 // Neutral fallback while a route chunk loads — pages render their own loading
 // states, so this only shows for the brief chunk fetch.

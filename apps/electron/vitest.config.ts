@@ -15,6 +15,7 @@ export default defineConfig({
     // playwright.config.ts so exactly one runner picks it up.
     include: [
       "src/main/**/*.test.ts",
+      "src/mcp-bridge/**/*.test.ts",
       "src/renderer/**/*.test.ts",
       "tests/preload-channels.test.ts",
     ],

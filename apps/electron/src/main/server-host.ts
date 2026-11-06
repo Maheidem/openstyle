@@ -7,8 +7,15 @@ import { is } from "@electron-toolkit/utils";
 import { createAppLogger } from "@openstyle/utils";
 import { DEFAULT_SERVER_PORT } from "@openstyle/validations";
 import { app, dialog, type UtilityProcess, utilityProcess } from "electron";
+import { type AgentChangeMessage, applyAgentChange } from "./agent-changes";
 import { DEV_SERVER_PORT, devModelCacheDir } from "./flavor";
 import { broadcastServerChanged, state } from "./main-state";
+import {
+  mcpServerName,
+  mintMcpToken,
+  removeMcpConfig,
+  writeMcpConfig,
+} from "./mcp-config";
 import { notifyCleanupSkipped } from "./notifications";
 import { probeServerHealth, setServerPort } from "./server-target";
 
@@ -25,6 +32,7 @@ type ChildMessage =
   | { type: "ready"; port: number }
   | { type: "model-cache-dirs-result"; id: number; dirs: string[] }
   | { type: "cleanup-skipped"; name: string }
+  | AgentChangeMessage
   | { type: "error"; message: string };
 
 const RESTART_BACKOFF_MS = [1000, 2000, 4000, 8000, 16000];
@@ -51,6 +59,10 @@ interface HostState {
   onFirstSettled: (() => void) | null;
   nextRequestId: number;
   modelDirRequests: Map<number, (dirs: string[]) => void>;
+  // The MCP token of this boot (specs/mcp.md 3.3). A restart keeps it.
+  mcpToken: string;
+  // True after this instance wrote <userData>/mcp.json. Only then a stop deletes it.
+  wroteMcpConfig: boolean;
 }
 
 const host: HostState = {
@@ -67,6 +79,8 @@ const host: HostState = {
   onFirstSettled: null,
   nextRequestId: 1,
   modelDirRequests: new Map(),
+  mcpToken: "",
+  wroteMcpConfig: false,
 };
 
 function send(message: ParentMessage): boolean {
@@ -105,6 +119,7 @@ function handleMessage(message: ChildMessage): void {
         // not at the next launch. A live recording stays untouched.
         void state.meetingRecorder?.sweepOrphans({ transcribingOnly: true });
       }
+      writeMcpConfigFor(message.port);
       if (host.pendingPrefetchVersion) {
         send({ type: "prefetch-mlx", version: host.pendingPrefetchVersion });
         host.pendingPrefetchVersion = null;
@@ -118,9 +133,31 @@ function handleMessage(message: ChildMessage): void {
     case "cleanup-skipped":
       notifyCleanupSkipped(message.name);
       break;
+    case "agent-change":
+      void applyAgentChange(message);
+      break;
     case "error":
       log.error(`Server process error: ${message.message}`);
       break;
+  }
+}
+
+/** Write mcp.json for the stdio bridge. The token never goes into a log line. */
+function writeMcpConfigFor(port: number): void {
+  if (!host.mcpToken) return;
+  try {
+    writeMcpConfig(app.getPath("userData"), {
+      port,
+      token: host.mcpToken,
+      name: mcpServerName({
+        packaged: app.isPackaged,
+        devFlavor: state.devFlavor,
+      }),
+      version: app.getVersion(),
+    });
+    host.wroteMcpConfig = true;
+  } catch (err) {
+    log.error(`Could not write mcp.json: ${String(err)}`);
   }
 }
 
@@ -221,6 +258,9 @@ function buildChildEnv(): Record<string, string> {
   // The dev flavor keeps its models and MLX worker out of the cache of the
   // installed app (~/.cache/freestyle).
   if (state.devFlavor) env.OPENSTYLE_MODEL_CACHE_DIR ||= devModelCacheDir();
+  // The /mcp route exists only with this token (specs/mcp.md 3.2, check 1).
+  host.mcpToken ||= mintMcpToken();
+  env.OPENSTYLE_MCP_TOKEN = host.mcpToken;
   if (!is.dev) {
     env.OPENSTYLE_MLX_ASR_RELEASE_TAG ||= app.getVersion();
     // The child activates the staged MLX runtime for this version.
@@ -297,6 +337,16 @@ export async function startServerHost({
  */
 export async function stopServerHost(timeoutMs = 3000): Promise<void> {
   host.stopRequested = true;
+  // A reused server of another instance never gets here with a written file:
+  // that instance owns its mcp.json (specs/mcp.md 3.3 item 5).
+  if (host.wroteMcpConfig) {
+    host.wroteMcpConfig = false;
+    try {
+      removeMcpConfig(app.getPath("userData"));
+    } catch (err) {
+      log.error(`Could not delete mcp.json: ${String(err)}`);
+    }
+  }
   if (host.restartTimer) {
     clearTimeout(host.restartTimer);
     host.restartTimer = null;
@@ -339,6 +389,14 @@ export async function requestModelCacheDirs(): Promise<string[]> {
   const dirs = await answer;
   host.modelDirRequests.delete(id);
   return dirs;
+}
+
+/**
+ * The port in mcp.json, for Settings > Agents (MCP). Null when this app does
+ * not run the server (a reused server of another instance) or before ready.
+ */
+export function getMcpPort(): number | null {
+  return host.wroteMcpConfig ? host.port : null;
 }
 
 /** Start the download of the MLX runtime for an app release. No result. */

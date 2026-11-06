@@ -250,7 +250,15 @@
       "text": "Modelo de texto · {{where}}",
       "thisMac": "este Mac",
       "ownServer": "servidor próprio",
-      "open": "Abrir o Openstyle"
+      "open": "Abrir o Openstyle",
+      "agents": {
+        "title": "Conecte seu agente",
+        "desc": "Um clique adiciona o Openstyle aos agentes de IA deste Mac. Opcional.",
+        "optional": "Opcional",
+        "lets": "Permite que o {{tool}} leia e corrija suas reuniões.",
+        "adding": "Adicionando…",
+        "found": "Encontrado neste Mac: {{tools}}. O app precisa estar aberto."
+      }
     },
     "draft": {
       "statusReady": "Pronto",
@@ -296,7 +304,8 @@
       "meetings": "Reuniões",
       "data": "Dados",
       "network": "Rede",
-      "ask": "Ask"
+      "ask": "Ask",
+      "agents": "Agentes (MCP)"
     },
     "application": {
       "autoUpdate": "Atualizações automáticas",
@@ -505,6 +514,20 @@
       "engineDesc": "No loop de ferramentas, o modelo escolhe o próximo passo: listar reuniões, buscar, ler ou listar itens. O clássico usa um roteador fixo. O loop de ferramentas é o padrão.",
       "engineLoop": "Loop de ferramentas",
       "enginePipeline": "Clássico"
+    },
+    "agents": {
+      "intro": "Permita que um agente de IA neste Mac, como o Claude Code ou o pi, trabalhe com o Openstyle. Ele pode ler reuniões e pastas, corrigir transcrições e resumos, e mudar configurações e vocabulário.",
+      "access": "Acesso de agentes",
+      "accessDesc": "Os agentes precisam perguntar a você antes de apagar algo. Desligue para bloquear todos os agentes.",
+      "status": "Status",
+      "statusReady": "Pronto. Os agentes se conectam na porta {{port}}.",
+      "statusOff": "Desligado. Os agentes não podem se conectar.",
+      "statusNoServer": "Não está pronto. Outro app Openstyle executa o servidor.",
+      "ready": "Pronto",
+      "off": "Desligado",
+      "notFound": "Não encontrado neste Mac. Depois de instalar, clique em Verificar de novo ou execute este comando.",
+      "notAdded": "Ainda não adicionado.",
+      "note": "O Openstyle encontra estas ferramentas neste Mac e se adiciona com os comandos delas. O app precisa estar aberto. As chaves de API ficam ocultas para os agentes."
     }
   },
   "today": {
@@ -1885,6 +1908,22 @@
       "openInAsk": "Abrir em Perguntar",
       "close": "Fechar",
       "hint": "Enter pergunta. Esc fecha."
+    }
+  },
+  "agents": {
+    "added": "Adicionado",
+    "addTo": "Adicionar ao {{tool}}",
+    "working": "Processando…",
+    "remove": "Remover",
+    "checkAgain": "Verificar de novo",
+    "tryAgain": "Tentar de novo",
+    "failed": "Não foi possível adicionar. Execute este comando no Terminal.",
+    "copy": "Copiar",
+    "copied": "Copiado",
+    "reload": {
+      "claude": "Adicionado. Inicie uma nova sessão do Claude Code para carregar.",
+      "pi": "Adicionado. Execute /reload no pi para carregar.",
+      "codex": "Adicionado. Inicie uma nova sessão do Codex para carregar."
     }
   }
 }

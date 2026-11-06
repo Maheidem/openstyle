@@ -247,7 +247,15 @@
       "text": "テキストモデル · {{where}}",
       "thisMac": "この Mac",
       "ownServer": "自分のサーバー",
-      "open": "Openstyle を開く"
+      "open": "Openstyle を開く",
+      "agents": {
+        "title": "エージェントを接続",
+        "desc": "クリックひとつで、この Mac の AI エージェントに Openstyle を追加します。任意です。",
+        "optional": "任意",
+        "lets": "{{tool}} が会議を読み取り、修正できるようにします。",
+        "adding": "追加中…",
+        "found": "この Mac で見つかったツール: {{tools}}。アプリが起動している必要があります。"
+      }
     },
     "draft": {
       "statusReady": "準備完了",
@@ -293,7 +301,8 @@
       "meetings": "ミーティング",
       "data": "データ",
       "network": "ネットワーク",
-      "ask": "Ask"
+      "ask": "Ask",
+      "agents": "エージェント (MCP)"
     },
     "application": {
       "autoUpdate": "自動アップデート",
@@ -502,6 +511,20 @@
       "engineDesc": "ツールループでは、モデルが次の手順（会議の一覧、検索、読み取り、項目の一覧）を自分で選びます。クラシックは固定のルーターを使います。既定はツールループです。",
       "engineLoop": "ツールループ",
       "enginePipeline": "クラシック"
+    },
+    "agents": {
+      "intro": "この Mac の AI エージェント（Claude Code や pi など）が Openstyle と連携できます。会議やフォルダーの読み取り、文字起こしや要約の修正、設定や語彙の変更ができます。",
+      "access": "エージェントのアクセス",
+      "accessDesc": "エージェントは削除の前に必ず確認します。オフにするとすべてのエージェントをブロックします。",
+      "status": "状態",
+      "statusReady": "準備完了。エージェントはポート {{port}} で接続します。",
+      "statusOff": "オフ。エージェントは接続できません。",
+      "statusNoServer": "準備ができていません。別の Openstyle アプリがサーバーを実行しています。",
+      "ready": "準備完了",
+      "off": "オフ",
+      "notFound": "この Mac に見つかりません。インストール後に「再確認」を押すか、このコマンドを実行してください。",
+      "notAdded": "まだ追加されていません。",
+      "note": "Openstyle はこの Mac 上のツールを見つけ、各ツールのコマンドで自身を追加します。アプリが起動している必要があります。API キーはエージェントに表示されません。"
     }
   },
   "today": {
@@ -1860,6 +1883,22 @@
       "openInAsk": "質問ページで開く",
       "close": "閉じる",
       "hint": "Enter で質問、Esc で閉じます。"
+    }
+  },
+  "agents": {
+    "added": "追加済み",
+    "addTo": "{{tool}} に追加",
+    "working": "処理中…",
+    "remove": "削除",
+    "checkAgain": "再確認",
+    "tryAgain": "再試行",
+    "failed": "追加できませんでした。ターミナルでこのコマンドを実行してください。",
+    "copy": "コピー",
+    "copied": "コピーしました",
+    "reload": {
+      "claude": "追加しました。読み込むには新しい Claude Code セッションを開始してください。",
+      "pi": "追加しました。読み込むには pi で /reload を実行してください。",
+      "codex": "追加しました。読み込むには新しい Codex セッションを開始してください。"
     }
   }
 }

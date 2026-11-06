@@ -63,6 +63,10 @@ mac:
   extraResources:
     - from: "../../scripts/mlx_asr_server.py"
       to: "mlx-asr/mlx_asr_server.py"
+    # The stdio launcher of the MCP bridge (specs/mcp.md 7.1). Agent tools
+    # run <App>.app/Contents/Resources/mcp/openstyle-mcp. git keeps mode 755.
+    - from: "resources/mcp/openstyle-mcp"
+      to: "mcp/openstyle-mcp"
     # Pre-bundled offline diarization models (specs/meeting-diarization.md
     # §4, amended 2026-08-25) — macOS-only, same as fluidaudio-diarize
     # itself (top-level extraResources' resources/bin/${platform}-${arch}).

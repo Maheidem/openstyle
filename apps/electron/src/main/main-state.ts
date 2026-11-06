@@ -103,6 +103,24 @@ export function broadcastToWindows(channel: string, ...args: unknown[]): void {
 }
 
 /**
+ * Tell every window that an agent changed data through MCP (specs/mcp.md 6.3).
+ * broadcastToWindows reaches only the pill and the settings window. This also
+ * reaches the Ask bubble and the tray popover. Each root then calls
+ * `queryClient.invalidateQueries()`.
+ */
+export function broadcastDataChanged(): void {
+  for (const window of [
+    state.mainWindow,
+    state.settingsWindow,
+    state.chatBubble,
+    state.trayPopover,
+  ]) {
+    if (window && !window.isDestroyed())
+      window.webContents.send("data:changed");
+  }
+}
+
+/**
  * Broadcast a server target change (URL/token) to all renderer windows so they
  * re-point their API clients and refetch, without an app restart.
  */

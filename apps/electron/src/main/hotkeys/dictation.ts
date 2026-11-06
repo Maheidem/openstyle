@@ -70,10 +70,7 @@ export function registerHotkeyIpc(): void {
   });
 
   ipcMain.on("hotkey:set-mode", (_event, mode: string) => {
-    hotkeyActivationMode = mode === "toggle" ? "toggle" : "hold";
-    state.hotkeyPressed = false;
-    clearHotkeyStuckWatchdog();
-    scheduleHotkeyRegistration(state.currentHotkeyAccel ?? undefined);
+    setHotkeyActivationMode(mode);
   });
 
   // Language hotkeys: the settings UI pushes the whole map directly (no
@@ -84,6 +81,17 @@ export function registerHotkeyIpc(): void {
       scheduleLanguageHotkeysRegistration(map);
     },
   );
+}
+
+/**
+ * Set "hold" or "toggle" and register the hotkey again. The Settings page
+ * (IPC `hotkey:set-mode`) and an agent change (agent-changes.ts) call it.
+ */
+export function setHotkeyActivationMode(mode: string): void {
+  hotkeyActivationMode = mode === "toggle" ? "toggle" : "hold";
+  state.hotkeyPressed = false;
+  clearHotkeyStuckWatchdog();
+  scheduleHotkeyRegistration(state.currentHotkeyAccel ?? undefined);
 }
 
 /** "hold" or "toggle": how the dictation hotkey works now. */
@@ -597,7 +605,9 @@ function scheduleLanguageHotkeysRegistration(
 }
 
 /** Parse the `language_hotkeys` setting and reconcile the listeners against it. */
-function applyLanguageHotkeySettings(settings: Record<string, string>): void {
+export function applyLanguageHotkeySettings(
+  settings: Record<string, string>,
+): void {
   const raw = settings[SETTINGS_KEYS.languageHotkeys];
   let map: Record<string, string> = {};
   try {
