@@ -20,6 +20,11 @@ import { createRoot } from "react-dom/client";
 // the history chip (useModelNames). It has no router.
 const queryClient = createQueryClient();
 installGlobalErrorHandlers();
+// An agent changed data through MCP (specs/mcp.md 6.3). The default
+// staleTime is one hour, so read every query again.
+window.api?.onDataChanged(() => {
+  void queryClient.invalidateQueries();
+});
 
 function mount(): void {
   createRoot(document.getElementById("root")!).render(

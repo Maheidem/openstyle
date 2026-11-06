@@ -1,0 +1,17 @@
+#!/bin/sh
+# Openstyle MCP launcher (specs/mcp.md 7.1). An agent tool (Claude Code, pi,
+# Codex) starts this file as its stdio MCP server. The file is at
+# <App>.app/Contents/Resources/mcp/openstyle-mcp. It runs the stdio bridge
+# with the Electron binary of the same app in Node mode.
+set -e
+here=$(cd "$(dirname "$0")" && pwd -P)
+resources=$(dirname "$here")
+contents=$(dirname "$resources")
+plist="$contents/Info.plist"
+exe=$(/usr/bin/plutil -extract CFBundleExecutable raw -o - "$plist" 2>/dev/null || echo Openstyle)
+# The bundle name is also the name of the profile folder (Openstyle or Openstyle Dev).
+OPENSTYLE_BUNDLE_NAME=$(/usr/bin/plutil -extract CFBundleName raw -o - "$plist" 2>/dev/null || echo Openstyle)
+export OPENSTYLE_BUNDLE_NAME
+ELECTRON_RUN_AS_NODE=1
+export ELECTRON_RUN_AS_NODE
+exec "$contents/MacOS/$exe" "$resources/app.asar/out/main/mcp-bridge.js" "$@"

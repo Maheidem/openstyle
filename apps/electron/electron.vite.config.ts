@@ -90,11 +90,14 @@ export default defineConfig({
       externalizeDeps: false,
       sourcemap: analyze,
       rollupOptions: {
-        // Two entries. "server-process" is the utility process that runs the
+        // Three entries. "server-process" is the utility process that runs the
         // server (src/server-host/entry.ts). Main forks out/main/server-process.js.
+        // "mcp-bridge" is the stdio MCP bridge (src/mcp-bridge/index.ts). The
+        // launcher resources/mcp/openstyle-mcp runs it in Node mode.
         input: {
           index: resolve("src/main/index.ts"),
           "server-process": resolve("src/server-host/entry.ts"),
+          "mcp-bridge": resolve("src/mcp-bridge/index.ts"),
         },
         external: ["electron", "bufferutil", "utf-8-validate"],
         plugins: analyze ? [mkVisualizer("main")] : [],

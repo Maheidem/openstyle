@@ -7,7 +7,6 @@ import { OutputMode } from "@openstyle/sdk";
 import { createAppLogger } from "@openstyle/utils";
 import { clipboard, globalShortcut, ipcMain } from "electron";
 import { isActiveAudioPlaybackMode } from "../../shared/audio-playback";
-import { normalizePillCancelMode } from "../../shared/pill-cancel";
 import { registerJobAbortIpc } from "../abortable-jobs";
 import {
   getLinuxFrontmostApp,
@@ -15,6 +14,7 @@ import {
   getOpenAppCandidates,
   getWindowsFrontmostApp,
 } from "../active-window";
+import { registerAgentInstallIpc } from "../agent-install";
 import { registerAppSettingsIpc } from "../app-settings-ipc";
 import { autoLinkCurrentEvent, isCalendarEnabled } from "../calendar";
 import { registerCalendarIpc } from "../calendar-ipc";
@@ -49,6 +49,14 @@ import {
   openMicrophoneSettings,
 } from "../permission-dialogs";
 import { registerPermissionsIpc } from "../permissions-ipc";
+import {
+  sendAudioPlaybackModeToPill,
+  sendCleanupContextChangedToPill,
+  sendOutputModeToPill,
+  sendPillCancelModeToPill,
+  sendSoundEnabledToPill,
+} from "../pill-settings";
+import { getMcpPort } from "../server-host";
 import {
   getServerPort,
   getServerToken,
@@ -186,38 +194,23 @@ export function registerCoreIpc({ logsDir }: { logsDir: string }): void {
     serverClient,
   });
 
-  // IPC: broadcast output mode changes to pill window
+  // IPC: relay the settings that the pill caches (pill-settings.ts). An
+  // agent change through MCP calls the same functions (agent-changes.ts).
   ipcMain.on("settings:output-mode-changed", (_event, mode: string) => {
-    state.mainWindow?.webContents.send("settings:output-mode-changed", mode);
+    sendOutputModeToPill(mode);
   });
-
-  // IPC: broadcast the sound setting to the pill window
   ipcMain.on("settings:sound-enabled-changed", (_event, enabled: unknown) => {
-    state.mainWindow?.webContents.send(
-      "settings:sound-enabled-changed",
-      enabled === true,
-    );
+    sendSoundEnabledToPill(enabled === true);
   });
-
   ipcMain.on("settings:pill-cancel-mode-changed", (_event, mode: unknown) => {
-    state.mainWindow?.webContents.send(
-      "settings:pill-cancel-mode-changed",
-      normalizePillCancelMode(mode),
-    );
+    sendPillCancelModeToPill(mode);
   });
-
   ipcMain.on("settings:audio-playback-mode-changed", (_event, mode: string) => {
-    state.mainWindow?.webContents.send(
-      "settings:audio-playback-mode-changed",
-      mode,
-    );
+    sendAudioPlaybackModeToPill(mode);
   });
-
-  // IPC: relay cleanup-context changes (llm_cleanup / cleanup tones) from the
-  // dashboard to the pill so it refreshes its cached routing decision instead
-  // of re-fetching /api/settings on every recording start.
+  // llm_cleanup or a cleanup tone changed in the dashboard.
   ipcMain.on("settings:cleanup-context-changed", () => {
-    state.mainWindow?.webContents.send("settings:cleanup-context-changed");
+    sendCleanupContextChangedToPill();
   });
 
   // IPC: hide the pill window on request from renderer
@@ -253,6 +246,8 @@ export function registerCoreIpc({ logsDir }: { logsDir: string }): void {
     state.settingsWindow?.webContents.send("transcription:done");
     state.trayPopover?.webContents.send("transcription:done");
   });
+
+  registerAgentInstallIpc({ getMcpPort });
 
   registerAppSettingsIpc({
     getServerPort,
