@@ -36,11 +36,13 @@ import {
   appendMessage,
   countScopeMeetings,
   createThread,
+  deleteThread,
   getThread,
   lastWidenOffer,
   listMessages,
   listThreads,
   loadHistoryForPrompt,
+  renameThread,
   threadScope,
 } from "../lib/chat/store.js";
 import { getDb } from "../lib/db.js";
@@ -73,6 +75,10 @@ const listQuerySchema = z
         .length === 1,
     { message: "Pass exactly one of meeting_id, folder_id and all" },
   );
+
+const renameSchema = z.object({
+  title: z.string().trim().min(1).max(200),
+});
 
 const chat = new Hono()
   .get("/threads", zValidator("query", listQuerySchema), (c) => {
@@ -115,6 +121,29 @@ const chat = new Hono()
       progress: progress.get(thread.id) ?? null,
       failure: lastFailure.get(thread.id) ?? null,
     });
+  })
+  // Rename and delete a thread (specs/mcp.md 4.3). A thread with a turn in
+  // flight cannot be deleted: the turn saves its answer into it.
+  .patch("/threads/:id", zValidator("json", renameSchema), (c) => {
+    const thread = renameThread(
+      getDb(),
+      c.req.param("id"),
+      c.req.valid("json").title,
+    );
+    if (!thread) return c.json({ error: "Not found" }, 404);
+    return c.json({ thread });
+  })
+  .delete("/threads/:id", (c) => {
+    const id = c.req.param("id");
+    if (running.has(id)) {
+      return c.json(
+        { error: "A question is still running", reason: "busy" },
+        409,
+      );
+    }
+    if (!deleteThread(getDb(), id)) return c.json({ error: "Not found" }, 404);
+    lastFailure.delete(id);
+    return c.json({ ok: true });
   })
   .post(
     "/threads/:id/messages",

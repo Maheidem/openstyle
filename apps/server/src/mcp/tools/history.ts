@@ -1,5 +1,5 @@
-// MCP tools for Ask threads and the dictation history. Each tool calls an
-// existing route of routes/chat.ts or routes/history.ts.
+// MCP tools for Ask threads and the dictation history. Each tool calls a
+// route of routes/chat.ts or routes/history.ts.
 import { z } from "zod";
 import { confirmArg, defineTool, expectOk, query, seg } from "./define.js";
 
@@ -8,6 +8,11 @@ const dictationId = z
   .int()
   .positive()
   .describe("The dictation id (from list_dictations).");
+
+const threadId = z
+  .string()
+  .min(1)
+  .describe("The thread id (from list_ask_threads).");
 
 const listAskThreads = defineTool({
   name: "list_ask_threads",
@@ -45,15 +50,42 @@ const getAskThread = defineTool({
   description: "Get one Ask thread with all its questions and answers.",
   kind: "read",
   idempotent: true,
-  input: z.object({
-    thread_id: z
-      .string()
-      .min(1)
-      .describe("The thread id (from list_ask_threads)."),
-  }),
+  input: z.object({ thread_id: threadId }),
   run: async ({ thread_id }, { api }) => ({
     data: expectOk(await api("GET", `/api/chat/threads/${seg(thread_id)}`)),
   }),
+});
+
+const renameAskThread = defineTool({
+  name: "rename_ask_thread",
+  description: "Give an Ask thread a new title.",
+  kind: "write",
+  idempotent: true,
+  input: z.object({
+    thread_id: threadId,
+    title: z.string().min(1).max(200).describe("The new title."),
+  }),
+  run: async ({ thread_id, title }, { api }) => {
+    const data = expectOk(
+      await api("PATCH", `/api/chat/threads/${seg(thread_id)}`, { title }),
+    );
+    return { data, change: { kind: "ask-thread", ids: [thread_id] } };
+  },
+});
+
+const deleteAskThread = defineTool({
+  name: "delete_ask_thread",
+  description:
+    "Delete an Ask thread with all its questions and answers. This cannot be undone.",
+  kind: "delete",
+  idempotent: true,
+  input: z.object({ thread_id: threadId, confirm: confirmArg }),
+  run: async ({ thread_id }, { api }) => {
+    const data = expectOk(
+      await api("DELETE", `/api/chat/threads/${seg(thread_id)}`),
+    );
+    return { data, change: { kind: "ask-thread", ids: [thread_id] } };
+  },
 });
 
 const listDictations = defineTool({
@@ -128,6 +160,8 @@ const deleteDictation = defineTool({
 export const historyTools = [
   listAskThreads,
   getAskThread,
+  renameAskThread,
+  deleteAskThread,
   listDictations,
   getDictation,
   deleteDictation,

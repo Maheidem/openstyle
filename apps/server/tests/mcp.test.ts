@@ -1,7 +1,7 @@
 // The MCP endpoint (specs/mcp.md): auth, both protocol eras, and one test for
 // each tool through real JSON-RPC POSTs to /mcp. The last test fails when a
 // registered tool has no test. Fictional data only.
-import { mkdtempSync, rmSync } from "node:fs";
+import { mkdtempSync, readFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { SETTINGS_KEYS } from "@openstyle/validations";
@@ -13,8 +13,17 @@ import {
   describe,
   expect,
   it,
+  vi,
 } from "vitest";
 import createApp from "../src/index.js";
+import {
+  APP_SETTINGS_WAIT_MS,
+  type AppSettingsRequest,
+  AppShellTimeoutError,
+  handleAppSettingsResult,
+  requestAppSettings,
+  setAppSettingsSender,
+} from "../src/lib/app-settings-bridge.js";
 import { setAuthToken } from "../src/lib/auth.js";
 import { appendMessage, createThread } from "../src/lib/chat/store.js";
 import {
@@ -880,6 +889,432 @@ describe("settings catalog", () => {
         key,
       ).toBe(false);
     }
+  });
+});
+
+describe("PR 3 write tools", () => {
+  afterEach(() => {
+    const db = getDb();
+    db.exec("DELETE FROM ledger_marks");
+    db.exec("DELETE FROM ledger_items");
+    db.exec("DELETE FROM folder_standing");
+    setAppSettingsSender(null);
+  });
+
+  function summaryJson(task: string) {
+    return {
+      overview: "The crew planned the pier repair.",
+      keyPoints: ["The pier needs new planks"],
+      decisions: ["Use oak planks"],
+      actionItems: [{ task, owner: "Ana Ribeiro", due: null }],
+      openQuestions: ["Who pays for the paint?"],
+    };
+  }
+
+  it("set_summary keeps the old summary as a version, provider agent", async () => {
+    insertMeeting("m1", { status: "transcribed" });
+    getDb()
+      .prepare(
+        `INSERT INTO meeting_summaries (meeting_id, markdown, summary_json, llm_provider, llm_model, created_at)
+         VALUES ('m1', '# Old', '{}', 'local-mlx', 'gemma-fictional', 1)`,
+      )
+      .run();
+    await ok("set_summary", {
+      meeting_id: "m1",
+      markdown: "# Pier repair\n\nNew summary.",
+      summary_json: summaryJson("Order oak planks"),
+    });
+    const row = getDb()
+      .prepare("SELECT * FROM meeting_summaries WHERE meeting_id = 'm1'")
+      .get() as Record<string, unknown>;
+    expect(row).toMatchObject({
+      markdown: "# Pier repair\n\nNew summary.",
+      llm_provider: "agent",
+      llm_model: "vitest",
+    });
+    expect(JSON.parse(row.summary_json as string).actionItems[0].task).toBe(
+      "Order oak planks",
+    );
+    expect(meetingRow("m1")?.status).toBe("summarized");
+    const versions = getDb()
+      .prepare(
+        "SELECT markdown, llm_provider FROM meeting_summary_versions WHERE meeting_id = 'm1'",
+      )
+      .all();
+    expect(versions).toEqual([
+      { markdown: "# Old", llm_provider: "local-mlx" },
+    ]);
+
+    claimJob("m1", "summarize", { done: 0, total: 1, failed: 0 });
+    try {
+      const busy = await call("set_summary", {
+        meeting_id: "m1",
+        markdown: "# Busy",
+        summary_json: summaryJson("X"),
+      });
+      expect(busy.isError).toBe(true);
+      expect(busy.text).toBe("Conflict (409): Summarize is already running");
+    } finally {
+      releaseJob("m1");
+    }
+    expect(
+      (
+        getDb()
+          .prepare(
+            "SELECT markdown FROM meeting_summaries WHERE meeting_id = 'm1'",
+          )
+          .get() as { markdown: string }
+      ).markdown,
+    ).toBe("# Pier repair\n\nNew summary.");
+  });
+
+  it("set_enhanced_segments writes enhanced_text only and the Markdown export", async () => {
+    insertMeeting("m1");
+    const audioDir = mkdtempSync(join(scratch, "meeting-"));
+    getDb()
+      .prepare("UPDATE meetings SET audio_dir = ? WHERE id = 'm1'")
+      .run(audioDir);
+    insertSegment({
+      id: "s1",
+      meetingId: "m1",
+      idx: 0,
+      startMs: 0,
+      endMs: 900,
+      text: "Ana ribera opens the peer",
+    });
+    insertSegment({
+      id: "s2",
+      meetingId: "m1",
+      idx: 1,
+      startMs: 1000,
+      endMs: 1900,
+    });
+    const data = await ok("set_enhanced_segments", {
+      meeting_id: "m1",
+      segments: [{ id: "s1", enhanced_text: "Ana Ribeiro opens the pier" }],
+    });
+    expect(data).toMatchObject({ ok: true, updated: 1 });
+    expect(data.markdown_path).toBe(join(audioDir, "transcript-enhanced.md"));
+    expect(readFileSync(data.markdown_path, "utf8")).toContain(
+      "Ana Ribeiro opens the pier",
+    );
+    const seg = (id: string) =>
+      getDb()
+        .prepare(
+          "SELECT text, enhanced_text FROM meeting_segments WHERE id = ?",
+        )
+        .get(id) as { text: string; enhanced_text: string | null };
+    expect(seg("s1")).toEqual({
+      text: "Ana ribera opens the peer",
+      enhanced_text: "Ana Ribeiro opens the pier",
+    });
+    expect(seg("s2").enhanced_text).toBeNull();
+
+    // A segment of another meeting is refused.
+    const foreign = await call("set_enhanced_segments", {
+      meeting_id: "m1",
+      segments: [{ id: "nope", enhanced_text: "x" }],
+    });
+    expect(foreign.isError).toBe(true);
+    expect(foreign.text).toContain("is not in this meeting");
+  });
+
+  it("the raw ASR text stays read-only: a text field is refused", async () => {
+    insertMeeting("m1");
+    insertSegment({
+      id: "s1",
+      meetingId: "m1",
+      idx: 0,
+      startMs: 0,
+      endMs: 900,
+      text: "raw words",
+    });
+    // Through the tool: the input schema refuses the extra field.
+    const viaTool = await call("set_enhanced_segments", {
+      meeting_id: "m1",
+      segments: [{ id: "s1", enhanced_text: "fixed", text: "changed raw" }],
+    });
+    expect(viaTool.isError).toBe(true);
+    // Through REST: the route refuses it with 400.
+    const res = await app.request(
+      `${URL_BASE}/api/meetings/m1/enhanced-segments`,
+      {
+        method: "PUT",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${SERVER_TOKEN}`,
+        },
+        body: JSON.stringify({
+          segments: [{ id: "s1", enhanced_text: "fixed", text: "changed raw" }],
+        }),
+      },
+    );
+    expect(res.status).toBe(400);
+    expect(
+      getDb()
+        .prepare(
+          "SELECT text, enhanced_text FROM meeting_segments WHERE id = 's1'",
+        )
+        .get(),
+    ).toEqual({ text: "raw words", enhanced_text: null });
+  });
+
+  it("set_attendees sets attendees with no calendar event", async () => {
+    insertMeeting("m1");
+    const data = await ok("set_attendees", {
+      meeting_id: "m1",
+      attendees: [
+        { name: "Ana Ribeiro", email: "ana@example.com" },
+        { name: "Bruno Costa" },
+      ],
+    });
+    expect(data.attendees).toHaveLength(2);
+    const row = meetingRow("m1");
+    expect(row?.calendar_event_id).toBeNull();
+    expect(JSON.parse(row?.calendar_attendees as string)).toEqual([
+      { name: "Ana Ribeiro", email: "ana@example.com", isOrganizer: false },
+      { name: "Bruno Costa", email: "", isOrganizer: false },
+    ]);
+    claimJob("m1", "enhance", { done: 0, total: 1, failed: 0 });
+    try {
+      const busy = await call("set_attendees", {
+        meeting_id: "m1",
+        attendees: [],
+      });
+      expect(busy.text).toBe("Conflict (409): Enhance is already running");
+    } finally {
+      releaseJob("m1");
+    }
+    await ok("set_attendees", { meeting_id: "m1", attendees: [] });
+    expect(meetingRow("m1")?.calendar_attendees).toBeNull();
+  });
+
+  it("rename_ask_thread and delete_ask_thread", async () => {
+    const db = getDb();
+    const thread = createThread(db, { kind: "all" });
+    if (!thread) throw new Error("no thread");
+    appendMessage(db, thread.id, {
+      role: "user",
+      content: "When is the pier open?",
+    });
+    await ok("rename_ask_thread", {
+      thread_id: thread.id,
+      title: "Pier hours",
+    });
+    const title = () =>
+      (
+        db
+          .prepare("SELECT title FROM chat_threads WHERE id = ?")
+          .get(thread.id) as { title: string } | undefined
+      )?.title;
+    expect(title()).toBe("Pier hours");
+    expect(
+      await call("delete_ask_thread", { thread_id: thread.id }),
+    ).toMatchObject({ isError: true, text: CONFIRM });
+    expect(title()).toBe("Pier hours");
+    await ok("delete_ask_thread", { thread_id: thread.id, confirm: true });
+    expect(title()).toBeUndefined();
+    const messages = db
+      .prepare("SELECT COUNT(*) AS n FROM chat_messages WHERE thread_id = ?")
+      .get(thread.id) as { n: number };
+    expect(messages.n).toBe(0);
+    const again = await call("delete_ask_thread", {
+      thread_id: thread.id,
+      confirm: true,
+    });
+    expect(again.isError).toBe(true);
+  });
+
+  it("set_folder_standing saves the text as given, with no model", async () => {
+    insertFolder("f1", "Harbor");
+    const data = await ok("set_folder_standing", {
+      folder_id: "f1",
+      bullets: ["- The pier repair starts in May", "Paint is still open"],
+    });
+    expect(data.bullets).toEqual([
+      "The pier repair starts in May",
+      "Paint is still open",
+    ]);
+    const row = getDb()
+      .prepare(
+        "SELECT bullets_json FROM folder_standing WHERE folder_id = 'f1'",
+      )
+      .get() as { bullets_json: string };
+    expect(JSON.parse(row.bullets_json)).toEqual(data.bullets);
+    const read = await ok("get_folder_standing", { folder_id: "f1" });
+    expect(read.standing.bullets).toEqual(data.bullets);
+    const missing = await call("set_folder_standing", {
+      folder_id: "nope",
+      bullets: ["x"],
+    });
+    expect(missing.isError).toBe(true);
+  });
+
+  it("open items: list, create, mark, update and delete", async () => {
+    insertFolder("f1", "Harbor");
+    insertFolder("f2", "Lighthouse");
+    insertMeeting("m1", { folderId: "f1", startedAt: 1_780_000_000_000 });
+    insertMeeting("m2", { folderId: "f1", startedAt: 1_780_100_000_000 });
+    insertMeeting("m3", { folderId: "f2" });
+    insertSegment({
+      id: "s1",
+      meetingId: "m1",
+      idx: 0,
+      startMs: 4000,
+      endMs: 6000,
+      text: "Ana will order the oak planks this week.",
+    });
+    expect((await ok("list_open_items", { folder_id: "f1" })).items).toEqual(
+      [],
+    );
+
+    const created = await ok("create_open_item", {
+      meeting_id: "m1",
+      kind: "action",
+      text: "Order the oak planks",
+      quote: "Ana will order the oak planks",
+      owner: "Ana Ribeiro",
+    });
+    expect(created).toMatchObject({ folder_id: "f1", quote_ok: true });
+    const item = getDb()
+      .prepare("SELECT * FROM ledger_items WHERE id = ?")
+      .get(created.id) as Record<string, unknown>;
+    expect(item).toMatchObject({
+      folder_id: "f1",
+      kind: "action",
+      first_meeting_id: "m1",
+    });
+    const raised = getDb()
+      .prepare("SELECT * FROM ledger_marks WHERE item_id = ?")
+      .get(created.id) as Record<string, unknown>;
+    expect(raised).toMatchObject({
+      status: "raised",
+      quote_ok: 1,
+      quote_start_ms: 4000,
+      writer_model: "agent:vitest",
+    });
+
+    const mark = await ok("add_open_item_mark", {
+      item_id: created.id,
+      meeting_id: "m2",
+      status: "done",
+      quote: "The planks arrived on Monday",
+      reason: "Delivered",
+    });
+    // The quote is not in the transcript of m2.
+    expect(mark.quote_ok).toBe(false);
+    const wrongFolder = await call("add_open_item_mark", {
+      item_id: created.id,
+      meeting_id: "m3",
+      status: "open",
+      quote: "Still waiting for planks",
+    });
+    expect(wrongFolder.isError).toBe(true);
+    expect(wrongFolder.text).toContain("not in the folder");
+
+    expect((await ok("list_open_items", { folder_id: "f1" })).items).toEqual(
+      [],
+    );
+    const done = await ok("list_open_items", {
+      folder_id: "f1",
+      status: "done",
+    });
+    expect(done.items).toHaveLength(1);
+    expect(done.items[0]).toMatchObject({ id: created.id, nowStatus: "done" });
+    expect(done.items[0].marks).toHaveLength(2);
+
+    await ok("update_open_item", {
+      item_id: created.id,
+      text: "Order and store the oak planks",
+    });
+    expect(
+      (
+        getDb()
+          .prepare("SELECT text FROM ledger_items WHERE id = ?")
+          .get(created.id) as {
+          text: string;
+        }
+      ).text,
+    ).toBe("Order and store the oak planks");
+
+    expect(
+      await call("delete_open_item", { item_id: created.id }),
+    ).toMatchObject({ isError: true, text: CONFIRM });
+    expect(
+      getDb()
+        .prepare("SELECT id FROM ledger_items WHERE id = ?")
+        .get(created.id),
+    ).toBeDefined();
+    await ok("delete_open_item", { item_id: created.id, confirm: true });
+    expect(
+      getDb()
+        .prepare("SELECT COUNT(*) AS n FROM ledger_marks WHERE item_id = ?")
+        .get(created.id),
+    ).toEqual({ n: 0 });
+    const missing = await call("update_open_item", {
+      item_id: created.id,
+      kind: "decision",
+    });
+    expect(missing.isError).toBe(true);
+  });
+
+  it("get_app_settings and set_app_settings give 503 with no main process", async () => {
+    const read = await call("get_app_settings");
+    expect(read.isError).toBe(true);
+    expect(read.text).toBe(
+      "Error (503): App settings need the Openstyle app. This server runs without it.",
+    );
+    const write = await call("set_app_settings", { auto_update: false });
+    expect(write.isError).toBe(true);
+    expect(write.text).toContain("503");
+  });
+
+  it("get_app_settings and set_app_settings ask main over the sender", async () => {
+    const state: Record<string, unknown> = {
+      pill_position: "bottom-center",
+      auto_update: true,
+      update_channel: "dev",
+      launch_at_login: false,
+    };
+    const requests: AppSettingsRequest[] = [];
+    setAppSettingsSender((request) => {
+      requests.push(request);
+      if (request.patch) Object.assign(state, request.patch);
+      // The setup file fakes the timers: answer in a microtask.
+      queueMicrotask(() =>
+        handleAppSettingsResult({
+          type: "app-settings-result",
+          id: request.id,
+          ok: true,
+          settings: { ...state },
+        }),
+      );
+    });
+    expect(await ok("get_app_settings")).toEqual(state);
+    const after = await ok("set_app_settings", {
+      pill_position: "top-right",
+      launch_at_login: true,
+    });
+    expect(after).toMatchObject({
+      pill_position: "top-right",
+      launch_at_login: true,
+    });
+    expect(requests.map((r) => r.patch)).toEqual([
+      null,
+      { pill_position: "top-right", launch_at_login: true },
+    ]);
+    const empty = await call("set_app_settings", {});
+    expect(empty.isError).toBe(true);
+    const bad = await call("set_app_settings", { pill_position: "custom" });
+    expect(bad.isError).toBe(true);
+  });
+
+  it("an app-settings request ends after the wait with no answer", async () => {
+    setAppSettingsSender(() => {});
+    const pending = requestAppSettings(null);
+    const check = expect(pending).rejects.toBeInstanceOf(AppShellTimeoutError);
+    await vi.advanceTimersByTimeAsync(APP_SETTINGS_WAIT_MS);
+    await check;
   });
 });
 

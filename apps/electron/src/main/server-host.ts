@@ -7,6 +7,11 @@ import { is } from "@electron-toolkit/utils";
 import { createAppLogger } from "@openstyle/utils";
 import { DEFAULT_SERVER_PORT } from "@openstyle/validations";
 import { app, dialog, type UtilityProcess, utilityProcess } from "electron";
+import {
+  type AppSettingsRequestMessage,
+  type AppSettingsResultMessage,
+  handleAppSettingsRequest,
+} from "./agent-app-settings";
 import { type AgentChangeMessage, applyAgentChange } from "./agent-changes";
 import { DEV_SERVER_PORT, devModelCacheDir } from "./flavor";
 import { broadcastServerChanged, state } from "./main-state";
@@ -25,7 +30,8 @@ const log = createAppLogger("electron");
 type ParentMessage =
   | { type: "shutdown" }
   | { type: "prefetch-mlx"; version: string }
-  | { type: "model-cache-dirs"; id: number };
+  | { type: "model-cache-dirs"; id: number }
+  | AppSettingsResultMessage;
 
 // Child to parent.
 type ChildMessage =
@@ -33,6 +39,7 @@ type ChildMessage =
   | { type: "model-cache-dirs-result"; id: number; dirs: string[] }
   | { type: "cleanup-skipped"; name: string }
   | AgentChangeMessage
+  | AppSettingsRequestMessage
   | { type: "error"; message: string };
 
 const RESTART_BACKOFF_MS = [1000, 2000, 4000, 8000, 16000];
@@ -135,6 +142,10 @@ function handleMessage(message: ChildMessage): void {
       break;
     case "agent-change":
       void applyAgentChange(message);
+      break;
+    case "app-settings-request":
+      // An agent reads or changes the app-shell settings (specs/mcp.md 6.4).
+      send(handleAppSettingsRequest(message));
       break;
     case "error":
       log.error(`Server process error: ${message.message}`);

@@ -3,6 +3,7 @@ import { kickLedgerBackfill } from "../../../chat/loop/ledger.js";
 import { withTransaction } from "../../../db.js";
 import type { NewLink } from "../../../llm/recorder.js";
 import { notifyMeetingChanged } from "../../../search/notify.js";
+import { saveMeetingSummary } from "../../summary-store.js";
 import { writeTranscriptMarkdown } from "../../transcript-io.js";
 import type { WorkflowDeps } from "../context.js";
 import type { WorkflowStateType } from "../state.js";
@@ -224,43 +225,18 @@ export function makeSaveNode(deps: WorkflowDeps) {
     if (summary && summary.status === "ok" && summary.summary) {
       const createdAt = deps.now();
       const outcome = await attempt(meetingId, () => {
-        // Keep the summary that this one replaces as a version
-        // (specs/meeting-folder-batch.md 5). Same transaction as the
-        // replace, so a failed save keeps neither change.
-        deps.db
-          .prepare(
-            `INSERT INTO meeting_summary_versions
-               (meeting_id, markdown, summary_json, llm_provider, llm_model,
-                input_tokens, output_tokens, cost_usd, created_at, partial,
-                replaced_at)
-             SELECT meeting_id, markdown, summary_json, llm_provider, llm_model,
-                    input_tokens, output_tokens, cost_usd, created_at, partial, ?
-             FROM meeting_summaries WHERE meeting_id = ?`,
-          )
-          .run(createdAt, meetingId);
-        deps.db
-          .prepare(
-            `INSERT OR REPLACE INTO meeting_summaries
-               (meeting_id, markdown, summary_json, llm_provider, llm_model,
-                input_tokens, output_tokens, cost_usd, created_at, partial)
-             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-          )
-          .run(
-            meetingId,
-            summary.markdown,
-            JSON.stringify(summary.summary),
-            summary.llmProvider,
-            summary.llmModel,
-            summary.inputTokens,
-            summary.outputTokens,
-            summary.costUsd,
-            createdAt,
-            // A summary repaired from a cut answer (PR #258).
-            summary.partial ? 1 : 0,
-          );
-        deps.db
-          .prepare("UPDATE meetings SET status = 'summarized' WHERE id = ?")
-          .run(meetingId);
+        // The old summary is kept as a version, in the same transaction.
+        saveMeetingSummary(deps.db, meetingId, {
+          markdown: summary.markdown,
+          summaryJson: JSON.stringify(summary.summary),
+          llmProvider: summary.llmProvider,
+          llmModel: summary.llmModel,
+          inputTokens: summary.inputTokens,
+          outputTokens: summary.outputTokens,
+          costUsd: summary.costUsd,
+          partial: summary.partial === true,
+          createdAt,
+        });
         for (const callId of summary.llmCallIds) {
           if (callId === null) continue;
           deps.recorder.linkCall(callId, [

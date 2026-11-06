@@ -38,6 +38,23 @@ import {
 
 const log = createAppLogger("electron");
 
+// The channel switch of Settings. registerUpdater sets it.
+let channelSwitch:
+  | ((channel: UpdateChannel, stopRecording: boolean) => Promise<void>)
+  | null = null;
+
+/**
+ * Switch the update channel the same way as Settings > Application (an agent
+ * through MCP, specs/mcp.md 6.4). The channel is saved before the first
+ * await, so a read right after the call gives the new channel. A recording
+ * does not stop. Before registerUpdater runs, the call only saves it.
+ */
+export function switchUpdateChannel(channel: UpdateChannel): Promise<void> {
+  if (channelSwitch) return channelSwitch(channel, false);
+  writeSettings({ updateChannel: channel });
+  return Promise.resolve();
+}
+
 export function registerUpdater(): void {
   // -- Auto-update helpers --
   const UPDATE_CHECK_INTERVAL_MS = 5 * 60 * 1000; // 5 minutes
@@ -312,6 +329,8 @@ export function registerUpdater(): void {
       await switchChannel(channel, stopRecording === true);
     },
   );
+
+  channelSwitch = switchChannel;
 
   // Save the channel, forget an update of the old channel, and check at once.
   // The switch to Stable from an alpha build checks with downgrade on, then

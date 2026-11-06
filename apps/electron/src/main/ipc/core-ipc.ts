@@ -358,20 +358,28 @@ export function registerSystemIpc(): void {
     return pos;
   });
 
-  ipcMain.on("settings:set-pill-position", (_event, position: string) => {
-    if (position === "custom") {
-      writeSettings({ pillPosition: position });
-    } else {
-      writeSettings({ pillPosition: position, pillCustomPosition: undefined });
-    }
-    // Reposition the window and notify the renderer for CSS alignment.
-    if (state.mainWindow) {
-      const { x, y } = resolveAppWindowPosition();
-      setProgrammaticPosition(state.mainWindow, x, y);
-    }
-    // For custom, resolve the live alignment; for presets, send as-is.
-    const broadcast =
-      position === "custom" ? getPillAlignmentForCustom() : position;
-    broadcastToWindows("settings:pill-position-changed", broadcast);
-  });
+  ipcMain.on("settings:set-pill-position", (_event, position: string) =>
+    applyPillPosition(position),
+  );
+}
+
+/**
+ * Save the pill position, move the pill and tell the renderers. The IPC
+ * handler and an agent through MCP (agent-app-settings.ts) call it.
+ */
+export function applyPillPosition(position: string): void {
+  if (position === "custom") {
+    writeSettings({ pillPosition: position });
+  } else {
+    writeSettings({ pillPosition: position, pillCustomPosition: undefined });
+  }
+  // Reposition the window and notify the renderer for CSS alignment.
+  if (state.mainWindow) {
+    const { x, y } = resolveAppWindowPosition();
+    setProgrammaticPosition(state.mainWindow, x, y);
+  }
+  // For custom, resolve the live alignment; for presets, send as-is.
+  const broadcast =
+    position === "custom" ? getPillAlignmentForCustom() : position;
+  broadcastToWindows("settings:pill-position-changed", broadcast);
 }

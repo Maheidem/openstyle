@@ -262,6 +262,10 @@ export async function startServer(
   });
 }
 
+export {
+  handleAppSettingsResult,
+  setAppSettingsSender,
+} from "./lib/app-settings-bridge.js";
 export { closeDb, writeSetting } from "./lib/db.js";
 export { onCleanupSkipped } from "./lib/dictation-notices.js";
 export { stopTracing } from "./lib/llm/tracing.js";

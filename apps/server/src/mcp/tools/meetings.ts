@@ -1,6 +1,7 @@
 // MCP tools for meetings, tags, the live transcript, transcripts, speakers,
-// summaries and jobs. Each tool calls an existing route of routes/meetings.ts,
-// routes/search.ts or routes/jobs.ts.
+// summaries and jobs. Each tool calls a route of routes/meetings.ts,
+// routes/search.ts or routes/jobs.ts. The write routes of PR 3 (attendees,
+// enhanced segments, summary) give 409 themselves while a job runs.
 import { z } from "zod";
 import {
   assertNoJob,
@@ -139,6 +140,38 @@ const setCalendarLink = defineTool({
       event === null
         ? await api("DELETE", path)
         : await api("PUT", path, event),
+    );
+    return { data, change: { kind: "meeting", ids: [meeting_id] } };
+  },
+});
+
+const setAttendees = defineTool({
+  name: "set_attendees",
+  description:
+    "Set the full attendee list of a meeting by hand. It needs no calendar event, and a linked event stays linked. Speaker naming uses the names. An empty list removes all attendees.",
+  kind: "write",
+  idempotent: true,
+  input: z.object({
+    meeting_id: meetingId,
+    attendees: z
+      .array(
+        z.object({
+          name: z.string().min(1).max(200).describe("The attendee name."),
+          email: z
+            .string()
+            .max(320)
+            .optional()
+            .describe("The attendee email, if known."),
+        }),
+      )
+      .max(200)
+      .describe("All attendees of the meeting."),
+  }),
+  run: async ({ meeting_id, attendees }, { api }) => {
+    const data = expectOk(
+      await api("PUT", `/api/meetings/${seg(meeting_id)}/attendees`, {
+        attendees,
+      }),
     );
     return { data, change: { kind: "meeting", ids: [meeting_id] } };
   },
@@ -367,6 +400,44 @@ const getTranscript = defineTool({
   },
 });
 
+const setEnhancedSegments = defineTool({
+  name: "set_enhanced_segments",
+  description:
+    "Write the enhanced (fixed) text of transcript segments, for example to correct names. The raw ASR text never changes. The segment ids come from get_transcript. null or an empty text removes the enhanced text of a segment.",
+  kind: "write",
+  idempotent: true,
+  input: z.object({
+    meeting_id: meetingId,
+    segments: z
+      .array(
+        z
+          .object({
+            id: z
+              .string()
+              .min(1)
+              .describe("The segment id (from get_transcript)."),
+            enhanced_text: z
+              .string()
+              .max(20_000)
+              .nullable()
+              .describe("The fixed text of the segment, or null."),
+          })
+          .strict(),
+      )
+      .min(1)
+      .max(5000)
+      .describe("The segments to change. Other segments stay the same."),
+  }),
+  run: async ({ meeting_id, segments }, { api }) => {
+    const data = expectOk(
+      await api("PUT", `/api/meetings/${seg(meeting_id)}/enhanced-segments`, {
+        segments,
+      }),
+    );
+    return { data, change: { kind: "meeting", ids: [meeting_id] } };
+  },
+});
+
 const updateSpeaker = defineTool({
   name: "update_speaker",
   description:
@@ -416,6 +487,58 @@ const getSummaryVersions = defineTool({
       await api("GET", `/api/meetings/${seg(meeting_id)}/summary-versions`),
     ),
   }),
+});
+
+const summaryText = z.string().max(1500);
+const setSummary = defineTool({
+  name: "set_summary",
+  description:
+    "Replace the summary of a meeting with your own. The old summary stays in get_summary_versions. Give the Markdown text and the same content as summary_json; the folder Overview reads its action items, decisions and open questions.",
+  kind: "write",
+  idempotent: false,
+  input: z.object({
+    meeting_id: meetingId,
+    markdown: z
+      .string()
+      .min(1)
+      .max(200_000)
+      .describe("The summary as Markdown, as the app shows it."),
+    summary_json: z
+      .object({
+        overview: summaryText.describe("A short overview paragraph."),
+        keyPoints: z.array(summaryText).describe("The key points."),
+        decisions: z.array(summaryText).describe("The decisions."),
+        actionItems: z
+          .array(
+            z.object({
+              task: summaryText.describe("The task."),
+              owner: z
+                .string()
+                .max(80)
+                .nullable()
+                .describe("Who does it, or null."),
+              due: z
+                .string()
+                .max(80)
+                .nullable()
+                .describe('When, as spoken ("next Friday"), or null.'),
+            }),
+          )
+          .describe("The action items."),
+        openQuestions: z.array(summaryText).describe("The open questions."),
+      })
+      .describe("The summary fields."),
+  }),
+  run: async ({ meeting_id, markdown, summary_json }, { api, agent }) => {
+    const data = expectOk(
+      await api("PUT", `/api/meetings/${seg(meeting_id)}/summary`, {
+        markdown,
+        summary_json,
+        agent,
+      }),
+    );
+    return { data, change: { kind: "meeting", ids: [meeting_id] } };
+  },
 });
 
 const JOB_PATHS = {
@@ -478,6 +601,7 @@ export const meetingTools = [
   getMeeting,
   updateMeeting,
   setCalendarLink,
+  setAttendees,
   listTags,
   setMeetingTags,
   moveMeetings,
@@ -485,8 +609,10 @@ export const meetingTools = [
   searchMeetings,
   getLiveTranscript,
   getTranscript,
+  setEnhancedSegments,
   updateSpeaker,
   getSummaryVersions,
+  setSummary,
   startMeetingJob,
   cancelMeetingJob,
   listJobs,
