@@ -2,12 +2,17 @@
 // summaries and jobs. Each tool calls a route of routes/meetings.ts,
 // routes/search.ts or routes/jobs.ts. The write routes of PR 3 (attendees,
 // enhanced segments, summary) give 409 themselves while a job runs.
+import { SEARCH_K_MAX } from "@openstyle/validations";
 import { z } from "zod";
 import {
   assertNoJob,
   confirmArg,
   defineTool,
   expectOk,
+  LIST_LIMIT_DEFAULT,
+  pageArgs,
+  pageFields,
+  pageOf,
   query,
   seg,
   ToolError,
@@ -28,12 +33,24 @@ interface LiveLine {
   endMs: number;
   text: string;
   final: boolean;
+  seq?: number;
+}
+
+interface MeetingListRow {
+  id: string;
+  title: string | null;
+  started_at: number | null;
+  duration_ms: number | null;
+  status: string;
+  folder_id: string | null;
+  tags?: string[];
+  job?: { kind?: string | null } | null;
 }
 
 const listMeetings = defineTool({
   name: "list_meetings",
   description:
-    "List the meetings, newest first (at most 200). Each item has the id, title, status, times and the running job.",
+    "List the meetings, newest first, one page at a time. Each item is short: id, title, started_at, duration_ms, status, folder_id, tags and the kind of the running job. total counts all meetings of the filter. For the summary, the notes and the transcript, use get_meeting and get_transcript.",
   kind: "read",
   idempotent: true,
   input: z.object({
@@ -44,22 +61,54 @@ const listMeetings = defineTool({
       .describe(
         'Only the meetings of this folder. "none" gives the meetings with no folder.',
       ),
+    ...pageArgs,
   }),
-  run: async ({ folder_id }, { api }) => ({
-    data: expectOk(await api("GET", `/api/meetings${query({ folder_id })}`)),
-  }),
+  run: async (
+    { folder_id, offset = 0, limit = LIST_LIMIT_DEFAULT },
+    { api },
+  ) => {
+    const list = expectOk(
+      await api("GET", `/api/meetings${query({ folder_id, limit, offset })}`),
+    ) as { items: MeetingListRow[]; total: number };
+    return {
+      data: {
+        ...pageFields(list.total, offset, limit, list.items.length),
+        items: list.items.map((m) => ({
+          id: m.id,
+          title: m.title,
+          started_at: m.started_at,
+          duration_ms: m.duration_ms,
+          status: m.status,
+          folder_id: m.folder_id,
+          tags: m.tags ?? [],
+          job: m.job?.kind ?? null,
+        })),
+      },
+    };
+  },
 });
 
 const getMeeting = defineTool({
   name: "get_meeting",
   description:
-    "Get one meeting: title, status, language, context, tags, calendar event, summary and the running job.",
+    "Get one meeting: title, status, language, context, tags, calendar event, summary and the running job. stored_asr_segments counts the raw ASR rows of both channels, also the failed, empty and filtered rows. It is not the transcript length: get_transcript total counts the merged transcript segments, so it is often smaller.",
   kind: "read",
   idempotent: true,
   input: z.object({ meeting_id: meetingId }),
-  run: async ({ meeting_id }, { api }) => ({
-    data: expectOk(await api("GET", `/api/meetings/${seg(meeting_id)}`)),
-  }),
+  run: async ({ meeting_id }, { api }) => {
+    // The route field `segment_counts` counts the rows of meeting_segments.
+    // An agent read it as the transcript length (issue #433), so the tool
+    // gives it a name that says what it counts.
+    const { segment_counts, ...meeting } = expectOk(
+      await api("GET", `/api/meetings/${seg(meeting_id)}`),
+    ) as { segment_counts?: { total: number; failed: number } };
+    return {
+      data: {
+        ...meeting,
+        stored_asr_segments: segment_counts ?? { total: 0, failed: 0 },
+      },
+    };
+  },
 });
 
 const updateMeeting = defineTool({
@@ -180,13 +229,16 @@ const setAttendees = defineTool({
 const listTags = defineTool({
   name: "list_tags",
   description:
-    "List all meeting tags with the number of meetings for each tag.",
+    "List the meeting tags with the number of meetings for each tag, one page at a time.",
   kind: "read",
   idempotent: true,
-  input: z.object({}),
-  run: async (_args, { api }) => ({
-    data: expectOk(await api("GET", "/api/meetings/tags")),
-  }),
+  input: z.object({ ...pageArgs }),
+  run: async ({ offset, limit }, { api }) => {
+    const tags = expectOk(await api("GET", "/api/meetings/tags")) as {
+      items: unknown[];
+    };
+    return { data: pageOf(tags.items, offset, limit) };
+  },
 });
 
 const setMeetingTags = defineTool({
@@ -278,8 +330,11 @@ const searchMeetings = defineTool({
       .number()
       .int()
       .min(1)
+      .max(SEARCH_K_MAX)
       .optional()
-      .describe("The number of hits. The default is 10."),
+      .describe(
+        `The number of hits, 1 to ${SEARCH_K_MAX}. The default is 10. Each hit has a snippet of at most 400 characters.`,
+      ),
   }),
   run: async (args, { api }) => ({
     data: expectOk(await api("POST", "/api/search/meetings", args)),
@@ -289,7 +344,7 @@ const searchMeetings = defineTool({
 const getLiveTranscript = defineTool({
   name: "get_live_transcript",
   description:
-    "Read the live transcript of the meeting that records now. To follow it, call again with since_ms set to the cursor_ms of the last answer: you then get only the new final lines. partial holds the open line of each channel (mic is the user, system is the others).",
+    "Read the live transcript of the meeting that records now. recording is true while the meeting records; paused is true while the user paused it. live_transcriber is the state of the live transcription (starting, warming, ready or unavailable), not of the meeting. Each final line has a seq. To follow the transcript, call again with since_seq = cursor of the last answer: you get each new final line once, from both channels. A line can come again with a higher seq when its text changes; keep the one with the highest seq for the same source and startMs. partial holds the open line of each channel (mic is the user, system is the others).",
   kind: "read",
   idempotent: true,
   input: z.object({
@@ -300,23 +355,32 @@ const getLiveTranscript = defineTool({
       .describe(
         "The recording meeting. Leave it out to use the meeting that records now.",
       ),
+    since_seq: z
+      .number()
+      .int()
+      .min(0)
+      .optional()
+      .describe(
+        "Give only the final lines with a seq above this value (the cursor of the last answer).",
+      ),
     since_ms: z
       .number()
       .int()
       .min(0)
       .optional()
       .describe(
-        "Give only the final lines that end after this time (ms from the recording start).",
+        "Old cursor, kept for old callers: the final lines that end after this time (ms from the recording start). It can skip a line of the other channel. Use since_seq.",
       ),
   }),
-  run: async ({ meeting_id, since_ms = 0 }, { api }) => {
+  run: async ({ meeting_id, since_seq, since_ms }, { api }) => {
     const live = await api("GET", "/api/settings/live_chat_enabled");
     const liveOn =
       live.ok && (live.data as { value?: string }).value === "true";
     if (!liveOn) throw new ToolError(LIVE_OFF_MESSAGE);
     let id = meeting_id;
     if (id === undefined) {
-      const list = expectOk(await api("GET", "/api/meetings")) as {
+      // The newest meetings come first, so a page of 20 holds the recording.
+      const list = expectOk(await api("GET", "/api/meetings?limit=20")) as {
         items: { id: string; status: string }[];
       };
       id = list.items.find((m) => m.status === "recording")?.id;
@@ -336,18 +400,33 @@ const getLiveTranscript = defineTool({
       reason?: string;
       lines: LiveLine[];
       skippedTicks: number;
+      paused?: boolean;
     };
     if (snapshot.status === "off") throw new ToolError(LIVE_OFF_MESSAGE);
     const finals = snapshot.lines.filter((l) => l.final);
-    const cursor = finals.reduce((max, l) => Math.max(max, l.endMs), since_ms);
+    // issue #434: one end-time cursor over two channels skipped a line that
+    // ends before the cursor but became final after the last poll. The seq
+    // follows the order in which lines became final, so nothing is skipped.
+    const isNew = (l: LiveLine) =>
+      since_seq !== undefined
+        ? (l.seq ?? 0) > since_seq
+        : since_ms !== undefined
+          ? l.endMs > since_ms
+          : true;
+    const cursor = finals.reduce(
+      (max, l) => Math.max(max, l.seq ?? 0),
+      since_seq ?? 0,
+    );
     return {
       data: {
         meeting_id: id,
-        status: snapshot.status,
-        reason: snapshot.reason ?? null,
-        lines: finals.filter((l) => l.endMs > since_ms),
+        recording: true,
+        paused: snapshot.paused === true,
+        live_transcriber: snapshot.status,
+        live_transcriber_reason: snapshot.reason ?? null,
+        lines: finals.filter(isNew),
         partial: snapshot.lines.filter((l) => !l.final),
-        cursor_ms: cursor,
+        cursor,
         skipped_ticks: snapshot.skippedTicks,
       },
     };

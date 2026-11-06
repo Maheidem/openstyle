@@ -77,7 +77,10 @@ import {
 } from "../lib/meetings/job-registry.js";
 import { resolveMeetingLanguage } from "../lib/meetings/language.js";
 import { startLive, stopLive } from "../lib/meetings/live/loop.js";
-import { setRecordingPaused } from "../lib/meetings/live/pause.js";
+import {
+  isRecordingPaused,
+  setRecordingPaused,
+} from "../lib/meetings/live/pause.js";
 import { getLive } from "../lib/meetings/live/store.js";
 import {
   isMixedChunk,
@@ -1528,20 +1531,23 @@ const meetings = new Hono()
   .route("/", meetingTagEdit)
   .get("/", zValidator("query", meetingFolderFilterSchema), (c) => {
     const db = getDb();
-    const { folder_id } = c.req.valid("query");
+    const { folder_id, limit = 200, offset = 0 } = c.req.valid("query");
     const where =
       folder_id === undefined
         ? ""
         : folder_id === "none"
           ? "WHERE folder_id IS NULL"
           : "WHERE folder_id = ?";
+    const params =
+      folder_id !== undefined && folder_id !== "none" ? [folder_id] : [];
     const rows = db
       .prepare(
-        `SELECT * FROM meetings ${where} ORDER BY created_at DESC, id DESC LIMIT 200`,
+        `SELECT * FROM meetings ${where} ORDER BY created_at DESC, id DESC LIMIT ? OFFSET ?`,
       )
-      .all(
-        ...(folder_id !== undefined && folder_id !== "none" ? [folder_id] : []),
-      ) as unknown as MeetingRow[];
+      .all(...params, limit, offset) as unknown as MeetingRow[];
+    const { n: total } = db
+      .prepare(`SELECT COUNT(*) AS n FROM meetings ${where}`)
+      .get(...params) as { n: number };
     return c.json(
       meetingListResponseSchema.parse({
         // A short form of the running job, so a list row can show it.
@@ -1550,6 +1556,7 @@ const meetings = new Hono()
           return {
             ...omitCalendarColumns(row),
             display_status: meetingDisplayStatus(row),
+            tags: getMeetingTags(row.id),
             job: job && {
               kind: job.kind,
               phase: job.phase,
@@ -1559,7 +1566,7 @@ const meetings = new Hono()
             },
           };
         }),
-        total: rows.length,
+        total,
       }),
     );
   })
@@ -1694,12 +1701,14 @@ const meetings = new Hono()
   )
   // Live transcript of a running recording (issue #375). Poll it every second.
   // "off" covers the flag off, no recording and an unknown meeting.
+  // `paused`: the user paused the recording; the loop reads no audio then.
   .get("/:id/live", (c) => {
-    const live = getLive(c.req.param("id"));
+    const id = c.req.param("id");
+    const live = getLive(id);
     if (!live) {
       return c.json({ status: "off" as const, lines: [], skippedTicks: 0 });
     }
-    return c.json(live);
+    return c.json({ ...live, paused: isRecordingPaused(id) });
   })
   // Link or change the calendar event of a meeting. The title follows the
   // event only when it is empty or still holds the previous event's title.

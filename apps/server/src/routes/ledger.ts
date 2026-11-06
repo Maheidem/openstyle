@@ -25,6 +25,8 @@ const listQuerySchema = z.object({
   kind: z.enum(ITEM_KINDS).optional(),
   status: z.enum(["open", "done", "all"]).default("open"),
   limit: z.coerce.number().int().min(1).max(1000).default(200),
+  /** The number of items to skip (newest mark first). The default is 0. */
+  offset: z.coerce.number().int().min(0).default(0),
 });
 
 const writer = z.string().trim().min(1).max(200);
@@ -75,16 +77,20 @@ function meetingsOf(folderId: string | undefined): string[] {
 const ledger = new Hono()
   .get("/items", zValidator("query", listQuerySchema), (c) => {
     const q = c.req.valid("query");
-    return c.json(
-      readLedger(getDb(), meetingsOf(q.folder_id), {
-        status: q.status,
-        kind: q.kind ?? null,
-        owner: null,
-        meetingIds: null,
-        dateFrom: null,
-        limit: q.limit,
-      }),
-    );
+    const { total, items } = readLedger(getDb(), meetingsOf(q.folder_id), {
+      status: q.status,
+      kind: q.kind ?? null,
+      owner: null,
+      meetingIds: null,
+      dateFrom: null,
+      limit: q.offset + q.limit,
+    });
+    return c.json({
+      total,
+      offset: q.offset,
+      limit: q.limit,
+      items: items.slice(q.offset),
+    });
   })
   .post("/items", zValidator("json", createSchema), (c) => {
     const body = c.req.valid("json");

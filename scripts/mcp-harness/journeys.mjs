@@ -259,9 +259,9 @@ Part B. The user agrees to all six deletes. Call each delete tool again with the
       prompt: `${PRE(h)}
 1. Call get_live_transcript with no arguments. Expect the text that live transcription is off.
 2. Call set_setting with key "live_chat_enabled" and value "true".
-3. Call get_live_transcript with no arguments. Note cursor_ms.
-4. Call get_live_transcript again with since_ms = that cursor_ms.
-5. Call get_live_transcript again with since_ms = the new cursor_ms.
+3. Call get_live_transcript with no arguments. Note cursor.
+4. Call get_live_transcript again with since_seq = that cursor.
+5. Call get_live_transcript again with since_seq = the new cursor.
 6. Write the lines that you got in each call.`,
     },
     {
@@ -287,3 +287,6 @@ export const FAILURE_TEXTS = {
 };
 export const CONFIRM_TEXT = "Ask the user, then call again with confirm: true";
 export const LIVE_OFF_TEXT = "Live transcription is off.";
+/** The two lines of the J15 late-line step (live-server.ts). */
+export const LIVE_FAR_LINE = "The last truck leaves the pier at five.";
+export const LIVE_LATE_LINE = "The pilot boat waits at the south buoy.";

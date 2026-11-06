@@ -6,6 +6,9 @@ import {
   confirmArg,
   defineTool,
   expectOk,
+  LIST_LIMIT_DEFAULT,
+  pageArgs,
+  pageFields,
   query,
   seg,
   ToolError,
@@ -28,23 +31,19 @@ const listVocabulary = defineTool({
       .string()
       .optional()
       .describe("Only entries whose term or notes contain this text."),
-    limit: z
-      .number()
-      .int()
-      .min(1)
-      .max(200)
-      .optional()
-      .describe("Page size, 1 to 200. The default is 50."),
-    offset: z
-      .number()
-      .int()
-      .min(0)
-      .optional()
-      .describe("The first entry to give. The default is 0."),
+    ...pageArgs,
   }),
-  run: async (args, { api }) => ({
-    data: expectOk(await api("GET", `/api/vocabulary${query(args)}`)),
-  }),
+  run: async ({ offset = 0, limit = LIST_LIMIT_DEFAULT, search }, { api }) => {
+    const page = expectOk(
+      await api("GET", `/api/vocabulary${query({ search, limit, offset })}`),
+    ) as { items: unknown[]; total: number };
+    return {
+      data: {
+        ...pageFields(page.total, offset, limit, page.items.length),
+        items: page.items,
+      },
+    };
+  },
 });
 
 const addVocabulary = defineTool({
