@@ -61,10 +61,25 @@ const rendererRootBaseUrl: Plugin = {
   config: () => ({ base: "/" }),
 };
 
+// The MCP SDK (@modelcontextprotocol/server) imports its runtime shims
+// statically. On Node they load the ajv JSON Schema validator. ajv's code
+// generator holds `require("ajv/dist/runtime/...")` text, which the packaged
+// app (no node_modules) cannot load and scripts/check-bundled-requires.mjs
+// refuses. The SDK ships a second shim with the @cfworker/json-schema
+// validator, bundled in its dist. Only the SDK stdio entry uses the `process`
+// stub of that shim, and the server does not use stdio. The server also
+// passes the same validator to McpServer (apps/server/src/mcp/server.ts).
+const mcpSdkShims = resolve(
+  "../server/node_modules/@modelcontextprotocol/server/dist/shimsBrowser.mjs",
+);
+
 export default defineConfig({
   main: {
     resolve: {
-      alias: workspaceAliases,
+      alias: {
+        ...workspaceAliases,
+        "@modelcontextprotocol/server/_shims": mcpSdkShims,
+      },
     },
     define: {
       "process.env.NODE_ENV": JSON.stringify(

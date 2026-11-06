@@ -1,6 +1,7 @@
 // Builds one McpServer with all Openstyle tools. The /mcp route builds a new
 // one for each HTTP request (stateless mode).
 import { McpServer } from "@modelcontextprotocol/server";
+import { CfWorkerJsonSchemaValidator } from "@modelcontextprotocol/server/validators/cf-worker";
 import { createAppLogger } from "@openstyle/utils";
 import type { ApiCaller } from "./call-api.js";
 import { emitAgentChange } from "./emit.js";
@@ -67,10 +68,13 @@ export function buildMcpServer(options: {
   agent: string;
   version: string;
 }): McpServer {
-  const server = new McpServer({
-    name: "openstyle",
-    version: options.version,
-  });
+  // The same validator as the Electron bundle (see the _shims alias in
+  // apps/electron/electron.vite.config.ts): the SDK default on Node is ajv,
+  // which the packaged app cannot load.
+  const server = new McpServer(
+    { name: "openstyle", version: options.version },
+    { jsonSchemaValidator: new CfWorkerJsonSchemaValidator() },
+  );
   for (const tool of MCP_TOOLS) {
     server.registerTool(
       tool.name,
