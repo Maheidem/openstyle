@@ -89,3 +89,58 @@ export function query(params: Record<string, string | number | undefined>) {
   const text = search.toString();
   return text ? `?${text}` : "";
 }
+
+/** The page size of every list tool (issue #431: a list must fit inline). */
+export const LIST_LIMIT_DEFAULT = 20;
+const LIST_LIMIT_MAX = 100;
+
+/** The `limit` and `offset` args of every list tool. */
+export const pageArgs = {
+  limit: z
+    .number()
+    .int()
+    .min(1)
+    .max(LIST_LIMIT_MAX)
+    .optional()
+    .describe(
+      `The number of items to give, 1 to ${LIST_LIMIT_MAX}. The default is ${LIST_LIMIT_DEFAULT}.`,
+    ),
+  offset: z
+    .number()
+    .int()
+    .min(0)
+    .optional()
+    .describe(
+      "The number of items to skip. Call again with offset = next_offset until next_offset is null.",
+    ),
+};
+
+/** One page of a list: `total` counts all items, also the ones past it. */
+interface Page<T> {
+  total: number;
+  offset: number;
+  limit: number;
+  next_offset: number | null;
+  items: T[];
+}
+
+/** The page fields for `count` items given from `offset` of `total`. */
+export function pageFields(
+  total: number,
+  offset: number,
+  limit: number,
+  count: number,
+): Omit<Page<never>, "items"> {
+  const end = offset + count;
+  return { total, offset, limit, next_offset: end < total ? end : null };
+}
+
+/** One page of a list that the route gives in full. */
+export function pageOf<T>(
+  all: readonly T[],
+  offset = 0,
+  limit = LIST_LIMIT_DEFAULT,
+): Page<T> {
+  const items = all.slice(offset, offset + limit);
+  return { ...pageFields(all.length, offset, limit, items.length), items };
+}

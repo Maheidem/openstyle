@@ -2,7 +2,16 @@
 // calls a route of routes/ledger.ts. Marks are append only: a change of state
 // is a new mark (add_open_item_mark).
 import { z } from "zod";
-import { confirmArg, defineTool, expectOk, query, seg } from "./define.js";
+import {
+  confirmArg,
+  defineTool,
+  expectOk,
+  LIST_LIMIT_DEFAULT,
+  pageArgs,
+  pageFields,
+  query,
+  seg,
+} from "./define.js";
 
 const itemId = z
   .string()
@@ -26,7 +35,7 @@ const owner = z
 const listOpenItems = defineTool({
   name: "list_open_items",
   description:
-    "List the open items (action items, decisions and questions) that the meetings raised, with each mark (raised, open, done, dropped, changed) in date order. nowStatus is the last mark.",
+    "List the open items (action items, decisions and questions) that the meetings raised, newest mark first, one page at a time. Each item has its marks (raised, open, done, dropped, changed) in date order. nowStatus is the last mark.",
   kind: "read",
   idempotent: true,
   input: z.object({
@@ -44,10 +53,19 @@ const listOpenItems = defineTool({
       .describe(
         "open (the default): not done and not dropped. done: done or dropped. all: every item.",
       ),
+    ...pageArgs,
   }),
-  run: async (args, { api }) => ({
-    data: expectOk(await api("GET", `/api/ledger/items${query(args)}`)),
-  }),
+  run: async ({ offset = 0, limit = LIST_LIMIT_DEFAULT, ...args }, { api }) => {
+    const page = expectOk(
+      await api("GET", `/api/ledger/items${query({ ...args, limit, offset })}`),
+    ) as { items: unknown[]; total: number };
+    return {
+      data: {
+        ...pageFields(page.total, offset, limit, page.items.length),
+        items: page.items,
+      },
+    };
+  },
 });
 
 const createOpenItem = defineTool({

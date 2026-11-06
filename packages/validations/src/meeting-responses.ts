@@ -51,6 +51,7 @@ const meetingJobQueuedSchema = z
 export const meetingListResponseSchema = z.object({
   items: z.array(
     meetingRecordSchema.extend({
+      tags: z.array(z.string()).optional(),
       job: z
         .object({
           kind: meetingJobKindSchema.nullable().optional(),
@@ -63,6 +64,7 @@ export const meetingListResponseSchema = z.object({
         .optional(),
     }),
   ),
+  /** All meetings that match the filter, also the ones past this page. */
   total: z.number().int().nonnegative(),
 });
 

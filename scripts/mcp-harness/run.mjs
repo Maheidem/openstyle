@@ -48,6 +48,8 @@ import {
   CONFIRM_TEXT,
   FAILURE_TEXTS,
   journeys,
+  LIVE_FAR_LINE,
+  LIVE_LATE_LINE,
   LIVE_OFF_TEXT,
   SEED,
   SERVER,
@@ -1364,16 +1366,44 @@ async function runHarness(h, liveBundle) {
           }
         })
         .filter(Boolean);
-      const cursors = data.map((d) => d.cursor_ms);
+      const cursors = data.map((d) => d.cursor);
+      // The late-line step (issue #434): the far mic line comes in one poll,
+      // the late system line in a later poll, and the late line ends before
+      // the far line. An end-time cursor would skip it.
+      const has = (d, text) => d.lines.some((l) => l.text === text);
+      const farAt = data.findIndex((d) => has(d, LIVE_FAR_LINE));
+      const lateAt = data.findIndex((d) => has(d, LIVE_LATE_LINE));
+      const late = data[lateAt]?.lines.find((l) => l.text === LIVE_LATE_LINE);
+      const maxEndBefore = Math.max(
+        0,
+        ...data.slice(0, lateAt).flatMap((d) => d.lines.map((l) => l.endMs)),
+      );
+      const lateCount = data.filter((d) => has(d, LIVE_LATE_LINE)).length;
+      const lateOk =
+        farAt >= 0 &&
+        lateAt > farAt &&
+        late !== undefined &&
+        late.endMs < maxEndBefore &&
+        lateCount === 1;
       result.checks.get_live_transcript = {
         ok:
           polls.some((c) => c.isError && c.result.includes(LIVE_OFF_TEXT)) &&
-          data.length >= 2 &&
+          data.length >= 3 &&
           cursors.at(-1) > cursors[0] &&
-          data[0].lines.length > 0,
+          data[0].lines.length > 0 &&
+          data.every((d) => d.recording === true) &&
+          lateOk,
         offText: polls.find((c) => c.isError)?.result ?? null,
         cursors,
         lineCounts: data.map((d) => d.lines.length),
+        lateLine: {
+          ok: lateOk,
+          farPoll: farAt + 1,
+          latePoll: lateAt + 1,
+          lateEndMs: late?.endMs ?? null,
+          maxEndMsBefore: maxEndBefore,
+          timesSeen: lateCount,
+        },
       };
       writeAgentConfig(dirs.profile);
     }
@@ -1550,7 +1580,7 @@ function matrixMd(matrix, results, configs) {
     lines.push(`- Remove: ${r.uninstall?.ok ? "ok" : "FAILED"}`);
     lines.push(`- J14 failure texts: ${r.checks.j14?.ok ? "ok" : "FAILED"}`);
     lines.push(
-      `- J15 live: ${r.checks.get_live_transcript?.ok ? "ok" : "FAILED"} (cursors ${JSON.stringify(r.checks.get_live_transcript?.cursors ?? [])})`,
+      `- J15 live: ${r.checks.get_live_transcript?.ok ? "ok" : "FAILED"} (cursors ${JSON.stringify(r.checks.get_live_transcript?.cursors ?? [])}, late line ${JSON.stringify(r.checks.get_live_transcript?.lateLine ?? null)})`,
       "",
     );
   }

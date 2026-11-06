@@ -130,24 +130,35 @@ Paths are under `/api`. `meetings.ts` is `apps/server/src/routes/meetings.ts`. T
 
 | Tool | Main input | Backing route | Route | Ann. | Confirm | PR |
 |---|---|---|---|---|---|---|
-| list_meetings | `folder_id?` | GET `/meetings` (`meetings.ts:1490`) | existing | R I | no | 2 |
+| list_meetings | `folder_id?`, `limit?`, `offset?` (section 4.4) | GET `/meetings?limit=&offset=` (`meetings.ts:1532`). The route takes `limit` (1 to 200) and `offset` since issue #431. Without them it gives the newest 200, as before. `total` counts all meetings of the filter. The tool gives short rows: `id`, `title`, `started_at`, `duration_ms`, `status`, `folder_id`, `tags`, `job` (the kind of the running job, or null). | existing | R I | no | 2 |
 | get_meeting | `meeting_id` | GET `/meetings/:id` (`meetings.ts:2367`) and GET `/meetings/:id/speakers` (`meetings.ts:2116`) | existing | R I | no | 2 |
 | update_meeting | `meeting_id`, `title?`, `language?`, `context?` (the notes) | PATCH `/meetings/:id` (`meetings.ts:1711`, schema `:1102`) | existing | D I | no | 2 |
 | set_calendar_link | `meeting_id`, `event` or `null` | PUT `/meetings/:id/calendar` (`meetings.ts:1667`), DELETE (`meetings.ts:1687`) for `null` | existing | D I | no | 2 |
 | set_attendees | `meeting_id`, `attendees[]` (`name`, `email?`) | PUT `/meetings/:id/attendees` | NEW, in `meetings.ts` after the calendar routes | D I | no | 3 |
-| list_tags | none | GET `/meetings/tags` (`meeting-tags.ts:35`) | existing | R I | no | 2 |
+| list_tags | `limit?`, `offset?` (section 4.4) | GET `/meetings/tags` (`meeting-tags.ts:35`). The tool pages the list. | existing | R I | no | 2 |
 | set_meeting_tags | `meeting_id`, `tags[]` | PUT `/meetings/:id/tags` (`meeting-tags.ts:40`) | existing | D I | no | 2 |
 | move_meetings | `meeting_ids[]`, `folder_id` | POST `/meetings/move` (`meeting-folders.ts:166`) | existing | - I | no | 2 |
 | delete_meeting* | `meeting_id`, `confirm` | DELETE `/meetings/:id` (`meetings.ts:2415`) | existing | D I | yes | 2 |
-| search_meetings | `query`, scope fields | POST `/search/meetings` (`search.ts:26`) | existing | R I | no | 2 |
+| search_meetings | `query`, scope fields, `k?` (1 to 50, default 10) | POST `/search/meetings` (`search.ts:26`). The tool refuses `k` above `SEARCH_K_MAX` (50) before the route call. Each snippet has at most 400 characters. | existing | R I | no | 2 |
 
 #### Live transcription (1)
 
 | Tool | Main input | Backing route | Route | Ann. | Confirm | PR |
 |---|---|---|---|---|---|---|
-| get_live_transcript | `meeting_id?`, `since_ms?` | GET `/meetings/:id/live` (`meetings.ts:1658`, store `apps/server/src/lib/meetings/live/store.ts:99`). With no id: GET `/meetings` and the row with status `recording`. | existing | R I | no | 2 |
+| get_live_transcript | `meeting_id?`, `since_seq?`, `since_ms?` (old) | GET `/meetings/:id/live` (`meetings.ts:1700`, store `apps/server/src/lib/meetings/live/store.ts`). With no id: GET `/meetings?limit=20` and the row with status `recording`. | existing | R I | no | 2 |
 
-The result has `status` (`starting`, `warming`, `ready`, `unavailable`, `store.ts:29`), the final lines with `endMs > since_ms`, the open partial line of each channel, and `next_since_ms` (the largest `endMs` of the returned final lines). An agent polls with `next_since_ms`. The error texts are in section 5.
+The result has these fields (issue #434):
+
+- `recording`: always `true`. The tool gives an error when the meeting does not record.
+- `paused`: `true` while the user paused the recording. The route GET `/meetings/:id/live` gives it since issue #434 (`isRecordingPaused`).
+- `live_transcriber` and `live_transcriber_reason`: the state of the live loop (`starting`, `warming`, `ready`, `unavailable`, `store.ts` `LiveStatus`). It is not the state of the meeting. Before issue #434 the field was `status`, and an agent read `ready` as "the meeting does not record".
+- `lines`: the final lines with `seq > since_seq`. Each final line has a `seq`. The store gives the next `seq` when a line becomes final or gets a new text (the language lock reads the first lines again). `seq` only goes up in the server process, over all meetings.
+- `partial`: the open partial line of each channel. A partial line has no `seq`.
+- `cursor`: the largest `seq` of the final lines. An agent polls with `since_seq = cursor`.
+
+A line can come again with a higher `seq` when its text changes. The agent keeps the line with the highest `seq` for the same `source` and `startMs`.
+
+`since_ms` stays for old callers: it gives the final lines with `endMs > since_ms`. It can skip a line. The two channels finish lines out of time order: a mic line that ends at 69840 can become final before a system line that ends at 68500. A cursor on the latest end time then filters the system line out of the next poll. `since_seq` wins when both are given. The error texts are in section 5.
 
 #### Transcript and speakers (3)
 
@@ -171,11 +182,11 @@ The result has `status` (`starting`, `warming`, `ready`, `unavailable`, `store.t
 
 | Tool | Main input | Backing route | Route | Ann. | Confirm | PR |
 |---|---|---|---|---|---|---|
-| list_folders | none | GET `/meetings/folders` (`meeting-folders.ts:63`, mount `meetings.ts:1483`) | existing | R I | no | 2 |
+| list_folders | `limit?`, `offset?` (section 4.4) | GET `/meetings/folders` (`meeting-folders.ts:63`, mount `meetings.ts:1525`). The tool pages the list and renames `stage_counts` to `need_stage` (section 4.5). | existing | R I | no | 2 |
 | create_folder | `name`, `description?`, `color?` | POST `/meetings/folders` (`meeting-folders.ts:76`) | existing | - - | no | 2 |
 | update_folder | `folder_id`, `name?`, `description?`, `color?` | PATCH `/meetings/folders/:id` (`meeting-folders.ts:99`) | existing | D I | no | 2 |
 | delete_folder* | `folder_id`, `confirm` | DELETE `/meetings/folders/:id` (`meeting-folders.ts:138`). 409 when the folder has meetings. | existing | D I | yes | 2 |
-| get_folder_overview | `folder_id` | GET `/meetings/folders/:id/overview` (`meeting-folder-overview.ts:27`) | existing | R I | no | 2 |
+| get_folder_overview | `folder_id` | GET `/meetings/folders/:id/overview` (`meeting-folder-overview.ts:27`). The tool renames `counts.summarized` to `counts.with_summary` and `counts.stage_counts` to `counts.need_stage` (section 4.5). | existing | R I | no | 2 |
 | set_action_item_done | `folder_id`, `key`, `done` | PUT `/meetings/folders/:id/action-items/:key` (`meeting-folder-overview.ts:34`) | existing | D I | no | 2 |
 | get_folder_standing | `folder_id` | GET `/meetings/folders/:id/standing` (`meeting-folder-standing.ts:35`) | existing | R I | no | 2 |
 | set_folder_standing | `folder_id`, `bullets[]` | PUT `/meetings/folders/:id/standing`. It saves the text as given, with no LLM call. The existing POST (`meeting-folder-standing.ts:44`) is the LLM refresh and gets no tool. | NEW, in `meeting-folder-standing.ts` | D I | no | 3 |
@@ -188,7 +199,7 @@ The ledger has two tables: `ledger_items` and `ledger_marks` (`apps/server/src/l
 
 | Tool | Main input | Backing route | Route | Ann. | Confirm | PR |
 |---|---|---|---|---|---|---|
-| list_open_items | `folder_id?`, `kind?`, `status?` | GET `/ledger/items` | NEW | R I | no | 3 |
+| list_open_items | `folder_id?`, `kind?`, `status?`, `limit?`, `offset?` (section 4.4) | GET `/ledger/items?limit=&offset=`. The route takes `offset` since issue #431. | NEW | R I | no | 3 |
 | create_open_item | `meeting_id`, `kind` (`action`, `decision`, `question`), `text`, `quote`, `owner?` | POST `/ledger/items`. It writes the item (folder = the folder of the meeting) and one `raised` mark. | NEW | - - | no | 3 |
 | update_open_item | `item_id`, `text?`, `kind?` | PATCH `/ledger/items/:id` | NEW | D I | no | 3 |
 | add_open_item_mark | `item_id`, `meeting_id`, `status` (`open`, `done`, `dropped`, `changed`), `quote`, `owner?`, `reason?` | POST `/ledger/items/:id/marks`. `writer_model` = `agent:<agent name>`. `quote_ok` = 1 only when the quote is in the meeting transcript. | NEW | - - | no | 3 |
@@ -198,11 +209,11 @@ The ledger has two tables: `ledger_items` and `ledger_marks` (`apps/server/src/l
 
 | Tool | Main input | Backing route | Route | Ann. | Confirm | PR |
 |---|---|---|---|---|---|---|
-| list_ask_threads | `meeting_id?`, `folder_id?`, `all?` | GET `/chat/threads` (`chat.ts:78`, query `:63`) | existing | R I | no | 2 |
+| list_ask_threads | `meeting_id?`, `folder_id?`, `limit?`, `offset?` (section 4.4) | GET `/chat/threads` (`chat.ts:78`, query `:63`). With no scope the tool sends `all=1`. The tool pages the list. | existing | R I | no | 2 |
 | get_ask_thread | `thread_id` | GET `/chat/threads/:id` (`chat.ts:107`) | existing | R I | no | 2 |
 | rename_ask_thread | `thread_id`, `title` | PATCH `/chat/threads/:id` | NEW, in `chat.ts` | D I | no | 3 |
 | delete_ask_thread* | `thread_id`, `confirm` | DELETE `/chat/threads/:id`. The messages go with it (`ON DELETE CASCADE`, `schema.ts:1412`). | NEW, in `chat.ts` | D I | yes | 3 |
-| list_dictations | the query of `historyQuerySchema` | GET `/history` (`history.ts:49`) | existing | R I | no | 2 |
+| list_dictations | `search?`, `start_date?`, `end_date?`, `limit?`, `offset?` (section 4.4) | GET `/history` (`history.ts:49`) | existing | R I | no | 2 |
 | get_dictation | `id` | GET `/history/:id` (`history.ts:170`) | existing | R I | no | 2 |
 | delete_dictation* | `id`, `confirm` | DELETE `/history/:id` (`history.ts:180`) | existing | D I | yes | 2 |
 
@@ -212,7 +223,7 @@ No tool calls DELETE `/history` (`history.ts:186`, "delete all history"). That i
 
 | Tool | Main input | Backing route | Route | Ann. | Confirm | PR |
 |---|---|---|---|---|---|---|
-| list_vocabulary | `query?` | GET `/vocabulary` (`vocabulary.ts:23`) | existing | R I | no | 2 |
+| list_vocabulary | `search?`, `limit?`, `offset?` (section 4.4) | GET `/vocabulary` (`vocabulary.ts:23`) | existing | R I | no | 2 |
 | add_vocabulary | `terms[]` (`term`, `notes?`) | POST `/vocabulary/import` (`vocabulary.ts:109`) | existing | - I | no | 2 |
 | update_vocabulary | `id`, `term?`, `notes?` | PUT `/vocabulary/:id` (`vocabulary.ts:75`) | existing | D I | no | 2 |
 | delete_vocabulary* | `id`, `confirm` | DELETE `/vocabulary/:id` (`vocabulary.ts:102`) | existing | D I | yes | 2 |
@@ -249,6 +260,31 @@ Count: 10 + 1 + 3 + 5 + 8 + 5 + 7 + 4 + 4 + 3 = 50 tools. 6 need `confirm`. 15 n
 | GET, PUT `/api/system/app-settings` | `routes/system.ts` | Server-to-main request (section 6.4). |
 
 Each new meeting write route gives 409 while a job holds the slot of that meeting (`hasJob`), with the text of `runningJobMessage` (`meetings.ts:313`).
+
+### 4.4 Paging of the list tools (issue #431)
+
+Every `list_*` tool gives one page. The output must fit inline in the context of an agent.
+
+- Input: `limit` (1 to 100, default 20) and `offset` (default 0). The helpers are `pageArgs`, `pageFields` and `pageOf` in `apps/server/src/mcp/tools/define.ts`.
+- Output: `{ total, offset, limit, next_offset, items }`. `total` counts all items of the filter. `next_offset` is null on the last page.
+- A route that pages in SQL gets `limit` and `offset`: `list_meetings`, `list_dictations`, `list_vocabulary`, `list_open_items`. For `list_tags`, `list_folders` and `list_ask_threads` the route gives the full list, and the tool cuts the page.
+- `list_jobs`, `list_settings` and `list_models` do not page. Their size does not grow with the user data.
+- The REST routes stay compatible for the app. Without `limit`, GET `/api/meetings` gives the newest 200 full rows, as before. Each row also has `tags` now.
+
+### 4.5 Counts that an agent can misread (issue #433)
+
+The REST fields keep their names for the app. The tools rename them.
+
+| Tool field | Route field | What it counts |
+|---|---|---|
+| `get_meeting.stored_asr_segments` | `segment_counts` | The rows of `meeting_segments` for the meeting: both channels, also the failed rows, the empty rows (silence) and the rows that the merge removes. |
+| `get_transcript.total` | none (the tool counts) | The merged transcript segments (`loadMergedTranscript`, `transcript-io.ts:90`). The merge keeps only rows with status `ok` and text. It removes hallucinations, vocabulary leaks, repeats and mic echoes of the system channel (`mergeTranscript`, `merge.ts:371`). |
+| `get_folder_overview.counts.with_summary` | `counts.summarized` | The meetings of the folder that have a summary row, also an old one (`folder-overview.ts:386`). |
+| `need_stage.<stage>.ready` and `.blocked` | `stage_counts` | The meetings that need the stage (`stage-needs.ts` `NEEDS`). `ready`: the stage can run now. `blocked`: no audio, or no AI model. |
+
+So `stored_asr_segments.total` is often larger than `get_transcript.total`. On the owner's data: 127 stored rows, 36 of them empty, 88 merged segments.
+
+A meeting can count in `with_summary` and in `need_stage.summarize`. A full transcribe sets the status `transcribed` and keeps the old summary (`meetings.ts:1038`). The rule `summarize` needs a meeting with the status `transcribed` (`stage-needs.ts:25-30`). So the old summary is for an older transcript, and the meeting needs a new one. This is not a bug in the counts.
 
 ## 5. Error contracts
 
@@ -461,7 +497,7 @@ All new strings go through `t()`. Add them to the 7 locales (`de`, `en`, `es`, `
 - Toggle: `mcp_enabled = "false"` gives 403 with the text of section 5. A missing row works.
 - Confirm: each of the 6 delete tools with no `confirm` gives the text of section 5 and deletes nothing.
 - Job: `set_summary` while a fake job holds the slot gives 409.
-- Live: the "off" text and the "No recording is running" text, and a seeded live store (`openLive`, `addFinalLine`) with a `since_ms` cursor.
+- Live: the "off" text and the "No recording is running" text, and a seeded live store (`openLive`, `addFinalLine`) with a `since_seq` cursor. One test adds a system line that ends before the last mic line but becomes final after the poll (issue #434). `since_ms` skips it. `since_seq` gives it.
 - Catalog coverage (section 6.1).
 - The change emitter: a write tool calls the sink once. A read tool does not.
 
@@ -542,7 +578,7 @@ Validation types: **T** = tool_result JSON, **L** = server log line, **S** = SQL
 | J12 | Model download, and jobs | The agent downloads a model, then runs and cancels jobs. | 1. list_models. 2. download_model (the smallest built-in model). 3. Poll get_download_status. 4. start_meeting_job `summarize`. 5. list_jobs. 6. start `enhance`, then cancel_meeting_job. | list_models, download_model, get_download_status, start_meeting_job, list_jobs, cancel_meeting_job | T: the download reaches `ready`. S: a new summary version, the cancel result. L: the job log lines. The model goes to the isolated model cache only. |
 | J13 | Delete with consent | No delete happens without the user. | 1. Call each delete tool with no `confirm`. 2. Check that nothing changed. 3. Call again with `confirm: true`. | delete_meeting, delete_folder, delete_open_item, delete_ask_thread, delete_dictation, delete_vocabulary | T: the text of section 5 six times, then six successes. S: each row is there after step 1 and gone after step 3. |
 | J14 | Failure messages | Each failure gives a clear next step. | 1. Quit the app, call a tool. 2. Start it, turn access off, call a tool. 3. Use a wrong token (edit the profile `mcp.json`). | list_meetings | T: the 3 texts of section 5. The bridge process stays alive (`ps`). |
-| J15 | Follow the live transcript of the current recording | The agent follows a running meeting. | 1. With live off, call get_live_transcript. 2. Turn live on. 3. Start a recording. 4. Poll. 5. Wait. 6. Poll with `next_since_ms`. | get_live_transcript, set_setting | T: the "off" text, then lines that match what was said and a cursor that moves forward. Before the release this runs on a seeded live store (unit test) and the E2E. The real proof is after the release: the owner records a short meeting in Openstyle Dev, and the Claude Code peer session and a pi child each poll during it. |
+| J15 | Follow the live transcript of the current recording | The agent follows a running meeting. | 1. With live off, call get_live_transcript. 2. Turn live on. 3. Start a recording. 4. Poll. 5. Wait. 6. Poll with `since_seq = cursor`. | get_live_transcript, set_setting | T: the "off" text, then lines that match what was said and a cursor that moves forward. The harness also adds a late line (issue #434): after poll 1 a mic line that ends at 99000, after poll 2 a system line that ends at 45000. The check needs the late line once, in a later poll than the mic line. An end-time cursor (99000) skips it. Before the release this runs on a seeded live store (unit test) and the E2E. The real proof is after the release: the owner records a short meeting in Openstyle Dev, and the Claude Code peer session and a pi child each poll during it. |
 
 J1 and J2 never touch the real config of a tool. The sandbox variables (`CLAUDE_CONFIG_DIR`, `PI_CODING_AGENT_DIR`, `CODEX_HOME`) move each config to a scratch folder [L1] [L2]. Main passes its env to the CLI unchanged, so the variables reach the CLI. For Codex, the harness proves the install only: "Add to Codex" with `CODEX_HOME=<sandbox>`, then `codex mcp get openstyle-dev --json` shows the launcher. The tool matrix has no Codex column (plan scope: tool x {claude, pi}).
 
@@ -569,7 +605,7 @@ Then: `pnpm release:local 3.1.0-alpha.1 --dry-run`, the launcher test from the d
 | R3 | The settings form state can stay old after a refetch. | The E2E checks a form field after `set_setting`. |
 | R4 | The CI E2E budget is 12-14 of 15 minutes. | Keep `mcp.test.ts` short (section 9.3). |
 | R5 | The `agent` provider label in the summary versions UI. | Show the agent name as the model. Check it in the J3 screenshot. |
-| R6 | Large transcript output. | `get_transcript` pages (default 200 segments). |
+| R6 | Large output. | `get_transcript` pages (default 200 segments). Every list tool pages (section 4.4). On the owner's profile (93 meetings) `list_meetings` gave about 59,000 characters before issue #431. |
 | R7 | `@modelcontextprotocol/server` 2.x is new. | Pin the exact version `2.4.0`. |
 
 ## 13. Not proven
@@ -580,7 +616,6 @@ Then: `pnpm release:local 3.1.0-alpha.1 --dry-run`, the launcher test from the d
 - The real name of the Claude Code setting for inbound messages to a peer session.
 - That the default pi model can use 50 tools. If it cannot, ask the owner.
 - The live journey J15 on a real recording. It needs the owner after the release.
-- `GET /api/meetings` returns at most 200 rows (`meetings.ts:1501`). A profile with more meetings needs paging in `list_meetings` or `search_meetings`.
 - A Stable switch through `set_app_settings` from an alpha build installs at once (section 6.4). The harness does not run that switch.
 - The login-shell PATH read runs the dotfiles of the user. It is the common method [S12], but it is a side effect. A slow or broken dotfile hits the 5 s timeout, and then only the known folders apply.
 - A `codex` or `claude` installed in a folder that is not on the login PATH and not a known folder (for example a custom npm prefix) is "Not found". The fallback command still works in Terminal.

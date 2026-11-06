@@ -18,6 +18,13 @@ export interface LiveLine {
   text: string;
   /** False for the partial text of the open tail. */
   final: boolean;
+  /**
+   * Final lines only: the order in which the line became final or got a new
+   * text. It only goes up, over all meetings. A reader that keeps the largest
+   * seq it saw gets every new or changed final line, also a line of the other
+   * channel that ends earlier (issue #434). A partial line has no seq.
+   */
+  seq?: number;
 }
 
 /**
@@ -46,6 +53,9 @@ interface LiveEntry {
 }
 
 const entries = new Map<string, LiveEntry>();
+
+/** The last seq given to a final line. It never goes down in this process. */
+let lastSeq = 0;
 
 export function openLive(meetingId: string): void {
   entries.set(meetingId, {
@@ -79,7 +89,7 @@ export function countSkippedTick(meetingId: string): void {
 export function addFinalLine(meetingId: string, line: LiveLine): void {
   const entry = entries.get(meetingId);
   if (!entry) return;
-  entry.finals.push({ ...line, final: true });
+  entry.finals.push({ ...line, final: true, seq: ++lastSeq });
   // A final line for a channel replaces the partial of that channel.
   delete entry.partials[line.source];
 }
@@ -132,7 +142,8 @@ export function setFinalText(
     (l) => l.source === source && l.startMs === startMs,
   );
   if (i < 0) return;
-  if (text) entry.finals[i] = { ...entry.finals[i], text };
+  // A new text gets a new seq, so a reader that follows the seq gets it.
+  if (text) entry.finals[i] = { ...entry.finals[i], text, seq: ++lastSeq };
   else entry.finals.splice(i, 1);
 }
 

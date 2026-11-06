@@ -37,6 +37,7 @@ import {
   addFinalLine,
   dropLive,
   openLive,
+  setFinalText,
   setLiveStatus,
   setPartialLine,
 } from "../src/lib/meetings/live/store.js";
@@ -362,6 +363,71 @@ describe("meeting tools", () => {
     expect(inFolder.items.map((m: { id: string }) => m.id)).toEqual(["m1"]);
   });
 
+  it("list_meetings gives short rows, one page at a time (issue #431)", async () => {
+    // 45 meetings with long notes: the full rows would not fit inline.
+    for (let i = 0; i < 45; i++) {
+      insertMeeting(`m${String(i).padStart(2, "0")}`, {
+        startedAt: 1_780_000_000_000 + i * 1000,
+      });
+    }
+    getDb()
+      .prepare("UPDATE meetings SET context = ?")
+      .run("Fictional notes about the harbor. ".repeat(40));
+    await ok("set_meeting_tags", { meeting_id: "m44", tags: ["harbor"] });
+    const page1 = await ok("list_meetings");
+    expect(page1).toMatchObject({
+      total: 45,
+      offset: 0,
+      limit: 20,
+      next_offset: 20,
+    });
+    expect(page1.items).toHaveLength(20);
+    // Newest first, and only the short fields: no notes, summary or text.
+    expect(page1.items[0]).toEqual({
+      id: "m44",
+      title: "Meeting m44",
+      started_at: 1_780_000_044_000,
+      duration_ms: null,
+      status: "transcribed",
+      folder_id: null,
+      tags: ["harbor"],
+      job: null,
+    });
+    expect(JSON.stringify(page1)).not.toContain("Fictional notes");
+    const last = await ok("list_meetings", { offset: 40, limit: 100 });
+    expect(last).toMatchObject({ total: 45, offset: 40, next_offset: null });
+    expect(last.items.map((m: { id: string }) => m.id)).toEqual([
+      "m04",
+      "m03",
+      "m02",
+      "m01",
+      "m00",
+    ]);
+    const tooBig = await call("list_meetings", { limit: 101 });
+    expect(tooBig.isError).toBe(true);
+  });
+
+  it("GET /api/meetings keeps its old answer for the app, and pages on request", async () => {
+    for (let i = 0; i < 3; i++) insertMeeting(`m${i}`);
+    const get = (q: string) =>
+      app.request(`${URL_BASE}/api/meetings${q}`, {
+        headers: { Authorization: `Bearer ${SERVER_TOKEN}` },
+      });
+    const full = (await (await get("")).json()) as {
+      items: { id: string; context: unknown }[];
+      total: number;
+    };
+    expect(full.total).toBe(3);
+    expect(full.items).toHaveLength(3);
+    expect(full.items[0]).toHaveProperty("context");
+    const page = (await (await get("?limit=1&offset=1")).json()) as {
+      items: unknown[];
+      total: number;
+    };
+    expect(page.total).toBe(3);
+    expect(page.items).toHaveLength(1);
+  });
+
   it("get_meeting gives the meeting, and an error for an unknown id", async () => {
     insertMeeting("m1", { title: "Tide chart review" });
     expect((await ok("get_meeting", { meeting_id: "m1" })).title).toBe(
@@ -463,6 +529,54 @@ describe("meeting tools", () => {
     expect(missing.isError).toBe(true);
   });
 
+  it("get_meeting stored_asr_segments counts stored rows, get_transcript the merged segments (issue #433)", async () => {
+    insertMeeting("m1");
+    // Two lines with text, one empty chunk and one failed chunk.
+    insertSegment({
+      id: "s0",
+      meetingId: "m1",
+      idx: 0,
+      startMs: 0,
+      endMs: 900,
+      text: "The pier opens at nine.",
+    });
+    insertSegment({
+      id: "s1",
+      meetingId: "m1",
+      idx: 1,
+      startMs: 1000,
+      endMs: 1900,
+      text: "",
+    });
+    insertSegment({
+      id: "s2",
+      meetingId: "m1",
+      idx: 2,
+      startMs: 2000,
+      endMs: 2900,
+      text: "We move the buoys.",
+    });
+    insertSegment({
+      id: "s3",
+      meetingId: "m1",
+      idx: 3,
+      startMs: 3000,
+      endMs: 3900,
+      text: null,
+      status: "failed",
+    });
+    const meeting = await ok("get_meeting", { meeting_id: "m1" });
+    expect(meeting.stored_asr_segments).toEqual({ total: 4, failed: 1 });
+    expect(meeting).not.toHaveProperty("segment_counts");
+    const transcript = await ok("get_transcript", { meeting_id: "m1" });
+    expect(transcript.total).toBe(2);
+  });
+
+  it("search_meetings refuses more hits than the route allows", async () => {
+    const big = await call("search_meetings", { query: "pier", k: 51 });
+    expect(big.isError).toBe(true);
+  });
+
   it("search_meetings answers, with the reason when search is off", async () => {
     insertMeeting("m1");
     const data = await ok("search_meetings", { query: "tide chart" });
@@ -505,14 +619,19 @@ describe("meeting tools", () => {
         text: "And the",
       });
       const first = await ok("get_live_transcript");
-      expect(first.meeting_id).toBe("m-rec");
-      expect(first.status).toBe("ready");
+      expect(first).toMatchObject({
+        meeting_id: "m-rec",
+        recording: true,
+        paused: false,
+        live_transcriber: "ready",
+        live_transcriber_reason: null,
+      });
       expect(first.lines.map((l: { text: string }) => l.text)).toEqual([
         "The pier opens at nine.",
         "Then we move the buoys.",
       ]);
       expect(first.partial).toHaveLength(1);
-      expect(first.cursor_ms).toBe(2500);
+      expect(first.cursor).toBe(first.lines[1].seq);
 
       addFinalLine("m-rec", {
         source: "mic",
@@ -523,12 +642,92 @@ describe("meeting tools", () => {
       });
       const next = await ok("get_live_transcript", {
         meeting_id: "m-rec",
-        since_ms: first.cursor_ms,
+        since_seq: first.cursor,
       });
       expect(next.lines.map((l: { text: string }) => l.text)).toEqual([
         "And the dock closes.",
       ]);
-      expect(next.cursor_ms).toBe(3400);
+      expect(next.cursor).toBeGreaterThan(first.cursor);
+      const empty = await ok("get_live_transcript", {
+        since_seq: next.cursor,
+      });
+      expect(empty.lines).toEqual([]);
+      expect(empty.cursor).toBe(next.cursor);
+
+      // The user pauses the recording: the meeting still records.
+      await app.request(`${URL_BASE}/api/meetings/m-rec/paused`, {
+        method: "PUT",
+        headers: {
+          Authorization: `Bearer ${SERVER_TOKEN}`,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({ paused: true }),
+      });
+      expect(await ok("get_live_transcript")).toMatchObject({
+        recording: true,
+        paused: true,
+      });
+    } finally {
+      dropLive("m-rec");
+    }
+  });
+
+  // issue #434, as seen on a real recording: poll 2 got a mic line that ends
+  // at 69840 and a system line that ends at 66990. A system line that ends
+  // between them became final after that poll.
+  it("get_live_transcript: a late line of the other channel is not skipped (issue #434)", async () => {
+    writeSetting(SETTINGS_KEYS.liveChatEnabled, "true");
+    insertMeeting("m-rec", { status: "recording" });
+    openLive("m-rec");
+    try {
+      setLiveStatus("m-rec", "ready");
+      addFinalLine("m-rec", {
+        source: "system",
+        startMs: 65810,
+        endMs: 66990,
+        text: "The ferry is late today.",
+        final: true,
+      });
+      addFinalLine("m-rec", {
+        source: "mic",
+        startMs: 62700,
+        endMs: 69840,
+        text: "Then we load the trucks first and the cars after them.",
+        final: true,
+      });
+      const poll2 = await ok("get_live_transcript");
+      expect(poll2.lines).toHaveLength(2);
+      // The system channel finishes the line 67000-68500 after poll 2.
+      addFinalLine("m-rec", {
+        source: "system",
+        startMs: 67000,
+        endMs: 68500,
+        text: "The north ramp stays closed.",
+        final: true,
+      });
+      const late = "The north ramp stays closed.";
+      // The old cursor (the latest end time, 69840) skips the late line.
+      const byTime = await ok("get_live_transcript", { since_ms: 69840 });
+      expect(byTime.lines.map((l: { text: string }) => l.text)).not.toContain(
+        late,
+      );
+      // The seq cursor gives it.
+      const poll3 = await ok("get_live_transcript", {
+        since_seq: poll2.cursor,
+      });
+      expect(poll3.lines.map((l: { text: string }) => l.text)).toEqual([late]);
+      // A text that the language lock reads again comes once more.
+      setFinalText("m-rec", "system", 65810, "The ferry is late this morning.");
+      const poll4 = await ok("get_live_transcript", {
+        since_seq: poll3.cursor,
+      });
+      expect(poll4.lines).toMatchObject([
+        {
+          source: "system",
+          startMs: 65810,
+          text: "The ferry is late this morning.",
+        },
+      ]);
     } finally {
       dropLive("m-rec");
     }
@@ -696,6 +895,9 @@ describe("folder tools", () => {
       );
     const overview = await ok("get_folder_overview", { folder_id: "f1" });
     expect(overview.action_items).toHaveLength(1);
+    expect(overview.counts.with_summary).toBe(1);
+    expect(overview.counts).not.toHaveProperty("summarized");
+    expect(overview.counts).not.toHaveProperty("stage_counts");
     const key = overview.action_items[0].key as string;
     await ok("set_action_item_done", { folder_id: "f1", key, done: true });
     const state = getDb()
@@ -705,6 +907,37 @@ describe("folder tools", () => {
       .get(key) as { done: number };
     expect(state.done).toBe(1);
     getDb().exec("DELETE FROM folder_action_item_state");
+  });
+
+  it("with_summary and need_stage.summarize can both count a meeting (issue #433)", async () => {
+    insertFolder("f1", "Harbor");
+    // m1 was transcribed again after its summary: it has a summary, and the
+    // status 'transcribed' says that the summary is for an older transcript.
+    insertMeeting("m1", { folderId: "f1", status: "transcribed" });
+    insertMeeting("m2", { folderId: "f1", status: "transcribed" });
+    for (const id of ["m1", "m2"]) {
+      insertSegment({
+        id: `s-${id}`,
+        meetingId: id,
+        idx: 0,
+        startMs: 0,
+        endMs: 900,
+        text: "The pier opens at nine.",
+      });
+    }
+    getDb()
+      .prepare(
+        `INSERT INTO meeting_summaries (meeting_id, markdown, created_at)
+         VALUES ('m1', '# Old summary', 1)`,
+      )
+      .run();
+    const { counts } = await ok("get_folder_overview", { folder_id: "f1" });
+    expect(counts.with_summary).toBe(1);
+    const summarize = counts.need_stage.summarize;
+    expect(summarize.ready + summarize.blocked).toBe(2);
+    const folders = await ok("list_folders");
+    expect(folders.items[0].need_stage).toEqual(counts.need_stage);
+    expect(folders.items[0]).not.toHaveProperty("stage_counts");
   });
 
   it("get_folder_standing reads the saved text", async () => {
@@ -726,7 +959,8 @@ describe("Ask and dictation tools", () => {
       content: "When does the pier open?",
     });
     const list = await ok("list_ask_threads");
-    expect(list.threads.map((t: { id: string }) => t.id)).toEqual([thread.id]);
+    expect(list).toMatchObject({ total: 1, offset: 0, next_offset: null });
+    expect(list.items.map((t: { id: string }) => t.id)).toEqual([thread.id]);
     const detail = await ok("get_ask_thread", { thread_id: thread.id });
     expect(detail.messages[0].content).toBe("When does the pier open?");
   });
@@ -736,6 +970,9 @@ describe("Ask and dictation tools", () => {
     insertDictation("Call the harbor master");
     const list = await ok("list_dictations", { search: "rope" });
     expect(list.items.map((d: { id: number }) => d.id)).toEqual([id]);
+    const page = await ok("list_dictations", { limit: 1 });
+    expect(page).toMatchObject({ total: 2, limit: 1, next_offset: 1 });
+    expect(page.items).toHaveLength(1);
     expect((await ok("get_dictation", { dictation_id: id })).raw_text).toBe(
       "Order more rope for the dock",
     );
@@ -1222,6 +1459,13 @@ describe("PR 3 write tools", () => {
     expect(done.items).toHaveLength(1);
     expect(done.items[0]).toMatchObject({ id: created.id, nowStatus: "done" });
     expect(done.items[0].marks).toHaveLength(2);
+    expect(done).toMatchObject({ total: 1, offset: 0, next_offset: null });
+    const past = await ok("list_open_items", {
+      folder_id: "f1",
+      status: "done",
+      offset: 1,
+    });
+    expect(past).toMatchObject({ total: 1, offset: 1, items: [] });
 
     await ok("update_open_item", {
       item_id: created.id,

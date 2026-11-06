@@ -85,6 +85,10 @@ export const meetingFolderDeleteResponseSchema = z.object({
 
 export const meetingFolderFilterSchema = z.object({
   folder_id: meetingFolderIdSchema.optional(),
+  /** Page size, 1 to 200. Without it the list has the newest 200. */
+  limit: z.coerce.number().int().min(1).max(200).optional(),
+  /** The number of newest meetings to skip. The default is 0. */
+  offset: z.coerce.number().int().min(0).optional(),
 });
 
 export const meetingStartResponseSchema = z.object({

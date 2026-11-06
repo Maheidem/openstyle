@@ -1,7 +1,17 @@
 // MCP tools for Ask threads and the dictation history. Each tool calls a
 // route of routes/chat.ts or routes/history.ts.
 import { z } from "zod";
-import { confirmArg, defineTool, expectOk, query, seg } from "./define.js";
+import {
+  confirmArg,
+  defineTool,
+  expectOk,
+  LIST_LIMIT_DEFAULT,
+  pageArgs,
+  pageFields,
+  pageOf,
+  query,
+  seg,
+} from "./define.js";
 
 const dictationId = z
   .number()
@@ -17,7 +27,7 @@ const threadId = z
 const listAskThreads = defineTool({
   name: "list_ask_threads",
   description:
-    "List the Ask threads (questions about meetings). Give meeting_id or folder_id for the threads of that scope. Give neither for the threads about all meetings.",
+    "List the Ask threads (questions about meetings), newest first, one page at a time. Give meeting_id or folder_id for the threads of that scope. Give neither for the threads about all meetings.",
   kind: "read",
   idempotent: true,
   input: z.object({
@@ -31,17 +41,19 @@ const listAskThreads = defineTool({
       .min(1)
       .optional()
       .describe("The threads about this folder."),
+    ...pageArgs,
   }),
-  run: async ({ meeting_id, folder_id }, { api }) => {
+  run: async ({ meeting_id, folder_id, offset, limit }, { api }) => {
     const params =
       meeting_id !== undefined
         ? { meeting_id }
         : folder_id !== undefined
           ? { folder_id }
           : { all: "1" };
-    return {
-      data: expectOk(await api("GET", `/api/chat/threads${query(params)}`)),
-    };
+    const { threads } = expectOk(
+      await api("GET", `/api/chat/threads${query(params)}`),
+    ) as { threads: unknown[] };
+    return { data: pageOf(threads, offset, limit) };
   },
 });
 
@@ -99,19 +111,7 @@ const listDictations = defineTool({
       .string()
       .optional()
       .describe("Only dictations that contain this text."),
-    limit: z
-      .number()
-      .int()
-      .min(1)
-      .max(200)
-      .optional()
-      .describe("Page size, 1 to 200. The default is 50."),
-    offset: z
-      .number()
-      .int()
-      .min(0)
-      .optional()
-      .describe("The first item to give. The default is 0."),
+    ...pageArgs,
     start_date: z
       .string()
       .optional()
@@ -121,14 +121,20 @@ const listDictations = defineTool({
       .optional()
       .describe("Only dictations on or before this date (YYYY-MM-DD)."),
   }),
-  run: async (args, { api }) => ({
-    data: expectOk(
+  run: async ({ offset = 0, limit = LIST_LIMIT_DEFAULT, ...args }, { api }) => {
+    const page = expectOk(
       await api(
         "GET",
-        `/api/history${query({ orderBy: "-created_at", ...args })}`,
+        `/api/history${query({ orderBy: "-created_at", ...args, limit, offset })}`,
       ),
-    ),
-  }),
+    ) as { items: unknown[]; total: number };
+    return {
+      data: {
+        ...pageFields(page.total, offset, limit, page.items.length),
+        items: page.items,
+      },
+    };
+  },
 });
 
 const getDictation = defineTool({

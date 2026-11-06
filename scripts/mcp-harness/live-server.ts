@@ -2,7 +2,12 @@
 // harness journey J15 (specs/mcp.md 10). run.mjs bundles this file with
 // esbuild, so the server and the live store share one module graph. The
 // store gets one new final line every LIVE_LINE_MS, so a second poll with
-// since_ms sees new lines. All text is fictional.
+// since_seq sees new lines. All text is fictional.
+//
+// The late-line step (issue #434): after the first good poll, a mic line that
+// ends far ahead (FAR_LINE) becomes final. After the second good poll, a
+// system line that ends before it (LATE_LINE) becomes final. A cursor on the
+// latest end time skips LATE_LINE in the third poll. The seq cursor must not.
 //
 // Env: OPENSTYLE_DB_PATH, OPENSTYLE_MCP_TOKEN, LIVE_USER_DATA (the folder for
 // mcp.json), LIVE_PORT.
@@ -31,6 +36,9 @@ const LINES: [source: "mic" | "system", text: string][] = [
   ["system", "The weather report says light wind all day."],
   ["mic", "Thanks everyone, see you tomorrow at eight."],
 ];
+// The same texts as LIVE_FAR_LINE and LIVE_LATE_LINE in journeys.mjs.
+const FAR_LINE = "The last truck leaves the pier at five.";
+const LATE_LINE = "The pilot boat waits at the south buoy.";
 /** A new final line comes every LIVE_LINE_MS. */
 const LINE_MS = Number(process.env.LIVE_LINE_MS ?? 3000);
 
@@ -82,6 +90,38 @@ function addLine(): void {
 addLine();
 addLine();
 setInterval(addLine, LINE_MS);
+
+// Count the good polls from the server log line of each tool call
+// (`tool=get_live_transcript ... result=ok`, apps/server/src/mcp/server.ts).
+// The line is written before the answer goes back to the agent.
+let goodPolls = 0;
+const write = process.stdout.write.bind(process.stdout);
+process.stdout.write = ((chunk: unknown, ...rest: never[]) => {
+  const text = String(chunk);
+  if (text.includes("tool=get_live_transcript") && text.includes("result=ok")) {
+    goodPolls++;
+    if (goodPolls === 1) {
+      addFinalLine(MEETING_ID, {
+        source: "mic",
+        startMs: 90_000,
+        endMs: 99_000,
+        text: FAR_LINE,
+        final: true,
+      });
+      write(`[live] far mic line after poll 1: ${FAR_LINE}\n`);
+    } else if (goodPolls === 2) {
+      addFinalLine(MEETING_ID, {
+        source: "system",
+        startMs: 40_000,
+        endMs: 45_000,
+        text: LATE_LINE,
+        final: true,
+      });
+      write(`[live] late system line after poll 2: ${LATE_LINE}\n`);
+    }
+  }
+  return write(chunk as string, ...rest);
+}) as typeof process.stdout.write;
 
 writeFileSync(
   join(userData, "mcp.json"),

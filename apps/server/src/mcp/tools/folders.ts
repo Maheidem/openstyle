@@ -6,7 +6,14 @@ import {
   folderColorSchema,
 } from "@openstyle/validations";
 import { z } from "zod";
-import { confirmArg, defineTool, expectOk, seg } from "./define.js";
+import {
+  confirmArg,
+  defineTool,
+  expectOk,
+  pageArgs,
+  pageOf,
+  seg,
+} from "./define.js";
 
 const folderId = z
   .string()
@@ -17,16 +24,33 @@ const color = folderColorSchema
   .optional()
   .describe("The folder color. null removes it.");
 
+/**
+ * The text that explains need_stage. The route calls it `stage_counts`. An
+ * agent read `stage_counts.summarize.ready` as "summarized" (issue #433).
+ */
+const NEED_STAGE_TEXT =
+  "need_stage.<stage>.ready counts the meetings that need that stage and can run it now; blocked counts the ones that need it but cannot run it (no audio, or no AI model). A meeting that was transcribed again after its summary has a summary and also needs summarize.";
+
+/** Rename `stage_counts` to `need_stage`. */
+function withNeedStage<T extends { stage_counts?: unknown }>(row: T) {
+  const { stage_counts, ...rest } = row;
+  return { ...rest, need_stage: stage_counts };
+}
+
 const listFolders = defineTool({
   name: "list_folders",
-  description:
-    "List the meeting folders with their meeting counts, dates and the number of meetings that need each stage.",
+  description: `List the meeting folders with their meeting counts and dates, one page at a time. ${NEED_STAGE_TEXT}`,
   kind: "read",
   idempotent: true,
-  input: z.object({}),
-  run: async (_args, { api }) => ({
-    data: expectOk(await api("GET", "/api/meetings/folders")),
-  }),
+  input: z.object({ ...pageArgs }),
+  run: async ({ offset, limit }, { api }) => {
+    const folders = expectOk(await api("GET", "/api/meetings/folders")) as {
+      items: { stage_counts?: unknown }[];
+    };
+    return {
+      data: pageOf(folders.items.map(withNeedStage), offset, limit),
+    };
+  },
 });
 
 const createFolder = defineTool({
@@ -92,16 +116,19 @@ const deleteFolder = defineTool({
 
 const getFolderOverview = defineTool({
   name: "get_folder_overview",
-  description:
-    "Get the Overview of a folder: the action items, decisions and open questions from the summaries of its meetings. Each action item has a key for set_action_item_done.",
+  description: `Get the Overview of a folder: the action items, decisions and open questions from the summaries of its meetings. Each action item has a key for set_action_item_done. counts.with_summary counts the meetings that have a summary, also an old one. ${NEED_STAGE_TEXT}`,
   kind: "read",
   idempotent: true,
   input: z.object({ folder_id: folderId }),
-  run: async ({ folder_id }, { api }) => ({
-    data: expectOk(
+  run: async ({ folder_id }, { api }) => {
+    const overview = expectOk(
       await api("GET", `/api/meetings/folders/${seg(folder_id)}/overview`),
-    ),
-  }),
+    ) as { counts: { summarized?: number; stage_counts?: unknown } };
+    const { summarized, ...counts } = withNeedStage(overview.counts);
+    return {
+      data: { ...overview, counts: { ...counts, with_summary: summarized } },
+    };
+  },
 });
 
 const setActionItemDone = defineTool({
