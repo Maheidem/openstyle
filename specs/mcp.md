@@ -3,7 +3,7 @@
 **Status:** Spec. Not built.
 **Date:** 2026-11-06
 **Repo state read:** main at `d5c6da6a` (branch `docs/mcp-spec`). All `file:line` citations are from that tree.
-**Scope:** `apps/server/src/mcp/` (new), new REST routes in `apps/server/src/routes/`, `apps/electron/src/main/` (token, `mcp.json`, agent changes, app-shell request), `apps/electron/src/mcp-bridge/` (new), `apps/electron/resources/mcp/` (new), Settings and the onboarding Ready step.
+**Scope:** `apps/server/src/mcp/` (new), new REST routes in `apps/server/src/routes/`, `apps/electron/src/main/` (token, `mcp.json`, agent changes, app-shell request, agent install), `apps/electron/src/mcp-bridge/` (new), `apps/electron/resources/mcp/` (new), Settings and the onboarding Ready step.
 **Release target:** `3.1.0-alpha.1`, Dev channel.
 
 Writing rules: Simplified Technical English (ASD-STE100). One instruction per sentence. No em-dashes. The citations go stale fast. Verify each one against the tree before you build from it.
@@ -33,13 +33,17 @@ Owner decisions (2026-11-06). Do not change them without the owner.
 |---|---|
 | Transport | The tools live in the embedded server at `/mcp` (Streamable HTTP, stateless). A thin stdio bridge in the .app is the setup path. stdio is the standard for a local MCP (modelcontextprotocol.io spec, Transports: "Clients SHOULD support stdio whenever possible"). |
 | Access | ON by default. Settings gets a new section "Agents (MCP)" with an on/off toggle. Every delete needs `confirm: true`. |
-| Onboarding | A "Connect your agent" card on the Ready step, with copy buttons for Claude Code and pi. The step numbers do not change. |
+| Onboarding | A "Connect your agent" card on the Ready step. The step numbers do not change. Since canvas v17 (2026-11-06) the card has one-click install rows, not copy buttons (row "One-click install"). |
+| One-click install (canvas v17, 2026-11-06) | The Ready card and Settings > Agents (MCP) show one row for each agent tool found on this Mac. v1 tools: Claude Code, pi, Codex. A click on `Add to <tool>` runs the tool's own CLI from Electron main. Openstyle never edits the config file of a tool. The copy commands stay only as the fallback. Details: section 7.2. |
+| PATH | A GUI app does not get the shell PATH. Read the login-shell PATH once with `$SHELL -ilc 'echo $PATH'` and a 5 s timeout. Add the known folders `~/.local/bin`, `/opt/homebrew/bin`, `/usr/local/bin`. Run the CLIs with that PATH. |
+| Server name | Stable registers as `openstyle`. Dev registers as `openstyle-dev`. Each name has its own launcher path, so a user can add both. |
+| Other clients | Claude Desktop, Cursor, VS Code and other clients are out of v1 (section 13). |
 | Overwrite | Summary (the old version is kept), enhanced transcript, Ask threads (rename and delete), dictation history (delete), all folder items, meeting title, notes, language, attendees, tags, speakers. The raw ASR text stays read-only. |
 | Extra scope | Model downloads, plus the app-shell settings (pill position, auto-update, update channel, launch at login). Out of scope: API keys and "delete all history". |
 | Attendees | Attendees can be set manually with no linked calendar event. |
 | Tests | Writes go only to an isolated profile with fictional data. After the release, run a read-only check (list and get only) on the owner's real Dev app. pi uses its default model. If that model cannot use the tools, ask the owner. |
 | Version | `3.1.0-alpha.1`, on the Dev channel. |
-| Design gate | The prototype canvas "Openstyle Chat Prototypes" (<https://claude.ai/artifact/Lmj4x8X2X54acD75MGRyq4>) gets the new card and the new Settings board first. The UI code in PR 4 starts only after the owner approves the canvas (section 8.3). |
+| Design gate | The prototype canvas "Openstyle Chat Prototypes" (<https://claude.ai/artifact/Lmj4x8X2X54acD75MGRyq4>) gets the new card and the new Settings board first. The UI code in PR 4 starts only after the owner approves the canvas (section 8.3). The owner approved canvas v17 on 2026-11-06. |
 | pi | pi-delegate is allowed for this work (2026-11-06), for the MCP harness runs only. pi children are the MCP client under test. They do not write code. |
 
 ## 2. Architecture
@@ -333,7 +337,9 @@ The app-shell settings live in the main-process file `<userData>/settings.json` 
 
 `settings.json` also holds `serverToken` (`app-settings-ipc.ts:57-63`). The tools never read or return it.
 
-## 7. Bridge
+## 7. Bridge and agent install
+
+### 7.1 Bridge
 
 1. **Source.** `apps/electron/src/mcp-bridge/index.ts`. Node builtins only (`node:fs`, `node:http`, `node:readline`, `node:os`, `node:path`). It is the third main entry in `electron.vite.config.ts:80-83`, next to `index` and `server-process`. The output is `out/main/mcp-bridge.js` inside `app.asar`.
 2. **Launcher.** `apps/electron/resources/mcp/openstyle-mcp`, a POSIX `sh` script. Add it to `mac.extraResources` (`apps/electron/electron-builder.yml:63-72`) with the target `mcp/openstyle-mcp`, mode 755. The installed path is `<App>.app/Contents/Resources/mcp/openstyle-mcp`.
@@ -346,14 +352,58 @@ The app-shell settings live in the main-process file `<userData>/settings.json` 
 6. **App not running.** No `mcp.json`, or `ECONNREFUSED`: the bridge answers each request with the JSON-RPC error of section 5. It does not exit. When the app starts again, the next request works.
 7. **Logs.** The bridge writes errors to stderr only. stdout carries JSON-RPC only.
 
-Setup commands, with `<path>` = the launcher path:
+### 7.2 One-click install (`apps/electron/src/main/agent-install.ts`)
+
+Source of the facts: [`docs/research/2026-11-06-mcp-one-click-install.md`](../docs/research/2026-11-06-mcp-one-click-install.md). Tags such as [L1] and [S8] refer to that file.
+
+The new main-process module registers the launcher with each agent tool. It uses the tool's own CLI. It never reads or writes `~/.claude.json` or `~/.codex/config.toml`. Concurrent writes already corrupt `~/.claude.json` [S26], and the CLI is the writer that the tool itself uses. The one file that the module reads is the pi config, for the state check below.
+
+**Name and launcher.** The name is `openstyle` for a Stable build and `openstyle-dev` for the Dev flavor (`state.devFlavor`) and for an unpackaged run. The launcher path is `<App>.app/Contents/Resources/mcp/openstyle-mcp` of the running app (section 7.1, item 2). When the app runs with a userData override (`OPENSTYLE_USER_DATA`, `apps/electron/src/main/index.ts:92-95`), the registration adds the args `["--user-data", "<dir>"]`. Then a test install never points at the real profile. A normal user gets `args: []`.
+
+**PATH.** A GUI app does not get the shell PATH [S12]. With the GUI PATH, `claude` is not found, and `pi` and `codex` fail with `env: node: No such file or directory` (exit 127) [L1] [L2]. The module:
+
+1. Runs `$SHELL -ilc 'echo $PATH'` once for each app run, with a 5 s timeout. It runs only when the Ready card or the Settings section opens for the first time. Not at app start.
+2. Adds `~/.local/bin`, `/opt/homebrew/bin` and `/usr/local/bin` after that PATH, with no duplicates.
+3. Uses the result as `PATH` for every CLI run. `pi` and `codex` need `node` on that PATH [L2].
+4. Falls back to the known folders only when the shell fails or times out.
+
+**Detection.** A tool is found when its executable (`claude`, `pi`, `codex`) is on that PATH. A config folder alone does not count: a folder can stay after an uninstall [L1]. "Check again" in Settings runs the detection again. It does not read the shell PATH again.
+
+**Commands.** The module runs each CLI with `execFile` and an argument array (no shell), a 20 s timeout, and the PATH above. The other env variables come from main unchanged. `<name>` and `<launcher>` are from the paragraph above.
+
+| Tool | State check | Add | Remove | Reload hint |
+|---|---|---|---|---|
+| Claude Code | `claude mcp get <name>`: exit 0 and the output has `Command: <launcher>`. Exit 1 means not added [L1]. | `claude mcp add-json -s user <name> '{"type":"stdio","command":"<launcher>","args":[]}'`. `add-json` refuses a duplicate (exit 1) [L1]. So when an entry has a different path, run `claude mcp remove -s user <name>` first. | `claude mcp remove -s user <name>` | "Start a new Claude Code session to load it." |
+| pi | Read `mcpServers.<name>.command` in `~/.pi/agent/mcp.json` (or `$PI_CODING_AGENT_DIR/mcp.json`) [S8]. Do not run `pi mcp list`: it connects to every server and is slow [S8]. | `pi mcp add <name> -- "<launcher>"`. It adds or replaces [L2]. | `pi mcp remove <name>` | "Run /reload in pi to load it." [S8] |
+| Codex | `codex mcp get <name> --json`, compare `transport.command`. Exit 1 means not added [L2]. | `codex mcp add <name> -- "<launcher>"`. It adds or replaces [L2]. | `codex mcp remove <name>` | "Start a new Codex session to load it." |
+
+- After each add, the module runs the state check again. "Added" shows only when the check passes. A CLI exit 0 alone is not proof.
+- `claude mcp get` also starts the launcher for a health check [L1]. So the check proves that the bridge starts.
+- An entry with the same name and a different launcher counts as not added. The row shows `Add to <tool>`, and the add replaces the entry.
+- Consent: a click on `Add to <tool>` is the consent for that one tool. The module never adds or removes anything at app start or in the background.
+
+**Row states.** `not-found`, `not-added`, `adding`, `added`, `removing`, `failed`. The IPC result carries the state, the CLI path, the fallback command and, for `failed`, the CLI stderr (the first 500 characters, for the log only).
+
+**IPC** (main, registered next to `registerAppSettingsIpc`; preload adds the matching `window.api` calls):
+
+| Channel | Kind | Result |
+|---|---|---|
+| `agents:list` | invoke | One row for each v1 tool: `{ tool, name, found, state, fallbackCommand }` |
+| `agents:rescan` | invoke | The same list after a new detection ("Check again") |
+| `agents:add` | invoke, arg `tool` | The row after add and state check |
+| `agents:remove` | invoke, arg `tool` | The row after remove and state check |
+
+### 7.3 Fallback commands
+
+The UI shows these commands only when a tool is not found, or when an add fails. `<launcher>` is the absolute launcher path. The path can hold a space (`Openstyle Dev.app`), so the commands quote it.
 
 ```sh
-claude mcp add -s user openstyle -- "<path>"
-pi mcp add openstyle -- "<path>"
+claude mcp add-json -s user openstyle '{"type":"stdio","command":"<launcher>","args":[]}'
+pi mcp add openstyle -- "<launcher>"
+codex mcp add openstyle -- "<launcher>"
 ```
 
-`pi mcp add <server> -- <command>` is the syntax of `pi mcp --help` (checked 2026-11-06).
+The Dev app shows `openstyle-dev` in place of `openstyle`. `pi mcp add <server> -- <command>` is the syntax of `pi mcp --help` (checked 2026-11-06). The research file has the tested output of all three CLIs [L1] [L2].
 
 ## 8. UI
 
@@ -361,24 +411,38 @@ pi mcp add openstyle -- "<path>"
 
 - Add the id `agents` to `settingsSectionIds` (`apps/electron/src/renderer/src/pages/settings.tsx:137`). The section is visible on macOS.
 - New file `apps/electron/src/renderer/src/pages/settings-agents.tsx`. It follows the pattern of `settings-ask.tsx` (a panel that gets `Row`, `settings.tsx:1541-1543`).
-- Content:
+- Content, from top to bottom:
   - The on/off toggle for `mcp_enabled` (missing = on).
   - The status: "Ready on port N" or "Off".
-  - Two copy blocks: the Claude Code command and the pi command (section 7), each with a Copy button and a "Copied" state.
+  - One row for each v1 tool: Claude Code, pi, Codex. All three rows show, also when a tool is not found.
   - The note "The app must be running".
-- A new IPC `mcp:status` gives `{ enabled, port, launcherPath }`. In an unpackaged dev run, `launcherPath` is the path in `apps/electron/resources/mcp/`.
+- A new IPC `mcp:status` gives `{ enabled, port, launcherPath, name }`. In an unpackaged dev run, `launcherPath` is the path in `apps/electron/resources/mcp/`. The rows use the `agents:*` IPC (section 7.2).
+
+Row states and text (Settings):
+
+| State | The row shows |
+|---|---|
+| `not-found` | "Not found on this Mac", a "Check again" button, and the Terminal command (section 7.3) with Copy. |
+| `not-added` | The button `Add to <tool>`. |
+| `adding` | "Adding..." The button is disabled. |
+| `added` | The chip "Added", the reload hint of the tool (section 7.2), and a "Remove" button. |
+| `removing` | "Removing..." The button is disabled. |
+| `failed` | "Could not add it. Run this command in Terminal.", the command with Copy, and "Try again". |
 
 ### 8.2 Onboarding Ready step
 
 - Add a "Connect your agent" card to the Ready step (`apps/electron/src/renderer/src/pages/onboarding/ready-step.tsx`, step 7 in `specs/onboarding.md:42`).
-- The card has the same two copy buttons and the note "The app must be running".
+- The card shows one row only for each tool that is found. It hides the not-found tools. When no tool is found, the card does not show.
+- A row has the same states as in Settings, with no "Remove": `Add to <tool>`, "Adding...", "Added" with the reload hint, and the failure text with the command, Copy and "Try again".
+- The card has the note "The app must be running".
+- The card does not block the step. "Open Openstyle" works in every state.
 - The step numbers do not change. Update `specs/onboarding.md` section 4 (`:93`) with the card.
 
 ### 8.3 Design gate
 
 1. Update the canvas "Openstyle Chat Prototypes" first: the card in `OBPrototype.dc.html` (it works in Play) and in `OB8Ready.dc.html`, and a new interactive board `MCPSettings.dc.html` linked from the flow.
-2. The owner approves the canvas.
-3. Only then does the PR 4 builder write UI code. The builder reports conformance (built, changed, gap). After the merge, add an "as built" note on the canvas.
+2. The owner approves the canvas. Done: canvas v17, 2026-11-06 (one-click install rows).
+3. Only then does the PR 4 builder write UI code. The builder builds from canvas v17. The builder reports conformance (built, changed, gap). After the merge, add an "as built" note on the canvas.
 
 ### 8.4 i18n
 
@@ -403,6 +467,13 @@ All new strings go through `t()`. Add them to the 7 locales (`de`, `en`, `es`, `
 - `mcp.json` writer: mode `0600`, temp file then rename, a rewrite on a new port, a delete on stop, no write for a reused server.
 - Bridge with a fake HTTP server: forward and answer, the `X-Openstyle-Agent` header, the "not running" error with no file and with a refused port, a recovery after the server comes back.
 - `agent-changes.ts`: each row of section 6.3 calls its function, and every change sends `data:changed`.
+- `agent-install.ts`, with a fake `execFile`:
+  - PATH reader: it parses the shell output, adds the known folders with no duplicates, uses only the known folders after a timeout of 5 s or a shell error, and reads the shell once for each app run.
+  - Command builder: the exact argument arrays of section 7.2 for each tool, the name `openstyle` or `openstyle-dev`, a launcher path with a space, and the `--user-data` args with an override. The fallback text of section 7.3 quotes the path.
+  - State parse: `claude mcp get` exit 0 with the same path, with a different path, and exit 1. The pi `mcp.json` with the entry, with no entry, with no file, and with bad JSON. `codex mcp get --json` with the same path, with a different path, and exit 1.
+  - Claude Code with a different path runs `remove` before `add-json`.
+  - A CLI that exits 0 but fails the state check gives `failed`.
+  - A missing CLI gives `not-found`. No command runs.
 
 ### 9.3 E2E `apps/electron/tests/mcp.test.ts`
 
@@ -413,7 +484,13 @@ Run it isolated and quiet through `scripts/test-runner/run.sh`. Keep it short: t
 3. Call every tool once. `download_model` uses an id that is not in the catalog and expects the REST error. `start_meeting_job` and `cancel_meeting_job` expect the 409 contract on a fixture meeting. The real runs are in the harness (J12).
 4. Call `update_meeting` with a new title. Check that the title changes in the window, in light and in dark.
 5. Call `set_setting chat_hotkey`. Check the live hotkey through `e2e:chat-hotkey-state` (`apps/electron/src/main/hotkeys/chat.ts:165`).
-6. Quit the app. Check that the bridge gives "Openstyle is not running. Start the app, then try again."
+6. One-click install with fake CLIs. An E2E-only variable (`OPENSTYLE_E2E=1` and `OPENSTYLE_E2E_AGENT_BIN=<dir>`) puts a folder with stub `claude`, `pi` and `codex` scripts first on the PATH. Each stub records its argv and writes the file that the state check reads.
+   1. Open Settings > Agents (MCP). Check the three rows.
+   2. Click "Add to Claude Code". Check "Added", the reload hint, and the recorded `add-json` argv with the launcher path.
+   3. Let the `codex` stub fail. Click "Add to Codex". Check the failure text and the command with Copy.
+   4. Remove the `pi` stub and click "Check again". Check "Not found on this Mac".
+   5. Take screenshots in light and dark.
+7. Quit the app. Check that the bridge gives "Openstyle is not running. Start the app, then try again."
 
 ### 9.4 Real harness `scripts/mcp-harness/run.mjs`
 
@@ -421,7 +498,7 @@ The harness runs real agents against an isolated profile with fictional data onl
 
 Claude Code, peer session (main path):
 
-1. Make a scratch cwd. Write `mcp.json` there with the entry `openstyle` (the bridge command, `env.OPENSTYLE_USER_DATA=<isolated profile>`).
+1. Make a scratch cwd. Write `mcp.json` there with the entry `openstyle`. Use the command and args that the one-click install registered in J1 (the launcher with `--user-data <isolated profile>`).
 2. Start the session in tmux: `claude -n openstyle-mcp-test --remote-control openstyle-mcp-test --strict-mcp-config --mcp-config mcp.json --allowedTools 'mcp__openstyle__*'`.
 3. Run `ListAgents` and check that the session is there. If messages do not arrive, check the real name of the inbound setting before you set it.
 4. Send each journey with `SendMessage`. Multi-turn journeys (J15) use more than one message.
@@ -448,8 +525,8 @@ Validation types: **T** = tool_result JSON, **L** = server log line, **S** = SQL
 
 | Id | Journey | Goal | Steps | Tools | Validation |
 |---|---|---|---|---|---|
-| J1 | Connect Claude Code | Claude Code sees all tools. | 1. Copy the command from Settings. 2. Run it with the isolated profile. 3. Ask the agent to list its Openstyle tools. 4. Call one read tool. | list_meetings | T: 50 tools in `tools/list`. L: one line with `agent=claude-code/...`. UI: the Settings section with the port. |
-| J2 | Connect pi | pi sees all tools. | 1. `pi mcp add` with the copied command. 2. `pi mcp list --json`. 3. One read call in a pi child. | list_meetings | T: 50 tools in `pi mcp list --json`. L: one line with the pi agent name. |
+| J1 | Connect Claude Code | One click adds Openstyle to Claude Code, and Claude Code sees all tools. | 1. Start the isolated app with `CLAUDE_CONFIG_DIR=<sandbox>`. 2. Open Settings > Agents (MCP). 3. Click "Add to Claude Code". 4. Check "Added" and the hint "Start a new Claude Code session to load it." 5. Run `claude mcp get openstyle-dev` with the sandbox. 6. Start the peer session with the registered command (section 9.4). 7. Ask the agent to list its Openstyle tools. 8. Call one read tool. 9. Click "Remove" and run `claude mcp get` again. | list_meetings | Command: `claude mcp get` shows `Command: <launcher>` and the health check connects. After step 9 it exits 1. T: 50 tools in `tools/list`. L: one line with `agent=claude-code/...`. UI: the row in each state, light and dark. |
+| J2 | Connect pi | One click adds Openstyle to pi, and pi sees all tools. | 1. Start the isolated app with `PI_CODING_AGENT_DIR=<sandbox>`. 2. Click "Add to pi" on the Ready card. 3. Check "Added" and the hint "Run /reload in pi to load it." 4. Read `mcpServers.openstyle-dev` in the sandbox `mcp.json`. 5. `pi mcp list --json` with the sandbox. 6. One read call in a pi child. | list_meetings | Read-back: the sandbox `mcp.json` holds the launcher path. T: 50 tools in `pi mcp list --json`. L: one line with the pi agent name. UI: the Ready card, light and dark. |
 | J3 | Summary rewrite with versions | The agent writes a better summary and the old one stays. | 1. Read the meeting and its transcript. 2. Write a new summary. 3. Read the versions. | get_meeting, get_transcript, set_summary, get_summary_versions | T: the new summary in get_meeting, one more version. S: `meeting_summaries.llm_provider = 'agent'`, the old row in `meeting_summary_versions`. UI: the summary and the version list. |
 | J4 | Enhanced fixes | The agent fixes names in the enhanced text. The raw text does not change. | 1. Page the transcript. 2. Send fixed `enhanced_text` for 3 segments. | get_transcript, set_enhanced_segments | S: `enhanced_text` changed, `text` the same as before. T: the Markdown export path. UI: the transcript view. |
 | J5 | Speakers | The agent names and merges speakers. | 1. Read the speakers. 2. Name `Them 1`. 3. Merge `Them 2` into `Them 1`. | get_meeting, update_speaker | S: `meeting_speakers` rows. UI: the speaker chips. |
@@ -464,6 +541,8 @@ Validation types: **T** = tool_result JSON, **L** = server log line, **S** = SQL
 | J14 | Failure messages | Each failure gives a clear next step. | 1. Quit the app, call a tool. 2. Start it, turn access off, call a tool. 3. Use a wrong token (edit the profile `mcp.json`). | list_meetings | T: the 3 texts of section 5. The bridge process stays alive (`ps`). |
 | J15 | Follow the live transcript of the current recording | The agent follows a running meeting. | 1. With live off, call get_live_transcript. 2. Turn live on. 3. Start a recording. 4. Poll. 5. Wait. 6. Poll with `next_since_ms`. | get_live_transcript, set_setting | T: the "off" text, then lines that match what was said and a cursor that moves forward. Before the release this runs on a seeded live store (unit test) and the E2E. The real proof is after the release: the owner records a short meeting in Openstyle Dev, and the Claude Code peer session and a pi child each poll during it. |
 
+J1 and J2 never touch the real config of a tool. The sandbox variables (`CLAUDE_CONFIG_DIR`, `PI_CODING_AGENT_DIR`, `CODEX_HOME`) move each config to a scratch folder [L1] [L2]. Main passes its env to the CLI unchanged, so the variables reach the CLI. For Codex, the harness proves the install only: "Add to Codex" with `CODEX_HOME=<sandbox>`, then `codex mcp get openstyle-dev --json` shows the launcher. The tool matrix has no Codex column (plan scope: tool x {claude, pi}).
+
 After the release, a read-only run (list and get tools only) with Claude Code on the owner's real Openstyle Dev data adds one more evidence file, `specs/assets/mcp/real-read-only.md`.
 
 ## 11. PR breakdown
@@ -473,7 +552,7 @@ Each PR is a draft at birth, WIP 2, squash auto-merge on green CI. Only the main
 1. **`docs/mcp-spec`**: this file. It runs in parallel with PR 2.
 2. **`feat/mcp-server`**: the SDK, `/mcp` with the gate, `mcp_enabled`, the change emitter, the tools on existing routes (PR column 2), the settings catalog, the unit tests, the `AGENTS.md:9` fix.
 3. **`feat/mcp-agent-writes`**: the summary store, enhanced segments, attendees, Ask rename and delete, the standing PUT, the ledger routes, the app-settings request, the model download tools, with tests. It needs PR 2.
-4. **`feat/mcp-bridge-ui`**: `mcp.json`, the token env, agent-change routing in main, `data:changed`, the bridge and the launcher, the builder change, the Settings section, the onboarding card, i18n, the E2E `tests/mcp.test.ts`. The UI part waits for the canvas approval (section 8.3). It needs PR 2 and runs in parallel with PR 3.
+4. **`feat/mcp-bridge-ui`**: `mcp.json`, the token env, agent-change routing in main, `data:changed`, the bridge and the launcher, the builder change, the one-click install module `agent-install.ts` with its `agents:*` IPC and preload calls and its unit tests, the Settings section, the onboarding card, i18n, the E2E `tests/mcp.test.ts` (with the install check of section 9.3, step 6). The UI part waits for the canvas approval (section 8.3). It needs PR 2 and runs in parallel with PR 3.
 5. **`test/mcp-harness`**: `scripts/mcp-harness/run.mjs`, the README section "Use with your AI agent (MCP)", `site/llms.txt`, `site/llms-full.txt`, the `.lore.md` fix (the "no MCP" note, `.lore.md:78`), and the evidence matrix in the PR body.
 
 Then: `pnpm release:local 3.1.0-alpha.1 --dry-run`, the launcher test from the dry-run .app (R1), the release, `release-verify` with `RESULT: PASS`, `.prerelease` true, `latest` still 3.0.0, and the after-release runs (section 10).
@@ -500,3 +579,9 @@ Then: `pnpm release:local 3.1.0-alpha.1 --dry-run`, the launcher test from the d
 - The live journey J15 on a real recording. It needs the owner after the release.
 - `GET /api/meetings` returns at most 200 rows (`meetings.ts:1501`). A profile with more meetings needs paging in `list_meetings` or `search_meetings`.
 - A Stable switch through `set_app_settings` from an alpha build installs at once (section 6.4). The harness does not run that switch.
+- The login-shell PATH read runs the dotfiles of the user. It is the common method [S12], but it is a side effect. A slow or broken dotfile hits the 5 s timeout, and then only the known folders apply.
+- A `codex` or `claude` installed in a folder that is not on the login PATH and not a known folder (for example a custom npm prefix) is "Not found". The fallback command still works in Terminal.
+- The reload rule for Codex is an assumption: a new session loads the server. The Codex IDE extension needs "Restart extension", and the ChatGPT desktop app needs a restart [S9].
+- The Claude Code rule "a running session does not see a new server" comes from third-party sources only [S19].
+- A user who has the third-party `pi-mcp-adapter` extension: pi then does not read `mcp.json` [S27]. The pi state check shows "Added", but pi does not load the server.
+- Out of v1, for later: Claude Desktop (JSON edit of `claude_desktop_config.json`, which Claude Desktop rewrites itself [S28]), Cursor (deep link or `~/.cursor/mcp.json`), VS Code (`code --add-mcp`), Gemini CLI, OpenCode, Windsurf, Zed, Goose, LM Studio and `.mcpb` bundles. Section 5 of the research file has the method for each.
