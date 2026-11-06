@@ -33,6 +33,8 @@
     "scripts/site-captures/*.mjs",
     // Built manually for the stable local Privacy identity.
     "scripts/test-runner/**",
+    // The real-agent MCP harness (specs/mcp.md 9.4): run by hand with node.
+    "scripts/mcp-harness/**",
     // Run by hand from .claude/skills/model-catalog/SKILL.md.
     ".claude/skills/model-catalog/scripts/catalog-size.mjs",
     // Meeting transcription v2 proof scripts (specs/meeting-transcription-v2.md
