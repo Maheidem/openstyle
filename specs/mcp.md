@@ -97,7 +97,7 @@ The MCP server has the same trust as the REST API today: every process of the sa
 | 1 | `OPENSTYLE_MCP_TOKEN` is set in the server env. | 404. The route does not exist for this server (standalone server, old main). |
 | 2 | `Authorization: Bearer <token>` matches, compared with `timingSafeEqual` (`hono/utils/buffer`, as `auth.ts:4` uses). | 401, JSON-RPC error `Unauthorized`. |
 | 3 | The `Host` header is a loopback host: `127.0.0.1:<port>`, `localhost:<port>` or `[::1]:<port>`. | 403. This blocks DNS rebinding. |
-| 4 | The setting `mcp_enabled` is not `"false"`. A missing row means on. | 403, JSON-RPC error "Agent access is off. Turn it on in Openstyle Settings > Agents (MCP)." |
+| 4 | The setting `mcp_enabled` is not `"false"`. A missing row means on. | 403, JSON-RPC error "Agent access is off. Turn on Settings > Agents (MCP) in Openstyle." |
 
 - The gate never uses the no-Origin fallback of `isTrustedRendererOrigin` (`apps/server/src/lib/trusted-origin.ts:17-18`). A request with no token fails check 2 also when it has no Origin.
 - `trustedOriginMiddleware` (`trusted-origin.ts:31`) still runs first (`index.ts:55`). A browser request with a foreign Origin gets 403 there. The bridge sends no Origin.
@@ -260,9 +260,12 @@ A tool error is a tool result with `isError: true` and one text line. The agent 
 | A write while a job runs on the same meeting | New routes: REST 409. Existing routes: the tool reads `job` from GET `/meetings/:id` first. | 409 and the `runningJobMessage` text, for example "Enhance is already running" (`meetings.ts:313-325`). `delete_meeting` keeps the REST rule: it cancels the job and deletes (`meetings.ts:2423`). |
 | `get_live_transcript` while `live_chat_enabled` is not `"true"` (`settings-keys.ts:66`) | Tool handler | "Live transcription is off. Turn it on with set_setting live_chat_enabled=true; it starts with the next recording." |
 | `get_live_transcript` with no recording | Tool handler: no row with status `recording`, or the route gives `status: "off"` | "No recording is running" |
-| Agent access is off | `/mcp` gate, check 4 | "Agent access is off. Turn it on in Openstyle Settings > Agents (MCP)." |
+| Agent access is off | `/mcp` gate, check 4 | "Agent access is off. Turn on Settings > Agents (MCP) in Openstyle." |
 | Wrong or missing token | `/mcp` gate, check 2 | HTTP 401, JSON-RPC error "Unauthorized" |
 | The app is not running | Bridge: no `mcp.json`, or the connection is refused | "Openstyle is not running. Start the app, then try again." The bridge keeps running and tries again on the next request. |
+| Wrong token | Bridge: the gate gives 401 | "Openstyle refused the connection key of this agent. Quit Openstyle and start it again, then try again." |
+
+The bridge answers `initialize` and `notifications/initialized` itself (owner decision 2026-11-06), so an agent connects in each case of this table. When the app cannot answer because it does not run, agent access is off (403 `mcp_disabled`) or the token is wrong (401), `tools/list` gives one tool, `openstyle_status` (no input, read-only). Every `tools/call` gives a tool result with `isError: true` and the text of the case. While the bridge gives this list, it checks the app every 5 s with a `ping`. When the app answers, the bridge sends `notifications/tools/list_changed` (it declares `tools.listChanged`), and the next `tools/list` gives the real tools.
 | App-shell request with no main process | `/system/app-settings` | HTTP 503 "App settings need the Openstyle app. This server runs without it." |
 | Any other REST 4xx or 5xx | Tool handler | The REST `error` text, for example "Move the meetings before you delete this folder" (`meeting-folders.ts:154`). |
 
@@ -349,7 +352,7 @@ The app-shell settings live in the main-process file `<userData>/settings.json` 
    2. `OPENSTYLE_USER_DATA` (the same variable as the app, `apps/electron/src/main/index.ts:92-95`)
    3. `~/Library/Application Support/<CFBundleName>`. The bundle name is `Openstyle` or `Openstyle Dev` (`apps/electron/src/main/flavor.ts:21`), which is also the userData folder name.
 5. **Forward.** For each JSON-RPC line on stdin, the bridge reads `mcp.json` again (the port can change after a restart). It POSTs the message to `http://127.0.0.1:<port>/mcp` with `Authorization: Bearer <token>`, `Accept: application/json, text/event-stream` and `X-Openstyle-Agent: <clientInfo.name>/<clientInfo.version>` (from the `initialize` request). It writes the JSON response to stdout. A notification gets no output.
-6. **App not running.** No `mcp.json`, or `ECONNREFUSED`: the bridge answers each request with the JSON-RPC error of section 5. It does not exit. When the app starts again, the next request works.
+6. **App not running.** The bridge answers the handshake itself. No `mcp.json`, `ECONNREFUSED`, access off or a wrong token: `tools/list` gives only `openstyle_status`, and a tool call gives the text of section 5 as a tool error. It does not exit. When the app answers again, it sends `notifications/tools/list_changed` and forwards as before. The launcher passes the app version (`CFBundleShortVersionString`) as `OPENSTYLE_APP_VERSION` for `serverInfo`.
 7. **Logs.** The bridge writes errors to stderr only. stdout carries JSON-RPC only.
 
 ### 7.2 One-click install (`apps/electron/src/main/agent-install.ts`)
