@@ -8,6 +8,7 @@ import configRoute from "./config.js";
 import dismissedNotifications from "./dismissed-notifications.js";
 import history from "./history.js";
 import jobs from "./jobs.js";
+import ledger from "./ledger.js";
 import meetings from "./meetings.js";
 import meetingsChat from "./meetings-chat.js";
 import meetingsImport from "./meetings-import.js";
@@ -56,6 +57,7 @@ const apiRouter = new Hono()
   .route("/meetings", meetingsRuns)
   .route("/meetings", meetingsChat)
   .route("/chat", chat)
+  .route("/ledger", ledger)
   .route("/search", search)
   .route("/dismissed-notifications", dismissedNotifications)
   .route("/vocabulary", vocabulary)

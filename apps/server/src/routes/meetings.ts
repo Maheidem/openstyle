@@ -4,6 +4,7 @@ import { zValidator } from "@hono/zod-validator";
 import { isVocabLeak, TERMS_MARKER } from "@openstyle/stt";
 import { createAppLogger, errorMessage } from "@openstyle/utils";
 import {
+  CALENDAR_MAX_ATTENDEES,
   type CalendarEvent,
   calendarEventSchema,
   MEETINGS_DIR_NAME,
@@ -33,6 +34,7 @@ import {
   type WavInfo,
   wavDurationMs,
 } from "../lib/audio/wav.js";
+import { kickLedgerBackfill } from "../lib/chat/loop/ledger.js";
 import { getDb, withTransaction } from "../lib/db.js";
 import {
   isDictationActive,
@@ -101,6 +103,7 @@ import {
   parseLostNames,
   toCalendarEvent,
 } from "../lib/meetings/store.js";
+import { saveMeetingSummary } from "../lib/meetings/summary-store.js";
 import { getMeetingTags } from "../lib/meetings/tags.js";
 import {
   repairSystemTrack,
@@ -128,6 +131,7 @@ import {
   type RunnerDeps,
   startRun,
 } from "../lib/meetings/workflow/runner.js";
+import { MeetingSummarySchema } from "../lib/meetings/workflow/schemas.js";
 import {
   alignerLanguageFor,
   isAlignerModelReady,
@@ -1138,6 +1142,41 @@ const speakerPatchSchema = z
     message: "Provide displayName or mergedInto",
   });
 
+// The body of PUT /:id/attendees: names with an optional email.
+const attendeesSchema = z.object({
+  attendees: z
+    .array(
+      z.object({
+        name: z.string().trim().min(1).max(200),
+        email: z.string().trim().max(320).optional(),
+      }),
+    )
+    .max(CALENDAR_MAX_ATTENDEES),
+});
+
+// The body of PUT /:id/enhanced-segments. `strict`: a `text` field (the raw
+// ASR text) is refused, not ignored.
+const enhancedSegmentsSchema = z.object({
+  segments: z
+    .array(
+      z
+        .object({
+          id: z.string().min(1).max(128),
+          enhanced_text: z.string().max(20_000).nullable(),
+        })
+        .strict(),
+    )
+    .min(1)
+    .max(5000),
+});
+
+// The body of PUT /:id/summary. `agent` names the writer (the model column).
+const summaryPutSchema = z.object({
+  markdown: z.string().trim().min(1).max(200_000),
+  summary_json: MeetingSummarySchema,
+  agent: z.string().trim().min(1).max(200),
+});
+
 const stopSchema = z.object({
   ended_at: z.number().int(),
   duration_ms: z.number().int().min(0),
@@ -1702,6 +1741,107 @@ const meetings = new Hono()
       .run(title, id);
     notifyMeetingChanged(id);
     return c.json({ ok: true, title });
+  })
+  // Set the attendees by hand, with no calendar event (specs/mcp.md 4.3).
+  // The value has the shape of the calendar attendees. The linked event, if
+  // any, stays linked. Speaker naming and the bias terms read the names.
+  .put("/:id/attendees", zValidator("json", attendeesSchema), (c) => {
+    const id = c.req.param("id");
+    if (!getMeetingRow(id)) return c.json({ error: "Not found" }, 404);
+    if (hasJob(id)) {
+      return c.json({ error: runningJobMessage(getJobKind(id)) }, 409);
+    }
+    const attendees = c.req.valid("json").attendees.map((a) => ({
+      name: a.name,
+      email: a.email ?? "",
+      isOrganizer: false,
+    }));
+    getDb()
+      .prepare("UPDATE meetings SET calendar_attendees = ? WHERE id = ?")
+      .run(attendees.length > 0 ? JSON.stringify(attendees) : null, id);
+    notifyMeetingChanged(id);
+    return c.json({ ok: true, attendees });
+  })
+  // Write the enhanced text of segments (specs/mcp.md 4.3). The raw ASR
+  // `text` stays read-only: the schema refuses any other field. null or an
+  // empty text removes the enhanced text of that segment.
+  .put(
+    "/:id/enhanced-segments",
+    zValidator("json", enhancedSegmentsSchema),
+    (c) => {
+      const id = c.req.param("id");
+      const row = getMeetingRow(id);
+      if (!row) return c.json({ error: "Not found" }, 404);
+      if (hasJob(id)) {
+        return c.json({ error: runningJobMessage(getJobKind(id)) }, 409);
+      }
+      const db = getDb();
+      const known = new Set(
+        (
+          db
+            .prepare("SELECT id FROM meeting_segments WHERE meeting_id = ?")
+            .all(id) as { id: string }[]
+        ).map((r) => r.id),
+      );
+      const { segments } = c.req.valid("json");
+      const unknown = segments.find((s) => !known.has(s.id));
+      if (unknown) {
+        return c.json(
+          { error: `Segment ${unknown.id} is not in this meeting` },
+          400,
+        );
+      }
+      withTransaction(db, () => {
+        const update = db.prepare(
+          "UPDATE meeting_segments SET enhanced_text = ? WHERE id = ? AND meeting_id = ?",
+        );
+        for (const s of segments) {
+          update.run(s.enhanced_text?.trim() || null, s.id, id);
+        }
+      });
+      // The export files follow the DB (writeTranscriptMarkdown never throws).
+      if (row.audio_dir) writeTranscriptMarkdown(id, row.audio_dir);
+      else notifyMeetingChanged(id);
+      return c.json({
+        ok: true,
+        updated: segments.length,
+        markdown_path: row.audio_dir
+          ? join(row.audio_dir, "transcript-enhanced.md")
+          : null,
+      });
+    },
+  )
+  // Replace the summary (specs/mcp.md 4.3). The old summary goes to the
+  // versions list. The provider is "agent" and the model is the agent name.
+  .put("/:id/summary", zValidator("json", summaryPutSchema), (c) => {
+    const id = c.req.param("id");
+    const row = getMeetingRow(id);
+    if (!row) return c.json({ error: "Not found" }, 404);
+    if (hasJob(id)) {
+      return c.json({ error: runningJobMessage(getJobKind(id)) }, 409);
+    }
+    if (row.status === "recording") {
+      return c.json({ error: "The meeting is still recording" }, 409);
+    }
+    const body = c.req.valid("json");
+    const createdAt = Date.now();
+    withTransaction(getDb(), () =>
+      saveMeetingSummary(getDb(), id, {
+        markdown: body.markdown,
+        summaryJson: JSON.stringify(body.summary_json),
+        llmProvider: "agent",
+        llmModel: body.agent,
+        inputTokens: null,
+        outputTokens: null,
+        costUsd: null,
+        partial: false,
+        createdAt,
+      }),
+    );
+    // The same follow-ups as the workflow save node (SW3).
+    notifyMeetingChanged(id);
+    kickLedgerBackfill();
+    return c.json({ ok: true, created_at: createdAt });
   })
   // Rename a meeting and/or set its transcription language (Phase A2's
   // editable language chip). Runs whichever UPDATEs the body actually

@@ -13,6 +13,21 @@ import * as linuxAutostart from "./linux-autostart";
 
 const log = createAppLogger("electron");
 
+/** True when the app starts at login. */
+export function isLaunchAtLogin(): boolean {
+  if (process.platform === "linux") return linuxAutostart.isEnabled();
+  return app.getLoginItemSettings().openAtLogin;
+}
+
+/** Turn the start at login on or off. */
+export function setLaunchAtLogin(enabled: boolean): void {
+  if (process.platform === "linux") {
+    linuxAutostart.setEnabled(enabled);
+    return;
+  }
+  app.setLoginItemSettings({ openAtLogin: enabled });
+}
+
 interface RegisterAppSettingsIpcOptions {
   getServerPort: () => Promise<number>;
   getServerUrl: () => string;
@@ -123,18 +138,11 @@ export function registerAppSettingsIpc({
   });
 
   // -- Launch at startup setting IPC --
-  ipcMain.handle("settings:launch-at-startup", () => {
-    if (process.platform === "linux") return linuxAutostart.isEnabled();
-    return app.getLoginItemSettings().openAtLogin;
-  });
+  ipcMain.handle("settings:launch-at-startup", () => isLaunchAtLogin());
 
-  ipcMain.on("settings:set-launch-at-startup", (_event, enabled: boolean) => {
-    if (process.platform === "linux") {
-      linuxAutostart.setEnabled(enabled);
-      return;
-    }
-    app.setLoginItemSettings({ openAtLogin: enabled });
-  });
+  ipcMain.on("settings:set-launch-at-startup", (_event, enabled: boolean) =>
+    setLaunchAtLogin(enabled),
+  );
 
   // -- Show dashboard on launch setting IPC --
   ipcMain.handle("settings:show-dashboard-on-launch", () => {

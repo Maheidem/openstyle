@@ -9,6 +9,8 @@ export type ToolKind = "read" | "write" | "delete";
 
 export interface ToolContext {
   api: ApiCaller;
+  /** The agent name from the X-Openstyle-Agent header ("unknown" if none). */
+  agent: string;
 }
 
 /** The answer of a tool: the data, and the change to tell the app about. */

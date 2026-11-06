@@ -1,6 +1,7 @@
-// MCP tools for the settings and the models. Each tool calls an existing route
-// of routes/settings.ts, routes/models.ts or routes/mlx-llm.ts. The settings
-// tools see only the keys of the catalog (../settings-catalog.ts).
+// MCP tools for the settings and the models. Each tool calls a route of
+// routes/settings.ts, routes/system.ts, routes/models.ts or routes/mlx-llm.ts.
+// The settings tools see only the keys of the catalog (../settings-catalog.ts).
+// The app-shell settings live in the Electron main process (specs/mcp.md 6.4).
 import { SETTINGS_KEYS } from "@openstyle/validations";
 import { z } from "zod";
 import { getMlxLlmModel } from "../../lib/mlx-llm/constants.js";
@@ -69,6 +70,56 @@ const setSetting = defineTool({
       await api("PUT", `/api/settings/${seg(key)}`, { value }),
     );
     return { data, change: { kind: "setting", keys: [key] } };
+  },
+});
+
+const getAppSettings = defineTool({
+  name: "get_app_settings",
+  description:
+    "Get the app-shell settings of the Openstyle app: pill_position, auto_update, update_channel and launch_at_login. They need the running app.",
+  kind: "read",
+  idempotent: true,
+  input: z.object({}),
+  run: async (_args, { api }) => ({
+    data: expectOk(await api("GET", "/api/system/app-settings")),
+  }),
+});
+
+const setAppSettings = defineTool({
+  name: "set_app_settings",
+  description:
+    "Change app-shell settings of the Openstyle app. Give at least one field. A switch of update_channel to stable on a Dev (alpha) build installs the Stable version at once. The answer holds all four values after the change.",
+  kind: "write",
+  idempotent: true,
+  input: z.object({
+    pill_position: z
+      .enum(["top-center", "top-right", "bottom-center", "bottom-right"])
+      .optional()
+      .describe("Where the dictation pill shows on the screen."),
+    auto_update: z
+      .boolean()
+      .optional()
+      .describe("true: the app looks for updates by itself."),
+    update_channel: z
+      .enum(["stable", "dev"])
+      .optional()
+      .describe("The update channel."),
+    launch_at_login: z
+      .boolean()
+      .optional()
+      .describe("true: the app starts when the user logs in."),
+  }),
+  run: async (patch, { api }) => {
+    const keys = Object.keys(patch).filter(
+      (k) => patch[k as keyof typeof patch] !== undefined,
+    );
+    if (keys.length === 0) {
+      throw new ToolError(
+        "Give at least one of pill_position, auto_update, update_channel, launch_at_login.",
+      );
+    }
+    const data = expectOk(await api("PUT", "/api/system/app-settings", patch));
+    return { data, change: { kind: "app-setting", keys } };
   },
 });
 
@@ -146,6 +197,8 @@ const getDownloadStatus = defineTool({
 export const settingsTools = [
   listSettings,
   setSetting,
+  getAppSettings,
+  setAppSettings,
   listModels,
   downloadModel,
   getDownloadStatus,

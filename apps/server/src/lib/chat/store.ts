@@ -122,6 +122,23 @@ export function getThread(db: DatabaseSync, id: string): ChatThread | null {
   return row ? toThread(row) : null;
 }
 
+/** Give a thread a new title. Returns the thread, or null when it is gone. */
+export function renameThread(
+  db: DatabaseSync,
+  id: string,
+  title: string,
+): ChatThread | null {
+  db.prepare("UPDATE chat_threads SET title = ? WHERE id = ?").run(title, id);
+  return getThread(db, id);
+}
+
+/** Delete a thread. Its messages go with it (cascade). False when it is gone. */
+export function deleteThread(db: DatabaseSync, id: string): boolean {
+  return (
+    db.prepare("DELETE FROM chat_threads WHERE id = ?").run(id).changes > 0
+  );
+}
+
 /** The scope of a thread. A thread with no meeting and no folder is scope A. */
 export function threadScope(thread: ChatThread): ChatScope {
   if (thread.meeting_id) return { kind: "meeting", id: thread.meeting_id };

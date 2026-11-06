@@ -1,7 +1,10 @@
 // MCP tools for meeting folders, the folder Overview and the folder standing.
-// Each tool calls an existing route of routes/meeting-folders.ts,
+// Each tool calls a route of routes/meeting-folders.ts,
 // routes/meeting-folder-overview.ts or routes/meeting-folder-standing.ts.
-import { folderColorSchema } from "@openstyle/validations";
+import {
+  FOLDER_STANDING_MAX_BULLETS,
+  folderColorSchema,
+} from "@openstyle/validations";
 import { z } from "zod";
 import { confirmArg, defineTool, expectOk, seg } from "./define.js";
 
@@ -140,6 +143,32 @@ const getFolderStanding = defineTool({
   }),
 });
 
+const setFolderStanding = defineTool({
+  name: "set_folder_standing",
+  description:
+    "Save your own standing text of a folder (where the project stands now), as bullets. It replaces the saved text and calls no model.",
+  kind: "write",
+  idempotent: true,
+  input: z.object({
+    folder_id: folderId,
+    bullets: z
+      .array(z.string().min(1).max(240))
+      .min(1)
+      .max(FOLDER_STANDING_MAX_BULLETS)
+      .describe(
+        `One short line for each bullet, ${FOLDER_STANDING_MAX_BULLETS} at most, with no list marks.`,
+      ),
+  }),
+  run: async ({ folder_id, bullets }, { api }) => {
+    const data = expectOk(
+      await api("PUT", `/api/meetings/folders/${seg(folder_id)}/standing`, {
+        bullets,
+      }),
+    );
+    return { data, change: { kind: "folder", ids: [folder_id] } };
+  },
+});
+
 export const folderTools = [
   listFolders,
   createFolder,
@@ -148,4 +177,5 @@ export const folderTools = [
   getFolderOverview,
   setActionItemDone,
   getFolderStanding,
+  setFolderStanding,
 ];

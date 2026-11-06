@@ -2,15 +2,19 @@
 // The main process forks this file (see ../main/server-host.ts). A crash here
 // ends only this process. The main process then restarts it.
 //
-// Messages from the parent: shutdown, prefetch-mlx, model-cache-dirs.
-// Messages to the parent: ready, model-cache-dirs-result, cleanup-skipped, error.
+// Messages from the parent: shutdown, prefetch-mlx, model-cache-dirs,
+// app-settings-result.
+// Messages to the parent: ready, model-cache-dirs-result, cleanup-skipped,
+// app-settings-request, agent-change, error.
 import {
   activateManagedMlxRuntimeForAppVersion,
   closeDb,
   getLocalModelCacheDirs,
+  handleAppSettingsResult,
   onCleanupSkipped,
   prefetchManagedMlxRuntimeForAppRelease,
   reconcileUnsupportedMlxVoiceDefault,
+  setAppSettingsSender,
   startServer,
   stopMlxServer,
   stopTracing,
@@ -37,7 +41,8 @@ const parentPort = process.parentPort;
 type ParentMessage =
   | { type: "shutdown" }
   | { type: "prefetch-mlx"; version: string }
-  | { type: "model-cache-dirs"; id: number };
+  | { type: "model-cache-dirs"; id: number }
+  | Parameters<typeof handleAppSettingsResult>[0];
 
 function errorText(err: unknown): string {
   return err instanceof Error ? (err.stack ?? err.message) : String(err);
@@ -124,8 +129,15 @@ parentPort.on("message", (event) => {
       });
       break;
     }
+    case "app-settings-result":
+      handleAppSettingsResult(message);
+      break;
   }
 });
+
+// The app-shell settings live in main (specs/mcp.md 6.4). The server asks
+// main through this sender.
+setAppSettingsSender((request) => parentPort.postMessage(request));
 
 // A dictation kept its raw text, because its cleanup model is not on the disk.
 // The server cannot show a message, so it tells the parent.

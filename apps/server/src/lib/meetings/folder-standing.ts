@@ -214,6 +214,25 @@ function saveStanding(
   ).run(folderId, hash, JSON.stringify(bullets), now);
 }
 
+/**
+ * Save a text that an agent or the user wrote, with no model call
+ * (specs/mcp.md 4.2, set_folder_standing). The text gets the input hash of
+ * now, so it is not stale until the folder notes change. Returns null when
+ * no bullet stays after the clean.
+ */
+export function saveManualStanding(
+  db: DatabaseSync,
+  folderId: string,
+  raw: readonly string[],
+  now: number,
+): FolderStanding | null {
+  const bullets = cleanBullets(raw);
+  if (bullets.length === 0) return null;
+  const hash = buildStandingInput(db, folderId)?.hash ?? "";
+  saveStanding(db, folderId, hash, bullets, now);
+  return { bullets, generated_at: now, stale: hash === "" };
+}
+
 // ---------------------------------------------------------------------------
 // The calls
 // ---------------------------------------------------------------------------

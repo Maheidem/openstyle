@@ -491,3 +491,177 @@ export function readLedger(
   );
   return { total: out.length, items: out.slice(0, q.limit) };
 }
+
+// ---------------------------------------------------------------------------
+// Writes from an agent (specs/mcp.md 4.2, routes/ledger.ts)
+// ---------------------------------------------------------------------------
+
+/** The folder and the date of a meeting, or null when it does not exist. */
+export function ledgerMeeting(
+  db: DatabaseSync,
+  meetingId: string,
+): { id: string; folderId: string | null; at: number } | null {
+  const row = db
+    .prepare(
+      `SELECT m.id, m.folder_id, ${DATE} AS at FROM meetings m WHERE m.id = ?`,
+    )
+    .get(meetingId) as
+    | { id: string; folder_id: string | null; at: number }
+    | undefined;
+  return row ? { id: row.id, folderId: row.folder_id, at: row.at } : null;
+}
+
+/** The folder of an item. undefined when the item does not exist. */
+export function ledgerItemFolder(
+  db: DatabaseSync,
+  itemId: string,
+): string | null | undefined {
+  const row = db
+    .prepare("SELECT folder_id FROM ledger_items WHERE id = ?")
+    .get(itemId) as { folder_id: string | null } | undefined;
+  return row ? row.folder_id : undefined;
+}
+
+/**
+ * Find a quote in the transcript of a meeting (raw or enhanced text). The
+ * quote is ok when its normalized text has at least 8 characters and is in
+ * one segment, or in the whole transcript across segments.
+ */
+export function findQuote(
+  db: DatabaseSync,
+  meetingId: string,
+  quote: string,
+): { ok: boolean; startMs: number | null } {
+  const want = normalizeText(quote);
+  if (want.length < 8) return { ok: false, startMs: null };
+  const segs = db
+    .prepare(
+      `SELECT start_ms, text, enhanced_text FROM meeting_segments
+        WHERE meeting_id = ? AND status = 'ok' ORDER BY start_ms, idx, id`,
+    )
+    .all(meetingId) as {
+    start_ms: number;
+    text: string | null;
+    enhanced_text: string | null;
+  }[];
+  for (const s of segs) {
+    for (const t of [s.text, s.enhanced_text]) {
+      if (t && normalizeText(t).includes(want)) {
+        return { ok: true, startMs: s.start_ms };
+      }
+    }
+  }
+  const whole = (field: "text" | "enhanced_text") =>
+    normalizeText(segs.map((s) => s[field] ?? s.text ?? "").join(" "));
+  const ok =
+    whole("text").includes(want) || whole("enhanced_text").includes(want);
+  return { ok, startMs: null };
+}
+
+export interface NewLedgerMark {
+  meetingId: string;
+  meetingDate: number;
+  status: MarkStatus;
+  quote: string;
+  owner: string | null;
+  reason: string | null;
+  writer: string;
+}
+
+/** Append one mark to an item. Marks are append only. Returns the mark. */
+export function insertLedgerMark(
+  db: DatabaseSync,
+  itemId: string,
+  mark: NewLedgerMark,
+): { id: string; quoteOk: boolean } {
+  const id = randomUUID();
+  const found = findQuote(db, mark.meetingId, mark.quote);
+  db.prepare(
+    `INSERT INTO ledger_marks (id, item_id, meeting_id, meeting_date, status, owner, reason, blocked_by,
+       quote, quote_start_ms, quote_ok, writer_model, written_at)
+     VALUES (?, ?, ?, ?, ?, ?, ?, NULL, ?, ?, ?, ?, ?)`,
+  ).run(
+    id,
+    itemId,
+    mark.meetingId,
+    mark.meetingDate,
+    mark.status,
+    mark.owner,
+    mark.reason,
+    mark.quote.slice(0, QUOTE_MAX),
+    found.startMs,
+    found.ok ? 1 : 0,
+    mark.writer,
+    Date.now(),
+  );
+  return { id, quoteOk: found.ok };
+}
+
+/**
+ * A new item, raised in one meeting: the item (folder = the folder of the
+ * meeting) and its `raised` mark, in one transaction.
+ */
+export function createLedgerItem(
+  db: DatabaseSync,
+  meeting: { id: string; folderId: string | null; at: number },
+  item: {
+    kind: ItemKind;
+    text: string;
+    quote: string;
+    owner: string | null;
+    writer: string;
+  },
+): { id: string; markId: string; quoteOk: boolean } {
+  const id = randomUUID();
+  db.exec("BEGIN");
+  try {
+    db.prepare(
+      "INSERT INTO ledger_items (id, folder_id, kind, text, first_meeting_id, created_at) VALUES (?, ?, ?, ?, ?, ?)",
+    ).run(id, meeting.folderId, item.kind, item.text, meeting.id, meeting.at);
+    const mark = insertLedgerMark(db, id, {
+      meetingId: meeting.id,
+      meetingDate: meeting.at,
+      status: "raised",
+      quote: item.quote,
+      owner: item.owner,
+      reason: null,
+      writer: item.writer,
+    });
+    db.exec("COMMIT");
+    return { id, markId: mark.id, quoteOk: mark.quoteOk };
+  } catch (e) {
+    db.exec("ROLLBACK");
+    throw e;
+  }
+}
+
+/** Change the text or the kind of an item. False when the item is gone. */
+export function updateLedgerItem(
+  db: DatabaseSync,
+  itemId: string,
+  patch: { text?: string; kind?: ItemKind },
+): boolean {
+  const sets: string[] = [];
+  const values: string[] = [];
+  if (patch.text !== undefined) {
+    sets.push("text = ?");
+    values.push(patch.text);
+  }
+  if (patch.kind !== undefined) {
+    sets.push("kind = ?");
+    values.push(patch.kind);
+  }
+  if (sets.length === 0) return ledgerItemFolder(db, itemId) !== undefined;
+  return (
+    db
+      .prepare(`UPDATE ledger_items SET ${sets.join(", ")} WHERE id = ?`)
+      .run(...values, itemId).changes > 0
+  );
+}
+
+/** Delete an item. Its marks go with it (cascade). False when it is gone. */
+export function deleteLedgerItem(db: DatabaseSync, itemId: string): boolean {
+  return (
+    db.prepare("DELETE FROM ledger_items WHERE id = ?").run(itemId).changes > 0
+  );
+}

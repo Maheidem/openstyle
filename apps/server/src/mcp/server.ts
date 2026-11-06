@@ -13,6 +13,7 @@ import {
 } from "./tools/define.js";
 import { folderTools } from "./tools/folders.js";
 import { historyTools } from "./tools/history.js";
+import { ledgerTools } from "./tools/ledger.js";
 import { meetingTools } from "./tools/meetings.js";
 import { settingsTools } from "./tools/settings.js";
 import { vocabularyTools } from "./tools/vocabulary.js";
@@ -24,6 +25,7 @@ export const MCP_TOOLS: readonly McpTool[] = [
   ...meetingTools,
   ...folderTools,
   ...historyTools,
+  ...ledgerTools,
   ...vocabularyTools,
   ...settingsTools,
 ];
@@ -48,7 +50,7 @@ async function runTool(
       outcome = "error";
       return textResult(CONFIRM_MESSAGE, true);
     }
-    const answer: ToolAnswer = await tool.run(args as never, { api });
+    const answer: ToolAnswer = await tool.run(args as never, { api, agent });
     if (answer.change) emitAgentChange(answer.change);
     return textResult(JSON.stringify(answer.data ?? null));
   } catch (err) {
