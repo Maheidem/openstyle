@@ -15,9 +15,9 @@ MCP servers at start: `[{"name":"openstyle-dev","status":"connected","source":"d
 | 1 | search_meetings | `{"query":"Safari"}` | {"status":"off","reason":"no_model"} |
 | 2 | get_transcript | `{"meeting_id":"meet_demo_product_sync","limit":20}` | {"total":13,"offset":0,"limit":20,"next_offset":null,"segments":[{"speaker":"Me","startMs":2000,"endMs":145692,"text":"Thanks for joining. Three things today: onboarding, the Safari bug and the releas |
 | 3 | add_vocabulary | `{"entries":[{"term":"Alex Rivera claude"},{"term":"Safari Tech Preview claude"},{"term":"Kestrel claude","notes":"Project name"}]}` | {"imported":3,"skipped":0} |
-| 4 | list_vocabulary | `{"search":"Kestrel claude"}` | {"items":[{"id":5,"term":"Kestrel claude","notes":"Project name","created_at":"2026-11-06 15:40:54","updated_at":"2026-11-06 15:40:54"}],"total":1,"limit":50,"offset":0} |
+| 4 | list_vocabulary | `{"search":"Kestrel claude"}` | {"items":[{"id":5,"term":"Kestrel claude","notes":"Project name","created_at":"2026-11-06 16:08:39","updated_at":"2026-11-06 16:08:39"}],"total":1,"limit":50,"offset":0} |
 | 5 | update_vocabulary | `{"vocabulary_id":5,"notes":"Project name, fixed by the agent"}` | {"id":5,"term":"Kestrel claude","notes":"Project name, fixed by the agent"} |
-| 6 | list_vocabulary | `{}` | {"items":[{"id":3,"term":"Alex Rivera claude","notes":null,"created_at":"2026-11-06 15:40:54","updated_at":"2026-11-06 15:40:54"},{"id":4,"term":"Safari Tech Preview claude","notes":null,"created_at": |
+| 6 | list_vocabulary | `{}` | {"items":[{"id":3,"term":"Alex Rivera claude","notes":null,"created_at":"2026-11-06 16:08:39","updated_at":"2026-11-06 16:08:39"},{"id":4,"term":"Safari Tech Preview claude","notes":null,"created_at": |
 
 Read-back:
 
@@ -36,10 +36,11 @@ Transcript: `evidence/pi/J10-vocabulary.jsonl`. Exit code 0.
 | 2 | get_transcript | `{"meeting_id":"meet_demo_product_sync","limit":20}` | {"total":13,"offset":0,"limit":20,"next_offset":null,"segments":[{"speaker":"Me","startMs":2000,"endMs":145692,"text":"Thanks for joining. Three things today: onboarding, the Safari bug and the releas |
 | 3 | add_vocabulary | `{"terms":[{"term":"Alex Rivera pi"},{"term":"Safari Tech Preview pi"},{"term":"Kestrel pi","notes":"Project name"}]}` | ERROR: Validation failed for tool "mcp__openstyle_dev__add_vocabulary":   - entries: must have required properties entries  Received arguments: {   "terms": [     {       "term": "Alex Rivera pi"     },      |
 | 4 | add_vocabulary | `{"entries":[{"term":"Alex Rivera pi"},{"term":"Safari Tech Preview pi"},{"term":"Kestrel pi","notes":"Project name"}]}` | {"imported":3,"skipped":0} |
-| 5 | list_vocabulary | `{"query":"Kestrel pi"}` | {"items":[{"id":3,"term":"Alex Rivera pi","notes":null,"created_at":"2026-11-06 15:51:14","updated_at":"2026-11-06 15:51:14"},{"id":4,"term":"Safari Tech Preview pi","notes":null,"created_at":"2026-11 |
+| 5 | list_vocabulary | `{"query":"Kestrel pi"}` | {"items":[{"id":3,"term":"Alex Rivera pi","notes":null,"created_at":"2026-11-06 16:19:34","updated_at":"2026-11-06 16:19:34"},{"id":4,"term":"Safari Tech Preview pi","notes":null,"created_at":"2026-11 |
 | 6 | update_vocabulary | `{"id":5,"notes":"Project name, fixed by the agent"}` | ERROR: Validation failed for tool "mcp__openstyle_dev__update_vocabulary":   - vocabulary_id: must have required properties vocabulary_id  Received arguments: {   "id": 5,   "notes": "Project name, fixed by  |
-| 7 | update_vocabulary | `{"vocabulary_id":5,"notes":"Project name, fixed by the agent"}` | {"id":5,"term":"Kestrel pi","notes":"Project name, fixed by the agent"} |
-| 8 | list_vocabulary | `{}` | {"items":[{"id":3,"term":"Alex Rivera pi","notes":null,"created_at":"2026-11-06 15:51:14","updated_at":"2026-11-06 15:51:14"},{"id":4,"term":"Safari Tech Preview pi","notes":null,"created_at":"2026-11 |
+| 7 | list_vocabulary | `{}` | {"items":[{"id":3,"term":"Alex Rivera pi","notes":null,"created_at":"2026-11-06 16:19:34","updated_at":"2026-11-06 16:19:34"},{"id":4,"term":"Safari Tech Preview pi","notes":null,"created_at":"2026-11 |
+| 8 | update_vocabulary | `{"vocabulary_id":5,"notes":"Project name, fixed by the agent"}` | {"id":5,"term":"Kestrel pi","notes":"Project name, fixed by the agent"} |
+| 9 | list_vocabulary | `{}` | {"items":[{"id":3,"term":"Alex Rivera pi","notes":null,"created_at":"2026-11-06 16:19:34","updated_at":"2026-11-06 16:19:34"},{"id":4,"term":"Safari Tech Preview pi","notes":null,"created_at":"2026-11 |
 
 Read-back:
 

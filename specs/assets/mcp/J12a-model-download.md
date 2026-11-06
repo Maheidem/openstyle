@@ -12,7 +12,7 @@ MCP servers at start: `[{"name":"openstyle-dev","status":"connected","source":"d
 
 | # | Tool | Input | Result |
 |---|---|---|---|
-| 1 | list_models | `{}` | {"configured":[{"id":1,"provider":"local-mlx-llm","model_id":"local-mlx-llm/gemma-4-e2b-qat-4bit","model_name":"Gemma 4 E2B","type":"llm","is_default":1,"created_at":"2026-11-06 15:38:37"}],"builtin": |
+| 1 | list_models | `{}` | {"configured":[{"id":1,"provider":"local-mlx-llm","model_id":"local-mlx-llm/gemma-4-e2b-qat-4bit","model_name":"Gemma 4 E2B","type":"llm","is_default":1,"created_at":"2026-11-06 16:06:33"}],"builtin": |
 | 2 | download_model | `{"model_id":"gemma-4-e2b-qat-4bit"}` | {"ok":true,"message":"Download started"} |
 | 3 | get_download_status | `{"model_id":"gemma-4-e2b-qat-4bit"}` | {"model":"gemma-4-e2b-qat-4bit","hfId":"mlx-community/gemma-4-E2B-it-qat-4bit","displayName":"Gemma 4 E2B","family":"gemma4","sizeBytes":4361680121,"contextTokens":32768,"maxOutputTokens":8192,"recomm |
 
@@ -24,13 +24,16 @@ Read-back:
 
 ### J12a-model-download
 
-Transcript: `evidence/pi/J12a-model-download-retry.jsonl`. Exit code 0.
+Transcript: `evidence/pi/J12a-model-download.jsonl`. Exit code 0.
 
 | # | Tool | Input | Result |
 |---|---|---|---|
-| 1 | list_models | `{}` | {"configured":[{"id":1,"provider":"local-mlx-llm","model_id":"local-mlx-llm/gemma-4-e2b-qat-4bit","model_name":"Gemma 4 E2B","type":"llm","is_default":1,"created_at":"2026-11-06 15:49:05"}],"builtin": |
+| 1 | list_models | `{}` | {"configured":[{"id":1,"provider":"local-mlx-llm","model_id":"local-mlx-llm/gemma-4-e2b-qat-4bit","model_name":"Gemma 4 E2B","type":"llm","is_default":1,"created_at":"2026-11-06 16:16:17"}],"builtin": |
 | 2 | download_model | `{"model_id":"gemma-4-e2b-qat-4bit"}` | {"ok":true,"message":"Model already downloaded"} |
 | 3 | get_download_status | `{"model_id":"gemma-4-e2b-qat-4bit"}` | {"model":"gemma-4-e2b-qat-4bit","hfId":"mlx-community/gemma-4-E2B-it-qat-4bit","displayName":"Gemma 4 E2B","family":"gemma4","sizeBytes":4361680121,"contextTokens":32768,"maxOutputTokens":8192,"recomm |
+| 4 | list_models | `{}` | {"configured":[{"id":1,"provider":"local-mlx-llm","model_id":"local-mlx-llm/gemma-4-e2b-qat-4bit","model_name":"Gemma 4 E2B","type":"llm","is_default":1,"created_at":"2026-11-06 16:16:17"}],"builtin": |
+| 5 | download_model | `{"model_id":"gemma-4-e2b-qat-4bit"}` | {"ok":true,"message":"Model already downloaded"} |
+| 6 | get_download_status | `{"model_id":"gemma-4-e2b-qat-4bit"}` | {"model":"gemma-4-e2b-qat-4bit","hfId":"mlx-community/gemma-4-E2B-it-qat-4bit","displayName":"Gemma 4 E2B","family":"gemma4","sizeBytes":4361680121,"contextTokens":32768,"maxOutputTokens":8192,"recomm |
 
 Read-back:
 

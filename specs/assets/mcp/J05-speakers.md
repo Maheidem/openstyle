@@ -12,7 +12,7 @@ MCP servers at start: `[{"name":"openstyle-dev","status":"connected","source":"d
 
 | # | Tool | Input | Result |
 |---|---|---|---|
-| 1 | get_meeting | `{"meeting_id":"meet_demo_product_sync"}` | {"id":"meet_demo_product_sync","folder_id":"folder_product","title":"Weekly product sync","started_at":1793885917055,"ended_at":1793887837055,"duration_ms":1920000,"status":"summarized","display_statu |
+| 1 | get_meeting | `{"meeting_id":"meet_demo_product_sync"}` | {"id":"meet_demo_product_sync","folder_id":"folder_product","title":"Weekly product sync","started_at":1793887593477,"ended_at":1793889513477,"duration_ms":1920000,"status":"summarized","display_statu |
 | 2 | update_speaker | `{"meeting_id":"meet_demo_product_sync","label":"1","display_name":"Alex Rivera"}` | {"ok":true} |
 | 3 | update_speaker | `{"meeting_id":"meet_demo_product_sync","label":"2","merged_into":"1"}` | {"ok":true} |
 
@@ -28,7 +28,7 @@ Transcript: `evidence/pi/J05-speakers.jsonl`. Exit code 0.
 
 | # | Tool | Input | Result |
 |---|---|---|---|
-| 1 | get_meeting | `{"meeting_id":"meet_demo_product_sync"}` | {"id":"meet_demo_product_sync","folder_id":"folder_product","title":"Weekly product sync","started_at":1793886545502,"ended_at":1793888465502,"duration_ms":1920000,"status":"summarized","display_statu |
+| 1 | get_meeting | `{"meeting_id":"meet_demo_product_sync"}` | {"id":"meet_demo_product_sync","folder_id":"folder_product","title":"Weekly product sync","started_at":1793888177395,"ended_at":1793890097395,"duration_ms":1920000,"status":"summarized","display_statu |
 | 2 | update_speaker | `{"meeting_id":"meet_demo_product_sync","label":"1","display_name":"Alex Rivera"}` | {"ok":true} |
 | 3 | update_speaker | `{"meeting_id":"meet_demo_product_sync","label":"2","merged_into":"1"}` | {"ok":true} |
 

@@ -34,10 +34,10 @@ Transcript: `evidence/pi/J15-live.jsonl`. Exit code 0.
 | 1 | get_live_transcript | `{}` | ERROR: Live transcription is off. Turn it on with set_setting live_chat_enabled=true; it starts with the next recording. |
 | 2 | set_setting | `{"key":"live_chat_enabled","value":"true"}` | {"key":"live_chat_enabled","value":"true"} |
 | 3 | get_live_transcript | `{}` | {"meeting_id":"meet_live_harbor","status":"ready","reason":null,"lines":[{"source":"mic","startMs":0,"endMs":2800,"text":"Good morning, the pier crew is ready.","final":true},{"source":"system","start |
-| 4 | get_live_transcript | `{"since_ms":11800}` | {"meeting_id":"meet_live_harbor","status":"ready","reason":null,"lines":[{"source":"mic","startMs":12000,"endMs":14800,"text":"Please send the berth plan to Dana before lunch.","final":true}],"partial |
-| 5 | get_live_transcript | `{"since_ms":14800}` | {"meeting_id":"meet_live_harbor","status":"ready","reason":null,"lines":[{"source":"system","startMs":15000,"endMs":17800,"text":"The tug captain confirms the new schedule.","final":true}],"partial":[ |
+| 4 | get_live_transcript | `{"since_ms":17800}` | {"meeting_id":"meet_live_harbor","status":"ready","reason":null,"lines":[{"source":"mic","startMs":18000,"endMs":20800,"text":"Good, that closes the harbor update.","final":true},{"source":"system","s |
+| 5 | get_live_transcript | `{"since_ms":23800}` | {"meeting_id":"meet_live_harbor","status":"ready","reason":null,"lines":[{"source":"mic","startMs":24000,"endMs":26800,"text":"Noted, the east berth stays free for it.","final":true},{"source":"system |
 
 Read-back:
 
-- get_live_transcript: ok `{"offText":"Live transcription is off. Turn it on with set_setting live_chat_enabled=true; it starts with the next recording.","cursors":[11800,14800,17800],"lineCounts":[4,1,1]}`
+- get_live_transcript: ok `{"offText":"Live transcription is off. Turn it on with set_setting live_chat_enabled=true; it starts with the next recording.","cursors":[17800,23800,29800],"lineCounts":[6,2,2]}`
 - set_setting: ok `{"rows":[{"key":"chat_hotkey","value":"Control+Alt+J"},{"key":"output_mode","value":"clipboard"},{"key":"sound_enabled","value":"false"}],"liveHotkey":{"registered":"Control+Alt+J","dictating":false,"waiting":false,"armed":false}}`

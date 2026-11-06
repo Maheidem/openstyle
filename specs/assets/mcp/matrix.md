@@ -1,6 +1,6 @@
 # MCP harness evidence matrix
 
-Run: 2026-11-06T15:54:08.962Z. Data: fictional seed only. Server name: `openstyle-dev`.
+Run: 2026-11-06T16:24:21.944Z. Data: fictional seed only. Server name: `openstyle-dev`.
 
 | Tool | claude | pi | Evidence (first harness) |
 |---|---|---|---|
@@ -69,7 +69,7 @@ Cells ok: 100 of 100.
 - Install: ok
 - Remove: ok
 - J14 failure texts: ok
-- J15 live: ok (cursors [11800,14800,17800])
+- J15 live: ok (cursors [17800,23800,29800])
 
 ## Real agent configs (before and after)
 
@@ -79,8 +79,8 @@ Cells ok: 100 of 100.
     "files": [
       {
         "path": "~/.claude.json",
-        "size": 524775,
-        "mtime": "2026-11-06T15:35:33.837Z"
+        "size": 524949,
+        "mtime": "2026-11-06T16:05:00.234Z"
       },
       {
         "path": "~/.claude/settings.json",
@@ -116,15 +116,15 @@ Cells ok: 100 of 100.
     "openstyleEntries": {
       "claude": [],
       "pi": [],
-      "codex": true
+      "codex": false
     }
   },
   "after": {
     "files": [
       {
         "path": "~/.claude.json",
-        "size": 524775,
-        "mtime": "2026-11-06T15:46:00.160Z"
+        "size": 524984,
+        "mtime": "2026-11-06T16:20:27.090Z"
       },
       {
         "path": "~/.claude/settings.json",
@@ -160,7 +160,7 @@ Cells ok: 100 of 100.
     "openstyleEntries": {
       "claude": [],
       "pi": [],
-      "codex": true
+      "codex": false
     }
   },
   "openstyleLogs": {
@@ -187,8 +187,8 @@ Cells ok: 100 of 100.
       },
       {
         "file": "openstyle.log",
-        "size": 295839,
-        "mtime": "2026-11-06T15:35:29.100Z"
+        "size": 296847,
+        "mtime": "2026-11-06T16:05:29.350Z"
       },
       {
         "file": "openstyle1.log",
@@ -224,8 +224,8 @@ Cells ok: 100 of 100.
       },
       {
         "file": "openstyle.log",
-        "size": 296343,
-        "mtime": "2026-11-06T15:50:29.323Z"
+        "size": 297351,
+        "mtime": "2026-11-06T16:20:29.274Z"
       },
       {
         "file": "openstyle1.log",

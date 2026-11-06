@@ -12,14 +12,14 @@ MCP servers at start: `[{"name":"openstyle-dev","status":"connected","source":"d
 
 | # | Tool | Input | Result |
 |---|---|---|---|
-| 1 | get_meeting | `{"meeting_id":"meet_demo_product_sync"}` | {"id":"meet_demo_product_sync","folder_id":"folder_product","title":"Weekly product sync","started_at":1793885917055,"ended_at":1793887837055,"duration_ms":1920000,"status":"summarized","display_statu |
+| 1 | get_meeting | `{"meeting_id":"meet_demo_product_sync"}` | {"id":"meet_demo_product_sync","folder_id":"folder_product","title":"Weekly product sync","started_at":1793887593477,"ended_at":1793889513477,"duration_ms":1920000,"status":"summarized","display_statu |
 | 2 | get_transcript | `{"meeting_id":"meet_demo_product_sync","limit":50}` | {"total":13,"offset":0,"limit":50,"next_offset":null,"segments":[{"speaker":"Me","startMs":2000,"endMs":145692,"text":"Thanks for joining. Three things today: onboarding, the Safari bug and the releas |
-| 3 | set_summary | `{"meeting_id":"meet_demo_product_sync","markdown":"## Summary (claude)\nWeekly product sync covering onboarding drop-off, the Safari login b` | {"ok":true,"created_at":1793979543172} |
+| 3 | set_summary | `{"meeting_id":"meet_demo_product_sync","markdown":"## Summary (claude)\n\nThe product team covered three topics: onboarding drop-off, the Sa` | {"ok":true,"created_at":1793981220190} |
 | 4 | get_summary_versions | `{"meeting_id":"meet_demo_product_sync"}` | {"items":[{"id":1,"markdown":"## Decisions\n- Start onboarding with the small model and download the larger one in the background.\n- Ship the Safari login fix behind a flag, reviewed by a second engi |
 
 Read-back:
 
-- set_summary: ok `{"row":{"llm_provider":"agent","llm_model":"claude-code/2.1.319","md":"## Summary (claude)\nWeekly product sync "},"versions":1}`
+- set_summary: ok `{"row":{"llm_provider":"agent","llm_model":"claude-code/2.1.319","md":"## Summary (claude)\n\nThe product team co"},"versions":1}`
 
 ## pi (default model)
 
@@ -29,11 +29,12 @@ Transcript: `evidence/pi/J03-summary.jsonl`. Exit code 0.
 
 | # | Tool | Input | Result |
 |---|---|---|---|
-| 1 | get_meeting | `{"meeting_id":"meet_demo_product_sync"}` | {"id":"meet_demo_product_sync","folder_id":"folder_product","title":"Weekly product sync","started_at":1793886545502,"ended_at":1793888465502,"duration_ms":1920000,"status":"summarized","display_statu |
+| 1 | get_meeting | `{"meeting_id":"meet_demo_product_sync"}` | {"id":"meet_demo_product_sync","folder_id":"folder_product","title":"Weekly product sync","started_at":1793888177395,"ended_at":1793890097395,"duration_ms":1920000,"status":"summarized","display_statu |
 | 2 | get_transcript | `{"meeting_id":"meet_demo_product_sync","limit":50}` | {"total":13,"offset":0,"limit":50,"next_offset":null,"segments":[{"speaker":"Me","startMs":2000,"endMs":145692,"text":"Thanks for joining. Three things today: onboarding, the Safari bug and the releas |
-| 3 | set_summary | `{"meeting_id":"meet_demo_product_sync","markdown":"## Summary (pi)\n\nWeekly product sync covering onboarding drop-off, the Safari login bug` | {"ok":true,"created_at":1793980170015} |
-| 4 | get_summary_versions | `{"meeting_id":"meet_demo_product_sync"}` | {"items":[{"id":1,"markdown":"## Decisions\n- Start onboarding with the small model and download the larger one in the background.\n- Ship the Safari login fix behind a flag, reviewed by a second engi |
+| 3 | set_summary | `{"meeting_id":"meet_demo_product_sync","markdown":"## Summary (pi)\n\nThe product team discussed three topics: onboarding drop-off, the Safa` | ERROR: Validation failed for tool "mcp__openstyle_dev__set_summary":   - summary_json: must be object  Received arguments: {   "meeting_id": "meet_demo_product_sync",   "markdown": "## Summary (pi)\n\nThe pr |
+| 4 | set_summary | `{"meeting_id":"meet_demo_product_sync","markdown":"## Summary (pi)\n\nThe product team discussed three topics: onboarding drop-off, the Safa` | {"ok":true,"created_at":1793981811352} |
+| 5 | get_summary_versions | `{"meeting_id":"meet_demo_product_sync"}` | {"items":[{"id":1,"markdown":"## Decisions\n- Start onboarding with the small model and download the larger one in the background.\n- Ship the Safari login fix behind a flag, reviewed by a second engi |
 
 Read-back:
 
-- set_summary: ok `{"row":{"llm_provider":"agent","llm_model":"pi/1.4.0","md":"## Summary (pi)\n\nWeekly product sync cov"},"versions":1}`
+- set_summary: ok `{"row":{"llm_provider":"agent","llm_model":"pi/1.4.0","md":"## Summary (pi)\n\nThe product team discus"},"versions":1}`

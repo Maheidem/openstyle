@@ -21,7 +21,7 @@ MCP servers at start: `[{"name":"openstyle-dev","status":"connected","source":"d
 Read-back:
 
 - update_meeting: ok `{"row":{"title":"Pilot call, week 45 (claude)","language":"en","context":"Notes: the pilot customer wants a second demo."}}`
-- set_meeting_tags: ok `{"names":["pilot","customer-claude"]}`
+- set_meeting_tags: ok `{"names":["customer-claude","pilot"]}`
 - set_calendar_link: ok `{"row":{"calendar_event_id":null}}`
 - set_attendees: ok `{"row":{"calendar_event_id":null,"calendar_attendees":"[{\"name\":\"Dana Reyes\",\"email\":\"dana@example.com\",\"isOrganizer\":false},{\"name\":\"Lee Park\",\"email\":\"\",\"isOrganizer\":false}]"}}`
 
@@ -42,6 +42,6 @@ Transcript: `evidence/pi/J06-meeting-fields.jsonl`. Exit code 0.
 Read-back:
 
 - update_meeting: ok `{"row":{"title":"Pilot call, week 45 (pi)","language":"en","context":"Notes: the pilot customer wants a second demo."}}`
-- set_meeting_tags: ok `{"names":["customer-pi","pilot"]}`
+- set_meeting_tags: ok `{"names":["pilot","customer-pi"]}`
 - set_calendar_link: ok `{"row":{"calendar_event_id":null}}`
 - set_attendees: ok `{"row":{"calendar_event_id":null,"calendar_attendees":"[{\"name\":\"Dana Reyes\",\"email\":\"dana@example.com\",\"isOrganizer\":false},{\"name\":\"Lee Park\",\"email\":\"\",\"isOrganizer\":false}]"}}`

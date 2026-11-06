@@ -12,22 +12,22 @@ MCP servers at start: `[{"name":"openstyle-dev","status":"connected","source":"d
 
 | # | Tool | Input | Result |
 |---|---|---|---|
-| 1 | create_folder | `{"name":"Harness claude","description":"Made by the MCP harness."}` | {"id":"4f1610b7-5bb2-42bb-b3b7-53e48456c27a","name":"Harness claude","description":"Made by the MCP harness.","color":null,"created_at":1793979609614,"updated_at":1793979609614,"meeting_count":0,"firs |
-| 2 | move_meetings | `{"meeting_ids":["meet_demo_pilot_call","meet_demo_interview"],"folder_id":"4f1610b7-5bb2-42bb-b3b7-53e48456c27a"}` | {"meeting_ids":["meet_demo_pilot_call","meet_demo_interview"],"folder_id":"4f1610b7-5bb2-42bb-b3b7-53e48456c27a","ok":true} |
-| 3 | list_folders | `{}` | {"items":[{"id":"folder_customers","name":"Customer calls","description":"Calls with pilot customers.","color":null,"created_at":1791387517055,"updated_at":1793979517055,"meeting_count":0,"first_meeti |
+| 1 | create_folder | `{"name":"Harness claude","description":"Made by the MCP harness."}` | {"id":"27ef16da-c5d7-4377-8b73-4c9ef8b5d6be","name":"Harness claude","description":"Made by the MCP harness.","color":null,"created_at":1793981272186,"updated_at":1793981272186,"meeting_count":0,"firs |
+| 2 | move_meetings | `{"meeting_ids":["meet_demo_pilot_call","meet_demo_interview"],"folder_id":"27ef16da-c5d7-4377-8b73-4c9ef8b5d6be"}` | {"meeting_ids":["meet_demo_pilot_call","meet_demo_interview"],"folder_id":"27ef16da-c5d7-4377-8b73-4c9ef8b5d6be","ok":true} |
+| 3 | list_folders | `{}` | {"items":[{"id":"folder_customers","name":"Customer calls","description":"Calls with pilot customers.","color":null,"created_at":1791389193477,"updated_at":1793981193477,"meeting_count":0,"first_meeti |
 | 4 | get_folder_overview | `{"folder_id":"folder_product"}` | {"folder":{"id":"folder_product","name":"Product team","description":"Weekly syncs and planning.","color":null},"counts":{"meetings":1,"summarized":1,"total_duration_ms":1920000,"first_meeting_at":179 |
 | 5 | set_action_item_done | `{"folder_id":"folder_product","key":"ce10d0b3ae4a3d69","done":true}` | {"key":"ce10d0b3ae4a3d69","done":true} |
 | 6 | get_folder_standing | `{"folder_id":"folder_product"}` | {"standing":null,"can_generate":true} |
-| 7 | set_folder_standing | `{"folder_id":"folder_product","bullets":["Onboarding change in review (claude).","Safari login fix needs a second reviewer."]}` | {"bullets":["Onboarding change in review (claude).","Safari login fix needs a second reviewer."],"generated_at":1793979615538,"stale":false} |
-| 8 | update_folder | `{"folder_id":"4f1610b7-5bb2-42bb-b3b7-53e48456c27a","name":"Harness claude renamed"}` | {"id":"4f1610b7-5bb2-42bb-b3b7-53e48456c27a","name":"Harness claude renamed","description":"Made by the MCP harness.","color":null,"created_at":1793979609614,"updated_at":1793979615891,"meeting_count" |
+| 7 | set_folder_standing | `{"folder_id":"folder_product","bullets":["Onboarding change in review (claude).","Safari login fix needs a second reviewer."]}` | {"bullets":["Onboarding change in review (claude).","Safari login fix needs a second reviewer."],"generated_at":1793981277112,"stale":false} |
+| 8 | update_folder | `{"folder_id":"27ef16da-c5d7-4377-8b73-4c9ef8b5d6be","name":"Harness claude renamed"}` | {"id":"27ef16da-c5d7-4377-8b73-4c9ef8b5d6be","name":"Harness claude renamed","description":"Made by the MCP harness.","color":null,"created_at":1793981272186,"updated_at":1793981277746,"meeting_count" |
 
 Read-back:
 
-- create_folder: ok `{"row":{"id":"4f1610b7-5bb2-42bb-b3b7-53e48456c27a","name":"Harness claude renamed"}}`
+- create_folder: ok `{"row":{"id":"27ef16da-c5d7-4377-8b73-4c9ef8b5d6be","name":"Harness claude renamed"}}`
 - move_meetings: ok `{"rows":[{"id":"meet_demo_interview","name":"Harness claude renamed"},{"id":"meet_demo_pilot_call","name":"Harness claude renamed"}]}`
 - set_action_item_done: ok `{"rows":[{"item_key":"ce10d0b3ae4a3d69","done":1}]}`
 - set_folder_standing: ok `{"row":{"bullets_json":"[\"Onboarding change in review (claude).\",\"Safari login fix needs a second reviewer.\"]"}}`
-- update_folder: ok `{"row":{"id":"4f1610b7-5bb2-42bb-b3b7-53e48456c27a","name":"Harness claude renamed"}}`
+- update_folder: ok `{"row":{"id":"27ef16da-c5d7-4377-8b73-4c9ef8b5d6be","name":"Harness claude renamed"}}`
 
 ## pi (default model)
 
@@ -37,19 +37,22 @@ Transcript: `evidence/pi/J07-folders.jsonl`. Exit code 0.
 
 | # | Tool | Input | Result |
 |---|---|---|---|
-| 1 | create_folder | `{"name":"Harness pi","description":"Made by the MCP harness."}` | {"id":"58be0baf-0073-4085-8316-dadadeb700f9","name":"Harness pi","description":"Made by the MCP harness.","color":null,"created_at":1793980214048,"updated_at":1793980214048,"meeting_count":0,"first_me |
-| 2 | move_meetings | `{"meeting_ids":["meet_demo_pilot_call","meet_demo_interview"],"folder_id":"58be0baf-0073-4085-8316-dadadeb700f9"}` | {"meeting_ids":["meet_demo_pilot_call","meet_demo_interview"],"folder_id":"58be0baf-0073-4085-8316-dadadeb700f9","ok":true} |
-| 3 | list_folders | `{}` | {"items":[{"id":"folder_customers","name":"Customer calls","description":"Calls with pilot customers.","color":null,"created_at":1791388145502,"updated_at":1793980145502,"meeting_count":0,"first_meeti |
-| 4 | get_folder_overview | `{"folder_id":"folder_product"}` | {"folder":{"id":"folder_product","name":"Product team","description":"Weekly syncs and planning.","color":null},"counts":{"meetings":1,"summarized":1,"total_duration_ms":1920000,"first_meeting_at":179 |
-| 5 | set_action_item_done | `{"folder_id":"folder_product","key":"ce10d0b3ae4a3d69","done":true}` | {"key":"ce10d0b3ae4a3d69","done":true} |
-| 6 | get_folder_standing | `{"folder_id":"folder_product"}` | {"standing":null,"can_generate":true} |
-| 7 | set_folder_standing | `{"folder_id":"folder_product","bullets":["Onboarding change in review (pi).","Safari login fix needs a second reviewer."]}` | {"bullets":["Onboarding change in review (pi).","Safari login fix needs a second reviewer."],"generated_at":1793980226624,"stale":false} |
-| 8 | update_folder | `{"folder_id":"58be0baf-0073-4085-8316-dadadeb700f9","name":"Harness pi renamed"}` | {"id":"58be0baf-0073-4085-8316-dadadeb700f9","name":"Harness pi renamed","description":"Made by the MCP harness.","color":null,"created_at":1793980214048,"updated_at":1793980226631,"meeting_count":2," |
+| 1 | create_folder | `{"name":"Harness pi","description":"Made by the MCP harness."}` | {"id":"746ead9e-34e7-4b2c-b6ba-29ccd90f7fd1","name":"Harness pi","description":"Made by the MCP harness.","color":null,"created_at":1793981878889,"updated_at":1793981878889,"meeting_count":0,"first_me |
+| 2 | list_folders | `{}` | {"items":[{"id":"folder_customers","name":"Customer calls","description":"Calls with pilot customers.","color":null,"created_at":1791389777395,"updated_at":1793981777395,"meeting_count":1,"first_meeti |
+| 3 | get_folder_overview | `{"folder_id":"folder_product"}` | {"folder":{"id":"folder_product","name":"Product team","description":"Weekly syncs and planning.","color":null},"counts":{"meetings":1,"summarized":1,"total_duration_ms":1920000,"first_meeting_at":179 |
+| 4 | get_folder_standing | `{"folder_id":"folder_product"}` | {"standing":null,"can_generate":true} |
+| 5 | set_folder_standing | `{"folder_id":"folder_product","bullets":["Onboarding change in review (pi).","Safari login fix needs a second reviewer."]}` | {"bullets":["Onboarding change in review (pi).","Safari login fix needs a second reviewer."],"generated_at":1793981878909,"stale":false} |
+| 6 | list_folders | `{}` | {"items":[{"id":"folder_customers","name":"Customer calls","description":"Calls with pilot customers.","color":null,"created_at":1791389777395,"updated_at":1793981777395,"meeting_count":1,"first_meeti |
+| 7 | get_folder_overview | `{"folder_id":"folder_product"}` | {"folder":{"id":"folder_product","name":"Product team","description":"Weekly syncs and planning.","color":null},"counts":{"meetings":1,"summarized":1,"total_duration_ms":1920000,"first_meeting_at":179 |
+| 8 | move_meetings | `{"meeting_ids":["meet_demo_pilot_call","meet_demo_interview"],"folder_id":"746ead9e-34e7-4b2c-b6ba-29ccd90f7fd1"}` | {"meeting_ids":["meet_demo_pilot_call","meet_demo_interview"],"folder_id":"746ead9e-34e7-4b2c-b6ba-29ccd90f7fd1","ok":true} |
+| 9 | set_action_item_done | `{"folder_id":"folder_product","key":"ce10d0b3ae4a3d69","done":true}` | {"key":"ce10d0b3ae4a3d69","done":true} |
+| 10 | get_folder_standing | `{"folder_id":"folder_product"}` | {"standing":{"bullets":["Onboarding change in review (pi).","Safari login fix needs a second reviewer."],"generated_at":1793981878909,"stale":true},"can_generate":true} |
+| 11 | update_folder | `{"folder_id":"746ead9e-34e7-4b2c-b6ba-29ccd90f7fd1","name":"Harness pi renamed"}` | {"id":"746ead9e-34e7-4b2c-b6ba-29ccd90f7fd1","name":"Harness pi renamed","description":"Made by the MCP harness.","color":null,"created_at":1793981878889,"updated_at":1793981900295,"meeting_count":2," |
 
 Read-back:
 
-- create_folder: ok `{"row":{"id":"58be0baf-0073-4085-8316-dadadeb700f9","name":"Harness pi renamed"}}`
+- create_folder: ok `{"row":{"id":"746ead9e-34e7-4b2c-b6ba-29ccd90f7fd1","name":"Harness pi renamed"}}`
+- set_folder_standing: ok `{"row":{"bullets_json":"[\"Onboarding change in review (pi).\",\"Safari login fix needs a second reviewer.\"]"}}`
 - move_meetings: ok `{"rows":[{"id":"meet_demo_interview","name":"Harness pi renamed"},{"id":"meet_demo_pilot_call","name":"Harness pi renamed"}]}`
 - set_action_item_done: ok `{"rows":[{"item_key":"ce10d0b3ae4a3d69","done":1}]}`
-- set_folder_standing: ok `{"row":{"bullets_json":"[\"Onboarding change in review (pi).\",\"Safari login fix needs a second reviewer.\"]"}}`
-- update_folder: ok `{"row":{"id":"58be0baf-0073-4085-8316-dadadeb700f9","name":"Harness pi renamed"}}`
+- update_folder: ok `{"row":{"id":"746ead9e-34e7-4b2c-b6ba-29ccd90f7fd1","name":"Harness pi renamed"}}`

@@ -12,9 +12,9 @@ MCP servers at start: `[{"name":"openstyle-dev","status":"connected","source":"d
 
 | # | Tool | Input | Result |
 |---|---|---|---|
-| 1 | list_ask_threads | `{"meeting_id":"meet_demo_product_sync"}` | {"threads":[{"id":"thr_harness_scratch","meeting_id":"meet_demo_product_sync","folder_id":null,"title":"Old scratch thread","created_at":1793979517059,"updated_at":1793979517059},{"id":"thr_harness_re |
-| 2 | get_ask_thread | `{"thread_id":"thr_harness_release"}` | {"thread":{"id":"thr_harness_release","meeting_id":"meet_demo_product_sync","folder_id":null,"title":"Release date questions","created_at":1793979517059,"updated_at":1793979517059},"messages":[{"id":1 |
-| 3 | rename_ask_thread | `{"thread_id":"thr_harness_release","title":"Release date (claude)"}` | {"thread":{"id":"thr_harness_release","meeting_id":"meet_demo_product_sync","folder_id":null,"title":"Release date (claude)","created_at":1793979517059,"updated_at":1793979517059}} |
+| 1 | list_ask_threads | `{"meeting_id":"meet_demo_product_sync"}` | {"threads":[{"id":"thr_harness_scratch","meeting_id":"meet_demo_product_sync","folder_id":null,"title":"Old scratch thread","created_at":1793981193479,"updated_at":1793981193479},{"id":"thr_harness_re |
+| 2 | get_ask_thread | `{"thread_id":"thr_harness_release"}` | {"thread":{"id":"thr_harness_release","meeting_id":"meet_demo_product_sync","folder_id":null,"title":"Release date questions","created_at":1793981193479,"updated_at":1793981193479},"messages":[{"id":1 |
+| 3 | rename_ask_thread | `{"thread_id":"thr_harness_release","title":"Release date (claude)"}` | {"thread":{"id":"thr_harness_release","meeting_id":"meet_demo_product_sync","folder_id":null,"title":"Release date (claude)","created_at":1793981193479,"updated_at":1793981193479}} |
 | 4 | list_dictations | `{"limit":5}` | {"items":[{"id":167,"raw_text":"Delete me: a test note about the parking lot.","cleaned_text":"Delete me: a test note about the parking lot.","voice_provider":"local-mlx","voice_model":"local-mlx/qwen |
 | 5 | get_dictation | `{"dictation_id":167}` | {"id":167,"raw_text":"Delete me: a test note about the parking lot.","cleaned_text":"Delete me: a test note about the parking lot.","voice_provider":"local-mlx","voice_model":"local-mlx/qwen3-0.6b-8bi |
 
@@ -30,9 +30,9 @@ Transcript: `evidence/pi/J09-ask-history.jsonl`. Exit code 0.
 
 | # | Tool | Input | Result |
 |---|---|---|---|
-| 1 | list_ask_threads | `{"meeting_id":"meet_demo_product_sync"}` | {"threads":[{"id":"thr_harness_scratch","meeting_id":"meet_demo_product_sync","folder_id":null,"title":"Old scratch thread","created_at":1793980145505,"updated_at":1793980145505},{"id":"thr_harness_re |
-| 2 | get_ask_thread | `{"thread_id":"thr_harness_release"}` | {"thread":{"id":"thr_harness_release","meeting_id":"meet_demo_product_sync","folder_id":null,"title":"Release date questions","created_at":1793980145505,"updated_at":1793980145505},"messages":[{"id":1 |
-| 3 | rename_ask_thread | `{"thread_id":"thr_harness_release","title":"Release date (pi)"}` | {"thread":{"id":"thr_harness_release","meeting_id":"meet_demo_product_sync","folder_id":null,"title":"Release date (pi)","created_at":1793980145505,"updated_at":1793980145505}} |
+| 1 | list_ask_threads | `{"meeting_id":"meet_demo_product_sync"}` | {"threads":[{"id":"thr_harness_scratch","meeting_id":"meet_demo_product_sync","folder_id":null,"title":"Old scratch thread","created_at":1793981777398,"updated_at":1793981777398},{"id":"thr_harness_re |
+| 2 | get_ask_thread | `{"thread_id":"thr_harness_release"}` | {"thread":{"id":"thr_harness_release","meeting_id":"meet_demo_product_sync","folder_id":null,"title":"Release date questions","created_at":1793981777398,"updated_at":1793981777398},"messages":[{"id":1 |
+| 3 | rename_ask_thread | `{"thread_id":"thr_harness_release","title":"Release date (pi)"}` | {"thread":{"id":"thr_harness_release","meeting_id":"meet_demo_product_sync","folder_id":null,"title":"Release date (pi)","created_at":1793981777398,"updated_at":1793981777398}} |
 | 4 | list_dictations | `{"limit":5}` | {"items":[{"id":167,"raw_text":"Delete me: a test note about the parking lot.","cleaned_text":"Delete me: a test note about the parking lot.","voice_provider":"local-mlx","voice_model":"local-mlx/qwen |
 | 5 | get_dictation | `{"id":167}` | ERROR: Validation failed for tool "mcp__openstyle_dev__get_dictation":   - dictation_id: must have required properties dictation_id  Received arguments: {   "id": 167 } |
 | 6 | get_dictation | `{"dictation_id":167}` | {"id":167,"raw_text":"Delete me: a test note about the parking lot.","cleaned_text":"Delete me: a test note about the parking lot.","voice_provider":"local-mlx","voice_model":"local-mlx/qwen3-0.6b-8bi |

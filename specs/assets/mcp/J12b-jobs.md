@@ -13,9 +13,9 @@ MCP servers at start: `[{"name":"openstyle-dev","status":"connected","source":"d
 | # | Tool | Input | Result |
 |---|---|---|---|
 | 1 | get_download_status | `{"model_id":"gemma-4-e2b-qat-4bit"}` | {"model":"gemma-4-e2b-qat-4bit","hfId":"mlx-community/gemma-4-E2B-it-qat-4bit","displayName":"Gemma 4 E2B","family":"gemma4","sizeBytes":4361680121,"contextTokens":32768,"maxOutputTokens":8192,"recomm |
-| 2 | start_meeting_job | `{"meeting_id":"meet_demo_product_sync","kind":"summarize"}` | {"ok":true,"id":"meet_demo_product_sync","runId":"d2e6c559-796f-44f5-9506-7141611052f1"} |
+| 2 | start_meeting_job | `{"meeting_id":"meet_demo_product_sync","kind":"summarize"}` | {"ok":true,"id":"meet_demo_product_sync","runId":"188f77b7-0a34-4280-baff-693b67a77899"} |
 | 3 | list_jobs | `{}` | {"meetings":[{"meeting_id":"meet_demo_product_sync","title":"Weekly product sync","kind":"summarize","phase":"summarizing","done":0,"total":2,"queued":null}],"models":[{"type":"voice","model":"qwen3-0 |
-| 4 | start_meeting_job | `{"meeting_id":"meet_demo_pilot_call","kind":"enhance"}` | {"ok":true,"id":"meet_demo_pilot_call","runId":"11380a41-8ebd-42f6-b517-3c140f341a5b"} |
+| 4 | start_meeting_job | `{"meeting_id":"meet_demo_pilot_call","kind":"enhance"}` | {"ok":true,"id":"meet_demo_pilot_call","runId":"7b7a1532-9473-4459-8770-3fe0544a58e5"} |
 | 5 | cancel_meeting_job | `{"meeting_id":"meet_demo_pilot_call"}` | {"ok":true,"id":"meet_demo_pilot_call"} |
 | 6 | list_jobs | `{}` | {"meetings":[{"meeting_id":"meet_demo_product_sync","title":"Weekly product sync","kind":"summarize","phase":"summarizing","done":0,"total":2,"queued":null}],"models":[{"type":"voice","model":"qwen3-0 |
 
@@ -33,11 +33,11 @@ Transcript: `evidence/pi/J12b-jobs.jsonl`. Exit code 0.
 | # | Tool | Input | Result |
 |---|---|---|---|
 | 1 | get_download_status | `{"model_id":"gemma-4-e2b-qat-4bit"}` | {"model":"gemma-4-e2b-qat-4bit","hfId":"mlx-community/gemma-4-E2B-it-qat-4bit","displayName":"Gemma 4 E2B","family":"gemma4","sizeBytes":4361680121,"contextTokens":32768,"maxOutputTokens":8192,"recomm |
-| 2 | start_meeting_job | `{"meeting_id":"meet_demo_product_sync","kind":"summarize"}` | {"ok":true,"id":"meet_demo_product_sync","runId":"a5320c62-ba70-4172-b801-4c0c1f58fcef"} |
+| 2 | start_meeting_job | `{"meeting_id":"meet_demo_product_sync","kind":"summarize"}` | {"ok":true,"id":"meet_demo_product_sync","runId":"9d4612b5-eeab-4a7a-98ef-483117aed946"} |
 | 3 | list_jobs | `{}` | {"meetings":[{"meeting_id":"meet_demo_product_sync","title":"Weekly product sync","kind":"summarize","phase":"summarizing","done":0,"total":2,"queued":null}],"models":[{"type":"voice","model":"qwen3-0 |
-| 4 | start_meeting_job | `{"meeting_id":"meet_demo_pilot_call","kind":"enhance"}` | {"ok":true,"id":"meet_demo_pilot_call","runId":"48204b88-ea22-49f3-aadc-353afbc16223"} |
+| 4 | start_meeting_job | `{"meeting_id":"meet_demo_pilot_call","kind":"enhance"}` | {"ok":true,"id":"meet_demo_pilot_call","runId":"3a775f9c-028d-419a-ab4e-cbe1fabea069"} |
 | 5 | cancel_meeting_job | `{"meeting_id":"meet_demo_pilot_call"}` | {"ok":true,"id":"meet_demo_pilot_call"} |
-| 6 | list_jobs | `{}` | {"meetings":[{"meeting_id":"meet_demo_product_sync","title":"Weekly product sync","kind":"summarize","phase":"summarizing","done":0,"total":2,"queued":null},{"meeting_id":"meet_demo_pilot_call","title |
+| 6 | list_jobs | `{}` | {"meetings":[],"models":[{"type":"voice","model":"qwen3-0.6b-8bit","display_name":"Qwen3 Fast","status":"not_downloaded","size_bytes":1010773761,"download":null},{"type":"voice","model":"qwen3-1.7b-8b |
 
 Read-back:
 

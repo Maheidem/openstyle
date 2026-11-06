@@ -589,6 +589,7 @@ function parseCalls(h, stdout) {
   const calls = [];
   const byId = new Map();
   let init = null;
+  let finalText = "";
   for (const line of stdout.split("\n")) {
     if (!line.trim()) continue;
     let e;
@@ -599,6 +600,7 @@ function parseCalls(h, stdout) {
     }
     if (h === "claude") {
       if (e.type === "system" && e.subtype === "init") init = e;
+      if (e.type === "result") finalText = String(e.result ?? "");
       for (const c of e.message?.content ?? []) {
         if (c?.type === "tool_use" && c.name.startsWith(TOOL_PREFIX.claude)) {
           const call = {
@@ -618,6 +620,15 @@ function parseCalls(h, stdout) {
         }
       }
     } else {
+      if (e.type === "agent_end") {
+        const last = [...(e.messages ?? [])]
+          .reverse()
+          .find((m) => m.role === "assistant");
+        finalText = (last?.content ?? [])
+          .filter((c) => c.type === "text")
+          .map((c) => c.text)
+          .join("\n");
+      }
       if (!e.toolName?.startsWith(TOOL_PREFIX.pi)) continue;
       if (e.type === "tool_execution_start") {
         const call = {
@@ -637,7 +648,7 @@ function parseCalls(h, stdout) {
       }
     }
   }
-  return { calls, init };
+  return { calls, init, finalText };
 }
 
 async function runAgent(h, j, cfg) {
@@ -1094,6 +1105,30 @@ async function uninstall(h, app, dirs, cfg) {
   };
 }
 
+/**
+ * J14 in a real agent: it connects, calls openstyle_status, gets the text of
+ * section 5 as a tool error and shows the text in its final answer.
+ */
+function agentFailure(run, text) {
+  const status = run.calls.find((c) => c.tool === "openstyle_status");
+  const connected = run.init
+    ? run.init.mcp_servers?.some(
+        (s) => s.name === SERVER && s.status === "connected",
+      )
+    : true;
+  return {
+    ok:
+      connected &&
+      !!status &&
+      status.isError === true &&
+      status.result.includes(text) &&
+      run.finalText.includes(text),
+    connected,
+    statusResult: status?.result ?? null,
+    finalText: run.finalText.slice(0, 600),
+  };
+}
+
 /** A raw JSON-RPC client on the launcher: the bridge must stay alive. */
 async function rawBridge(launcher, userData) {
   const child = spawn(launcher, ["--user-data", userData], {
@@ -1115,6 +1150,8 @@ async function rawBridge(launcher, userData) {
   });
   await sleep(1500);
   req(2, "tools/list");
+  await sleep(1500);
+  req(3, "tools/call", { name: "openstyle_status", arguments: {} });
   await sleep(1500);
   const alive = child.exitCode === null;
   child.kill("SIGTERM");
@@ -1365,8 +1402,8 @@ async function runHarness(h, liveBundle) {
       });
       j14.token = await rawBridge(entry.command, dirs.profile);
       writeFileSync(mcpJson, original, { mode: 0o600 });
-      j14.offRunCalls = offRun.calls.length;
-      j14.tokenRunCalls = tokenRun.calls.length;
+      j14.offRun = agentFailure(offRun, FAILURE_TEXTS.off);
+      j14.tokenRun = agentFailure(tokenRun, FAILURE_TEXTS.token);
     }
 
     // J1 step 9 / J2: remove the entry again, through the app.
@@ -1383,7 +1420,7 @@ async function runHarness(h, liveBundle) {
         id: `${fail.id}-c-not-running`,
       });
       j14.down = await rawBridge(entry.command, dirs.profile);
-      j14.downCalls = downRun.calls.length;
+      j14.downRun = agentFailure(downRun, FAILURE_TEXTS.down);
       const texts = (k) => j14[k]?.out ?? "";
       result.checks.j14 = {
         ok:
@@ -1392,7 +1429,10 @@ async function runHarness(h, liveBundle) {
           texts("down").includes(FAILURE_TEXTS.down) &&
           j14.off.alive &&
           j14.token.alive &&
-          j14.down.alive,
+          j14.down.alive &&
+          j14.offRun.ok &&
+          j14.tokenRun.ok &&
+          j14.downRun.ok,
         ...j14,
       };
     }
@@ -1586,7 +1626,7 @@ function journeyFiles(results) {
         );
       if (id.startsWith("J14") && r.checks.j14)
         checks.push(
-          `- failure texts: ${r.checks.j14.ok ? "ok" : "FAILED"}\n  - off: \`${r.checks.j14.off?.out}\`\n  - token: \`${r.checks.j14.token?.out}\`\n  - down: \`${r.checks.j14.down?.out}\`\n  - bridge alive after each: ${[r.checks.j14.off?.alive, r.checks.j14.token?.alive, r.checks.j14.down?.alive].join(", ")}`,
+          `- failure texts: ${r.checks.j14.ok ? "ok" : "FAILED"}\n  - off: \`${r.checks.j14.off?.out}\`\n  - token: \`${r.checks.j14.token?.out}\`\n  - down: \`${r.checks.j14.down?.out}\`\n  - bridge alive after each: ${[r.checks.j14.off?.alive, r.checks.j14.token?.alive, r.checks.j14.down?.alive].join(", ")}\n${["offRun", "tokenRun", "downRun"].map((k) => `  - agent ${k}: ${r.checks.j14[k]?.ok ? "ok" : "FAILED"}, connected ${r.checks.j14[k]?.connected}, openstyle_status: \`${r.checks.j14[k]?.statusResult}\`, final text: ${JSON.stringify(r.checks.j14[k]?.finalText)}`).join("\n")}`,
         );
       if ((id.startsWith("J01") || id.startsWith("J02")) && r.install)
         checks.push(r.install.text, `Remove: ${r.uninstall?.text}`);

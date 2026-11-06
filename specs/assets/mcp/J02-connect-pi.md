@@ -10,7 +10,7 @@ Transcript: `evidence/pi/J02-connect-pi.jsonl`. Exit code 0.
 
 | # | Tool | Input | Result |
 |---|---|---|---|
-| 1 | list_meetings | `{}` | {"items":[{"id":"meet_harness_delete","folder_id":null,"title":"Old test meeting to delete","started_at":1793893745505,"ended_at":1793893805505,"duration_ms":60000,"status":"summarized","display_statu |
+| 1 | list_meetings | `{}` | {"items":[{"id":"meet_harness_delete","folder_id":null,"title":"Old test meeting to delete","started_at":1793895377398,"ended_at":1793895437398,"duration_ms":60000,"status":"summarized","display_statu |
 
 Read-back:
 

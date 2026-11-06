@@ -268,20 +268,21 @@ Part B. The user agrees to all six deletes. Call each delete tool again with the
       id: "J14-failures",
       title: "Failure messages",
       failure: true,
-      tools: ["list_meetings"],
+      tools: ["openstyle_status"],
       prompt: `${PRE(h)}
-1. Call list_meetings with no arguments.
-2. Write the exact error text if the call or the server fails.`,
+1. Look at the tools of the server "${SERVER}". If the tool openstyle_status is there, call it with no arguments. Else call list_meetings with no arguments.
+2. In your final answer, quote the exact text of the tool result.`,
     },
   ].filter((j) => !j.only || j.only === h);
 }
 
 /** The text of section 5 that each failure mode must show. */
-// The server text of the access-off case (apps/server/src/mcp/index.ts:26)
-// differs from specs/mcp.md section 5. The check uses the common start.
+// The texts of specs/mcp.md section 5 (server: apps/server/src/mcp/index.ts,
+// bridge: apps/electron/src/mcp-bridge/bridge.ts).
 export const FAILURE_TEXTS = {
-  off: "Agent access is off.",
-  token: "Unauthorized",
+  off: "Agent access is off. Turn on Settings > Agents (MCP) in Openstyle.",
+  token:
+    "Openstyle refused the connection key of this agent. Quit Openstyle and start it again, then try again.",
   down: "Openstyle is not running. Start the app, then try again.",
 };
 export const CONFIRM_TEXT = "Ask the user, then call again with confirm: true";

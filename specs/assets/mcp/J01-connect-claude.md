@@ -12,7 +12,7 @@ MCP servers at start: `[{"name":"openstyle-dev","status":"connected","source":"d
 
 | # | Tool | Input | Result |
 |---|---|---|---|
-| 1 | list_meetings | `{}` | {"items":[{"id":"meet_harness_delete","folder_id":null,"title":"Old test meeting to delete","started_at":1793893117059,"ended_at":1793893177059,"duration_ms":60000,"status":"summarized","display_statu |
+| 1 | list_meetings | `{}` | {"items":[{"id":"meet_harness_delete","folder_id":null,"title":"Old test meeting to delete","started_at":1793894793479,"ended_at":1793894853479,"duration_ms":60000,"status":"summarized","display_statu |
 
 Read-back:
 
