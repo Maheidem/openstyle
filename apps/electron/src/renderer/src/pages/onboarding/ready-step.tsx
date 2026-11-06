@@ -2,6 +2,7 @@ import { Button } from "@renderer/components/ui/button";
 import { cn } from "@renderer/lib/utils";
 import { ArrowRight, Check } from "lucide-react";
 import { useTranslation } from "react-i18next";
+import { ConnectAgentCard } from "./connect-agent-card";
 
 export interface ReadyChip {
   id: string;
@@ -11,7 +12,8 @@ export interface ReadyChip {
 }
 
 // ---------------------------------------------------------------------------
-// Step 7 — Ready. One screen, green chips for what is set, one button.
+// Step 7 — Ready. One screen, green chips for what is set, the optional
+// "Connect your agent" card, one button.
 // ---------------------------------------------------------------------------
 export function ReadyStep({
   chips,
@@ -69,6 +71,7 @@ export function ReadyStep({
           </span>
         ))}
       </div>
+      <ConnectAgentCard />
       {error && (
         <p
           role="alert"

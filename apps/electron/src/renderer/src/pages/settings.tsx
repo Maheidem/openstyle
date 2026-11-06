@@ -114,6 +114,7 @@ import {
   type PillCancelMode,
 } from "../../../shared/pill-cancel";
 import { SETTINGS_KEYS } from "../../../shared/settings-keys";
+import { AgentsSettingsPanel } from "./settings-agents";
 import { AskSettingsPanel } from "./settings-ask";
 import { sanitizeDigits } from "./settings-numeric-commit";
 import { useTimeoutSetting } from "./use-timeout-setting";
@@ -141,6 +142,7 @@ const settingsSectionIds = [
   "permissions",
   "meetings",
   "ask",
+  "agents",
   "data",
   "network",
 ] as const;
@@ -1544,6 +1546,12 @@ export default function SettingsPage(): React.JSX.Element {
             </SettingsPanel>
           )}
 
+          {activeSection === "agents" && IS_MAC && (
+            <SettingsPanel>
+              <AgentsSettingsPanel Row={Row} />
+            </SettingsPanel>
+          )}
+
           {activeSection === "data" && (
             <SettingsPanel>
               <Row
@@ -1727,6 +1735,8 @@ function SettingsSidebar({
       {visibleSettingsSectionIds
         .filter((id) => id !== "meetings" || showMeetings)
         .filter((id) => id !== "ask" || showAsk)
+        // The agent install runs the CLIs of macOS tools (specs/mcp.md 8.1).
+        .filter((id) => id !== "agents" || IS_MAC)
         .map((id) => {
           const isActive = id === active;
           return (

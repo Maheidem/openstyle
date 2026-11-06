@@ -252,7 +252,15 @@
       "text": "Text model · {{where}}",
       "thisMac": "this Mac",
       "ownServer": "own server",
-      "open": "Open Openstyle"
+      "open": "Open Openstyle",
+      "agents": {
+        "title": "Connect your agent",
+        "desc": "One click adds Openstyle to the AI agents on this Mac. Optional.",
+        "optional": "Optional",
+        "lets": "Lets {{tool}} read and fix your meetings.",
+        "adding": "Adding…",
+        "found": "Found on this Mac: {{tools}}. The app must be running."
+      }
     },
     "draft": {
       "statusReady": "Ready",
@@ -298,7 +306,8 @@
       "meetings": "Meetings",
       "data": "Data",
       "network": "Network",
-      "ask": "Ask"
+      "ask": "Ask",
+      "agents": "Agents (MCP)"
     },
     "application": {
       "autoUpdate": "Automatic updates",
@@ -533,6 +542,20 @@
       "engineDesc": "Tool loop lets the model pick its next step: list meetings, search, read, or list items. Classic uses a fixed router. Tool loop is the default.",
       "engineLoop": "Tool loop",
       "enginePipeline": "Classic"
+    },
+    "agents": {
+      "intro": "Let an AI agent on this Mac, such as Claude Code or pi, work with Openstyle. It can read meetings and folders, fix transcripts and summaries, and change settings and vocabulary.",
+      "access": "Agent access",
+      "accessDesc": "Agents must ask you before they delete something. Turn this off to block all agents.",
+      "status": "Status",
+      "statusReady": "Ready. Agents connect on port {{port}}.",
+      "statusOff": "Off. Agents cannot connect.",
+      "statusNoServer": "Not ready. Another Openstyle app runs the server.",
+      "ready": "Ready",
+      "off": "Off",
+      "notFound": "Not found on this Mac. After you install it, press Check again, or run this command.",
+      "notAdded": "Not added yet.",
+      "note": "Openstyle finds these tools on this Mac and adds itself with their own commands. The app must be running. API keys stay hidden from agents."
     }
   },
   "today": {
@@ -2180,6 +2203,22 @@
       "openInAsk": "Open in Ask",
       "close": "Close",
       "hint": "Enter asks. Esc closes."
+    }
+  },
+  "agents": {
+    "added": "Added",
+    "addTo": "Add to {{tool}}",
+    "working": "Working…",
+    "remove": "Remove",
+    "checkAgain": "Check again",
+    "tryAgain": "Try again",
+    "failed": "Could not add it. Run this command in Terminal.",
+    "copy": "Copy",
+    "copied": "Copied",
+    "reload": {
+      "claude": "Added. Start a new Claude Code session to load it.",
+      "pi": "Added. Run /reload in pi to load it.",
+      "codex": "Added. Start a new Codex session to load it."
     }
   }
 }
