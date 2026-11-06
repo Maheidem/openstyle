@@ -1,5 +1,15 @@
 # Changelog
 
+## 3.1.0-alpha.2
+
+### Bug Fixes 🐛
+
+#### Mcp
+
+- Fixed: agent tools now page long lists, and the live transcript cursor no longer skips lines. by @Maheidem in [#435](https://github.com/Maheidem/openstyle/pull/435)
+- 🤖 Generated with [Claude Code](https://claude.com/claude-code) by @Maheidem in [#435](https://github.com/Maheidem/openstyle/pull/435)
+- https://claude.ai/code/session_01GvDDGT4vkdAZbUZMXdZgFz by @Maheidem in [#435](https://github.com/Maheidem/openstyle/pull/435)
+
 ## 3.1.0-alpha.1
 
 ### New Features ✨
