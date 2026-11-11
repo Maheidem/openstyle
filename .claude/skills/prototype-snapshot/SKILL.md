@@ -122,6 +122,14 @@ The canvas needs the owner's claude.ai login. The built-in browser is not signed
 - The built-in browser pane shows a `file:` page outside the project as a static image. To measure a local copy, render it with Playwright from `apps/electron/node_modules/playwright`.
 - A static board cannot keep a scroll position. The script prints a note for each scrolled element.
 
+## Proving a built fix (found 2026-11-11, PR #437)
+
+- Build first. Check that `apps/electron/out` is newer than the last commit under `apps/electron/src`. On 2026-11-11 `out/` was 5 days old.
+- Prove the new build with a computed style in the renderer, not with the CSS file name. A class that already exists in the app (for example `overflow-x-hidden`) leaves the CSS file the same.
+- For an overflow fix, measure BOTH axes: `scrollWidth` vs `clientWidth`, and `offsetHeight - clientHeight - border`. `overflow-y: auto` makes `overflow-x` compute to `auto`, and a 1 px rounding overflow then shows a horizontal scrollbar. A check of the vertical axis alone missed this. Look at the screenshots too.
+- A driver that takes plain screenshots adds the same `data-snap-helper` flat backdrop as the snapshot script. Without it, the glass sidebar looks grey.
+- The isolated app reads the real macOS mic and output device names. Hide them before a board leaves the owner's private canvas.
+
 ## Clean up
 
 1. The script removes its temp folder and stops its server. Check: `lsof -iTCP:8791 -sTCP:LISTEN` prints nothing.
