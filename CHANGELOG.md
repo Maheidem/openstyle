@@ -1,5 +1,15 @@
 # Changelog
 
+## 3.1.0-alpha.3
+
+### Bug Fixes 🐛
+
+- (meetings) Keep Summary instructions popover inside the window by @Maheidem in [#437](https://github.com/Maheidem/openstyle/pull/437)
+
+### Documentation 📚
+
+- (spec) Update local paths after the dev folder move by @Maheidem in [#438](https://github.com/Maheidem/openstyle/pull/438)
+
 ## 3.1.0-alpha.2
 
 ### Bug Fixes 🐛
