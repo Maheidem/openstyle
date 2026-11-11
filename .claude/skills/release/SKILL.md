@@ -362,6 +362,13 @@ Credentials (owner, once):
     --key /path/to/AuthKey_<KEYID>.p8 --key-id <KEYID> --issuer <ISSUER-UUID>
   xcrun notarytool history --keychain-profile openstyle-notary   # must list, not fail
   ```
+  Since 2026-10-30 the profile is in its own keychain
+  `~/Library/Keychains/openstyle-notary.keychain-db` (empty password, no
+  timeout, on the user search list). Microsoft Edge wiped it from the login
+  keychain twice. A locked keychain makes notarytool open a GUI password
+  dialog mid-release (3.1.0-alpha.3). Step 1 now unlocks it with the empty
+  password (`OPENSTYLE_NOTARY_KEYCHAIN` selects another file). If the dialog
+  still shows, leave the field EMPTY and click OK; the Mac password fails.
   electron-builder skips notarization SILENTLY when it finds no credentials.
   The script checks the profile in step 1 and the signature check in step 5
   fails on a non-notarized app.
