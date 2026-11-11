@@ -31,6 +31,8 @@
     "site/main.js",
     // Run by hand (scripts/site-captures/README.md), not imported anywhere.
     "scripts/site-captures/*.mjs",
+    // Run by hand (.claude/skills/prototype-snapshot/SKILL.md), not imported anywhere.
+    "scripts/prototype-snapshot/*.mjs",
     // Built manually for the stable local Privacy identity.
     "scripts/test-runner/**",
     // The real-agent MCP harness (specs/mcp.md 9.4): run by hand with node.

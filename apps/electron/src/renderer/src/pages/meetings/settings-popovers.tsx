@@ -87,7 +87,7 @@ export function SummaryInstructionsPopover(): React.JSX.Element {
           maxLength={4000}
           onChange={(e) => setDraft(e.target.value)}
           spellCheck={false}
-          className="mono min-h-[120px] resize-y text-[11.5px] leading-[1.5]"
+          className="mono max-h-[40vh] min-h-[120px] resize-y overflow-y-auto text-[11.5px] leading-[1.5]"
           aria-label={t("meetings.summaryInstructionsLabel")}
         />
         <div className="flex justify-end">
