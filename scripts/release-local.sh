@@ -32,6 +32,9 @@
 #
 # Environment:
 #   OPENSTYLE_NOTARY_PROFILE  notarytool keychain profile (default openstyle-notary)
+#   OPENSTYLE_NOTARY_KEYCHAIN keychain that holds the profile, unlocked in step 1
+#                             with an empty password if the file exists
+#                             (default ~/Library/Keychains/openstyle-notary.keychain-db)
 #   PYTHON_BIN                Python 3.12 for the worker (default /opt/homebrew/bin/python3.12)
 #   CRAFT_VERSION             @sentry/craft version for step 2 (default 3.1.0)
 set -euo pipefail
@@ -43,6 +46,7 @@ export LANG=en_US.UTF-8 LC_ALL=en_US.UTF-8
 
 REPO=Maheidem/openstyle
 NOTARY_PROFILE=${OPENSTYLE_NOTARY_PROFILE:-openstyle-notary}
+NOTARY_KEYCHAIN=${OPENSTYLE_NOTARY_KEYCHAIN:-$HOME/Library/Keychains/openstyle-notary.keychain-db}
 export PYTHON_BIN=${PYTHON_BIN:-/opt/homebrew/bin/python3.12}
 CRAFT_VERSION=${CRAFT_VERSION:-3.1.0}
 GPU_LOCK=/tmp/openstyle-gpu.lock
@@ -266,6 +270,15 @@ line="$(security find-identity -v -p codesigning | grep '"Developer ID Applicati
 IDENTITY="$(awk '{print $2}' <<<"$line")"
 echo "identity: $(sed -E 's/^[^"]*"(.*)"[^"]*$/\1/' <<<"$line") ($IDENTITY)"
 if [ "$NOTARIZE" -eq 1 ]; then
+  # Since 2026-10-30 the profile lives in its own keychain with an empty
+  # password. When that keychain is locked, notarytool opens a GUI password
+  # dialog in the middle of the release (3.1.0-alpha.3, 2026-11-11). Unlock it
+  # first. The keychain has no timeout, so it stays unlocked for the run.
+  if [ -f "$NOTARY_KEYCHAIN" ]; then
+    security unlock-keychain -p "" "$NOTARY_KEYCHAIN" ||
+      die "cannot unlock $NOTARY_KEYCHAIN with the empty password."
+    echo "notary keychain: $NOTARY_KEYCHAIN (unlocked)"
+  fi
   xcrun notarytool history --keychain-profile "$NOTARY_PROFILE" > /dev/null 2>&1 ||
     die "the notarytool keychain profile '$NOTARY_PROFILE' does not work.
   Create it once with the App Store Connect API key (the same key as the CI secret APPLE_API_KEY_P8):
