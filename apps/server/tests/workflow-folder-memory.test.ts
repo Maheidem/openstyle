@@ -260,7 +260,8 @@ describe("loadFolderMemory", () => {
     expect(calls).toHaveLength(1);
     expect(calls[0]).toMatchObject({
       query: { kind: "meeting", meetingId: "m-new" },
-      scope: { kind: "folder", folderId: FOLDER },
+      // Own folder only: a parent folder does not read its children here.
+      scope: { kind: "folder", folderId: FOLDER, ownOnly: true },
       excludeMeetingIds: ["m-new"],
     });
     expect(memory?.chunkIds).toEqual([11, 12]);

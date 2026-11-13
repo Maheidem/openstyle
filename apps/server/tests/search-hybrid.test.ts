@@ -355,10 +355,12 @@ describe.skipIf(!VEC_PATH)("BM25 channel and hybrid retrieve, ON mode", () => {
     expect(
       meetings({ text: "invoice", k: 20, allowMeetingIds: ["m2"] }),
     ).toEqual(["m2"]);
-    expect(meetings({ text: "invoice", k: 20, folderKey: "f-aurora" })).toEqual(
-      ["m1", "m2"],
-    );
-    expect(meetings({ text: "invoice", k: 20, folderKey: "" })).toEqual(["m3"]);
+    expect(
+      meetings({ text: "invoice", k: 20, folderKeys: ["f-aurora"] }),
+    ).toEqual(["m1", "m2"]);
+    expect(meetings({ text: "invoice", k: 20, folderKeys: [""] })).toEqual([
+      "m3",
+    ]);
     expect(
       meetings({ text: "invoice", k: 20, excludeMeetingIds: ["m1", "m3"] }),
     ).toEqual(["m2"]);
@@ -496,6 +498,50 @@ describe.skipIf(!VEC_PATH)("BM25 channel and hybrid retrieve, ON mode", () => {
     expect(
       await run({ dateRange: { fromMs: 50 * day, toMs: 60 * day } }),
     ).toEqual([]);
+  });
+
+  it("a parent folder scope finds a child folder meeting through both channels", async () => {
+    await seedThree();
+    // f-atlas becomes a child of f-aurora, with its own meeting.
+    getDb().exec(
+      "UPDATE meeting_folders SET parent_id = 'f-aurora' WHERE id = 'f-atlas'",
+    );
+    meeting("m4", "f-atlas", [
+      "The atlas crew pays the zeppelin invoice 55120 next week.",
+    ]);
+    expect(await indexMeeting("m4")).toBe("indexed");
+    const run = async (
+      scope: Parameters<typeof retrieve>[0]["scope"],
+      mode: "dense" | "hybrid",
+    ) => {
+      const res = await retrieve({
+        query: { kind: "text", text: "zeppelin invoice" },
+        scope,
+        k: 20,
+        mode,
+      });
+      if (res.status !== "ok") throw new Error(res.status);
+      return [...new Set(res.hits.map((h) => h.meetingId))].sort();
+    };
+    const parent = { kind: "folder", folderId: "f-aurora" } as const;
+    // The vector channel: one KNN per partition (parent, child), merged.
+    expect(await run(parent, "dense")).toEqual(["m1", "m2", "m4"]);
+    expect(await run(parent, "hybrid")).toEqual(["m1", "m2", "m4"]);
+    // The BM25 channel alone also finds the child meeting.
+    const fts = ftsSearch(getDb(), {
+      text: "55120",
+      k: 20,
+      folderKeys: ["f-aurora", "f-atlas"],
+    });
+    expect([...new Set(fts.map((h) => h.meetingId))]).toEqual(["m4"]);
+    // A child scope and an own-folder scope leave the other folder out.
+    expect(
+      await run({ kind: "folder", folderId: "f-atlas" }, "hybrid"),
+    ).toEqual(["m4"]);
+    expect(await run({ ...parent, ownOnly: true }, "hybrid")).toEqual([
+      "m1",
+      "m2",
+    ]);
   });
 
   it("hybrid on a meeting query stays dense", async () => {

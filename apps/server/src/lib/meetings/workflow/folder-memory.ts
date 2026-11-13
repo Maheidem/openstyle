@@ -411,7 +411,9 @@ export async function loadFolderMemory(
       : timeout;
     const result = await deps.retrieve({
       query: { kind: "meeting", meetingId: input.meetingId },
-      scope: { kind: "folder", folderId: input.folderId },
+      // Own folder only (sub-folders decision 7): a parent folder does not
+      // read the meetings of its children here.
+      scope: { kind: "folder", folderId: input.folderId, ownOnly: true },
       k: FOLDER_MEMORY_RETRIEVE_K,
       excludeMeetingIds: [input.meetingId, ...later],
       signal,

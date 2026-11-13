@@ -21,6 +21,9 @@ async function checked(res: {
       throw new FolderRequestError(
         parsed.data.code,
         parsed.data.code === "folder_not_empty" ? parsed.data.meeting_count : 0,
+        parsed.data.code === "folder_has_children"
+          ? parsed.data.child_count
+          : 0,
       );
     }
     throw new FolderRequestError("request_failed");
@@ -69,9 +72,10 @@ export function useMeetingFolders(enabled: boolean) {
     queryClient.invalidateQueries({ queryKey: queryKeys.meetings.all });
   return {
     ...query,
-    create: async (name: string) => {
+    /** `parentId`: create a child folder under this top-level folder. */
+    create: async (name: string, parentId?: string) => {
       const res = await getClient().api.meetings.folders.$post({
-        json: { name },
+        json: parentId ? { name, parent_id: parentId } : { name },
       });
       const folder = await checked(res);
       if (!res.ok) throw new FolderRequestError("request_failed");
@@ -84,6 +88,8 @@ export function useMeetingFolders(enabled: boolean) {
         name?: string;
         description?: string | null;
         color?: FolderColor | null;
+        /** Move the folder: a top-level folder id, or null (top level). */
+        parent_id?: string | null;
       },
     ) => {
       await checked(

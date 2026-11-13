@@ -1201,7 +1201,17 @@
         "selectHint": "ミーティングをクリックして選択します。Shift+クリックで範囲を選択します。",
         "bulkLabel": "選択したミーティングの操作",
         "runSelected": "実行"
-      }
+      },
+      "newSub": "新しいサブフォルダー",
+      "moveFolder": "移動先…",
+      "hasSubFolders": "サブフォルダーがあります",
+      "topLevel": "最上位",
+      "currentPlace": "現在の場所",
+      "nameTakenHere": "同じ名前のフォルダーがあります",
+      "inFolder": "{{name}} 内",
+      "blockedBodyChildren": "このフォルダーのサブフォルダー：{{children}}件。このフォルダーのミーティング：{{count}}件。先にサブフォルダーを移動または削除してください。",
+      "depthExceeded": "フォルダーは2階層までです。",
+      "nameSlash": "フォルダー名に「/」は使えません。"
     },
     "search": {
       "label": "会議を検索",

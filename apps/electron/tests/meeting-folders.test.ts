@@ -30,6 +30,8 @@ interface FolderRow {
   id: string;
   name: string;
   meeting_count: number;
+  parent_id?: string | null;
+  child_count?: number;
 }
 interface MeetingRow {
   id: string;
@@ -105,7 +107,7 @@ async function createFolder(name: string): Promise<void> {
 
 async function folderAction(
   name: string,
-  action: "Rename folder" | "Delete folder",
+  action: "Rename folder" | "Delete folder" | "New sub-folder",
 ): Promise<void> {
   await groupRow(name)
     .getByRole("button", { name: `Actions for ${name}`, exact: true })
@@ -289,4 +291,105 @@ test("folders move meetings, block delete, and keep links after restart", async 
       },
     }),
   );
+});
+
+test("sub-folders nest in the tree, group the parent list and move", async () => {
+  test.setTimeout(180_000);
+  // The first test leaves "Book club" with one meeting and 2 unfiled meetings.
+  await page.goto("app://renderer/meetings");
+  await expect(groupRow("Book club")).toBeVisible();
+
+  // New sub-folder: the name input opens under the parent.
+  await folderAction("Book club", "New sub-folder");
+  const input = group("Book club").getByRole("textbox", {
+    name: "Folder name",
+    exact: true,
+  });
+  await input.fill("Chapter notes");
+  await input.press("Enter");
+  await expect(
+    group("Book club").getByRole("group", { name: "Chapter notes" }),
+  ).toBeVisible();
+
+  // The same name under the same parent is refused (case does not matter).
+  await folderAction("Book club", "New sub-folder");
+  await input.fill("chapter notes");
+  await input.press("Enter");
+  await expect(group("Book club").getByRole("alert")).toContainText(
+    "A folder with this name exists.",
+  );
+  await input.press("Escape");
+
+  // A meeting moves into the child. The parent count includes it.
+  const expandUnfiled = groupRow("Unfiled").getByRole("button", {
+    name: "Expand Unfiled",
+    exact: true,
+  });
+  if (await expandUnfiled.isVisible()) await expandUnfiled.click();
+  await moveByContext("Unfiled", MEETINGS[0].title, "Chapter notes");
+  await expect(groupRow("Chapter notes").locator(".mono")).toHaveText("1");
+  await expect(groupRow("Book club").locator(".mono")).toHaveText("2");
+  await expect(meeting("Chapter notes", MEETINGS[0].title)).toBeVisible();
+  await shoot("subfolder-tree.png", rail());
+
+  // A child folder records into "Parent / Child".
+  await groupRow("Chapter notes")
+    .getByRole("button", { name: "Chapter notes", exact: true })
+    .click();
+  await expect(
+    rail().getByText("Records into", { exact: true }).locator(".."),
+  ).toContainText("Book club / Chapter notes");
+
+  // The parent page groups its meetings by sub-folder.
+  await groupRow("Book club")
+    .getByRole("button", { name: "Book club", exact: true })
+    .click();
+  await panel("Book club").getByTestId("folder-tab-meetings").click();
+  await expect(
+    panel("Book club").getByRole("heading", { name: "In Book club" }),
+  ).toBeVisible();
+  await expect(
+    panel("Book club").getByRole("heading", { name: "Chapter notes" }),
+  ).toBeVisible();
+  await shoot("subfolder-parent-meetings.png", panel("Book club"));
+
+  // A parent with a sub-folder cannot be deleted.
+  await folderAction("Book club", "Delete folder");
+  const blocked = panel("Book club").getByRole("alert");
+  await expect(blocked).toContainText(
+    "Sub-folders in this folder: 1. Meetings in this folder: 2. Move or delete the sub-folders first.",
+  );
+
+  // A parent cannot move: "Move to…" says why.
+  await groupRow("Book club")
+    .getByRole("button", { name: "Actions for Book club", exact: true })
+    .click();
+  await expect(page.getByRole("menuitem", { name: /^Move to…/ })).toContainText(
+    "Has sub-folders",
+  );
+  await expect(
+    page.getByRole("menuitem", { name: /^Move to…/ }),
+  ).toHaveAttribute("aria-disabled", "true");
+  await page.keyboard.press("Escape");
+
+  // The child moves to the top level.
+  await groupRow("Chapter notes")
+    .getByRole("button", { name: "Actions for Chapter notes", exact: true })
+    .click();
+  await page.getByRole("menuitem", { name: /^Move to…/ }).click();
+  await page.getByRole("menuitem", { name: /^Top level/ }).click();
+  await expect(groupRow("Book club").locator(".mono")).toHaveText("1");
+  await expect(
+    group("Book club").getByRole("group", { name: "Chapter notes" }),
+  ).toHaveCount(0);
+  await expect(groupRow("Chapter notes")).toBeVisible();
+
+  const body = (await (await api("GET", "/meetings/folders")).json()) as {
+    items: FolderRow[];
+  };
+  const chapter = body.items.find((f) => f.name === "Chapter notes");
+  const book = body.items.find((f) => f.name === "Book club");
+  expect(chapter).toMatchObject({ parent_id: null, meeting_count: 1 });
+  expect(book).toMatchObject({ child_count: 0, meeting_count: 1 });
+  console.log("SUBFOLDER_DB_READBACK", JSON.stringify({ chapter, book }));
 });

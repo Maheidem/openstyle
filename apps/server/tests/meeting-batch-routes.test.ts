@@ -348,6 +348,41 @@ describe("POST /api/meetings/batch", () => {
     });
   });
 
+  it("a parent folder counts and runs the meetings of its child folders", async () => {
+    const parent = await createFolder("Garden club");
+    const res0 = await jsonRequest(app, "POST", `${base}/folders`, {
+      name: "Spring fair",
+      parent_id: parent.id,
+    });
+    const child = meetingFolderSchema.parse(await res0.json());
+    insertMeeting("p1", "recorded", { folder: parent.id, startedAt: 1 });
+    insertMeeting("c1", "recorded", { folder: child.id, startedAt: 2 });
+    insertMeeting("out", "recorded", { startedAt: 3 });
+    __setMeetingsTestOverrides({
+      ...noAligner,
+      createTranscriberDeps: fakeTranscriber(
+        () => "The fair needs ten tables.",
+      ),
+    });
+    expect(await folderCounts(parent.id)).toMatchObject({
+      transcribe: { ready: 2, blocked: 0 },
+    });
+    expect(await folderCounts(child.id)).toMatchObject({
+      transcribe: { ready: 1, blocked: 0 },
+    });
+    const res = await startBatch({ stage: "transcribe", folder_id: parent.id });
+    expect(res.status).toBe(202);
+    expect(meetingBatchStateSchema.parse(await res.json())).toMatchObject({
+      total: 2,
+    });
+    await __batchQueueIdle();
+    expect(["p1", "c1", "out"].map(statusOf)).toEqual([
+      "transcribed",
+      "transcribed",
+      "recorded",
+    ]);
+  });
+
   it("cancel stops the running transcription and drops the rest", async () => {
     const folder = await createFolder("Garden club");
     for (const [i, id] of ["a", "b", "c"].entries()) {

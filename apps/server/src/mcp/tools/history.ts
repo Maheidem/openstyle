@@ -11,7 +11,9 @@ import {
   pageOf,
   query,
   seg,
+  ToolError,
 } from "./define.js";
+import { Folders, folderRefArgs } from "./folder-ref.js";
 
 const dictationId = z
   .number()
@@ -27,7 +29,7 @@ const threadId = z
 const listAskThreads = defineTool({
   name: "list_ask_threads",
   description:
-    "List the Ask threads (questions about meetings), newest first, one page at a time. Give meeting_id or folder_id for the threads of that scope. Give neither for the threads about all meetings.",
+    "List the Ask threads (questions about meetings), newest first, one page at a time. Give meeting_id, or folder_id or path, for the threads of that scope. Give neither for the threads about all meetings. A folder gives only the threads asked on that folder, not on its child folders. Each thread has folder_id and folder_path.",
   kind: "read",
   idempotent: true,
   input: z.object({
@@ -41,9 +43,16 @@ const listAskThreads = defineTool({
       .min(1)
       .optional()
       .describe("The threads about this folder."),
+    path: folderRefArgs.path,
     ...pageArgs,
   }),
-  run: async ({ meeting_id, folder_id, offset, limit }, { api }) => {
+  run: async ({ meeting_id, path, offset, limit, ...ref }, { api }) => {
+    const folders = await Folders.load(api);
+    if (ref.folder_id !== undefined && path !== undefined) {
+      throw new ToolError("Give folder_id or path, not both.");
+    }
+    const folder_id =
+      path !== undefined ? folders.idOfPath(path) : ref.folder_id;
     const params =
       meeting_id !== undefined
         ? { meeting_id }
@@ -52,8 +61,17 @@ const listAskThreads = defineTool({
           : { all: "1" };
     const { threads } = expectOk(
       await api("GET", `/api/chat/threads${query(params)}`),
-    ) as { threads: unknown[] };
-    return { data: pageOf(threads, offset, limit) };
+    ) as { threads: { folder_id: string | null }[] };
+    return {
+      data: pageOf(
+        threads.map((t) => ({
+          ...t,
+          folder_path: folders.pathOf(t.folder_id),
+        })),
+        offset,
+        limit,
+      ),
+    };
   },
 });
 
@@ -63,9 +81,13 @@ const getAskThread = defineTool({
   kind: "read",
   idempotent: true,
   input: z.object({ thread_id: threadId }),
-  run: async ({ thread_id }, { api }) => ({
-    data: expectOk(await api("GET", `/api/chat/threads/${seg(thread_id)}`)),
-  }),
+  run: async ({ thread_id }, { api }) => {
+    const data = expectOk(
+      await api("GET", `/api/chat/threads/${seg(thread_id)}`),
+    ) as { thread: { folder_id: string | null } };
+    const folder_path = (await Folders.load(api)).pathOf(data.thread.folder_id);
+    return { data: { ...data, thread: { ...data.thread, folder_path } } };
+  },
 });
 
 const renameAskThread = defineTool({

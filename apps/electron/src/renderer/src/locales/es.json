@@ -1204,7 +1204,17 @@
         "selectHint": "Haz clic en una reunión para seleccionarla. Mayús + clic selecciona un rango.",
         "bulkLabel": "Acciones para las reuniones seleccionadas",
         "runSelected": "Ejecutar"
-      }
+      },
+      "newSub": "Nueva subcarpeta",
+      "moveFolder": "Mover a…",
+      "hasSubFolders": "Tiene subcarpetas",
+      "topLevel": "Nivel superior",
+      "currentPlace": "Ubicación actual",
+      "nameTakenHere": "Ya tiene una carpeta con este nombre",
+      "inFolder": "En {{name}}",
+      "blockedBodyChildren": "Subcarpetas en esta carpeta: {{children}}. Reuniones en esta carpeta: {{count}}. Mueve o elimina las subcarpetas primero.",
+      "depthExceeded": "Las carpetas solo pueden tener 2 niveles.",
+      "nameSlash": "El nombre de una carpeta no puede contener \"/\"."
     },
     "search": {
       "label": "Buscar reuniones",

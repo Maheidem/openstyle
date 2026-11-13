@@ -61,7 +61,10 @@ import {
   type SpeakerWinner,
   speakerWinnerFor,
 } from "../lib/meetings/diarize.js";
-import { meetingFolderExists } from "../lib/meetings/folders.js";
+import {
+  folderScopeIds,
+  meetingFolderExists,
+} from "../lib/meetings/folders.js";
 import {
   claimJob,
   getJob,
@@ -1532,14 +1535,17 @@ const meetings = new Hono()
   .get("/", zValidator("query", meetingFolderFilterSchema), (c) => {
     const db = getDb();
     const { folder_id, limit = 200, offset = 0 } = c.req.valid("query");
+    // A parent folder lists the meetings of its children too.
     const where =
       folder_id === undefined
         ? ""
         : folder_id === "none"
           ? "WHERE folder_id IS NULL"
-          : "WHERE folder_id = ?";
+          : "WHERE folder_id IN (SELECT value FROM json_each(?))";
     const params =
-      folder_id !== undefined && folder_id !== "none" ? [folder_id] : [];
+      folder_id !== undefined && folder_id !== "none"
+        ? [JSON.stringify(folderScopeIds(db, folder_id))]
+        : [];
     const rows = db
       .prepare(
         `SELECT * FROM meetings ${where} ORDER BY created_at DESC, id DESC LIMIT ? OFFSET ?`,

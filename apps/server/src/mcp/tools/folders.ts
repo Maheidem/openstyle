@@ -14,11 +14,26 @@ import {
   pageOf,
   seg,
 } from "./define.js";
+import { Folders, folderRefArgs, resolveFolder } from "./folder-ref.js";
 
-const folderId = z
+const parentText =
+  'Folders have 2 levels: a top-level folder can hold child folders; a child folder cannot. The path of a child is "Parent/Child".';
+
+/** A folder answer of a route, with its path. */
+async function withPath<T extends { id: string }>(
+  api: Parameters<typeof Folders.load>[0],
+  folder: T,
+) {
+  return { ...folder, path: (await Folders.load(api)).pathOf(folder.id) };
+}
+
+/** A parent given as a path or an id. */
+const parentRef = z
   .string()
   .min(1)
-  .describe("The folder id (from list_folders).");
+  .describe(
+    'The parent folder: its path ("Parent") or its id. The parent must be a top-level folder.',
+  );
 const color = folderColorSchema
   .nullable()
   .optional()
@@ -39,23 +54,31 @@ function withNeedStage<T extends { stage_counts?: unknown }>(row: T) {
 
 const listFolders = defineTool({
   name: "list_folders",
-  description: `List the meeting folders with their meeting counts and dates, one page at a time. ${NEED_STAGE_TEXT}`,
+  description: `List the meeting folders with their meeting counts and dates, one page at a time. Each folder has its id, its path and parent_id. The counts of a parent include its child folders. ${parentText} ${NEED_STAGE_TEXT}`,
   kind: "read",
   idempotent: true,
   input: z.object({ ...pageArgs }),
   run: async ({ offset, limit }, { api }) => {
     const folders = expectOk(await api("GET", "/api/meetings/folders")) as {
-      items: { stage_counts?: unknown }[];
+      items: { id: string; stage_counts?: unknown }[];
     };
+    const index = await Folders.load(api);
     return {
-      data: pageOf(folders.items.map(withNeedStage), offset, limit),
+      data: pageOf(
+        folders.items.map((f) => ({
+          ...withNeedStage(f),
+          path: index.pathOf(f.id),
+        })),
+        offset,
+        limit,
+      ),
     };
   },
 });
 
 const createFolder = defineTool({
   name: "create_folder",
-  description: "Create a meeting folder. The name must be new.",
+  description: `Create a meeting folder. The name must be new under its parent, and it cannot contain "/". ${parentText}`,
   kind: "write",
   idempotent: false,
   input: z.object({
@@ -66,23 +89,34 @@ const createFolder = defineTool({
       .optional()
       .describe("What the folder is about."),
     color,
+    parent: parentRef
+      .optional()
+      .describe(
+        'The parent folder: its path ("Parent") or its id. Leave it out for a top-level folder.',
+      ),
   }),
-  run: async (args, { api }) => {
-    const data = expectOk(await api("POST", "/api/meetings/folders", args)) as {
-      id: string;
+  run: async ({ parent, ...args }, { api }) => {
+    const parent_id =
+      parent === undefined
+        ? undefined
+        : (await Folders.load(api)).idOfIdOrPath(parent);
+    const data = expectOk(
+      await api("POST", "/api/meetings/folders", { ...args, parent_id }),
+    ) as { id: string };
+    return {
+      data: await withPath(api, data),
+      change: { kind: "folder", ids: [data.id] },
     };
-    return { data, change: { kind: "folder", ids: [data.id] } };
   },
 });
 
 const updateFolder = defineTool({
   name: "update_folder",
-  description:
-    "Change the name, the description or the color of a folder. Give at least one field.",
+  description: `Change the name, the description, the color or the parent of a folder. Give at least one field. ${parentText}`,
   kind: "write",
   idempotent: true,
   input: z.object({
-    folder_id: folderId,
+    ...folderRefArgs,
     name: z.string().min(1).optional().describe("The new name."),
     description: z
       .string()
@@ -90,69 +124,100 @@ const updateFolder = defineTool({
       .optional()
       .describe("The new description. null clears it."),
     color,
+    parent: z
+      .string()
+      .nullable()
+      .optional()
+      .describe(
+        'Move the folder: the new parent as a path ("Parent") or an id. null or "" moves it to the top level. A folder with child folders cannot get a parent.',
+      ),
   }),
-  run: async ({ folder_id, ...fields }, { api }) => {
+  run: async ({ folder_id, path, parent, ...fields }, { api }) => {
+    const id = await resolveFolder(api, { folder_id, path });
+    const parent_id =
+      parent === undefined
+        ? undefined
+        : parent === null || parent.trim() === ""
+          ? null
+          : (await Folders.load(api)).idOfIdOrPath(parent);
     const data = expectOk(
-      await api("PATCH", `/api/meetings/folders/${seg(folder_id)}`, fields),
-    );
-    return { data, change: { kind: "folder", ids: [folder_id] } };
+      await api("PATCH", `/api/meetings/folders/${seg(id)}`, {
+        ...fields,
+        parent_id,
+      }),
+    ) as { id: string };
+    return {
+      data: await withPath(api, data),
+      change: { kind: "folder", ids: [id] },
+    };
   },
 });
 
 const deleteFolder = defineTool({
   name: "delete_folder",
   description:
-    "Delete an empty folder. Move its meetings out first (move_meetings). This cannot be undone.",
+    "Delete an empty folder. Move its meetings out first (move_meetings), and move or delete its child folders. This cannot be undone.",
   kind: "delete",
   idempotent: true,
-  input: z.object({ folder_id: folderId, confirm: confirmArg }),
-  run: async ({ folder_id }, { api }) => {
+  input: z.object({ ...folderRefArgs, confirm: confirmArg }),
+  run: async ({ folder_id, path }, { api }) => {
+    const id = await resolveFolder(api, { folder_id, path });
     const data = expectOk(
-      await api("DELETE", `/api/meetings/folders/${seg(folder_id)}`),
+      await api("DELETE", `/api/meetings/folders/${seg(id)}`),
     );
-    return { data, change: { kind: "folder", ids: [folder_id] } };
+    return { data, change: { kind: "folder", ids: [id] } };
   },
 });
 
 const getFolderOverview = defineTool({
   name: "get_folder_overview",
-  description: `Get the Overview of a folder: the action items, decisions and open questions from the summaries of its meetings. Each action item has a key for set_action_item_done. counts.with_summary counts the meetings that have a summary, also an old one. ${NEED_STAGE_TEXT}`,
+  description: `Get the Overview of a folder: the action items, decisions and open questions from the summaries of its meetings. A parent folder includes its child folders. Each action item has a key for set_action_item_done. counts.with_summary counts the meetings that have a summary, also an old one. ${NEED_STAGE_TEXT}`,
   kind: "read",
   idempotent: true,
-  input: z.object({ folder_id: folderId }),
-  run: async ({ folder_id }, { api }) => {
+  input: z.object({ ...folderRefArgs }),
+  run: async (ref, { api }) => {
+    const id = await resolveFolder(api, ref);
     const overview = expectOk(
-      await api("GET", `/api/meetings/folders/${seg(folder_id)}/overview`),
-    ) as { counts: { summarized?: number; stage_counts?: unknown } };
+      await api("GET", `/api/meetings/folders/${seg(id)}/overview`),
+    ) as {
+      folder: { id: string };
+      counts: { summarized?: number; stage_counts?: unknown };
+    };
     const { summarized, ...counts } = withNeedStage(overview.counts);
     return {
-      data: { ...overview, counts: { ...counts, with_summary: summarized } },
+      data: {
+        ...overview,
+        folder: await withPath(api, overview.folder),
+        counts: { ...counts, with_summary: summarized },
+      },
     };
   },
 });
 
 const setActionItemDone = defineTool({
   name: "set_action_item_done",
-  description: "Mark an action item of a folder Overview as done or not done.",
+  description:
+    "Mark an action item of a folder Overview as done or not done. On a parent folder, the mark of an item from a child folder is saved on the child folder.",
   kind: "write",
   idempotent: true,
   input: z.object({
-    folder_id: folderId,
+    ...folderRefArgs,
     key: z
       .string()
       .min(1)
       .describe("The action item key (from get_folder_overview)."),
     done: z.boolean().describe("true marks it done, false marks it open."),
   }),
-  run: async ({ folder_id, key, done }, { api }) => {
+  run: async ({ folder_id, path, key, done }, { api }) => {
+    const id = await resolveFolder(api, { folder_id, path });
     const data = expectOk(
       await api(
         "PUT",
-        `/api/meetings/folders/${seg(folder_id)}/action-items/${seg(key)}`,
+        `/api/meetings/folders/${seg(id)}/action-items/${seg(key)}`,
         { done },
       ),
     );
-    return { data, change: { kind: "folder", ids: [folder_id] } };
+    return { data, change: { kind: "folder", ids: [id] } };
   },
 });
 
@@ -162,12 +227,15 @@ const getFolderStanding = defineTool({
     "Get the saved standing text of a folder (where the project stands now). It does not call a model.",
   kind: "read",
   idempotent: true,
-  input: z.object({ folder_id: folderId }),
-  run: async ({ folder_id }, { api }) => ({
-    data: expectOk(
-      await api("GET", `/api/meetings/folders/${seg(folder_id)}/standing`),
-    ),
-  }),
+  input: z.object({ ...folderRefArgs }),
+  run: async (ref, { api }) => {
+    const id = await resolveFolder(api, ref);
+    return {
+      data: expectOk(
+        await api("GET", `/api/meetings/folders/${seg(id)}/standing`),
+      ),
+    };
+  },
 });
 
 const setFolderStanding = defineTool({
@@ -177,7 +245,7 @@ const setFolderStanding = defineTool({
   kind: "write",
   idempotent: true,
   input: z.object({
-    folder_id: folderId,
+    ...folderRefArgs,
     bullets: z
       .array(z.string().min(1).max(240))
       .min(1)
@@ -186,13 +254,14 @@ const setFolderStanding = defineTool({
         `One short line for each bullet, ${FOLDER_STANDING_MAX_BULLETS} at most, with no list marks.`,
       ),
   }),
-  run: async ({ folder_id, bullets }, { api }) => {
+  run: async ({ folder_id, path, bullets }, { api }) => {
+    const id = await resolveFolder(api, { folder_id, path });
     const data = expectOk(
-      await api("PUT", `/api/meetings/folders/${seg(folder_id)}/standing`, {
+      await api("PUT", `/api/meetings/folders/${seg(id)}/standing`, {
         bullets,
       }),
     );
-    return { data, change: { kind: "folder", ids: [folder_id] } };
+    return { data, change: { kind: "folder", ids: [id] } };
   },
 });
 

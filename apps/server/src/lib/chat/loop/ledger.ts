@@ -14,6 +14,7 @@ import { getDb } from "../../db.js";
 import { isLocalProvider } from "../../llm/registry.js";
 import { resolveTaskModel } from "../../llm/task-profiles.js";
 import { actionItemKey, parseSummary } from "../../meetings/folder-overview.js";
+import { folderParentId } from "../../meetings/folders.js";
 import { normalizeText } from "../cites.js";
 import { type ChatLlm, createChatLlm } from "../llm.js";
 import { readChatSettings } from "../settings.js";
@@ -90,22 +91,30 @@ export interface LedgerStats {
 
 const DATE = "COALESCE(m.started_at, m.created_at)";
 
-/** Open items of the folder before `before`, for the writer to link to. */
+/**
+ * Open items of the folder before `before`, for the writer to link to. A
+ * meeting in a child folder also sees the items of the parent folder: the
+ * parent list reads the marks of its children's meetings. A meeting in a
+ * parent does not see the items of a child, because the child list would
+ * not read that mark.
+ */
 function openItemsOf(
   db: DatabaseSync,
   folder: string | null,
   before: number,
 ): { id: string; kind: string; text: string; status: string }[] {
+  const parent = folder === null ? null : folderParentId(db, folder);
+  const keys = folder === null ? [""] : parent ? [folder, parent] : [folder];
   const rows = db
     .prepare(
       `SELECT i.id, i.kind, i.text,
               (SELECT status FROM ledger_marks k WHERE k.item_id = i.id AND k.meeting_date < ?
                 ORDER BY k.meeting_date DESC, k.written_at DESC LIMIT 1) AS status
          FROM ledger_items i
-        WHERE COALESCE(i.folder_id, '') = COALESCE(?, '')
+        WHERE COALESCE(i.folder_id, '') IN (SELECT value FROM json_each(?))
         ORDER BY i.created_at, i.id`,
     )
-    .all(before, folder) as {
+    .all(before, JSON.stringify(keys)) as {
     id: string;
     kind: string;
     text: string;

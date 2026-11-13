@@ -46,10 +46,10 @@ function deps(over: Partial<ChatContextDeps> = {}): ChatContextDeps {
 beforeEach(() => {
   db = new DatabaseSync(":memory:");
   db.exec(`
-    CREATE TABLE meeting_folders (id TEXT PRIMARY KEY, name TEXT, description TEXT);
+    CREATE TABLE meeting_folders (id TEXT PRIMARY KEY, name TEXT, description TEXT, parent_id TEXT);
     CREATE TABLE meetings (id TEXT PRIMARY KEY, title TEXT, started_at INTEGER, folder_id TEXT);
     CREATE TABLE meeting_summaries (meeting_id TEXT PRIMARY KEY, markdown TEXT);
-    INSERT INTO meeting_folders VALUES ('f1', 'Larkspur', 'Beta launch of the app.');
+    INSERT INTO meeting_folders VALUES ('f1', 'Larkspur', 'Beta launch of the app.', NULL);
     INSERT INTO meetings VALUES ('live', 'Live', 1000, 'f1');
     INSERT INTO meetings VALUES ('past', 'Budget review', 500, 'f1');
     INSERT INTO meeting_summaries VALUES ('past', '- Budget is 12 thousand.');

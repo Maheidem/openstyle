@@ -1204,7 +1204,17 @@
         "selectHint": "Klicke auf ein Meeting, um es auszuwählen. Umschalt-Klick wählt einen Bereich.",
         "bulkLabel": "Aktionen für die ausgewählten Meetings",
         "runSelected": "Ausführen"
-      }
+      },
+      "newSub": "Neuer Unterordner",
+      "moveFolder": "Verschieben nach…",
+      "hasSubFolders": "Hat Unterordner",
+      "topLevel": "Oberste Ebene",
+      "currentPlace": "Aktueller Ort",
+      "nameTakenHere": "Hat einen Ordner mit diesem Namen",
+      "inFolder": "In {{name}}",
+      "blockedBodyChildren": "Unterordner in diesem Ordner: {{children}}. Meetings in diesem Ordner: {{count}}. Verschiebe oder lösche zuerst die Unterordner.",
+      "depthExceeded": "Ordner können nur 2 Ebenen haben.",
+      "nameSlash": "Ein Ordnername darf kein \"/\" enthalten."
     },
     "search": {
       "label": "Besprechungen durchsuchen",

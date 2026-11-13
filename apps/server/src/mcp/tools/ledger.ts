@@ -12,6 +12,11 @@ import {
   query,
   seg,
 } from "./define.js";
+import {
+  Folders,
+  folderFilterArgs,
+  resolveFolderFilter,
+} from "./folder-ref.js";
 
 const itemId = z
   .string()
@@ -39,13 +44,7 @@ const listOpenItems = defineTool({
   kind: "read",
   idempotent: true,
   input: z.object({
-    folder_id: z
-      .string()
-      .min(1)
-      .optional()
-      .describe(
-        'Only the items of this folder. "none" gives the items of the meetings with no folder.',
-      ),
+    ...folderFilterArgs("Only the items"),
     kind: kind.optional().describe("Only items of this kind."),
     status: z
       .enum(["open", "done", "all"])
@@ -55,9 +54,19 @@ const listOpenItems = defineTool({
       ),
     ...pageArgs,
   }),
-  run: async ({ offset = 0, limit = LIST_LIMIT_DEFAULT, ...args }, { api }) => {
+  run: async (
+    { offset = 0, limit = LIST_LIMIT_DEFAULT, path, ...args },
+    { api },
+  ) => {
+    const folder_id = await resolveFolderFilter(api, {
+      folder_id: args.folder_id,
+      path,
+    });
     const page = expectOk(
-      await api("GET", `/api/ledger/items${query({ ...args, limit, offset })}`),
+      await api(
+        "GET",
+        `/api/ledger/items${query({ ...args, folder_id, limit, offset })}`,
+      ),
     ) as { items: unknown[]; total: number };
     return {
       data: {
@@ -87,8 +96,14 @@ const createOpenItem = defineTool({
   run: async (args, { api, agent }) => {
     const data = expectOk(
       await api("POST", "/api/ledger/items", { ...args, agent }),
-    ) as { id: string };
-    return { data, change: { kind: "open-item", ids: [data.id] } };
+    ) as { id: string; folder_id: string | null };
+    return {
+      data: {
+        ...data,
+        folder_path: (await Folders.load(api)).pathOf(data.folder_id),
+      },
+      change: { kind: "open-item", ids: [data.id] },
+    };
   },
 });
 
@@ -114,7 +129,7 @@ const updateOpenItem = defineTool({
 const addOpenItemMark = defineTool({
   name: "add_open_item_mark",
   description:
-    "Record what a meeting says about an open item: still open, done, dropped or changed. The meeting must be in the folder of the item. Marks cannot be changed or removed.",
+    "Record what a meeting says about an open item: still open, done, dropped or changed. The meeting must be in the folder of the item, or in a child folder of it. Marks cannot be changed or removed.",
   kind: "write",
   idempotent: false,
   input: z.object({

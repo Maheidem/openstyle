@@ -25,13 +25,13 @@ beforeEach(() => {
   getDb().exec("DELETE FROM folder_action_item_state");
 });
 
-function addFolder(id: string, name = id) {
+function addFolder(id: string, name = id, parent: string | null = null) {
   getDb()
     .prepare(
-      `INSERT INTO meeting_folders (id, name, description, created_at, updated_at)
-       VALUES (?, ?, 'Tide alerts for boat owners', 1, 1)`,
+      `INSERT INTO meeting_folders (id, name, description, parent_id, created_at, updated_at)
+       VALUES (?, ?, 'Tide alerts for boat owners', ?, 1, 1)`,
     )
-    .run(id, name);
+    .run(id, name, parent);
 }
 
 interface SeedSummary {
@@ -561,5 +561,83 @@ describe("PUT /folders/:id/action-items/:key", () => {
         .prepare("SELECT COUNT(*) AS n FROM folder_action_item_state")
         .get(),
     ).toEqual({ n: 0 });
+  });
+});
+
+describe("sub-folders: a parent Overview includes its children", () => {
+  function parentAndChild() {
+    addFolder("p1", "Acme");
+    addFolder("c1", "Planning", "p1");
+    addFolder("c2", "Budget", "p1");
+    addMeeting({
+      id: "mp",
+      folder: "p1",
+      day: 1,
+      summary: {
+        decisions: ["Ship the tide alerts in May"],
+        actionItems: [task("Write the launch note")],
+      },
+    });
+    addMeeting({
+      id: "mc",
+      folder: "c1",
+      day: 2,
+      summary: { actionItems: [task("Book the demo room")] },
+    });
+    addMeeting({
+      id: "other",
+      folder: null,
+      day: 3,
+      summary: { actionItems: [task("Unrelated task")] },
+    });
+  }
+
+  it("reads the meetings, counts and items of the children", async () => {
+    parentAndChild();
+    const parent = await overview("p1");
+    expect(parent.counts.meetings).toBe(2);
+    expect(parent.timeline.map((t) => t.meeting_id)).toEqual(["mc", "mp"]);
+    expect(parent.action_items.map((a) => a.text).sort()).toEqual([
+      "Book the demo room",
+      "Write the launch note",
+    ]);
+    // A child sees only its own meetings.
+    const child = await overview("c1");
+    expect(child.counts.meetings).toBe(1);
+    expect(child.action_items.map((a) => a.text)).toEqual([
+      "Book the demo room",
+    ]);
+    expect((await overview("c2")).counts.meetings).toBe(0);
+  });
+
+  it("writes a mark set on the parent under the child folder, and the parent reads it", async () => {
+    parentAndChild();
+    const key = actionItemKey("mc", "Book the demo room");
+    const res = await put(key, true, "p1");
+    expect(res.status).toBe(200);
+    expect(
+      getDb()
+        .prepare(
+          "SELECT folder_id, item_key, done FROM folder_action_item_state",
+        )
+        .all(),
+    ).toEqual([{ folder_id: "c1", item_key: key, done: 1 }]);
+    const done = (o: Awaited<ReturnType<typeof overview>>) =>
+      o.action_items.find((a) => a.key === key)?.done;
+    expect(done(await overview("p1"))).toBe(true);
+    expect(done(await overview("c1"))).toBe(true);
+    // A mark on a parent meeting stays on the parent.
+    const own = actionItemKey("mp", "Write the launch note");
+    await put(own, true, "p1");
+    expect(
+      getDb()
+        .prepare(
+          "SELECT folder_id FROM folder_action_item_state WHERE item_key = ?",
+        )
+        .get(own),
+    ).toEqual({ folder_id: "p1" });
+    // A child does not know the items of its parent or of a sibling.
+    expect((await put(own, true, "c1")).status).toBe(404);
+    expect((await put(key, true, "c2")).status).toBe(404);
   });
 });

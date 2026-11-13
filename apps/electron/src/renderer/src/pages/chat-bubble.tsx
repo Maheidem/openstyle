@@ -1,8 +1,4 @@
-import type {
-  ChatMessage,
-  ChatScope,
-  MeetingListItem,
-} from "@openstyle/validations";
+import type { ChatMessage, ChatScope } from "@openstyle/validations";
 import { Button } from "@renderer/components/ui/button";
 import { Textarea } from "@renderer/components/ui/textarea";
 import { queryKeys } from "@renderer/lib/query";
@@ -36,6 +32,7 @@ import {
 } from "./meetings/ask-model";
 import { useMeetingsList } from "./meetings/ask-scope";
 import { useMeetingFolders } from "./meetings/folders-data";
+import { widerScope } from "./meetings/folders-model";
 
 // The Ask bubble (specs/meeting-chat-agent.md 11.6, decision D19): a small
 // floating window that the global hotkey opens. It shows the scope in words,
@@ -44,17 +41,6 @@ import { useMeetingFolders } from "./meetings/folders-data";
 
 /** The window is opened again by the hotkey: forget the last question. */
 const EMPTY = { thread: null, question: null, answer: null } as const;
-
-/** The scope one step wider, from the meeting list. null: nothing is wider. */
-function widerScope(
-  scope: ChatScope,
-  meetings: readonly MeetingListItem[],
-): ChatScope | null {
-  if (scope.kind === "all") return null;
-  if (scope.kind === "folder") return { kind: "all" };
-  const folderId = meetings.find((m) => m.id === scope.id)?.folder_id ?? null;
-  return folderId ? { kind: "folder", id: folderId } : { kind: "all" };
-}
 
 export default function ChatBubblePage(): React.JSX.Element {
   const { t } = useTranslation();
@@ -154,7 +140,7 @@ export default function ChatBubblePage(): React.JSX.Element {
     if (s.kind === "folder") return folderName(s.id) ?? "";
     return meetings.find((m) => m.id === s.id)?.title?.trim() || untitled;
   };
-  const wider = widerScope(scope, meetings);
+  const wider = widerScope(scope, meetings, folders);
 
   const fail = (err: unknown): void => {
     const view = askErrorView(

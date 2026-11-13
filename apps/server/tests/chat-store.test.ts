@@ -272,6 +272,29 @@ describe("scope A and the wider scope (spec 11.6)", () => {
     expect(nextWider(db(), { kind: "folder", id: "f1" }, false)).toBeNull();
   });
 
+  it("nextWider: a child folder widens to its parent, then to everything", () => {
+    addFolder("p1");
+    db()
+      .prepare(
+        "INSERT INTO meeting_folders (id, name, description, parent_id, created_at, updated_at) VALUES ('c1', 'Child', NULL, 'p1', 1, 1)",
+      )
+      .run();
+    addMeeting("m3", "c1");
+    expect(nextWider(db(), { kind: "meeting", id: "m3" })).toEqual({
+      kind: "folder",
+      id: "c1",
+      name: "Child",
+    });
+    expect(nextWider(db(), { kind: "folder", id: "c1" })).toEqual({
+      kind: "folder",
+      id: "p1",
+      name: "Folder p1",
+    });
+    expect(nextWider(db(), { kind: "folder", id: "p1" })).toEqual({
+      kind: "all",
+    });
+  });
+
   it("lastWidenOffer needs a not_found answer with a wider scope as the last message", () => {
     addFolder("f1");
     addMeeting("m1", "f1");

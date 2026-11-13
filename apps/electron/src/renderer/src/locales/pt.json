@@ -1203,7 +1203,17 @@
         "selectHint": "Clique em uma reunião para selecioná-la. Shift-clique seleciona um intervalo.",
         "bulkLabel": "Ações para as reuniões selecionadas",
         "runSelected": "Executar"
-      }
+      },
+      "newSub": "Nova subpasta",
+      "moveFolder": "Mover para…",
+      "hasSubFolders": "Tem subpastas",
+      "topLevel": "Nível superior",
+      "currentPlace": "Local atual",
+      "nameTakenHere": "Já tem uma pasta com este nome",
+      "inFolder": "Em {{name}}",
+      "blockedBodyChildren": "Subpastas nesta pasta: {{children}}. Reuniões nesta pasta: {{count}}. Primeiro mova ou exclua as subpastas.",
+      "depthExceeded": "As pastas podem ter só 2 níveis.",
+      "nameSlash": "O nome de uma pasta não pode conter \"/\"."
     },
     "search": {
       "label": "Buscar reuniões",

@@ -148,8 +148,9 @@ export function threadScope(thread: ChatThread): ChatScope {
 
 /**
  * The one step wider than a scope (spec 6.3, D16): a meeting widens to its
- * folder, an unfiled meeting and a folder widen to everything. Scope A has no
- * wider scope. `enabled` is the setting "Search wider": off gives null.
+ * folder, a child folder widens to its parent folder, an unfiled meeting and
+ * a top-level folder widen to everything. Scope A has no wider scope.
+ * `enabled` is the setting "Search wider": off gives null.
  */
 export function nextWider(
   db: DatabaseSync,
@@ -157,7 +158,18 @@ export function nextWider(
   enabled = true,
 ): ChatWider | null {
   if (!enabled || scope.kind === "all") return null;
-  if (scope.kind === "folder") return { kind: "all" };
+  if (scope.kind === "folder") {
+    const parent = db
+      .prepare(
+        `SELECT p.id AS id, p.name AS name
+           FROM meeting_folders f JOIN meeting_folders p ON p.id = f.parent_id
+          WHERE f.id = ?`,
+      )
+      .get(scope.id) as { id: string; name: string } | undefined;
+    return parent
+      ? { kind: "folder", id: parent.id, name: parent.name }
+      : { kind: "all" };
+  }
   const row = db
     .prepare(
       `SELECT f.id AS id, f.name AS name

@@ -40,6 +40,7 @@ import {
   FolderRequestError,
   folderErrorKey,
   type MeetingFolder,
+  meetingGroups,
 } from "./folders-model";
 
 export function FolderPanel({
@@ -87,6 +88,9 @@ export function FolderPanel({
   const askEnabled =
     appSettings?.[SETTINGS_KEYS.meetingChatEnabled] === "true" &&
     folder.meeting_count > 0;
+  // A parent folder groups its list by child folder (sub-folders).
+  const groups = meetingGroups(folders, folder, meetings);
+  const ordered = groups ? groups.flatMap((g) => g.meetings) : meetings;
   const [selecting, setSelecting] = useState(false);
   const [checked, setChecked] = useState<Set<string>>(() => new Set());
   const [anchor, setAnchor] = useState<string | null>(null);
@@ -97,7 +101,7 @@ export function FolderPanel({
   const toggle = (id: string, range: boolean) => {
     setChecked(
       toggleSelection(
-        meetings.map((m) => m.id),
+        ordered.map((m) => m.id),
         checked,
         anchor,
         id,
@@ -123,14 +127,16 @@ export function FolderPanel({
     initialAction === "description",
   );
   const [description, setDescription] = useState(folder.description ?? "");
+  const childCount = folder.child_count ?? 0;
   const [notice, setNotice] = useState<"blocked" | "confirm" | null>(
     initialAction === "delete"
-      ? folder.meeting_count
+      ? folder.meeting_count || childCount
         ? "blocked"
         : "confirm"
       : null,
   );
   const [blockedCount, setBlockedCount] = useState(folder.meeting_count);
+  const [blockedChildren, setBlockedChildren] = useState(childCount);
   const [busy, setBusy] = useState(false);
   const [suggesting, setSuggesting] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -138,17 +144,16 @@ export function FolderPanel({
   useEffect(() => {
     if (descriptionOpen) descriptionRef.current?.focus();
   }, [descriptionOpen]);
-  const previousCount = useRef(folder.meeting_count);
+  const previousCount = useRef(`${folder.meeting_count}/${childCount}`);
   useEffect(() => {
-    if (
-      previousCount.current !== folder.meeting_count &&
-      notice === "blocked"
-    ) {
+    const current = `${folder.meeting_count}/${childCount}`;
+    if (previousCount.current !== current && notice === "blocked") {
       setBlockedCount(folder.meeting_count);
-      if (!folder.meeting_count) setNotice(null);
+      setBlockedChildren(childCount);
+      if (!folder.meeting_count && !childCount) setNotice(null);
     }
-    previousCount.current = folder.meeting_count;
-  }, [folder.meeting_count, notice]);
+    previousCount.current = current;
+  }, [folder.meeting_count, childCount, notice]);
   const day = (value: number | null) =>
     value === null
       ? "—"
@@ -160,7 +165,8 @@ export function FolderPanel({
   const askDelete = () => {
     setError(null);
     setBlockedCount(folder.meeting_count);
-    setNotice(folder.meeting_count ? "blocked" : "confirm");
+    setBlockedChildren(childCount);
+    setNotice(folder.meeting_count || childCount ? "blocked" : "confirm");
   };
   const remove = async () => {
     setBusy(true);
@@ -173,6 +179,14 @@ export function FolderPanel({
         err.code === "folder_not_empty"
       ) {
         setBlockedCount(err.meetingCount);
+        setBlockedChildren(0);
+        setNotice("blocked");
+      } else if (
+        err instanceof FolderRequestError &&
+        err.code === "folder_has_children"
+      ) {
+        setBlockedCount(folder.meeting_count);
+        setBlockedChildren(err.childCount);
         setNotice("blocked");
       } else setError(t(folderErrorKey(err)));
     } finally {
@@ -191,6 +205,28 @@ export function FolderPanel({
       setBusy(false);
     }
   };
+  const meetingTable = (rows: MeetingListItem[]) => (
+    <div className="border-border bg-card mb-5 mt-2 overflow-hidden rounded-lg border">
+      {rows.map((meeting) => (
+        <FolderMeetingRow
+          key={meeting.id}
+          meeting={meeting}
+          folders={folders}
+          onOpen={() => onOpen(meeting.id)}
+          onMove={(id) => onMove(meeting, id)}
+          table
+          check={
+            selecting
+              ? {
+                  checked: checked.has(meeting.id),
+                  onToggle: (range) => toggle(meeting.id, range),
+                }
+              : undefined
+          }
+        />
+      ))}
+    </div>
+  );
   const facts = [
     [String(folder.meeting_count), t("meetings.titleAccent")],
     [day(folder.last_meeting_at), t("meetings.folders.lastMeeting")],
@@ -332,10 +368,12 @@ export function FolderPanel({
             </h3>
             <p className="text-muted-foreground mb-2 mt-1">
               {t(
-                notice === "blocked"
-                  ? "meetings.folders.blockedBody"
-                  : "meetings.folders.deleteBody",
-                { count: blockedCount },
+                notice !== "blocked"
+                  ? "meetings.folders.deleteBody"
+                  : blockedChildren
+                    ? "meetings.folders.blockedBodyChildren"
+                    : "meetings.folders.blockedBody",
+                { count: blockedCount, children: blockedChildren },
               )}
             </p>
             <div className="flex gap-2">
@@ -483,27 +521,28 @@ export function FolderPanel({
                   : "meetings.folders.loading",
               )}
             </p>
+          ) : groups ? (
+            groups.map((group) => (
+              <div key={group.folder.id}>
+                <div className="mt-4 flex items-center gap-1.5">
+                  <FolderIcon
+                    color={group.folder.color}
+                    className="size-3.5 shrink-0"
+                  />
+                  <h3 className="eyebrow">
+                    {group.own
+                      ? t("meetings.folders.inFolder", { name: folder.name })
+                      : group.folder.name}
+                  </h3>
+                  <span className="mono text-muted-foreground px-1 text-[10px]">
+                    {group.meetings.length}
+                  </span>
+                </div>
+                {meetingTable(group.meetings)}
+              </div>
+            ))
           ) : meetings.length ? (
-            <div className="border-border bg-card mb-5 mt-2 overflow-hidden rounded-lg border">
-              {meetings.map((meeting) => (
-                <FolderMeetingRow
-                  key={meeting.id}
-                  meeting={meeting}
-                  folders={folders}
-                  onOpen={() => onOpen(meeting.id)}
-                  onMove={(id) => onMove(meeting, id)}
-                  table
-                  check={
-                    selecting
-                      ? {
-                          checked: checked.has(meeting.id),
-                          onToggle: (range) => toggle(meeting.id, range),
-                        }
-                      : undefined
-                  }
-                />
-              ))}
-            </div>
+            meetingTable(meetings)
           ) : (
             <p className="border-border text-muted-foreground mb-5 mt-2 rounded-lg border border-dashed p-6 text-center text-[12.5px]">
               {t("meetings.folders.emptyPanel")}
