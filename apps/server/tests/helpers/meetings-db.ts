@@ -10,6 +10,8 @@ export function resetMeetingTables(): void {
   db.exec("DELETE FROM meeting_speakers");
   db.exec("DELETE FROM meeting_segments");
   db.exec("DELETE FROM meetings");
+  // Child folders first: parent_id is ON DELETE RESTRICT.
+  db.exec("DELETE FROM meeting_folders WHERE parent_id IS NOT NULL");
   db.exec("DELETE FROM meeting_folders");
 }
 

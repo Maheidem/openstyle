@@ -11,7 +11,7 @@ const DEFAULT_CLOUD_URL = "https://service.freestylevoice.com";
 // reports 26). Migrations only run while currentVersion < SCHEMA_VERSION, so a
 // fork migration numbered below that is silently skipped for anyone arriving
 // from upstream. Keep this above the highest upstream version we have seen.
-const SCHEMA_VERSION = 57;
+const SCHEMA_VERSION = 58;
 
 // Legacy default format-rule patterns (used only by pre-v12 migrations below):
 // domain/phrase entries match as substrings of url+title+app; bare words match
@@ -167,16 +167,59 @@ export function initSchema(db: DatabaseSync): void {
 
   if (currentVersion >= SCHEMA_VERSION) return;
 
+  // v58 rebuilds meeting_folders. Other tables refer to it with ON DELETE
+  // CASCADE, so the DROP of the old table must not run with foreign keys on:
+  // it would delete those rows. SQLite ignores this pragma inside a
+  // transaction, so set it before BEGIN (the SQLite 12-step ALTER procedure).
+  const fkOff =
+    currentVersion < 58 &&
+    (db.prepare("PRAGMA foreign_keys").get() as { foreign_keys: number })
+      .foreign_keys === 1;
+  if (fkOff) db.exec("PRAGMA foreign_keys = OFF");
+
   // Run all migrations inside a transaction so a failure mid-way rolls back
   // cleanly instead of leaving the DB in a partial state (e.g. some tables
   // created but the version not yet bumped).
-  db.exec("BEGIN");
   try {
-    applyMigrations(db, currentVersion);
-    db.exec("COMMIT");
-  } catch (err) {
-    db.exec("ROLLBACK");
-    throw err;
+    db.exec("BEGIN");
+    try {
+      applyMigrations(db, currentVersion);
+      db.exec("COMMIT");
+    } catch (err) {
+      db.exec("ROLLBACK");
+      throw err;
+    }
+  } finally {
+    if (fkOff) db.exec("PRAGMA foreign_keys = ON");
+  }
+}
+
+/**
+ * v58 (sub-folders): a "/" in a folder name becomes "-", because a folder
+ * path joins the names with "/". A name that then clashes (case-insensitive)
+ * gets a suffix " (2)", " (3)" and so on. The oldest folder keeps its name.
+ */
+function replaceSlashInFolderNames(db: DatabaseSync): void {
+  const rows = db
+    .prepare("SELECT id, name FROM meeting_folders ORDER BY created_at, id")
+    .all() as { id: string; name: string }[];
+  const taken = new Set(
+    rows.filter((r) => !r.name.includes("/")).map((r) => r.name.toLowerCase()),
+  );
+  const rename = db.prepare("UPDATE meeting_folders SET name = ? WHERE id = ?");
+  for (const row of rows) {
+    if (!row.name.includes("/")) continue;
+    const base = row.name.replaceAll("/", "-").trim() || "-";
+    let name = base;
+    for (let n = 2; taken.has(name.toLowerCase()); n++) {
+      const suffix = ` (${n})`;
+      name = `${Array.from(base)
+        .slice(0, 60 - suffix.length)
+        .join("")
+        .trim()}${suffix}`;
+    }
+    taken.add(name.toLowerCase());
+    rename.run(name, row.id);
   }
 }
 
@@ -1485,6 +1528,43 @@ function applyMigrations(db: DatabaseSync, currentVersion: number): void {
         "ALTER TABLE transcription_history ADD COLUMN cleanup_skipped TEXT",
       );
     }
+  }
+
+  if (
+    currentVersion < 58 &&
+    tableExists(db, "meeting_folders") &&
+    !hasColumn(db, "meeting_folders", "parent_id")
+  ) {
+    // Sub-folders, 2 levels only. parent_id is NULL for a top-level folder.
+    // A name is unique per parent (the top level is one parent), so the
+    // column UNIQUE goes away. SQLite cannot drop a column constraint, so
+    // rebuild the table. initSchema turned foreign keys off, so the DROP does
+    // not delete the rows that refer to a folder (meetings, chat threads,
+    // done marks, standing). The ids do not change, so those rows stay valid.
+    // The app also checks names with Unicode case (lib/meetings/folders.ts).
+    replaceSlashInFolderNames(db);
+    db.exec(`
+      CREATE TABLE meeting_folders_v58 (
+        id TEXT PRIMARY KEY,
+        name TEXT NOT NULL COLLATE NOCASE
+          CHECK(length(name) BETWEEN 1 AND 60 AND name = trim(name)),
+        description TEXT,
+        created_at INTEGER NOT NULL,
+        updated_at INTEGER NOT NULL,
+        color TEXT,
+        parent_id TEXT REFERENCES meeting_folders(id) ON DELETE RESTRICT
+      );
+      INSERT INTO meeting_folders_v58
+        (id, name, description, created_at, updated_at, color, parent_id)
+        SELECT id, name, description, created_at, updated_at, color, NULL
+          FROM meeting_folders;
+      DROP TABLE meeting_folders;
+      ALTER TABLE meeting_folders_v58 RENAME TO meeting_folders;
+      CREATE INDEX IF NOT EXISTS idx_meeting_folders_parent
+        ON meeting_folders(parent_id);
+      CREATE UNIQUE INDEX IF NOT EXISTS idx_meeting_folders_parent_name
+        ON meeting_folders(COALESCE(parent_id, ''), name COLLATE NOCASE);
+    `);
   }
 
   // Upsert schema version

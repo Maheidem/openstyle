@@ -23,10 +23,15 @@ const base = "/api/meetings";
 
 afterEach(resetMeetingTables);
 
-async function createFolder(name = "Work", description?: string) {
+async function createFolder(
+  name = "Work",
+  description?: string,
+  parent_id?: string | null,
+) {
   const res = await jsonRequest(app, "POST", `${base}/folders`, {
     name,
     description,
+    parent_id,
   });
   expect(res.status).toBe(201);
   return meetingFolderSchema.parse(await res.json());
@@ -369,6 +374,181 @@ describe("meeting folders", () => {
     expect(
       getDb().prepare("SELECT id FROM meetings WHERE id = 'bad'").get(),
     ).toBeUndefined();
+  });
+});
+
+describe("sub-folders", () => {
+  const patch = (id: string, body: unknown) =>
+    jsonRequest(app, "PATCH", `${base}/folders/${id}`, body);
+  const errorOf = async (res: Response) =>
+    meetingFolderErrorSchema.parse(await res.json());
+  const folders = async () =>
+    meetingFoldersResponseSchema.parse(
+      await (await app.request(`${base}/folders`)).json(),
+    ).items;
+
+  it("creates a child, and a parent's list, counts and dates include its children", async () => {
+    const parent = await createFolder("Acme");
+    const child = await createFolder("Planning", undefined, parent.id);
+    expect(child).toMatchObject({ parent_id: parent.id, child_count: 0 });
+    const db = getDb();
+    const add =
+      db.prepare(`INSERT INTO meetings (id, title, status, created_at, folder_id, started_at, duration_ms)
+      VALUES (?, ?, 'recorded', ?, ?, ?, ?)`);
+    add.run("in-parent", "P", 1, parent.id, 100, 1000);
+    add.run("in-child", "C", 2, child.id, 200, 2000);
+    add.run("unfiled", "U", 3, null, 300, 3000);
+    const all = await folders();
+    expect(all.find((f) => f.id === parent.id)).toMatchObject({
+      parent_id: null,
+      child_count: 1,
+      meeting_count: 2,
+      first_meeting_at: 100,
+      last_meeting_at: 200,
+      total_duration_ms: 3000,
+    });
+    expect(all.find((f) => f.id === child.id)).toMatchObject({
+      parent_id: parent.id,
+      child_count: 0,
+      meeting_count: 1,
+    });
+    expect(
+      (await list(`?folder_id=${parent.id}`)).items.map((m) => m.id),
+    ).toEqual(["in-child", "in-parent"]);
+    expect((await list(`?folder_id=${parent.id}`)).total).toBe(2);
+    expect(
+      (await list(`?folder_id=${child.id}`)).items.map((m) => m.id),
+    ).toEqual(["in-child"]);
+  });
+
+  it("allows only 2 levels on create and on move", async () => {
+    const parent = await createFolder("Acme");
+    const child = await createFolder("Planning", undefined, parent.id);
+    const other = await createFolder("Globex");
+    // The target parent is itself a child.
+    const deep = await jsonRequest(app, "POST", `${base}/folders`, {
+      name: "Deep",
+      parent_id: child.id,
+    });
+    expect(deep.status).toBe(409);
+    expect((await errorOf(deep)).code).toBe("folder_depth_exceeded");
+    const missing = await jsonRequest(app, "POST", `${base}/folders`, {
+      name: "Lost",
+      parent_id: "missing",
+    });
+    expect(missing.status).toBe(404);
+    expect((await errorOf(missing)).code).toBe("folder_not_found");
+    // A folder with children cannot become a child.
+    const hasKids = await patch(parent.id, { parent_id: other.id });
+    expect(hasKids.status).toBe(409);
+    expect((await errorOf(hasKids)).code).toBe("folder_depth_exceeded");
+    // A folder cannot be its own parent.
+    const self = await patch(other.id, { parent_id: other.id });
+    expect(self.status).toBe(409);
+    expect((await errorOf(self)).code).toBe("folder_depth_exceeded");
+    // Move under a child: refused.
+    const underChild = await patch(other.id, { parent_id: child.id });
+    expect((await errorOf(underChild)).code).toBe("folder_depth_exceeded");
+    const lost = await patch(other.id, { parent_id: "missing" });
+    expect(lost.status).toBe(404);
+    expect((await errorOf(lost)).code).toBe("folder_not_found");
+    // Nothing changed.
+    expect((await folders()).map((f) => [f.name, f.parent_id ?? null])).toEqual(
+      [
+        ["Acme", null],
+        ["Globex", null],
+        ["Planning", parent.id],
+      ],
+    );
+  });
+
+  it("moves a folder with parent_id alone, back to the top with null, and keeps its meetings", async () => {
+    const parent = await createFolder("Acme");
+    const moved = await createFolder("Budget");
+    insertMeeting("m1");
+    await move(["m1"], moved.id);
+    const res = await patch(moved.id, { parent_id: parent.id });
+    expect(res.status).toBe(200);
+    expect(meetingFolderSchema.parse(await res.json())).toMatchObject({
+      id: moved.id,
+      name: "Budget",
+      parent_id: parent.id,
+      meeting_count: 1,
+    });
+    expect(
+      getDb().prepare("SELECT folder_id FROM meetings WHERE id = 'm1'").get(),
+    ).toEqual({ folder_id: moved.id });
+    expect(
+      (await folders()).find((f) => f.id === parent.id)?.meeting_count,
+    ).toBe(1);
+    const top = await patch(moved.id, { parent_id: null });
+    expect(meetingFolderSchema.parse(await top.json()).parent_id).toBeNull();
+  });
+
+  it("keeps names unique per parent, with Unicode case, on create, rename and move", async () => {
+    const acme = await createFolder("Acme");
+    const globex = await createFolder("Globex");
+    await createFolder("Évaluation", undefined, acme.id);
+    // The same name under another parent and at the top level is good.
+    const other = await createFolder("Évaluation", undefined, globex.id);
+    const top = await createFolder("Évaluation");
+    const clash = await jsonRequest(app, "POST", `${base}/folders`, {
+      name: "éVALUATION",
+      parent_id: acme.id,
+    });
+    expect(clash.status).toBe(409);
+    expect((await errorOf(clash)).code).toBe("folder_name_exists");
+    // A move into a parent that has the name is refused.
+    const moveClash = await patch(other.id, { parent_id: acme.id });
+    expect(moveClash.status).toBe(409);
+    expect((await errorOf(moveClash)).code).toBe("folder_name_exists");
+    const topClash = await patch(other.id, { parent_id: null });
+    expect((await errorOf(topClash)).code).toBe("folder_name_exists");
+    // A rename checks the folder's own parent only.
+    const renamed = await patch(top.id, { name: "Acme" });
+    expect((await errorOf(renamed)).code).toBe("folder_name_exists");
+    const ok = await patch(other.id, { name: "Acme" });
+    expect(ok.status).toBe(200);
+  });
+
+  it('rejects "/" in a name on create and on rename', async () => {
+    const res = await jsonRequest(app, "POST", `${base}/folders`, {
+      name: "Client/Acme",
+    });
+    expect(res.status).toBe(400);
+    expect((await errorOf(res)).code).toBe("invalid_request");
+    const folder = await createFolder("Acme");
+    const rename = await patch(folder.id, { name: "A/B" });
+    expect(rename.status).toBe(400);
+  });
+
+  it("blocks the delete of a folder with child folders with a typed 409", async () => {
+    const parent = await createFolder("Acme");
+    const child = await createFolder("Planning", undefined, parent.id);
+    const res = await app.request(`${base}/folders/${parent.id}`, {
+      method: "DELETE",
+    });
+    expect(res.status).toBe(409);
+    expect(await errorOf(res)).toEqual({
+      error: expect.any(String),
+      code: "folder_has_children",
+      child_count: 1,
+    });
+    // A child with a meeting: folder_not_empty on the child.
+    insertMeeting("m1");
+    await move(["m1"], child.id);
+    const childRes = await app.request(`${base}/folders/${child.id}`, {
+      method: "DELETE",
+    });
+    expect((await errorOf(childRes)).code).toBe("folder_not_empty");
+    await move(["m1"], null);
+    for (const id of [child.id, parent.id]) {
+      const del = await app.request(`${base}/folders/${id}`, {
+        method: "DELETE",
+      });
+      expect(del.status).toBe(200);
+    }
+    expect(await folders()).toEqual([]);
   });
 });
 
