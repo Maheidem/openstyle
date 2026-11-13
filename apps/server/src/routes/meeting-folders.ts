@@ -201,7 +201,7 @@ export const meetingFolders = new Hono()
           404,
         );
       }
-      const { child_count } = readFolder(id);
+      const { child_count = 0 } = readFolder(id);
       if (child_count > 0) {
         return c.json(
           meetingFolderErrorSchema.parse({

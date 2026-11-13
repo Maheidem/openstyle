@@ -48,10 +48,13 @@ export const meetingFolderSchema = z.object({
   // A stored name outside the palette (a later palette change) reads as no
   // color, so one bad row cannot break the whole folder list.
   color: folderColorSchema.nullable().catch(null),
-  /** The parent folder, or null for a top-level folder. Only 2 levels. */
-  parent_id: meetingFolderIdSchema.nullable().default(null),
-  /** The number of child folders. A child folder has 0. */
-  child_count: z.number().int().nonnegative().default(0),
+  /**
+   * The parent folder, or null for a top-level folder. Only 2 levels. The
+   * server always sends it; optional so that older client fixtures parse.
+   */
+  parent_id: meetingFolderIdSchema.nullable().optional(),
+  /** The number of child folders. A child folder has 0. Always sent. */
+  child_count: z.number().int().nonnegative().optional(),
   created_at: z.number().int(),
   updated_at: z.number().int(),
   /** The counts, dates and stage counts of a parent include its children. */
