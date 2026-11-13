@@ -1,6 +1,7 @@
 import type { MeetingStage } from "@openstyle/validations";
 import { getDb } from "../db.js";
 import { getDefaultModels } from "../providers.js";
+import { folderScopeIds } from "./folders.js";
 import { hasJob } from "./job-registry.js";
 
 /**
@@ -91,18 +92,23 @@ export function needsStage(id: string, stage: MeetingStage): boolean {
   );
 }
 
-/** The meetings of a folder that need `stage`, oldest first. */
+/**
+ * The meetings of a folder that need `stage`, oldest first. A parent folder
+ * includes the meetings of its children.
+ */
 export function folderMeetingsNeeding(
   folderId: string,
   stage: MeetingStage,
 ): string[] {
+  const db = getDb();
   return (
-    getDb()
+    db
       .prepare(
-        `SELECT m.id FROM meetings m WHERE m.folder_id = ? AND ${NEEDS[stage]}
+        `SELECT m.id FROM meetings m
+          WHERE m.folder_id IN (SELECT value FROM json_each(?)) AND ${NEEDS[stage]}
          ORDER BY m.started_at, m.id`,
       )
-      .all(folderId) as { id: string }[]
+      .all(JSON.stringify(folderScopeIds(db, folderId))) as { id: string }[]
   ).map((r) => r.id);
 }
 

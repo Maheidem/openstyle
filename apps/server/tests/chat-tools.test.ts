@@ -5,6 +5,7 @@ import { beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 import {
   listPeopleInScope,
   runTool,
+  scopeMeetingIds,
   summaryDigest,
   ToolRejected,
 } from "../src/lib/chat/tools.js";
@@ -264,6 +265,46 @@ describe("runTool: validation and scope", () => {
         meeting_ids: ["u1"],
       }),
     ).resolves.toMatchObject({ rows: 0 });
+  });
+});
+
+describe("sub-folders: a parent folder scope includes its children", () => {
+  const itemTexts = async (scope: TurnScope) => {
+    const out = await runTool(ctxOf(scope), "list_action_items", {
+      status: "all",
+    });
+    const block = out.blocks[0];
+    if (block?.kind !== "list") throw new Error("not a list");
+    return block.items;
+  };
+
+  it("reads the meetings, items and done marks of the child folders", async () => {
+    // f2 (Vendor Audit) becomes a child of f1 (Harbor Pricing).
+    getDb().exec("UPDATE meeting_folders SET parent_id = 'f1' WHERE id = 'f2'");
+    const SCOPE_F2: TurnScope = { kind: "folder", id: "f2" };
+    expect(scopeMeetingIds(getDb(), SCOPE_F1)).toContain("m4");
+    expect(scopeMeetingIds(getDb(), SCOPE_F2)).toEqual(["m4"]);
+    // A mark set on the parent for a child meeting lives on the child.
+    const key = actionItemKey("m4", "Collect the vendor invoices");
+    expect(setActionItemDone(getDb(), "f1", key, true, 5)).toBe(true);
+    expect(
+      getDb()
+        .prepare(
+          "SELECT folder_id FROM folder_action_item_state WHERE item_key = ?",
+        )
+        .get(key),
+    ).toEqual({ folder_id: "f2" });
+    const vendor = (await itemTexts(SCOPE_F1)).find((i) =>
+      i.text.startsWith("Collect the vendor"),
+    );
+    expect(vendor?.done).toBe(true);
+    expect((await itemTexts(SCOPE_F2)).map((i) => [i.text, i.done])).toEqual([
+      ["Collect the vendor invoices", true],
+    ]);
+    // The meeting scope reads the marks of its own folder.
+    expect(
+      (await itemTexts({ kind: "meeting", id: "m4" })).map((i) => i.done),
+    ).toEqual([true]);
   });
 });
 

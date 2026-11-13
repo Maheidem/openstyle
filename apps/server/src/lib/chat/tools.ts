@@ -13,6 +13,7 @@ import {
   type RawItem,
 } from "../meetings/folder-overview.js";
 import { readStanding } from "../meetings/folder-standing.js";
+import { folderScopeIds } from "../meetings/folders.js";
 import { formatClock } from "../meetings/live/chat-context.js";
 import { rerankPairs } from "../mlx-rerank/client.js";
 import {
@@ -97,19 +98,26 @@ interface MeetingRow {
   markdown: string | null;
 }
 
-function scopeSql(scope: TurnScope): { where: string; params: string[] } {
+function scopeSql(
+  db: DatabaseSync,
+  scope: TurnScope,
+): { where: string; params: string[] } {
   if (scope.kind === "meeting") {
     return { where: "m.id = ?", params: [scope.id ?? ""] };
   }
   if (scope.kind === "folder") {
-    return { where: "m.folder_id = ?", params: [scope.id ?? ""] };
+    // A parent folder includes the meetings of its children.
+    return {
+      where: "m.folder_id IN (SELECT value FROM json_each(?))",
+      params: [JSON.stringify(folderScopeIds(db, scope.id ?? ""))],
+    };
   }
   return { where: "1 = 1", params: [] };
 }
 
 /** The ids of the meetings in the scope of the turn, oldest first. */
 export function scopeMeetingIds(db: DatabaseSync, scope: TurnScope): string[] {
-  const { where, params } = scopeSql(scope);
+  const { where, params } = scopeSql(db, scope);
   return (
     db
       .prepare(
@@ -126,7 +134,7 @@ export function meetingInScope(
   scope: TurnScope,
   meetingId: string,
 ): boolean {
-  const { where, params } = scopeSql(scope);
+  const { where, params } = scopeSql(db, scope);
   return (
     db
       .prepare(`SELECT 1 FROM meetings m WHERE m.id = ? AND ${where}`)
@@ -168,7 +176,7 @@ function loadMeetings(
   scope: TurnScope,
   f: MeetingFilter = {},
 ): MeetingRow[] {
-  const { where, params } = scopeSql(scope);
+  const { where, params } = scopeSql(db, scope);
   const parts = [where];
   const args: (string | number)[] = [...params];
   const range = checkedRange(f.dateFrom, f.dateTo);
@@ -268,7 +276,7 @@ function speakerNames(
   db: DatabaseSync,
   scope: TurnScope,
 ): { meeting_id: string; display_name: string }[] {
-  const { where, params } = scopeSql(scope);
+  const { where, params } = scopeSql(db, scope);
   return db
     .prepare(
       `SELECT sp.meeting_id, sp.display_name FROM meeting_speakers sp
@@ -322,23 +330,27 @@ export function listPeopleInScope(
 // ---------------------------------------------------------------------------
 
 function doneKeysInScope(db: DatabaseSync, scope: TurnScope): Set<string> {
-  let folderId: string | null | undefined;
-  if (scope.kind === "folder") folderId = scope.id;
+  // A done mark lives on the folder of its meeting. A parent folder reads
+  // the marks of its children too. The key holds the meeting id, so one set
+  // of keys from several folders never mixes two items.
+  let folderIds: string[] | undefined;
+  if (scope.kind === "folder") folderIds = folderScopeIds(db, scope.id ?? "");
   else if (scope.kind === "meeting") {
-    folderId = (
+    const folderId = (
       db
         .prepare("SELECT folder_id FROM meetings WHERE id = ?")
         .get(scope.id ?? "") as { folder_id: string | null } | undefined
     )?.folder_id;
     if (!folderId) return new Set();
+    folderIds = [folderId];
   }
   const rows = (
-    folderId
+    folderIds
       ? db
           .prepare(
-            "SELECT item_key FROM folder_action_item_state WHERE done = 1 AND folder_id = ?",
+            "SELECT item_key FROM folder_action_item_state WHERE done = 1 AND folder_id IN (SELECT value FROM json_each(?))",
           )
-          .all(folderId)
+          .all(JSON.stringify(folderIds))
       : db
           .prepare(
             "SELECT item_key FROM folder_action_item_state WHERE done = 1",
@@ -1254,7 +1266,7 @@ const listMeetings: ToolDef<z.infer<typeof listMeetingsArgs>> = {
  */
 export function countMentions(ctx: ToolContext, phrase: string): ToolResult {
   const started = Date.now();
-  const { where, params } = scopeSql(ctx.scope);
+  const { where, params } = scopeSql(ctx.db, ctx.scope);
   const needle = phrase.trim().toLowerCase();
   const rows = ctx.db
     .prepare(

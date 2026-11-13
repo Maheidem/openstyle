@@ -1,5 +1,6 @@
 import type { DatabaseSync } from "node:sqlite";
 import type { ChatBlock } from "@openstyle/validations";
+import { IN_SCOPE_OF_F } from "../meetings/folders.js";
 import { normalizeText } from "./cites.js";
 import { looksLikeWrite } from "./prompts.js";
 import { listPeopleInScope } from "./tools.js";
@@ -54,7 +55,7 @@ function folderRows(db: DatabaseSync): FolderRow[] {
   return db
     .prepare(
       `SELECT f.id, f.name, COUNT(m.id) AS meetings
-         FROM meeting_folders f LEFT JOIN meetings m ON m.folder_id = f.id
+         FROM meeting_folders f LEFT JOIN meetings m ON m.folder_id ${IN_SCOPE_OF_F}
         GROUP BY f.id ORDER BY f.name`,
     )
     .all() as unknown as FolderRow[];

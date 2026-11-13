@@ -159,6 +159,26 @@ describe("input (code)", () => {
     expect(input?.description).toBe("A mobile app for tide alerts.");
   });
 
+  it("reads the items of a child folder for a parent, with the done marks of the child", () => {
+    seedFolder();
+    // f2 becomes a child of f1. Its done mark lives on f2.
+    getDb().exec("UPDATE meeting_folders SET parent_id = 'f1' WHERE id = 'f2'");
+    addMeeting("c1", 4, { actionItems: [t("Order the buoys")] }, "f2");
+    addMeeting("c2", 5, { actionItems: [t("Check the dock lights")] }, "f2");
+    getDb()
+      .prepare(
+        "INSERT INTO folder_action_item_state (folder_id, item_key, done, updated_at) VALUES ('f2', ?, 1, 1)",
+      )
+      .run(actionItemKey("c2", "Check the dock lights"));
+    const parent = buildStandingInput(getDb(), "f1");
+    expect(parent?.lines).toContain("- Open task: Order the buoys");
+    expect(parent?.lines).toContain("- Decision: Secret other folder");
+    expect(parent?.lines.join("\n")).not.toContain("dock lights");
+    // A child reads only its own meetings.
+    const child = buildStandingInput(getDb(), "f2");
+    expect(child?.lines.join("\n")).not.toContain("React Native");
+  });
+
   it("returns null for an unknown folder and for a folder with no items", () => {
     addFolder("f1");
     expect(buildStandingInput(getDb(), "f1")).toBeNull();

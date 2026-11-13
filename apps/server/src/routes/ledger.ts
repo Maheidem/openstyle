@@ -16,6 +16,7 @@ import {
   updateLedgerItem,
 } from "../lib/chat/loop/ledger.js";
 import { getDb } from "../lib/db.js";
+import { folderScopeIds } from "../lib/meetings/folders.js";
 
 const QUOTE_MAX = 240;
 
@@ -60,7 +61,10 @@ const markSchema = z.object({
   agent: writer,
 });
 
-/** The meeting ids of a folder ("none": no folder), or of all meetings. */
+/**
+ * The meeting ids of a folder ("none": no folder), or of all meetings. A
+ * parent folder includes the meetings of its children.
+ */
 function meetingsOf(folderId: string | undefined): string[] {
   const db = getDb();
   const rows =
@@ -69,8 +73,10 @@ function meetingsOf(folderId: string | undefined): string[] {
       : folderId === "none"
         ? db.prepare("SELECT id FROM meetings WHERE folder_id IS NULL").all()
         : db
-            .prepare("SELECT id FROM meetings WHERE folder_id = ?")
-            .all(folderId);
+            .prepare(
+              "SELECT id FROM meetings WHERE folder_id IN (SELECT value FROM json_each(?))",
+            )
+            .all(JSON.stringify(folderScopeIds(db, folderId)));
   return (rows as { id: string }[]).map((r) => r.id);
 }
 
@@ -126,8 +132,15 @@ const ledger = new Hono()
     if (folder === undefined) return c.json({ error: "Item not found" }, 404);
     const meeting = ledgerMeeting(db, body.meeting_id);
     if (!meeting) return c.json({ error: "Meeting not found" }, 404);
-    // The list of a folder reads only the marks of its meetings.
-    if (meeting.folderId !== folder) {
+    // The list of a folder reads only the marks of its meetings, and a
+    // parent reads the meetings of its children too. So the meeting must be
+    // in the item's folder, or in a child of it.
+    const inScope =
+      folder === null
+        ? meeting.folderId === null
+        : meeting.folderId !== null &&
+          folderScopeIds(db, folder).includes(meeting.folderId);
+    if (!inScope) {
       return c.json(
         { error: "The meeting is not in the folder of this item" },
         400,

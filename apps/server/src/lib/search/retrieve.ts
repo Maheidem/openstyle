@@ -1,6 +1,7 @@
 import type { DatabaseSync } from "node:sqlite";
 import type { SearchOffReason } from "@openstyle/validations";
 import { getDb } from "../db.js";
+import { folderScopeIds } from "../meetings/folders.js";
 import { getMeetingTags } from "../meetings/tags.js";
 import { EmbedError } from "../mlx-embed/client.js";
 import { RerankError, rerankPairs } from "../mlx-rerank/client.js";
@@ -18,7 +19,9 @@ import { KNN_IN_LIST_MAX, knn, readVecRow } from "./vec-store.js";
 
 export type RetrievalScope =
   | { kind: "all" }
-  | { kind: "folder"; folderId: string }
+  // A parent folder includes its children. ownOnly: the folder alone (the
+  // Enhance and Summary memory of a meeting reads its own folder only).
+  | { kind: "folder"; folderId: string; ownOnly?: boolean }
   | { kind: "unfiled" }
   // One meeting (specs/meeting-chat-agent.md 7.1). Not used by the search UI.
   | { kind: "meeting"; meetingId: string };
@@ -253,15 +256,19 @@ export async function retrieve(input: RetrieveInput): Promise<RetrieveResult> {
     hits,
   });
 
-  let folderKey: string | undefined;
+  // The vec0 partition keys of the scope. vec0 must not get
+  // `folder_id IN (...)` (spec 7.2), so the KNN below runs once per key.
+  let folderKeys: string[] | undefined;
   if (input.scope.kind === "folder") {
     const known = db
       .prepare("SELECT 1 FROM meeting_folders WHERE id = ?")
       .get(input.scope.folderId);
     if (!known) return ok([]);
-    folderKey = input.scope.folderId;
+    folderKeys = input.scope.ownOnly
+      ? [input.scope.folderId]
+      : folderScopeIds(db, input.scope.folderId);
   } else if (input.scope.kind === "unfiled") {
-    folderKey = "";
+    folderKeys = [""];
   }
 
   // The allow list of meeting ids: the meeting scope, the tags and the date
@@ -307,17 +314,22 @@ export async function retrieve(input: RetrieveInput): Promise<RetrieveResult> {
   }
   if (input.signal?.aborted) return { status: "error", kind: "cancelled" };
 
+  // One KNN per vector, meeting group and partition key. The best map keeps
+  // the best score of each chunk; the sort below keeps k overall.
   const best = new Map<number, { meetingId: string; score: number }>();
+  const keys: (string | undefined)[] = folderKeys ?? [undefined];
   for (const vector of vectors) {
     for (const meetingIds of groups) {
-      for (const hit of knn(db, {
-        vector,
-        k: knnK,
-        modelId,
-        folderKey,
-        excludeMeetingIds: inKnn,
-        meetingIds,
-      })) {
+      for (const hit of keys.flatMap((folderKey) =>
+        knn(db, {
+          vector,
+          k: knnK,
+          modelId,
+          folderKey,
+          excludeMeetingIds: inKnn,
+          meetingIds,
+        }),
+      )) {
         const score = 1 - hit.distance;
         const old = best.get(hit.chunkId);
         if (!old || score > old.score) {
@@ -349,7 +361,7 @@ export async function retrieve(input: RetrieveInput): Promise<RetrieveResult> {
         }
       | undefined;
     if (!row) continue;
-    if (folderKey !== undefined && row.fk !== folderKey) continue;
+    if (folderKeys !== undefined && !folderKeys.includes(row.fk)) continue;
     hits.push({
       chunkId,
       meetingId: h.meetingId,
@@ -370,7 +382,7 @@ export async function retrieve(input: RetrieveInput): Promise<RetrieveResult> {
     text: queryText,
     allowMeetingIds: allow,
     excludeMeetingIds: exclude,
-    folderKey,
+    folderKeys,
     modelId,
     k: CHANNEL_K,
   });

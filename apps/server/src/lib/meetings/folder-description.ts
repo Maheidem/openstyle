@@ -7,6 +7,7 @@ import { type CallUnitDeps, callUnit } from "../llm/call-unit.js";
 import type { CreateModel, StepSchema } from "../llm/gateway.js";
 import { type CallProfile, resolveCallProfile } from "../llm/model-profiles.js";
 import { createLlmRecorder } from "../llm/recorder.js";
+import { folderScopeIds } from "./folders.js";
 import { estimateTokens } from "./workflow/chunking.js";
 import { SAFETY_TOKENS } from "./workflow/types.js";
 
@@ -132,7 +133,10 @@ export function noteOfSummary(row: NoteRow): FolderNote | null {
   };
 }
 
-/** The notes of the newest summarized meetings of a folder, newest first. */
+/**
+ * The notes of the newest summarized meetings of a folder, newest first. A
+ * parent folder includes the meetings of its children.
+ */
 export function loadFolderNotes(
   db: DatabaseSync,
   folderId: string,
@@ -141,11 +145,14 @@ export function loadFolderNotes(
     .prepare(
       `SELECT m.id, m.title, m.language, s.summary_json, s.markdown
          FROM meetings m JOIN meeting_summaries s ON s.meeting_id = m.id
-        WHERE m.folder_id = ?
+        WHERE m.folder_id IN (SELECT value FROM json_each(?))
         ORDER BY COALESCE(m.started_at, m.created_at) DESC, m.id
         LIMIT ?`,
     )
-    .all(folderId, FOLDER_DESCRIPTION_MAX_MEETINGS) as unknown as NoteRow[];
+    .all(
+      JSON.stringify(folderScopeIds(db, folderId)),
+      FOLDER_DESCRIPTION_MAX_MEETINGS,
+    ) as unknown as NoteRow[];
   return rows.flatMap((r) => noteOfSummary(r) ?? []);
 }
 

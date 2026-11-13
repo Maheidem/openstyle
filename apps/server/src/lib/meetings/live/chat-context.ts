@@ -15,6 +15,7 @@ import {
   hitText as defaultHitText,
   retrieve as defaultRetrieve,
 } from "../../search/retrieve.js";
+import { folderScopeIds } from "../folders.js";
 import type { LiveLine } from "./store.js";
 
 const log = createAppLogger("meeting-live-chat");
@@ -183,16 +184,22 @@ export async function buildChatContext(
     return `[${label}] (${kind}: "${title ?? "Untitled"}", ${formatDate(startedAt)}${when}) ${body}`;
   };
 
-  // [P#] The newest summaries of the folder.
+  // [P#] The newest summaries of the folder. A parent folder includes the
+  // meetings of its children (the retrieve scope below does the same).
   if (folderId) {
     const rows = db
       .prepare(
         `SELECT m.id, m.title, m.started_at, s.markdown
            FROM meetings m JOIN meeting_summaries s ON s.meeting_id = m.id
-          WHERE m.folder_id = ? AND m.id != ? AND COALESCE(s.markdown, '') != ''
+          WHERE m.folder_id IN (SELECT value FROM json_each(?)) AND m.id != ?
+            AND COALESCE(s.markdown, '') != ''
           ORDER BY m.started_at DESC LIMIT ?`,
       )
-      .all(folderId, input.meetingId, SUMMARIES_MAX) as {
+      .all(
+        JSON.stringify(folderScopeIds(db, folderId)),
+        input.meetingId,
+        SUMMARIES_MAX,
+      ) as {
       id: string;
       title: string | null;
       started_at: number;

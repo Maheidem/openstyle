@@ -113,13 +113,38 @@ export function makePrepareNode(deps: WorkflowDeps) {
 
       // The folder of a filed meeting adds a labeled block after the
       // meeting's own context (issue #230). Read on each run, so a renamed
-      // folder reaches the next run.
-      const folder = row.folder_id
-        ? ((deps.db
+      // folder reaches the next run. A meeting in a child folder also gets
+      // the name and description of the parent folder (sub-folders).
+      const folderRow = row.folder_id
+        ? (deps.db
             .prepare(
-              "SELECT name, description FROM meeting_folders WHERE id = ?",
+              `SELECT f.name, f.description, p.name AS parent_name,
+                      p.description AS parent_description
+                 FROM meeting_folders f
+                 LEFT JOIN meeting_folders p ON p.id = f.parent_id
+                WHERE f.id = ?`,
             )
-            .get(row.folder_id) as FolderContextInput | undefined) ?? null)
+            .get(row.folder_id) as
+            | {
+                name: string;
+                description: string | null;
+                parent_name: string | null;
+                parent_description: string | null;
+              }
+            | undefined)
+        : undefined;
+      const folder: FolderContextInput | null = folderRow
+        ? {
+            name: folderRow.name,
+            description: folderRow.description,
+            parent:
+              folderRow.parent_name === null
+                ? null
+                : {
+                    name: folderRow.parent_name,
+                    description: folderRow.parent_description,
+                  },
+          }
         : null;
 
       // Project memory (issue #234): once, for a filed meeting, when the

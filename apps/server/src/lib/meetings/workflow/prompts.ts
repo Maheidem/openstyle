@@ -39,6 +39,15 @@ export const FOLDER_CONTEXT_LABEL =
 export interface FolderContextInput {
   name: string;
   description: string | null;
+  /** The parent folder of a child folder (sub-folders). Absent: none. */
+  parent?: { name: string; description: string | null } | null;
+}
+
+/** "<name> - <description>", or "<name>", cut to FOLDER_CONTEXT_MAX_CHARS. */
+function folderText(name: string, description: string | null): string {
+  const d = description?.trim();
+  const text = d ? `${name} - ${d}` : name;
+  return Array.from(text).slice(0, FOLDER_CONTEXT_MAX_CHARS).join("").trim();
 }
 
 /**
@@ -46,8 +55,10 @@ export interface FolderContextInput {
  * never cut. Then a labeled block for the folder of a filed meeting:
  * `<FOLDER_CONTEXT_LABEL> <name> - <description>`, or
  * `<FOLDER_CONTEXT_LABEL> <name>` with no description.
- * The folder text is cut to FOLDER_CONTEXT_MAX_CHARS characters. An unfiled
- * meeting gets no block. Returns null when both parts are blank.
+ * The folder text is cut to FOLDER_CONTEXT_MAX_CHARS characters. A meeting
+ * in a child folder also gets a line `Parent folder: <name> - <description>`
+ * in the block, cut the same way. An unfiled meeting gets no block. Returns
+ * null when both parts are blank.
  */
 export function buildPromptContext(
   meetingContext: string | null,
@@ -58,13 +69,12 @@ export function buildPromptContext(
   if (own) parts.push(own);
   const name = folder?.name.trim();
   if (name) {
-    const description = folder?.description?.trim();
-    const text = description ? `${name} - ${description}` : name;
-    const cut = Array.from(text)
-      .slice(0, FOLDER_CONTEXT_MAX_CHARS)
-      .join("")
-      .trim();
-    parts.push(`${FOLDER_CONTEXT_LABEL} ${cut}`);
+    let block = `${FOLDER_CONTEXT_LABEL} ${folderText(name, folder?.description ?? null)}`;
+    const parentName = folder?.parent?.name.trim();
+    if (parentName) {
+      block += `\nParent folder: ${folderText(parentName, folder?.parent?.description ?? null)}`;
+    }
+    parts.push(block);
   }
   return parts.length > 0 ? parts.join("\n\n") : null;
 }

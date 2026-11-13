@@ -23,8 +23,11 @@ export interface FtsSearchInput {
   /** Only chunks of these meetings. An empty list matches nothing. */
   allowMeetingIds?: readonly string[];
   excludeMeetingIds?: readonly string[];
-  /** COALESCE(meetings.folder_id, ''): a folder id, or "" for unfiled. */
-  folderKey?: string;
+  /**
+   * COALESCE(meetings.folder_id, '') is one of these keys: folder ids, or ""
+   * for unfiled. A parent folder scope gives the parent and its children.
+   */
+  folderKeys?: readonly string[];
   /** Only chunks of this embedding model. */
   modelId?: string;
   k: number;
@@ -161,9 +164,9 @@ export function ftsSearch(db: DatabaseSync, input: FtsSearchInput): FtsHit[] {
     where.push("c.meeting_id NOT IN (SELECT value FROM json_each(?))");
     params.push(JSON.stringify(input.excludeMeetingIds));
   }
-  if (input.folderKey !== undefined) {
-    where.push("COALESCE(m.folder_id, '') = ?");
-    params.push(input.folderKey);
+  if (input.folderKeys !== undefined) {
+    where.push("COALESCE(m.folder_id, '') IN (SELECT value FROM json_each(?))");
+    params.push(JSON.stringify(input.folderKeys));
   }
   params.push(Math.max(1, Math.floor(input.k)));
   try {

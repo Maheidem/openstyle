@@ -1,6 +1,7 @@
 import type { DatabaseSync } from "node:sqlite";
 import { z } from "zod";
 import { actionItemKey, parseSummary } from "../meetings/folder-overview.js";
+import { folderScopeIds } from "../meetings/folders.js";
 import { normalizeText } from "./cites.js";
 import { parseDates } from "./dates.js";
 import {
@@ -103,9 +104,14 @@ function scopeRows(db: DatabaseSync, scope: TurnScope): ScopeMeetingRow[] {
       .all(scope.id) as unknown as ScopeMeetingRow[];
   }
   if (scope.kind === "folder") {
+    // A parent folder includes the meetings of its children.
     return db
-      .prepare(`${select} WHERE m.folder_id = ? ${order}`)
-      .all(scope.id) as unknown as ScopeMeetingRow[];
+      .prepare(
+        `${select} WHERE m.folder_id IN (SELECT value FROM json_each(?)) ${order}`,
+      )
+      .all(
+        JSON.stringify(folderScopeIds(db, scope.id ?? "")),
+      ) as unknown as ScopeMeetingRow[];
   }
   return db.prepare(`${select} ${order}`).all() as unknown as ScopeMeetingRow[];
 }

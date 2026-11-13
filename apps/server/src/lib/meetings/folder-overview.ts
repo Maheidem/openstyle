@@ -6,6 +6,7 @@ import type {
   OverviewSource,
 } from "@openstyle/validations";
 import { cutText, markdownParts } from "./folder-description.js";
+import { folderScopeIds, IN_SCOPE_OF_F } from "./folders.js";
 import { stageCountColumns, stageCountsOf } from "./stage-needs.js";
 import { sameItem } from "./workflow/schemas.js";
 
@@ -129,6 +130,7 @@ export function groupItems(
 
 interface MeetingRow {
   id: string;
+  folder_id: string;
   title: string | null;
   started_at: number | null;
   duration_ms: number | null;
@@ -238,34 +240,34 @@ interface FolderRow {
   need_enhance: number;
 }
 
-/** The marked-done keys of a folder. */
-function doneKeys(db: DatabaseSync, folderId: string): Set<string> {
+/**
+ * The marked-done keys of the folders in a scope. A mark lives on the folder
+ * of its meeting, so a parent reads the marks of its children too.
+ */
+function doneKeys(db: DatabaseSync, scope: readonly string[]): Set<string> {
   const rows = db
     .prepare(
-      "SELECT item_key FROM folder_action_item_state WHERE folder_id = ? AND done = 1",
+      "SELECT item_key FROM folder_action_item_state WHERE folder_id IN (SELECT value FROM json_each(?)) AND done = 1",
     )
-    .all(folderId) as { item_key: string }[];
+    .all(JSON.stringify(scope)) as { item_key: string }[];
   return new Set(rows.map((r) => r.item_key));
 }
 
-/** The action item groups of a folder with their keys (the done route reads them). */
-export function folderActionGroups(
+/** The meetings of the folders in a scope (a parent and its children). */
+function loadMeetings(
   db: DatabaseSync,
-  folderId: string,
-): ItemGroup[] {
-  return groupItems(collect(loadMeetings(db, folderId)).actions, true);
-}
-
-function loadMeetings(db: DatabaseSync, folderId: string): MeetingRow[] {
+  scope: readonly string[],
+): MeetingRow[] {
   return db
     .prepare(
-      `SELECT m.id, m.title, m.started_at, m.duration_ms, m.calendar_attendees,
-              s.summary_json, s.markdown, s.created_at AS summary_created_at
+      `SELECT m.id, m.folder_id, m.title, m.started_at, m.duration_ms,
+              m.calendar_attendees, s.summary_json, s.markdown,
+              s.created_at AS summary_created_at
          FROM meetings m LEFT JOIN meeting_summaries s ON s.meeting_id = m.id
-        WHERE m.folder_id = ?
+        WHERE m.folder_id IN (SELECT value FROM json_each(?))
         ORDER BY COALESCE(m.started_at, m.created_at), m.id`,
     )
-    .all(folderId) as unknown as MeetingRow[];
+    .all(JSON.stringify(scope)) as unknown as MeetingRow[];
 }
 
 function collect(meetings: readonly MeetingRow[]) {
@@ -296,7 +298,7 @@ function collect(meetings: readonly MeetingRow[]) {
 /** Count the names per meeting. Names compare in lower case. */
 function countPeople(
   db: DatabaseSync,
-  folderId: string,
+  scope: readonly string[],
   meetings: readonly MeetingRow[],
 ): { name: string; meeting_count: number }[] {
   const perMeeting = new Map<string, Map<string, string>>();
@@ -310,10 +312,11 @@ function countPeople(
     .prepare(
       `SELECT sp.meeting_id, sp.display_name FROM meeting_speakers sp
          JOIN meetings m ON m.id = sp.meeting_id
-        WHERE m.folder_id = ? AND sp.merged_into IS NULL
+        WHERE m.folder_id IN (SELECT value FROM json_each(?))
+          AND sp.merged_into IS NULL
           AND sp.display_name IS NOT NULL AND sp.display_name <> ''`,
     )
-    .all(folderId) as {
+    .all(JSON.stringify(scope)) as {
     meeting_id: string;
     display_name: string;
   }[];
@@ -349,24 +352,28 @@ export function buildFolderOverview(
               MAX(m.started_at) AS last_meeting_at,
               COALESCE(SUM(m.duration_ms), 0) AS total_duration_ms,
               ${stageCountColumns}
-         FROM meeting_folders f LEFT JOIN meetings m ON m.folder_id = f.id
+         FROM meeting_folders f
+         LEFT JOIN meetings m ON m.folder_id ${IN_SCOPE_OF_F}
         WHERE f.id = ? GROUP BY f.id`,
     )
     .get(folderId) as unknown as FolderRow | undefined;
   if (!folder) return null;
 
-  const meetings = loadMeetings(db, folderId);
+  // A parent folder includes the meetings of its children.
+  const scope = folderScopeIds(db, folderId);
+  const meetings = loadMeetings(db, scope);
   const { decisions, actions, questions } = collect(meetings);
-  const done = doneKeys(db, folderId);
+  const done = doneKeys(db, scope);
 
   const tags = db
     .prepare(
       `SELECT t.name, COUNT(DISTINCT mt.meeting_id) AS meeting_count
          FROM meeting_tags mt JOIN tags t ON t.id = mt.tag_id
          JOIN meetings m ON m.id = mt.meeting_id
-        WHERE m.folder_id = ? GROUP BY t.id ORDER BY meeting_count DESC, t.name`,
+        WHERE m.folder_id IN (SELECT value FROM json_each(?))
+        GROUP BY t.id ORDER BY meeting_count DESC, t.name`,
     )
-    .all(folderId) as { name: string; meeting_count: number }[];
+    .all(JSON.stringify(scope)) as { name: string; meeting_count: number }[];
 
   const newestFirst = [...meetings].reverse();
   const lastActivity = meetings.reduce<number | null>((best, m) => {
@@ -414,7 +421,7 @@ export function buildFolderOverview(
       text: g.text,
       sources: g.sources,
     })),
-    people: countPeople(db, folderId, meetings),
+    people: countPeople(db, scope, meetings),
     tags,
     last_activity: lastActivity,
   };
@@ -423,7 +430,9 @@ export function buildFolderOverview(
 /**
  * Mark the action item with `key` done or open. The mark goes to the key of
  * the group and to every member key, so a later split of the group keeps it.
- * Returns false when no item of the folder has the key.
+ * Each member key is stored on the folder of its own meeting, so a mark set
+ * on a parent page for a meeting in a child folder goes to the child.
+ * Returns false when no item of the folder (or of its children) has the key.
  */
 export function setActionItemDone(
   db: DatabaseSync,
@@ -432,16 +441,25 @@ export function setActionItemDone(
   isDone: boolean,
   now: number,
 ): boolean {
-  const group = folderActionGroups(db, folderId).find((g) =>
-    g.keys.includes(key),
-  );
+  const meetings = loadMeetings(db, folderScopeIds(db, folderId));
+  const actions = collect(meetings).actions;
+  const group = groupItems(actions, true).find((g) => g.keys.includes(key));
   if (!group) return false;
+  const folderOf = new Map(meetings.map((m) => [m.id, m.folder_id]));
+  const keyFolder = new Map(
+    actions.map((a) => [
+      actionItemKey(a.source.meeting_id, a.text),
+      folderOf.get(a.source.meeting_id) ?? folderId,
+    ]),
+  );
   const upsert = db.prepare(
     `INSERT INTO folder_action_item_state (folder_id, item_key, done, updated_at)
      VALUES (?, ?, ?, ?)
      ON CONFLICT(folder_id, item_key) DO UPDATE SET done = excluded.done,
        updated_at = excluded.updated_at`,
   );
-  for (const k of group.keys) upsert.run(folderId, k, isDone ? 1 : 0, now);
+  for (const k of group.keys) {
+    upsert.run(keyFolder.get(k) ?? folderId, k, isDone ? 1 : 0, now);
+  }
   return true;
 }

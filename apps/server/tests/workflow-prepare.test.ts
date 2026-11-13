@@ -318,6 +318,8 @@ describe("prepare: folder context (#230)", () => {
 
   beforeEach(() => {
     // resetWorkflowTables deleted the meetings, so no row holds a folder.
+    // Child folders first: parent_id is ON DELETE RESTRICT.
+    getDb().exec("DELETE FROM meeting_folders WHERE parent_id IS NOT NULL");
     getDb().exec("DELETE FROM meeting_folders");
   });
 
@@ -329,6 +331,25 @@ describe("prepare: folder context (#230)", () => {
       `${MEETING_CONTEXT}\n\n${L} Orchid Rollout - Launch of a made-up app.`,
     );
     // Summarize reads only the meeting's own context (P8b).
+    expect(out.prepared.context).toBe(MEETING_CONTEXT);
+  });
+
+  it("a meeting in a child folder also gets the parent folder line", async () => {
+    const f = seedFixtureMeeting({ chunks: 1, speakers: 2 });
+    const child = fileInFolder(f.meeting.id, "Planning", "Sprint plans.");
+    const now = Date.now();
+    getDb()
+      .prepare(
+        "INSERT INTO meeting_folders (id, name, description, created_at, updated_at) VALUES ('parent-1', 'Orchid', 'A made-up client.', ?, ?)",
+      )
+      .run(now, now);
+    getDb()
+      .prepare("UPDATE meeting_folders SET parent_id = 'parent-1' WHERE id = ?")
+      .run(child);
+    const { out } = await prepare(f.meeting.id);
+    expect(out.prepared.contextWithFolder).toBe(
+      `${MEETING_CONTEXT}\n\n${L} Planning - Sprint plans.\nParent folder: Orchid - A made-up client.`,
+    );
     expect(out.prepared.context).toBe(MEETING_CONTEXT);
   });
 
