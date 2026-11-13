@@ -1,10 +1,13 @@
-import type { CalendarEvent } from "@openstyle/validations";
+import type { CalendarEvent, MeetingTitleSource } from "@openstyle/validations";
 import { getDb } from "../db.js";
 
 export interface MeetingRow {
   id: string;
   folder_id: string | null;
   title: string | null;
+  /** Who wrote the title (schema 58): default, file, calendar, user or ai.
+   * The auto title writes only over default and file. */
+  title_source: MeetingTitleSource | null;
   started_at: number | null;
   ended_at: number | null;
   duration_ms: number | null;

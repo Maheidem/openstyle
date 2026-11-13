@@ -484,3 +484,25 @@ export const MEETING_TAGS_STEP_SCHEMA: StepSchema<MeetingTags> = {
   version: 1,
   zod: MeetingTagsSchema,
 };
+
+export interface MeetingTitle {
+  title: string;
+}
+
+/**
+ * The `suggestTitle` answer: one title. With `limits` (the local MLX LLM and
+ * an own server) the schema carries `maxLength`, so a small model cannot
+ * write on until the output limit.
+ */
+export function meetingTitleStepSchema(
+  limits: boolean,
+  maxChars: number,
+): StepSchema<MeetingTitle> {
+  return {
+    name: "meeting_title",
+    version: 1,
+    zod: z.object({
+      title: limits ? z.string().meta({ maxLength: maxChars }) : z.string(),
+    }),
+  };
+}

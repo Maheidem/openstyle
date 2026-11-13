@@ -15,6 +15,11 @@ import { hasJob } from "./job-registry.js";
 const HAS_TEXT = `EXISTS (SELECT 1 FROM meeting_segments ts
   WHERE ts.meeting_id = m.id AND ts.text IS NOT NULL AND ts.text <> '')`;
 
+/** The meeting has a stored summary with text. Generate titles needs it. */
+const HAS_SUMMARY = `EXISTS (SELECT 1 FROM meeting_summaries ms
+  WHERE ms.meeting_id = m.id AND (COALESCE(ms.summary_json, '') <> ''
+    OR COALESCE(ms.markdown, '') <> ''))`;
+
 /** The status of a meeting with a finished transcript. */
 const TRANSCRIBED = `m.status IN ('transcribed', 'summarized')`;
 
@@ -35,6 +40,10 @@ const NEEDS: Record<MeetingStage, string> = {
   enhance: `(${TRANSCRIBED} AND ${HAS_TEXT} AND m.enhanced_at IS NULL AND NOT EXISTS (
     SELECT 1 FROM meeting_segments es WHERE es.meeting_id = m.id
       AND es.enhanced_text IS NOT NULL AND es.enhanced_text <> ''))`,
+  // Generate titles (auto title, owner decision 9): only a meeting with no
+  // title or a file-name title, and a summary to read. An AI, user or
+  // calendar title stays.
+  title: `(m.title_source IN ('default', 'file') AND ${HAS_SUMMARY})`,
 };
 
 /** The SQL expression (alias `m`) that is true when a meeting needs `stage`. */
@@ -54,6 +63,7 @@ export type StageBlock =
   | "busy"
   | "no_audio"
   | "no_transcript"
+  | "no_summary"
   | "no_llm";
 
 /**
@@ -65,16 +75,26 @@ export type StageBlock =
 export function stageBlock(id: string, stage: MeetingStage): StageBlock | null {
   const row = getDb()
     .prepare(
-      `SELECT m.status, m.audio_dir, ${HAS_TEXT} AS has_text
+      `SELECT m.status, m.audio_dir, ${HAS_TEXT} AS has_text,
+         ${HAS_SUMMARY} AS has_summary
        FROM meetings m WHERE m.id = ?`,
     )
     .get(id) as
-    | { status: string; audio_dir: string | null; has_text: number }
+    | {
+        status: string;
+        audio_dir: string | null;
+        has_text: number;
+        has_summary: number;
+      }
     | undefined;
   if (!row) return "gone";
   if (hasJob(id) || row.status === "recording" || row.status === "transcribing")
     return "busy";
   if (stage === "transcribe") return row.audio_dir ? null : "no_audio";
+  if (stage === "title") {
+    if (row.has_summary !== 1) return "no_summary";
+    return hasDefaultLlm() ? null : "no_llm";
+  }
   if (
     (row.status !== "transcribed" && row.status !== "summarized") ||
     row.has_text !== 1
@@ -117,6 +137,7 @@ export interface FolderStageCounts {
   transcribe: { ready: number; blocked: number };
   summarize: { ready: number; blocked: number };
   enhance: { ready: number; blocked: number };
+  title: { ready: number; blocked: number };
 }
 
 /** The SQL columns that `stageCountsOf` reads, for the folder list query. */
@@ -128,7 +149,9 @@ export const stageCountColumns = `
   COALESCE(SUM(CASE WHEN m.id IS NOT NULL AND ${NEEDS.summarize}
     THEN 1 ELSE 0 END), 0) AS need_summarize,
   COALESCE(SUM(CASE WHEN m.id IS NOT NULL AND ${NEEDS.enhance}
-    THEN 1 ELSE 0 END), 0) AS need_enhance`;
+    THEN 1 ELSE 0 END), 0) AS need_enhance,
+  COALESCE(SUM(CASE WHEN m.id IS NOT NULL AND ${NEEDS.title}
+    THEN 1 ELSE 0 END), 0) AS need_title`;
 
 /**
  * The stage counts from the columns of `stageCountColumns`. Transcribe is
@@ -140,6 +163,7 @@ export function stageCountsOf(row: {
   need_transcribe_no_audio: number;
   need_summarize: number;
   need_enhance: number;
+  need_title: number;
 }): FolderStageCounts {
   const llm = hasDefaultLlm();
   const llmStage = (n: number) =>
@@ -151,5 +175,6 @@ export function stageCountsOf(row: {
     },
     summarize: llmStage(row.need_summarize),
     enhance: llmStage(row.need_enhance),
+    title: llmStage(row.need_title),
   };
 }

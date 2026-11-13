@@ -30,6 +30,9 @@ export const STEP_TASK: Record<LlmStepId, MeetingLlmTaskId> = {
   identifySpeakers: "meetingEnhance",
   summarize: "meetingSummarize",
   suggestTags: "meetingEnhance",
+  // The title is written from the summary, so it runs under the Summarize
+  // task: the user's one selected model, no new model setting.
+  suggestTitle: "meetingSummarize",
 };
 
 export interface ReasoningPlan {

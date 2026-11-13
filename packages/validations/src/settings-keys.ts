@@ -65,6 +65,12 @@ export const SETTINGS_KEYS = {
    */
   meetingProjectMemory: "meeting_project_memory",
   /**
+   * Auto title: after Summarize, a meeting with no title or a file-name title
+   * gets a short AI title. ON by default: a missing row means on, and only
+   * `"false"` turns it off.
+   */
+  meetingAutoTitle: "meeting_auto_title",
+  /**
    * Live transcript and chat during a recording (issue #375,
    * specs/live-chat.md). Experimental. OFF by default: only the value
    * `"true"` turns it on.

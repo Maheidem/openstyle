@@ -11,7 +11,8 @@ export type LlmStepId =
   | "correctChunk"
   | "identifySpeakers"
   | "summarize"
-  | "suggestTags";
+  | "suggestTags"
+  | "suggestTitle";
 
 /** The LLM stages of a dictation (specs/dictation-pipeline.md 4.6). */
 export type DictationStepId =

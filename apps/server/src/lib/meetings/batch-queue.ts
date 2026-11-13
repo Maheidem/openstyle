@@ -21,11 +21,15 @@ const log = createAppLogger("meetings");
  */
 export interface BatchQueueDeps {
   /** Start the stage on the meeting, with the guards of its route. `runId`
-   * names the workflow run of Summarize and Enhance. */
+   * names the workflow run of Summarize and Enhance. `done` is set by a stage
+   * that holds no job slot (Generate titles): the queue waits for it in
+   * place of `waitForEnd` and `outcome`. */
   start(
     id: string,
     stage: MeetingStage,
-  ): { ok: true; runId?: string } | { ok: false };
+  ):
+    | { ok: true; runId?: string; done?: Promise<DirectOutcome> }
+    | { ok: false };
   /** How the job that just ended did. Called after `waitForEnd`. */
   outcome(id: string, stage: MeetingStage, runId?: string): StageOutcome;
   /** The failure kind of a run that did not end well, or null. */
@@ -46,6 +50,12 @@ export interface BatchQueueDeps {
 
 /** How a started job ended. `partial` wrote a part of its work. */
 export type StageOutcome = "ok" | "partial" | "failed" | "cancelled";
+
+/** The end of a stage that holds no job slot, with its failure kind. */
+export interface DirectOutcome {
+  outcome: StageOutcome;
+  failureKind: string | null;
+}
 
 interface Item {
   id: string;
@@ -147,15 +157,18 @@ export function createBatchQueue(deps: BatchQueueDeps): BatchQueue {
       return;
     }
     log.info(`batch: started ${item.stage} on meeting ${item.id}`);
-    await deps.waitForEnd(item.id);
+    const direct = started.done ? await started.done : null;
+    if (!direct) await deps.waitForEnd(item.id);
     // The end of the job is not the end of the work: the run can fail and
     // still release its slot. Only a run that ended well counts as done.
     const outcome = currentCancelled
       ? "cancelled"
-      : deps.outcome(item.id, item.stage, started.runId);
+      : (direct?.outcome ?? deps.outcome(item.id, item.stage, started.runId));
     if (outcome === "cancelled") cancelled += 1;
     else if (outcome === "failed" || outcome === "partial") {
-      const kind = deps.failureKind(item.id, item.stage, started.runId);
+      const kind = direct
+        ? direct.failureKind
+        : deps.failureKind(item.id, item.stage, started.runId);
       fail(item, kind ?? (outcome === "failed" ? "run_failed" : "partly_done"));
     } else done += 1;
     log.info(`batch: ended ${item.stage} on meeting ${item.id} (${outcome})`);

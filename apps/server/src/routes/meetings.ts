@@ -10,6 +10,7 @@ import {
   MEETINGS_DIR_NAME,
   type MeetingDetail,
   type MeetingStage,
+  type MeetingTitleSource,
   MIC_WAV,
   meetingBatchErrorSchema,
   meetingBatchStateSchema,
@@ -20,6 +21,8 @@ import {
   meetingListResponseSchema,
   meetingStartResponseSchema,
   meetingSummaryVersionsResponseSchema,
+  meetingTitleGenerateErrorSchema,
+  meetingTitleGenerateResponseSchema,
   type StartRunResponse,
   SYNC_JSON,
   SYSTEM_WAV,
@@ -41,9 +44,15 @@ import {
   type WaitForDictationIdleOptions,
   waitForDictationIdle,
 } from "../lib/dictation-activity.js";
+import { callStructured } from "../lib/llm/gateway.js";
+import {
+  GatewayError,
+  ModelUnavailableError,
+} from "../lib/llm/gateway-errors.js";
 import { createRunAdmin } from "../lib/llm/recorder.js";
 import {
   createBatchQueue,
+  type DirectOutcome,
   type StageOutcome,
 } from "../lib/meetings/batch-queue.js";
 import { meetingBiasTerms } from "../lib/meetings/bias-terms.js";
@@ -85,6 +94,10 @@ import {
   setRecordingPaused,
 } from "../lib/meetings/live/pause.js";
 import { getLive } from "../lib/meetings/live/store.js";
+import {
+  type GenerateTitleDeps,
+  generateMeetingTitle,
+} from "../lib/meetings/meeting-title.js";
 import {
   isMixedChunk,
   segmentWavFile,
@@ -132,6 +145,7 @@ import {
   detectSpeechSpans,
   type VadDeps,
 } from "../lib/meetings/vad.js";
+import { realSleep } from "../lib/meetings/workflow/context.js";
 import {
   getMeetingEnhanceAutoRunSetting,
   type RunnerDeps,
@@ -1485,15 +1499,69 @@ function stageFailureKind(
   );
 }
 
+/** The dependencies of a Generate title call, with the test seam. */
+function titleDeps(): GenerateTitleDeps {
+  const t = getWorkflowTestDeps();
+  return {
+    db: getDb(),
+    callStructured: t?.callStructured ?? callStructured,
+    sleep: t?.sleep ?? realSleep,
+    now: t?.now ?? Date.now,
+    ...(t?.createModel ? { createModel: t.createModel } : {}),
+  };
+}
+
+/** The Generate title calls of the batch, so a batch cancel can stop one. */
+const titleBatchCalls = new Map<string, AbortController>();
+
+/**
+ * One Generate titles item of the batch. It holds no job slot: a title call
+ * is short and writes only over a `default` or `file` title (decision 9).
+ */
+function startTitleItem(id: string): {
+  ok: true;
+  done: Promise<DirectOutcome>;
+} {
+  const controller = new AbortController();
+  titleBatchCalls.set(id, controller);
+  const done = generateMeetingTitle(id, titleDeps(), {
+    force: false,
+    startedBy: "button",
+    signal: controller.signal,
+  })
+    .then(
+      (r): DirectOutcome =>
+        r.status === "ok"
+          ? { outcome: "ok", failureKind: null }
+          : { outcome: "failed", failureKind: r.status },
+    )
+    .catch(
+      (err: unknown): DirectOutcome =>
+        controller.signal.aborted
+          ? { outcome: "cancelled", failureKind: null }
+          : {
+              outcome: "failed",
+              failureKind: err instanceof GatewayError ? err.kind : null,
+            },
+    )
+    .finally(() => titleBatchCalls.delete(id));
+  return { ok: true, done };
+}
+
 /**
  * The batch queue (specs/meeting-folder-batch.md 3). One per process, in
  * memory only. It starts each stage with the same function as the route.
  */
 const batchQueue = createBatchQueue({
   start: (id, stage) =>
-    stage === "transcribe" ? startTranscribe(id) : startLlmStage(id, stage),
+    stage === "transcribe"
+      ? startTranscribe(id)
+      : stage === "title"
+        ? startTitleItem(id)
+        : startLlmStage(id, stage),
   waitForEnd: waitForRelease,
   cancel: (id) => {
+    titleBatchCalls.get(id)?.abort();
     requestCancel(id);
   },
   outcome: stageOutcome,
@@ -1599,8 +1667,14 @@ const meetings = new Hono()
         const ids = folderMeetingsNeeding(input.folder_id, input.stage);
         return c.json(batchQueue.enqueue(ids, input.stage, true), 202);
       }
+      // An explicit selection is a re-run, except Generate titles: it fills
+      // only an empty or file-name title (owner decision 9).
       return c.json(
-        batchQueue.enqueue(input.meeting_ids, input.stage, false),
+        batchQueue.enqueue(
+          input.meeting_ids,
+          input.stage,
+          input.stage === "title",
+        ),
         202,
       );
     },
@@ -1666,14 +1740,21 @@ const meetings = new Hono()
     }
     // An empty title takes the event title (owner decision 3).
     const finalTitle = title?.trim() ? title : calendar?.title.trim() || null;
+    const titleSource: MeetingTitleSource = title?.trim()
+      ? "user"
+      : finalTitle
+        ? "calendar"
+        : "default";
     db.prepare(
-      `INSERT INTO meetings (id, title, started_at, status, audio_dir, created_at,
-         calendar_event_id, calendar_title, calendar_start, calendar_end,
-         calendar_url, calendar_attendees, folder_id)
-       VALUES (?, ?, ?, 'recording', ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      `INSERT INTO meetings (id, title, title_source, started_at, status,
+         audio_dir, created_at, calendar_event_id, calendar_title,
+         calendar_start, calendar_end, calendar_url, calendar_attendees,
+         folder_id)
+       VALUES (?, ?, ?, ?, 'recording', ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
     ).run(
       id,
       finalTitle,
+      titleSource,
       started_at,
       audio_dir,
       Date.now(),
@@ -1725,14 +1806,19 @@ const meetings = new Hono()
     if (!row) return c.json({ error: "Not found" }, 404);
     const inherited = !row.title?.trim() || row.title === row.calendar_title;
     const title = inherited ? event.title.trim() || null : row.title;
+    const titleSource = inherited
+      ? title
+        ? "calendar"
+        : "default"
+      : row.title_source;
     getDb()
       .prepare(
-        `UPDATE meetings SET title = ?, calendar_event_id = ?, calendar_title = ?,
-           calendar_start = ?, calendar_end = ?, calendar_url = ?,
-           calendar_attendees = ?
+        `UPDATE meetings SET title = ?, title_source = ?, calendar_event_id = ?,
+           calendar_title = ?, calendar_start = ?, calendar_end = ?,
+           calendar_url = ?, calendar_attendees = ?
          WHERE id = ?`,
       )
-      .run(title, ...calendarColumnValues(event), id);
+      .run(title, titleSource, ...calendarColumnValues(event), id);
     notifyMeetingChanged(id);
     return c.json({ ok: true, title });
   })
@@ -1742,18 +1828,17 @@ const meetings = new Hono()
     const id = c.req.param("id");
     const row = getMeetingRow(id);
     if (!row) return c.json({ error: "Not found" }, 404);
-    const title =
-      row.calendar_title !== null && row.title === row.calendar_title
-        ? null
-        : row.title;
+    const fromEvent =
+      row.calendar_title !== null && row.title === row.calendar_title;
+    const title = fromEvent ? null : row.title;
     getDb()
       .prepare(
-        `UPDATE meetings SET title = ?, calendar_event_id = NULL,
+        `UPDATE meetings SET title = ?, title_source = ?, calendar_event_id = NULL,
            calendar_title = NULL, calendar_start = NULL, calendar_end = NULL,
            calendar_url = NULL, calendar_attendees = NULL
          WHERE id = ?`,
       )
-      .run(title, id);
+      .run(title, fromEvent ? "default" : row.title_source, id);
     notifyMeetingChanged(id);
     return c.json({ ok: true, title });
   })
@@ -1870,7 +1955,8 @@ const meetings = new Hono()
     const sets: string[] = [];
     const values: (string | number | null)[] = [];
     if (title !== undefined) {
-      sets.push("title = ?");
+      // A typed title is the user's: the auto title never writes over it.
+      sets.push("title = ?", "title_source = 'user'");
       values.push(title);
     }
     if (language !== undefined) {
@@ -2479,6 +2565,62 @@ const meetings = new Hono()
   .post("/:id/summarize", (c) =>
     startRunResponse(c, c.req.param("id"), "summarize"),
   )
+  // Generate title (auto title, owner decision 8): one AI call now, from the
+  // stored summary. It writes over any title, also one the user typed; the
+  // title is then the AI's again. It answers when the title is written.
+  .post("/:id/title/generate", async (c) => {
+    const id = c.req.param("id");
+    try {
+      const result = await generateMeetingTitle(id, titleDeps(), {
+        force: true,
+        startedBy: "button",
+        signal: c.req.raw.signal,
+      });
+      if (result.status === "gone") {
+        return c.json(
+          meetingTitleGenerateErrorSchema.parse({
+            error: "Not found",
+            code: "not_found",
+          }),
+          404,
+        );
+      }
+      if (result.status !== "ok") {
+        return c.json(
+          meetingTitleGenerateErrorSchema.parse({
+            error: "The meeting has no summary yet",
+            code: "no_summary",
+          }),
+          409,
+        );
+      }
+      return c.json(
+        meetingTitleGenerateResponseSchema.parse({
+          ok: true,
+          title: result.title,
+          title_source: "ai",
+        }),
+      );
+    } catch (err) {
+      if (err instanceof ModelUnavailableError) {
+        return c.json(
+          meetingTitleGenerateErrorSchema.parse({
+            error: "No AI model is set up. Add one in Settings > Models.",
+            code: "no_llm",
+          }),
+          409,
+        );
+      }
+      log.warn(`meeting ${id}: generate title failed: ${String(err)}`);
+      return c.json(
+        meetingTitleGenerateErrorSchema.parse({
+          error: "The AI model could not write a title",
+          code: "llm_failed",
+        }),
+        502,
+      );
+    }
+  })
   // LLM cleanup pass (Enhance) over the merged transcript. It starts one
   // run with the stages `enhance` and `summarize` (3.6). 202 + background run
   // + poll, like /summarize. Never destructive: only UPDATEs

@@ -238,6 +238,7 @@ interface FolderRow {
   need_transcribe_no_audio: number;
   need_summarize: number;
   need_enhance: number;
+  need_title: number;
 }
 
 /**

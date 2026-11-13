@@ -107,6 +107,7 @@ export function makePrepareNode(deps: WorkflowDeps) {
           identifySpeakers: IDENTIFY_REASONING_MAX,
           summarize: 0,
           suggestTags: 0,
+          suggestTitle: 0,
         },
         ...(deps.reasoningSteps ? { reasoningSteps: deps.reasoningSteps } : {}),
       });

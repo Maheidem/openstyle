@@ -22,13 +22,17 @@ export type MeetingJobPhase =
   | "summarizing"
   | "combining"
   | "saving"
-  | "tags";
+  | "tags"
+  | "title";
 
 /** One row of `GET /api/meetings`. */
 export interface MeetingListItem {
   id: string;
   folder_id: string | null;
   title: string | null;
+  /** Who wrote the title (auto title): default, file, calendar, user or ai.
+   * Absent on rows of an old server. */
+  title_source?: "default" | "file" | "calendar" | "user" | "ai" | null;
   started_at: number | null;
   ended_at: number | null;
   duration_ms: number | null;

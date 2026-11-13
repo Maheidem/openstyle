@@ -113,7 +113,7 @@ afterEach(() => {
 // --- GR1 to GR3 -----------------------------------------------------------------
 
 describe("GR1: the graph is Figure 1", () => {
-  it("names exactly the seven nodes", () => {
+  it("names exactly the eight nodes", () => {
     const { deps } = makeTestDeps();
     const drawn = buildGraph(deps).getGraph();
     const names = Object.keys(drawn.nodes).filter((n) => !n.startsWith("__"));
@@ -124,6 +124,7 @@ describe("GR1: the graph is Figure 1", () => {
         "prepare",
         "save",
         "suggestTags",
+        "suggestTitle",
         "summarize",
         "verifyEvidence",
       ].sort(),

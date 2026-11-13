@@ -276,12 +276,14 @@ export function EnhanceSettingsPopover(): React.JSX.Element {
   const [open, setOpen] = useState(false);
   const [busy, setBusy] = useState(false);
   const checked = settings?.[SETTINGS_KEYS.meetingEnhanceAutoRun] === "true";
+  // Auto title is on by default: only "false" turns it off.
+  const autoTitle = settings?.[SETTINGS_KEYS.meetingAutoTitle] !== "false";
 
   const handleToggle = useCallback(
-    async (next: boolean) => {
+    async (key: string, next: boolean) => {
       setBusy(true);
       try {
-        await putSetting(SETTINGS_KEYS.meetingEnhanceAutoRun, String(next));
+        await putSetting(key, String(next));
         await queryClient.invalidateQueries({ queryKey: queryKeys.settings });
       } finally {
         setBusy(false);
@@ -320,7 +322,27 @@ export function EnhanceSettingsPopover(): React.JSX.Element {
           <Switch
             checked={checked}
             disabled={busy || !hasLlm}
-            onCheckedChange={(v) => void handleToggle(v)}
+            onCheckedChange={(v) =>
+              void handleToggle(SETTINGS_KEYS.meetingEnhanceAutoRun, v)
+            }
+          />
+        </div>
+        <div className="flex items-center justify-between gap-3">
+          <div className="min-w-0">
+            <p className="text-foreground m-0 text-[12.5px] font-medium">
+              {t("meetings.autoTitleLabel")}
+            </p>
+            <p className="text-muted-foreground m-0 text-[11px] leading-[1.5]">
+              {t("meetings.autoTitleHint")}
+            </p>
+          </div>
+          <Switch
+            checked={autoTitle}
+            disabled={busy || !hasLlm}
+            aria-label={t("meetings.autoTitleLabel")}
+            onCheckedChange={(v) =>
+              void handleToggle(SETTINGS_KEYS.meetingAutoTitle, v)
+            }
           />
         </div>
       </PopoverContent>

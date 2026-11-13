@@ -122,6 +122,11 @@ export const SETTINGS_CATALOG: Readonly<Record<string, SettingEntry>> = {
     description:
       "Summary and Enhance of a filed meeting use earlier meetings of its folder.",
   },
+  [K.meetingAutoTitle]: {
+    type: "boolean",
+    description:
+      "After Summarize, give a meeting with no title or a file name a short AI title.",
+  },
   [K.liveChatEnabled]: {
     type: "boolean",
     description:

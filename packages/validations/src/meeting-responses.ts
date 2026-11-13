@@ -2,10 +2,27 @@ import { z } from "zod";
 import { calendarEventSchema } from "./meeting-calendar.js";
 import type { MeetingDetail } from "./meeting-types.js";
 
+/**
+ * Who wrote the title of a meeting (auto title). `default`: no title yet.
+ * `file`: the import file name. `calendar`: the linked event. `user`: the
+ * person typed it. `ai`: the auto title step or the Generate title button.
+ * The AI step writes only over `default` and `file`.
+ */
+export const meetingTitleSourceSchema = z.enum([
+  "default",
+  "file",
+  "calendar",
+  "user",
+  "ai",
+]);
+export type MeetingTitleSource = z.infer<typeof meetingTitleSourceSchema>;
+
 const meetingRecordSchema = z.object({
   id: z.string(),
   folder_id: z.string().nullable(),
   title: z.string().nullable(),
+  /** Who wrote the title (auto title). Absent on rows of an old server. */
+  title_source: meetingTitleSourceSchema.nullable().optional(),
   started_at: z.number().nullable(),
   ended_at: z.number().nullable(),
   duration_ms: z.number().nullable(),
@@ -32,6 +49,7 @@ const meetingJobPhaseSchema = z.enum([
   "combining",
   "saving",
   "tags",
+  "title",
 ]);
 
 const meetingJobKindSchema = z.enum([
@@ -110,3 +128,18 @@ export const meetingDetailResponseSchema = meetingRecordSchema.extend({
     })
     .nullable(),
 }) satisfies z.ZodType<MeetingDetail>;
+
+/** `POST /api/meetings/:id/title/generate`: the new AI title. */
+export const meetingTitleGenerateResponseSchema = z.object({
+  ok: z.literal(true),
+  title: z.string(),
+  title_source: meetingTitleSourceSchema,
+});
+
+export const meetingTitleGenerateErrorSchema = z.object({
+  error: z.string(),
+  code: z.enum(["not_found", "no_summary", "no_llm", "llm_failed"]),
+});
+export type MeetingTitleGenerateErrorCode = z.infer<
+  typeof meetingTitleGenerateErrorSchema
+>["code"];

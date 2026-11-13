@@ -67,7 +67,10 @@ describe("schema 42: meeting tags", () => {
     expect(db.prepare("SELECT version FROM schema_version").get()).toEqual({
       version: 58,
     });
-    expect(db.prepare("SELECT * FROM meetings").all()).toEqual(before);
+    // Schema 58 fills title_source: system text only reads as an import.
+    expect(db.prepare("SELECT * FROM meetings").all()).toEqual(
+      before.map((row) => ({ ...row, title_source: "file" })),
+    );
     expect(db.prepare("SELECT * FROM meeting_segments").all()).toEqual(
       segments,
     );

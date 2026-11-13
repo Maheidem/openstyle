@@ -11,7 +11,7 @@ const DEFAULT_CLOUD_URL = "https://service.freestylevoice.com";
 // reports 26). Migrations only run while currentVersion < SCHEMA_VERSION, so a
 // fork migration numbered below that is silently skipped for anyone arriving
 // from upstream. Keep this above the highest upstream version we have seen.
-const SCHEMA_VERSION = 58;
+const SCHEMA_VERSION = 59;
 
 // Legacy default format-rule patterns (used only by pre-v12 migrations below):
 // domain/phrase entries match as substrings of url+title+app; bare words match
@@ -1564,6 +1564,30 @@ function applyMigrations(db: DatabaseSync, currentVersion: number): void {
         ON meeting_folders(parent_id);
       CREATE UNIQUE INDEX IF NOT EXISTS idx_meeting_folders_parent_name
         ON meeting_folders(COALESCE(parent_id, ''), name COLLATE NOCASE);
+    `);
+  }
+
+  if (currentVersion < 59 && tableExists(db, "meetings")) {
+    // Auto title: who wrote the title. The AI step writes only over
+    // 'default' (no title) and 'file' (the import file name). The backfill
+    // is safe (owner decision 2026-11-13): no title is 'default'; the event
+    // title is 'calendar'; every other old title is 'user', so the AI never
+    // writes over an old title. Only new imports store 'file'.
+    if (!hasColumn(db, "meetings", "title_source")) {
+      db.exec("ALTER TABLE meetings ADD COLUMN title_source TEXT");
+    }
+    // A partial test schema can lack the calendar column. Then that rule is
+    // left out.
+    const calendarRule = hasColumn(db, "meetings", "calendar_title")
+      ? "WHEN calendar_title IS NOT NULL AND title = calendar_title THEN 'calendar'"
+      : "";
+    db.exec(`
+      UPDATE meetings SET title_source = CASE
+        WHEN title IS NULL OR trim(title) = '' THEN 'default'
+        ${calendarRule}
+        ELSE 'user'
+      END
+      WHERE title_source IS NULL
     `);
   }
 
