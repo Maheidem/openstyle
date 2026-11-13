@@ -5,6 +5,7 @@ import {
 } from "@renderer/hooks/use-hotkey-recorder";
 import { useMeetingPause } from "@renderer/hooks/use-meeting-pause";
 import { getClient, initApiBase } from "@renderer/lib/api";
+import { datedTitle } from "@renderer/lib/format";
 import { IS_MAC } from "@renderer/lib/platform";
 import { queryKeys } from "@renderer/lib/query";
 import { cn } from "@renderer/lib/utils";
@@ -366,8 +367,13 @@ function MeetingControl({
           param: { id },
         });
         if (!res.ok) return;
-        const row = (await res.json()) as { title?: string | null };
-        if (live) setTitle(row.title?.trim() || null);
+        const row = (await res.json()) as {
+          title?: string | null;
+          started_at?: number | null;
+        };
+        // No date shows on the card: the title gets a `YY-MM-DD ` prefix.
+        const name = row.title?.trim();
+        if (live) setTitle(name ? datedTitle(name, row.started_at) : null);
       } catch {
         // No title. The card shows the time only.
       }

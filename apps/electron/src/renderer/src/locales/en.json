@@ -433,6 +433,8 @@
       "ownerNamePlaceholder": "For example, Ana Silva",
       "projectMemory": "Use earlier meetings",
       "projectMemoryDesc": "Uses earlier meetings in the same folder to write the summary.",
+      "autoTitle": "Auto title",
+      "autoTitleDesc": "After Summarize, give a meeting with no title or a file name a short title. A title that you typed does not change.",
       "useCalendar": "Use my calendar",
       "useCalendarDesc": "Link each meeting recording to the calendar event that is running. Openstyle only reads events. It never changes your calendar. macOS asks for permission when you turn this on.",
       "calendarDenied": "Openstyle has no access to your calendar. Allow access in System Settings, then turn this on again.",
@@ -1309,7 +1311,8 @@
         "stage": {
           "transcribe": "Transcribe",
           "summarize": "Summarize",
-          "enhance": "Enhance"
+          "enhance": "Enhance",
+          "title": "Generate titles"
         },
         "confirmTitle": "Run {{stage}} now?",
         "confirmSelectedTitle": "Run {{stage}} on the selected meetings?",
@@ -1320,7 +1323,8 @@
           "names": "A confirmed speaker name stays when the new speaker matches the old speaker clearly. Other speakers stay unnamed, and the meeting page shows the names that the app could not keep.",
           "summarize": "A new summary replaces the current summary. The current summary stays under Previous versions.",
           "enhance": "Enhance corrects the transcript and then makes a new summary. The current summary stays under Previous versions.",
-          "rerun": "The stage runs also on meetings that are done."
+          "rerun": "The stage runs also on meetings that are done.",
+          "title": "The app writes a short title for each meeting with no title or a file name. A title that you typed, an event title and an AI title do not change."
         },
         "queueNote": "The queue is only in the app memory. If you quit the app, the queue stops. The folder then shows the meetings that still need the stage.",
         "start": "Start",
@@ -1345,7 +1349,8 @@
           "no_audio": "No audio",
           "no_transcript": "No transcript",
           "no_llm": "No AI model",
-          "refused": "Could not start"
+          "refused": "Could not start",
+          "no_summary": "No summary"
         },
         "failReason": {
           "run_failed": "Run failed",
@@ -1471,6 +1476,9 @@
     "audioProbeHintBody": "By recording a meeting you capture other participants' audio, so make sure everyone consents. Headphones are recommended so the call audio stays clean. If system audio stays silent, grant Openstyle access under Screen & System Audio Recording; app updates may make macOS ask again.",
     "audioProbeHintOpenSettings": "Open Settings",
     "rename": "Rename",
+    "generateTitle": "Generate title",
+    "generateTitleFailed": "The AI model could not write a title. Try again.",
+    "generateTitleNoSummary": "Summarize the meeting first. The title comes from the summary.",
     "renameLabel": "Meeting title",
     "revealInFinder": "Show in Finder",
     "summaryInstructionsLabel": "Summary instructions",
@@ -1485,6 +1493,8 @@
     "diarizationUnavailable": "Speaker labels aren't available in this build.",
     "enhanceAutoLabel": "Auto Enhance",
     "enhanceAutoHint": "Right after a meeting transcribes, clean up its transcript automatically with your default LLM.",
+    "autoTitleLabel": "Auto title",
+    "autoTitleHint": "After Summarize, give a meeting with no title or a file name a short title. A title that you typed does not change.",
     "asrContextLabel": "Use previous text as context",
     "asrContextHint": "Can fix technical terms, can also change names. Off by default.",
     "enhancePromptTitle": "Enhance transcripts automatically?",
@@ -1525,7 +1535,8 @@
       "summarizingPart": "Summarizing part {{n}} of {{total}}…",
       "combining": "Combining the summary…",
       "saving": "Saving…",
-      "tags": "Suggesting tags…"
+      "tags": "Suggesting tags…",
+      "title": "Writing a title…"
     },
     "enhanceResult": "Corrected {{n}} segments.",
     "enhanceNoneCorrected": "No segments needed correction.",
@@ -1553,7 +1564,8 @@
         "identifySpeakers": "Speakers",
         "summarize": "Summary",
         "save": "Saving",
-        "suggestTags": "Tags"
+        "suggestTags": "Tags",
+        "suggestTitle": "Title"
       },
       "chunks": "chunks {{list}}",
       "resume": "Resume",
@@ -1599,7 +1611,10 @@
       "not_saved": "The run saved no result, so this step did not run.",
       "meeting_gone": "The meeting was deleted during the run.",
       "empty_transcript": "The transcript has no text for this step.",
-      "other": "This step did not need to run."
+      "other": "This step did not need to run.",
+      "auto_title_off": "Auto title is off.",
+      "title_kept": "The title is yours, the event's or an AI title, so it stays.",
+      "no_summary": "The meeting has no summary to read."
     },
     "inspector": {
       "title": "LLM inspector",
@@ -1689,7 +1704,8 @@
       },
       "runKind": {
         "enhance": "Enhance",
-        "summarize": "Summarize"
+        "summarize": "Summarize",
+        "title": "Title"
       },
       "runStatus": {
         "running": "Running",

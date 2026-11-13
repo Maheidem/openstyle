@@ -33,6 +33,7 @@ const folder: MeetingFolder = {
     transcribe: { ready: 3, blocked: 1 },
     summarize: { ready: 0, blocked: 2 },
     enhance: { ready: 0, blocked: 0 },
+    title: { ready: 0, blocked: 0 },
   },
 };
 function panel(value: MeetingFolder, action?: "description" | "delete") {
@@ -94,7 +95,12 @@ describe("folder views", () => {
     const none = { ready: 0, blocked: 0 };
     const html = panel({
       ...folder,
-      stage_counts: { transcribe: none, summarize: none, enhance: none },
+      stage_counts: {
+        transcribe: none,
+        summarize: none,
+        enhance: none,
+        title: none,
+      },
     });
     expect(html).toContain("All meetings in this folder are done.");
     expect(html).not.toContain("Run on");

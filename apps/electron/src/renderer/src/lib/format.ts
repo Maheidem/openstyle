@@ -55,6 +55,21 @@ export function formatTimestamp(ms: number | null, lang?: string): string {
   });
 }
 
+/**
+ * A meeting title with its date before it, as `YY-MM-DD <title>` in local
+ * time (auto title, owner decision 1). Only places that show no date next to
+ * the title use it. The stored title has no date. No date: the title only.
+ */
+export function datedTitle(
+  title: string,
+  startedAt: number | null | undefined,
+): string {
+  if (!startedAt) return title;
+  const d = new Date(startedAt);
+  const two = (n: number) => String(n).padStart(2, "0");
+  return `${two(d.getFullYear() % 100)}-${two(d.getMonth() + 1)}-${two(d.getDate())} ${title}`;
+}
+
 /** Minutes and seconds as m:ss. Rounds down to the second. */
 export function formatClockMs(ms: number): string {
   const s = Math.floor(ms / 1000);

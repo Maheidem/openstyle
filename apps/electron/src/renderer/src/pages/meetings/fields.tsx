@@ -11,21 +11,32 @@ import {
 } from "@renderer/components/ui/popover";
 import { Textarea } from "@renderer/components/ui/textarea";
 import { getClient } from "@renderer/lib/api";
-import { Languages, Pencil } from "lucide-react";
+import { Languages, Pencil, RefreshCw, Sparkles } from "lucide-react";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 
+/**
+ * The meeting title with the rename pencil and the Generate title button
+ * (auto title, owner decision 8). The button writes a new AI title now, also
+ * over a title that the user typed. `canGenerate` is false with no AI model
+ * or no summary. `onError` shows a failure in the page's error line.
+ */
 export function EditableTitle({
   id,
   title,
   onRenamed,
+  canGenerate,
+  onError,
 }: {
   id: string;
   title: string | null;
   onRenamed: () => void;
+  canGenerate: boolean;
+  onError: (message: string | null) => void;
 }): React.JSX.Element {
   const { t } = useTranslation();
   const [editing, setEditing] = useState(false);
+  const [generating, setGenerating] = useState(false);
   const [value, setValue] = useState(title ?? "");
   const inputRef = useRef<HTMLInputElement>(null);
 
@@ -52,6 +63,36 @@ export function EditableTitle({
     else setValue(title ?? "");
   }, [id, onRenamed, title, value]);
 
+  const generate = useCallback(async () => {
+    setGenerating(true);
+    onError(null);
+    try {
+      const res = await getClient().api.meetings[":id"].title.generate.$post({
+        param: { id },
+      });
+      if (res.ok) {
+        onRenamed();
+        return;
+      }
+      const body = (await res.json().catch(() => null)) as {
+        code?: string;
+      } | null;
+      onError(
+        t(
+          body?.code === "no_summary"
+            ? "meetings.generateTitleNoSummary"
+            : body?.code === "no_llm"
+              ? "meetings.noLlmHint"
+              : "meetings.generateTitleFailed",
+        ),
+      );
+    } catch {
+      onError(t("meetings.generateTitleFailed"));
+    } finally {
+      setGenerating(false);
+    }
+  }, [id, onError, onRenamed, t]);
+
   if (editing) {
     return (
       <Input
@@ -76,17 +117,34 @@ export function EditableTitle({
   }
 
   return (
-    <button
-      type="button"
-      onClick={() => setEditing(true)}
-      className="group flex min-w-0 max-w-full items-center gap-1.5 text-left"
-      title={t("meetings.rename")}
-    >
-      <span className="text-foreground truncate text-[15px] font-medium">
-        {title || t("meetings.untitled")}
-      </span>
-      <Pencil className="text-muted-foreground/0 group-hover:text-muted-foreground h-3 w-3 shrink-0 transition-colors" />
-    </button>
+    <>
+      <button
+        type="button"
+        onClick={() => setEditing(true)}
+        className="group flex min-w-0 max-w-full items-center gap-1.5 text-left"
+        title={t("meetings.rename")}
+      >
+        <span className="text-foreground truncate text-[15px] font-medium">
+          {title || t("meetings.untitled")}
+        </span>
+        <Pencil className="text-muted-foreground/0 group-hover:text-muted-foreground h-3 w-3 shrink-0 transition-colors" />
+      </button>
+      <button
+        type="button"
+        className="text-muted-foreground hover:text-foreground disabled:opacity-50 shrink-0"
+        title={t("meetings.generateTitle")}
+        aria-label={t("meetings.generateTitle")}
+        aria-busy={generating}
+        disabled={generating || !canGenerate}
+        onClick={() => void generate()}
+      >
+        {generating ? (
+          <RefreshCw className="h-3 w-3 animate-spin" />
+        ) : (
+          <Sparkles className="h-3 w-3" />
+        )}
+      </button>
+    </>
   );
 }
 

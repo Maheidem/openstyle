@@ -215,6 +215,7 @@ export default function SettingsPage(): React.JSX.Element {
   const [calendarEnabled, setCalendarEnabled] = useState(false);
   // Project memory (#234) is on unless the row says "false".
   const [projectMemory, setProjectMemory] = useState(true);
+  const [autoTitle, setAutoTitle] = useState(true);
   const [liveChat, setLiveChat] = useState(false);
   // The Ask tab, meeting chat agent (experimental, off by default).
   const [meetingChat, setMeetingChat] = useState(false);
@@ -516,6 +517,7 @@ export default function SettingsPage(): React.JSX.Element {
     if (s[SETTINGS_KEYS.meetingProjectMemory] === "false") {
       setProjectMemory(false);
     }
+    if (s[SETTINGS_KEYS.meetingAutoTitle] === "false") setAutoTitle(false);
     if (s[SETTINGS_KEYS.liveChatEnabled] === "true") setLiveChat(true);
     if (s[SETTINGS_KEYS.meetingChatEnabled] === "true") setMeetingChat(true);
     if (s[SETTINGS_KEYS.liveCaptionsPill] === "true") setLiveCaptions(true);
@@ -801,6 +803,17 @@ export default function SettingsPage(): React.JSX.Element {
     setProjectMemory(enabled);
     void putSetting(SETTINGS_KEYS.meetingProjectMemory, String(enabled));
   }, []);
+
+  const handleAutoTitleToggle = useCallback(
+    (enabled: boolean) => {
+      setAutoTitle(enabled);
+      // The Enhance popover shows the same switch: refresh its query.
+      void putSetting(SETTINGS_KEYS.meetingAutoTitle, String(enabled)).then(
+        () => queryClient.invalidateQueries({ queryKey: queryKeys.settings }),
+      );
+    },
+    [queryClient],
+  );
 
   const handleLiveChatToggle = useCallback(
     (enabled: boolean) => {
@@ -1463,6 +1476,17 @@ export default function SettingsPage(): React.JSX.Element {
                   checked={projectMemory}
                   onCheckedChange={handleProjectMemoryToggle}
                   aria-label={t("settings.meetings.projectMemory")}
+                />
+              </Row>
+              <Row
+                label={t("settings.meetings.autoTitle")}
+                desc={t("settings.meetings.autoTitleDesc")}
+              >
+                <Switch
+                  id="settings-auto-title"
+                  checked={autoTitle}
+                  onCheckedChange={handleAutoTitleToggle}
+                  aria-label={t("settings.meetings.autoTitle")}
                 />
               </Row>
               <Row

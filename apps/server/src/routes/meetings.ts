@@ -1533,7 +1533,8 @@ function startTitleItem(id: string): {
       (r): DirectOutcome =>
         r.status === "ok"
           ? { outcome: "ok", failureKind: null }
-          : { outcome: "failed", failureKind: r.status },
+          : // The title changed or the summary went away after the check.
+            { outcome: "failed", failureKind: null },
     )
     .catch(
       (err: unknown): DirectOutcome =>

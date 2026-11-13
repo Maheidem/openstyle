@@ -414,6 +414,8 @@
       "ownerNamePlaceholder": "Par exemple, Ana Silva",
       "projectMemory": "Utiliser les réunions précédentes",
       "projectMemoryDesc": "Utilise les réunions précédentes du même dossier pour rédiger le résumé.",
+      "autoTitle": "Titre automatique",
+      "autoTitleDesc": "Après le résumé, donne un titre court à une réunion sans titre ou avec un nom de fichier. Un titre que vous avez saisi ne change pas.",
       "useCalendar": "Utiliser mon calendrier",
       "useCalendarDesc": "Associe chaque enregistrement de réunion à l'événement du calendrier en cours. Openstyle lit seulement les événements. Il ne modifie jamais votre calendrier. macOS demande l'autorisation quand vous activez cette option.",
       "calendarDenied": "Openstyle n'a pas accès à votre calendrier. Autorisez l'accès dans les Réglages Système, puis activez à nouveau cette option.",
@@ -1154,7 +1156,8 @@
         "stage": {
           "transcribe": "Transcrire",
           "summarize": "Résumer",
-          "enhance": "Améliorer"
+          "enhance": "Améliorer",
+          "title": "Générer des titres"
         },
         "confirmTitle": "Exécuter {{stage}} maintenant ?",
         "confirmSelectedTitle": "Exécuter {{stage}} sur les réunions sélectionnées ?",
@@ -1165,7 +1168,8 @@
           "names": "Un nom d’intervenant confirmé reste quand le nouvel intervenant correspond clairement à l’ancien. Les autres intervenants restent sans nom, et la page de la réunion affiche les noms que l’app n’a pas pu garder.",
           "summarize": "Un nouveau résumé remplace le résumé actuel. Le résumé actuel reste dans Versions précédentes.",
           "enhance": "Améliorer corrige la transcription, puis crée un nouveau résumé. Le résumé actuel reste dans Versions précédentes.",
-          "rerun": "L’étape s’exécute aussi sur les réunions terminées."
+          "rerun": "L’étape s’exécute aussi sur les réunions terminées.",
+          "title": "L'app écrit un titre court pour chaque réunion sans titre ou avec un nom de fichier. Un titre que vous avez saisi, un titre d'événement et un titre de l'IA ne changent pas."
         },
         "queueNote": "La file est seulement dans la mémoire de l’app. Si vous quittez l’app, la file s’arrête. Le dossier affiche alors les réunions qui ont encore besoin de l’étape.",
         "start": "Démarrer",
@@ -1190,7 +1194,8 @@
           "no_audio": "Sans audio",
           "no_transcript": "Sans transcription",
           "no_llm": "Sans modèle d’IA",
-          "refused": "Démarrage impossible"
+          "refused": "Démarrage impossible",
+          "no_summary": "Pas de résumé"
         },
         "failReason": {
           "run_failed": "Exécution échouée",
@@ -1315,6 +1320,9 @@
     "audioProbeHintBody": "En enregistrant une réunion, vous capturez aussi l'audio des autres participants : assurez-vous que tout le monde y consent. Un casque est recommandé pour garder un son d'appel propre. Si l'audio système reste silencieux, autorisez Openstyle dans Enregistrement de l'écran et de l'audio système ; macOS peut redemander après une mise à jour.",
     "audioProbeHintOpenSettings": "Ouvrir les réglages",
     "rename": "Renommer",
+    "generateTitle": "Générer un titre",
+    "generateTitleFailed": "Le modèle d'IA n'a pas pu écrire de titre. Réessayez.",
+    "generateTitleNoSummary": "Résumez d'abord la réunion. Le titre vient du résumé.",
     "renameLabel": "Titre de la réunion",
     "revealInFinder": "Afficher dans le Finder",
     "summaryInstructionsLabel": "Instructions de résumé",
@@ -1353,7 +1361,8 @@
       "summarizingPart": "Résumé de la partie {{n}} sur {{total}}…",
       "combining": "Fusion du résumé…",
       "saving": "Enregistrement…",
-      "tags": "Suggestion de tags…"
+      "tags": "Suggestion de tags…",
+      "title": "Écriture d'un titre…"
     },
     "enhanceResult": "{{n}} segments corrigés.",
     "enhanceNoneCorrected": "Aucun segment n'a nécessité de correction.",
@@ -1381,7 +1390,8 @@
         "identifySpeakers": "Intervenants",
         "summarize": "Résumé",
         "save": "Enregistrement",
-        "suggestTags": "Étiquettes"
+        "suggestTags": "Étiquettes",
+        "suggestTitle": "Titre"
       },
       "chunks": "segments {{list}}",
       "resume": "Reprendre",
@@ -1427,7 +1437,10 @@
       "not_saved": "L'exécution n'a enregistré aucun résultat, cette étape n'a donc pas eu lieu.",
       "meeting_gone": "La réunion a été supprimée pendant l'exécution.",
       "empty_transcript": "La transcription ne contient aucun texte pour cette étape.",
-      "other": "Cette étape n'était pas nécessaire."
+      "other": "Cette étape n'était pas nécessaire.",
+      "auto_title_off": "Le titre automatique est désactivé.",
+      "title_kept": "Le titre vient de vous, de l'événement ou de l'IA, il reste donc.",
+      "no_summary": "La réunion n'a pas de résumé à lire."
     },
     "showEnhancedLabel": "Afficher la transcription améliorée",
     "showingEnhanced": "Améliorée",
@@ -1487,6 +1500,9 @@
         "meetings": "Réunions",
         "chunks": "Extraits",
         "model": "Modèle de recherche"
+      },
+      "runKind": {
+        "title": "Titre"
       }
     },
     "retranscribeConfirm": {
@@ -1702,7 +1718,9 @@
     "paused": "En pause",
     "pausedHint": "Le microphone est éteint. Rien n'est enregistré.",
     "pauseFailed": "L'enregistrement ne s'est pas mis en pause. Essayez encore.",
-    "resumeFailed": "Le microphone n'a pas redémarré. Vérifiez le microphone et sélectionnez Reprendre. Vous pouvez aussi arrêter l'enregistrement. L'audio déjà enregistré est sauvegardé."
+    "resumeFailed": "Le microphone n'a pas redémarré. Vérifiez le microphone et sélectionnez Reprendre. Vous pouvez aussi arrêter l'enregistrement. L'audio déjà enregistré est sauvegardé.",
+    "autoTitleLabel": "Titre automatique",
+    "autoTitleHint": "Après le résumé, donne un titre court à une réunion sans titre ou avec un nom de fichier. Un titre que vous avez saisi ne change pas."
   },
   "help": {
     "hotkeys": {

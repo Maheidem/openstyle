@@ -108,6 +108,7 @@ interface CiteOut {
   meetingId?: string;
   title?: string | null;
   timeMs?: number | null;
+  startedAt?: number;
 }
 
 const meetingsChat = new Hono()
@@ -225,6 +226,9 @@ const meetingsChat = new Hono()
           ...(source.meetingId ? { meetingId: source.meetingId } : {}),
           ...(source.title !== undefined ? { title: source.title } : {}),
           ...(source.timeMs !== undefined ? { timeMs: source.timeMs } : {}),
+          ...(source.startedAt !== undefined
+            ? { startedAt: source.startedAt }
+            : {}),
         });
       }
       const ms = Date.now() - startedAt;

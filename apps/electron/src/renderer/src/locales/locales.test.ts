@@ -305,6 +305,26 @@ describe("locale files", () => {
       "history.tutorial.pasted",
       "history.tutorial.sample",
     ],
+    // Auto title (AI meeting titles): the switch, the Generate title button,
+    // the batch stage and the run texts. Every locale carries them.
+    "auto-title": [
+      "meetings.autoTitleLabel",
+      "meetings.autoTitleHint",
+      "meetings.generateTitle",
+      "meetings.generateTitleFailed",
+      "meetings.generateTitleNoSummary",
+      "meetings.progress.title",
+      "meetings.llmRun.node.suggestTitle",
+      "meetings.inspector.runKind.title",
+      "meetings.skipReason.auto_title_off",
+      "meetings.skipReason.title_kept",
+      "meetings.skipReason.no_summary",
+      "meetings.folders.batch.stage.title",
+      "meetings.folders.batch.explain.title",
+      "meetings.folders.batch.skipReason.no_summary",
+      "settings.meetings.autoTitle",
+      "settings.meetings.autoTitleDesc",
+    ],
     // Keys introduced by the translated aria-label and title strings (issue
     // #153): icon buttons, dialogs and sliders that a screen reader or a
     // tooltip reads aloud. A missing key shows the English text in every

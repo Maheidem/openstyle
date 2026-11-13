@@ -1,5 +1,6 @@
 import { Card } from "@renderer/components/ui/card";
 import { useElapsedClock } from "@renderer/hooks/use-elapsed-clock";
+import { datedTitle } from "@renderer/lib/format";
 import { useTranslation } from "react-i18next";
 import { LiveChatPanel } from "./live-chat-panel";
 import { LiveTranscriptPanel } from "./live-transcript-panel";
@@ -35,7 +36,7 @@ export function LiveView({
           className="display min-w-0 truncate text-[20px]"
           data-testid="live-view-title"
         >
-          {title || t("meetings.untitled")}
+          {datedTitle(title || t("meetings.untitled"), startedAt)}
         </h2>
         <StatusBadge status="recording" />
         {pausedAt !== null && (

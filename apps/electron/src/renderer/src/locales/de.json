@@ -414,6 +414,8 @@
       "ownerNamePlaceholder": "Zum Beispiel Ana Silva",
       "projectMemory": "Frühere Besprechungen nutzen",
       "projectMemoryDesc": "Nutzt frühere Besprechungen im selben Ordner, um die Zusammenfassung zu schreiben.",
+      "autoTitle": "Automatischer Titel",
+      "autoTitleDesc": "Gibt nach der Zusammenfassung einem Meeting ohne Titel oder mit einem Dateinamen einen kurzen Titel. Ein Titel, den Sie eingegeben haben, bleibt.",
       "useCalendar": "Meinen Kalender verwenden",
       "useCalendarDesc": "Verknüpft jede Besprechungsaufnahme mit dem Kalendertermin, der gerade läuft. Openstyle liest Termine nur. Dein Kalender wird nie geändert. macOS fragt nach der Berechtigung, wenn du dies aktivierst.",
       "calendarDenied": "Openstyle hat keinen Zugriff auf deinen Kalender. Erlaube den Zugriff in den Systemeinstellungen und aktiviere dies dann erneut.",
@@ -1154,7 +1156,8 @@
         "stage": {
           "transcribe": "Transkribieren",
           "summarize": "Zusammenfassen",
-          "enhance": "Verbessern"
+          "enhance": "Verbessern",
+          "title": "Titel erzeugen"
         },
         "confirmTitle": "{{stage}} jetzt ausführen?",
         "confirmSelectedTitle": "{{stage}} für die ausgewählten Meetings ausführen?",
@@ -1165,7 +1168,8 @@
           "names": "Ein bestätigter Sprechername bleibt, wenn der neue Sprecher eindeutig zum alten Sprecher passt. Andere Sprecher bleiben ohne Namen, und die Meeting-Seite zeigt die Namen, die die App nicht behalten konnte.",
           "summarize": "Eine neue Zusammenfassung ersetzt die aktuelle Zusammenfassung. Die aktuelle Zusammenfassung bleibt unter Frühere Versionen.",
           "enhance": "Verbessern korrigiert das Transkript und erstellt dann eine neue Zusammenfassung. Die aktuelle Zusammenfassung bleibt unter Frühere Versionen.",
-          "rerun": "Der Schritt läuft auch für Meetings, die fertig sind."
+          "rerun": "Der Schritt läuft auch für Meetings, die fertig sind.",
+          "title": "Die App schreibt einen kurzen Titel für jedes Meeting ohne Titel oder mit einem Dateinamen. Ein Titel, den Sie eingegeben haben, ein Termintitel und ein KI-Titel bleiben."
         },
         "queueNote": "Die Warteschlange ist nur im Speicher der App. Wenn du die App beendest, stoppt die Warteschlange. Der Ordner zeigt dann die Meetings, die den Schritt noch brauchen.",
         "start": "Starten",
@@ -1190,7 +1194,8 @@
           "no_audio": "Kein Audio",
           "no_transcript": "Kein Transkript",
           "no_llm": "Kein KI-Modell",
-          "refused": "Konnte nicht starten"
+          "refused": "Konnte nicht starten",
+          "no_summary": "Keine Zusammenfassung"
         },
         "failReason": {
           "run_failed": "Lauf fehlgeschlagen",
@@ -1315,6 +1320,9 @@
     "audioProbeHintBody": "Beim Aufnehmen eines Meetings wird auch der Ton der anderen Teilnehmer erfasst, hol also deren Einverständnis ein. Kopfhörer werden empfohlen, damit der Anrufton sauber bleibt. Bleibt der Systemton stumm, erlaube Openstyle den Zugriff unter Bildschirm- & Systemaudioaufnahme; nach App-Updates fragt macOS eventuell erneut.",
     "audioProbeHintOpenSettings": "Einstellungen öffnen",
     "rename": "Umbenennen",
+    "generateTitle": "Titel erzeugen",
+    "generateTitleFailed": "Das KI-Modell konnte keinen Titel schreiben. Versuchen Sie es noch einmal.",
+    "generateTitleNoSummary": "Fassen Sie das Meeting zuerst zusammen. Der Titel kommt aus der Zusammenfassung.",
     "renameLabel": "Besprechungstitel",
     "revealInFinder": "Im Finder anzeigen",
     "summaryInstructionsLabel": "Zusammenfassungsanweisungen",
@@ -1353,7 +1361,8 @@
       "summarizingPart": "Fasse Teil {{n}} von {{total}} zusammen…",
       "combining": "Zusammenfassung wird kombiniert…",
       "saving": "Wird gespeichert…",
-      "tags": "Tags werden vorgeschlagen…"
+      "tags": "Tags werden vorgeschlagen…",
+      "title": "Titel wird geschrieben…"
     },
     "enhanceResult": "{{n}} Segmente korrigiert.",
     "enhanceNoneCorrected": "Keine Segmente mussten korrigiert werden.",
@@ -1381,7 +1390,8 @@
         "identifySpeakers": "Sprecher",
         "summarize": "Zusammenfassung",
         "save": "Speichern",
-        "suggestTags": "Tags"
+        "suggestTags": "Tags",
+        "suggestTitle": "Titel"
       },
       "chunks": "Abschnitte {{list}}",
       "resume": "Fortsetzen",
@@ -1427,7 +1437,10 @@
       "not_saved": "Der Lauf hat kein Ergebnis gespeichert, daher lief dieser Schritt nicht.",
       "meeting_gone": "Das Meeting wurde während des Laufs gelöscht.",
       "empty_transcript": "Das Transkript enthält keinen Text für diesen Schritt.",
-      "other": "Dieser Schritt war nicht nötig."
+      "other": "Dieser Schritt war nicht nötig.",
+      "auto_title_off": "Der automatische Titel ist aus.",
+      "title_kept": "Der Titel ist von Ihnen, vom Termin oder von der KI, also bleibt er.",
+      "no_summary": "Das Meeting hat keine Zusammenfassung zum Lesen."
     },
     "showEnhancedLabel": "Verbesserte Abschrift anzeigen",
     "showingEnhanced": "Verbessert",
@@ -1487,6 +1500,9 @@
         "meetings": "Besprechungen",
         "chunks": "Abschnitte",
         "model": "Suchmodell"
+      },
+      "runKind": {
+        "title": "Titel"
       }
     },
     "retranscribeConfirm": {
@@ -1702,7 +1718,9 @@
     "paused": "Pausiert",
     "pausedHint": "Das Mikrofon ist aus. Es wird nichts aufgenommen.",
     "pauseFailed": "Die Aufnahme wurde nicht pausiert. Versuchen Sie es noch einmal.",
-    "resumeFailed": "Das Mikrofon wurde nicht wieder gestartet. Prüfen Sie das Mikrofon und wählen Sie Fortsetzen. Sie können die Aufnahme auch beenden. Das bisherige Audio ist gespeichert."
+    "resumeFailed": "Das Mikrofon wurde nicht wieder gestartet. Prüfen Sie das Mikrofon und wählen Sie Fortsetzen. Sie können die Aufnahme auch beenden. Das bisherige Audio ist gespeichert.",
+    "autoTitleLabel": "Automatischer Titel",
+    "autoTitleHint": "Gibt nach der Zusammenfassung einem Meeting ohne Titel oder mit einem Dateinamen einen kurzen Titel. Ein Titel, den Sie eingegeben haben, bleibt."
   },
   "help": {
     "hotkeys": {

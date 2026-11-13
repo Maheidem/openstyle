@@ -414,6 +414,8 @@
       "ownerNamePlaceholder": "Ad esempio, Ana Silva",
       "projectMemory": "Usa le riunioni precedenti",
       "projectMemoryDesc": "Usa le riunioni precedenti della stessa cartella per scrivere il riepilogo.",
+      "autoTitle": "Titolo automatico",
+      "autoTitleDesc": "Dopo il riassunto, dà un titolo breve a una riunione senza titolo o con un nome di file. Un titolo che hai scritto non cambia.",
       "useCalendar": "Usa il mio calendario",
       "useCalendarDesc": "Collega ogni registrazione di riunione all'evento del calendario in corso. Openstyle legge solo gli eventi. Non modifica mai il tuo calendario. macOS chiede il permesso quando attivi questa opzione.",
       "calendarDenied": "Openstyle non ha accesso al tuo calendario. Consenti l'accesso in Impostazioni di Sistema, poi attiva di nuovo questa opzione.",
@@ -1153,7 +1155,8 @@
         "stage": {
           "transcribe": "Trascrivi",
           "summarize": "Riepiloga",
-          "enhance": "Migliora"
+          "enhance": "Migliora",
+          "title": "Genera titoli"
         },
         "confirmTitle": "Eseguire {{stage}} ora?",
         "confirmSelectedTitle": "Eseguire {{stage}} sulle riunioni selezionate?",
@@ -1164,7 +1167,8 @@
           "names": "Un nome di partecipante confermato resta quando il nuovo partecipante corrisponde chiaramente a quello precedente. Gli altri partecipanti restano senza nome, e la pagina della riunione mostra i nomi che l’app non ha potuto mantenere.",
           "summarize": "Un nuovo riepilogo sostituisce il riepilogo attuale. Il riepilogo attuale resta in Versioni precedenti.",
           "enhance": "Migliora corregge la trascrizione e poi crea un nuovo riepilogo. Il riepilogo attuale resta in Versioni precedenti.",
-          "rerun": "Il passaggio viene eseguito anche sulle riunioni complete."
+          "rerun": "Il passaggio viene eseguito anche sulle riunioni complete.",
+          "title": "L'app scrive un titolo breve per ogni riunione senza titolo o con un nome di file. Un titolo che hai scritto, un titolo dell'evento e un titolo dell'IA non cambiano."
         },
         "queueNote": "La coda è solo nella memoria dell’app. Se chiudi l’app, la coda si ferma. Poi la cartella mostra le riunioni che hanno ancora bisogno del passaggio.",
         "start": "Avvia",
@@ -1189,7 +1193,8 @@
           "no_audio": "Senza audio",
           "no_transcript": "Senza trascrizione",
           "no_llm": "Senza modello di IA",
-          "refused": "Avvio non riuscito"
+          "refused": "Avvio non riuscito",
+          "no_summary": "Nessun riassunto"
         },
         "failReason": {
           "run_failed": "Esecuzione fallita",
@@ -1314,6 +1319,9 @@
     "audioProbeHintBody": "Registrando una riunione catturi anche l'audio degli altri partecipanti: assicurati che tutti acconsentano. Sono consigliate le cuffie per mantenere pulito l'audio della chiamata. Se l'audio di sistema resta muto, concedi a Openstyle l'accesso in Registrazione schermo e audio di sistema; dopo un aggiornamento macOS potrebbe richiederlo di nuovo.",
     "audioProbeHintOpenSettings": "Apri Impostazioni",
     "rename": "Rinomina",
+    "generateTitle": "Genera titolo",
+    "generateTitleFailed": "Il modello di IA non è riuscito a scrivere un titolo. Riprova.",
+    "generateTitleNoSummary": "Prima riassumi la riunione. Il titolo viene dal riassunto.",
     "renameLabel": "Titolo della riunione",
     "revealInFinder": "Mostra nel Finder",
     "summaryInstructionsLabel": "Istruzioni per il riepilogo",
@@ -1352,7 +1360,8 @@
       "summarizingPart": "Riepilogo della parte {{n}} di {{total}}…",
       "combining": "Unione del riepilogo…",
       "saving": "Salvataggio…",
-      "tags": "Suggerimento dei tag…"
+      "tags": "Suggerimento dei tag…",
+      "title": "Scrittura di un titolo…"
     },
     "enhanceResult": "{{n}} segmenti corretti.",
     "enhanceNoneCorrected": "Nessun segmento ha richiesto correzioni.",
@@ -1380,7 +1389,8 @@
         "identifySpeakers": "Partecipanti",
         "summarize": "Riepilogo",
         "save": "Salvataggio",
-        "suggestTags": "Tag"
+        "suggestTags": "Tag",
+        "suggestTitle": "Titolo"
       },
       "chunks": "blocchi {{list}}",
       "resume": "Riprendi",
@@ -1426,7 +1436,10 @@
       "not_saved": "L'esecuzione non ha salvato alcun risultato, quindi questo passaggio non è stato eseguito.",
       "meeting_gone": "La riunione è stata eliminata durante l'esecuzione.",
       "empty_transcript": "La trascrizione non contiene testo per questo passaggio.",
-      "other": "Questo passaggio non era necessario."
+      "other": "Questo passaggio non era necessario.",
+      "auto_title_off": "Il titolo automatico è disattivato.",
+      "title_kept": "Il titolo è tuo, dell'evento o dell'IA, quindi resta.",
+      "no_summary": "La riunione non ha un riassunto da leggere."
     },
     "showEnhancedLabel": "Mostra trascrizione migliorata",
     "showingEnhanced": "Migliorata",
@@ -1486,6 +1499,9 @@
         "meetings": "Riunioni",
         "chunks": "Frammenti",
         "model": "Modello di ricerca"
+      },
+      "runKind": {
+        "title": "Titolo"
       }
     },
     "retranscribeConfirm": {
@@ -1701,7 +1717,9 @@
     "paused": "In pausa",
     "pausedHint": "Il microfono è spento. Non si registra nulla.",
     "pauseFailed": "La registrazione non è andata in pausa. Riprova.",
-    "resumeFailed": "Il microfono non si è riavviato. Controlla il microfono e seleziona Riprendi. Puoi anche fermare la registrazione. L'audio registrato finora è salvato."
+    "resumeFailed": "Il microfono non si è riavviato. Controlla il microfono e seleziona Riprendi. Puoi anche fermare la registrazione. L'audio registrato finora è salvato.",
+    "autoTitleLabel": "Titolo automatico",
+    "autoTitleHint": "Dopo il riassunto, dà un titolo breve a una riunione senza titolo o con un nome di file. Un titolo che hai scritto non cambia."
   },
   "help": {
     "hotkeys": {

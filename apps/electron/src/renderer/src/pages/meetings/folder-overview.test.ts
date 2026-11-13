@@ -32,6 +32,7 @@ const base: FolderOverview = {
       transcribe: { ready: 0, blocked: 0 },
       summarize: { ready: 0, blocked: 0 },
       enhance: { ready: 0, blocked: 0 },
+      title: { ready: 0, blocked: 0 },
     },
   },
   timeline: [
