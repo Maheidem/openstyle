@@ -276,7 +276,10 @@ test("auto-Enhance popover: switch disabled and the hint", async () => {
   await page.getByRole("button", { name: "Auto Enhance" }).first().click();
   const popover = page.locator("[data-radix-popper-content-wrapper]");
   await expect(popover).toBeVisible();
-  await expect(popover.getByRole("switch")).toBeDisabled();
+  // Two switches: Auto Enhance and Auto title. Both need an AI model.
+  await expect(popover.getByRole("switch")).toHaveCount(2);
+  await expect(popover.getByRole("switch").nth(0)).toBeDisabled();
+  await expect(popover.getByRole("switch").nth(1)).toBeDisabled();
   await expect(popover.getByText(HINT, { exact: true })).toBeVisible();
   await shoot("3-popover");
   await page.keyboard.press("Escape");

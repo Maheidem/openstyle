@@ -783,8 +783,9 @@ test("screenshots of each popover state in light and dark (proof only)", async (
     });
     // A reload reads the full state again, the title included.
     await popover.reload();
+    // The card shows no date, so the title has a `YY-MM-DD ` prefix.
     await expect(popover.getByTestId("tray-popover-meeting-title")).toHaveText(
-      "Weekly product sync",
+      /^\d{2}-\d{2}-\d{2} Weekly product sync$/,
       { timeout: 10_000 },
     );
     await expect
