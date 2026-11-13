@@ -1204,7 +1204,17 @@
         "selectHint": "Cliquez sur une réunion pour la sélectionner. Maj-clic sélectionne une plage.",
         "bulkLabel": "Actions pour les réunions sélectionnées",
         "runSelected": "Exécuter"
-      }
+      },
+      "newSub": "Nouveau sous-dossier",
+      "moveFolder": "Déplacer vers…",
+      "hasSubFolders": "Contient des sous-dossiers",
+      "topLevel": "Niveau supérieur",
+      "currentPlace": "Emplacement actuel",
+      "nameTakenHere": "Contient déjà un dossier de ce nom",
+      "inFolder": "Dans {{name}}",
+      "blockedBodyChildren": "Sous-dossiers dans ce dossier : {{children}}. Réunions dans ce dossier : {{count}}. Déplacez ou supprimez d’abord les sous-dossiers.",
+      "depthExceeded": "Les dossiers ne peuvent avoir que 2 niveaux.",
+      "nameSlash": "Un nom de dossier ne peut pas contenir « / »."
     },
     "search": {
       "label": "Rechercher dans les réunions",

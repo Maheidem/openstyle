@@ -1,3 +1,4 @@
+import type { MeetingListItem } from "@openstyle/validations";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { createInstance } from "i18next";
 import { createElement } from "react";
@@ -7,6 +8,7 @@ import en from "../../locales/en.json";
 import { toggleSelection } from "./batch";
 import { FolderNameInput } from "./folder-controls";
 import { FolderPanel } from "./folder-panel";
+import { FolderTree } from "./folder-tree";
 import type { MeetingFolder } from "./folders-model";
 import { RecordingCard, type useRecorder } from "./recording";
 
@@ -157,5 +159,115 @@ describe("folder views", () => {
     expect(html).toContain("Records into");
     expect(html).toContain("Work");
     expect(html).toContain("disabled");
+  });
+
+  it("blocks the delete of a folder with sub-folders and gives both counts", () => {
+    const html = panel(
+      { ...folder, meeting_count: 3, child_count: 2 },
+      "delete",
+    );
+    expect(html).toContain("You cannot delete this folder.");
+    expect(html).toContain(
+      "Sub-folders in this folder: 2. Meetings in this folder: 3. Move or delete the sub-folders first.",
+    );
+    // An empty parent with children is blocked too.
+    const empty = panel(
+      { ...folder, meeting_count: 0, child_count: 1 },
+      "delete",
+    );
+    expect(empty).toContain("Sub-folders in this folder: 1.");
+    expect(empty).not.toContain("No meeting is deleted.");
+  });
+  it("nests child rows under the parent, above the parent's own meetings", () => {
+    const parent = {
+      ...folder,
+      id: "p",
+      name: "Customer calls",
+      child_count: 1,
+    };
+    const child = { ...folder, id: "c", name: "Lumen Labs", parent_id: "p" };
+    const other = { ...folder, id: "o", name: "Hiring", parent_id: null };
+    const meeting = (id: string, title: string, folderId: string | null) =>
+      ({
+        id,
+        title,
+        folder_id: folderId,
+        started_at: 1000,
+        duration_ms: 60_000,
+        status: "summarized",
+        job: null,
+      }) as unknown as MeetingListItem;
+    const html = renderToStaticMarkup(
+      createElement(
+        QueryClientProvider,
+        { client: new QueryClient() },
+        createElement(FolderTree, {
+          folders: [parent, other, child],
+          groups: new Map([
+            [
+              "p",
+              {
+                // The list of a parent also holds the child meetings.
+                meetings: [
+                  meeting("m1", "Pilot check-in", "p"),
+                  meeting("m2", "Onboarding call", "c"),
+                ],
+                loading: false,
+                failed: false,
+              },
+            ],
+            [
+              "c",
+              {
+                meetings: [meeting("m2", "Onboarding call", "c")],
+                loading: false,
+                failed: false,
+              },
+            ],
+          ]),
+          expanded: { p: true, c: true },
+          selectedFolderId: "p",
+          activeId: null,
+          creating: { parentId: "p" },
+          renamingId: null,
+          onExpanded: vi.fn(),
+          onFolder: vi.fn(),
+          onOpen: vi.fn(),
+          onCreate: vi.fn(async () => {}),
+          onCancelCreate: vi.fn(),
+          onNew: vi.fn(),
+          onNewChild: vi.fn(),
+          onRename: vi.fn(),
+          onSaveName: vi.fn(async () => {}),
+          onCancelName: vi.fn(),
+          onAction: vi.fn(),
+          onMoveFolder: vi.fn(),
+          onMove: vi.fn(),
+          onDrop: vi.fn(),
+        }),
+      ),
+    );
+    const at = (text: string) => html.indexOf(text);
+    // Order: parent row, new child input, child row, child meeting, parent
+    // meeting, the next top-level folder, Unfiled last.
+    expect(at('aria-label="Customer calls"')).toBeGreaterThan(-1);
+    expect(at('aria-label="Folder name"')).toBeGreaterThan(
+      at('aria-label="Customer calls"'),
+    );
+    expect(at('aria-label="Lumen Labs"')).toBeGreaterThan(
+      at('aria-label="Folder name"'),
+    );
+    expect(at("Onboarding call")).toBeGreaterThan(
+      at('aria-label="Lumen Labs"'),
+    );
+    expect(at("Pilot check-in")).toBeGreaterThan(at("Onboarding call"));
+    expect(at('aria-label="Hiring"')).toBeGreaterThan(at("Pilot check-in"));
+    expect(at('aria-label="Unfiled"')).toBeGreaterThan(
+      at('aria-label="Hiring"'),
+    );
+    // The child meeting shows once: under the child, not under the parent.
+    expect(html.split("Onboarding call").length - 1).toBe(1);
+    // The child row has its own chevron.
+    expect(html).toContain('aria-label="Collapse Lumen Labs"');
   });
 });

@@ -22,6 +22,7 @@ import { scopeOfThread } from "./meetings/ask-model";
 import { AskPanel, AskSelectValue } from "./meetings/ask-panel";
 import { useCiteActions, useMeetingsList } from "./meetings/ask-scope";
 import { useMeetingFolders } from "./meetings/folders-data";
+import { folderTreeOrder } from "./meetings/folders-model";
 
 type ScopeKind = "all" | "folder" | "meeting";
 
@@ -201,8 +202,13 @@ export default function AskPage(): React.JSX.Element {
                     />
                   </SelectTrigger>
                   <SelectContent>
-                    {folders.map((f) => (
-                      <SelectItem key={f.id} value={f.id}>
+                    {folderTreeOrder(folders).map(({ folder: f, depth }) => (
+                      <SelectItem
+                        key={f.id}
+                        value={f.id}
+                        // A child folder is one step in, under its parent.
+                        className={depth ? "pl-[22px]" : undefined}
+                      >
                         {f.name}
                       </SelectItem>
                     ))}

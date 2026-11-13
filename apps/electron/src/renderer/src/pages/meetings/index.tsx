@@ -26,7 +26,7 @@ import { EnhancePromptDialog } from "./enhance-prompt-dialog";
 import { FolderPanel } from "./folder-panel";
 import { FolderTree } from "./folder-tree";
 import { folderMeetingsOptions, useMeetingFolders } from "./folders-data";
-import { folderErrorKey, recordingFolderId } from "./folders-model";
+import { folderErrorKey, folderPath, recordingFolderId } from "./folders-model";
 import {
   MeetingImportRail,
   MeetingsEmptyState,
@@ -87,7 +87,9 @@ export default function MeetingsPage(): React.JSX.Element {
           : null,
     );
   }, [selectedId, selectedFolderId]);
-  const [creating, setCreating] = useState(false);
+  const [creating, setCreating] = useState<{ parentId: string | null } | null>(
+    null,
+  );
   const [renamingId, setRenamingId] = useState<string | null>(null);
   const [panelAction, setPanelAction] = useState<{
     kind: "description" | "delete";
@@ -169,9 +171,9 @@ export default function MeetingsPage(): React.JSX.Element {
     enabled: enabled && activeId !== null,
   });
   const targetId = recordingFolderId(selectedFolderId, openMeeting);
+  // A child folder shows as "Parent / Child".
   const targetName =
-    folders.find((folder) => folder.id === targetId)?.name ??
-    t("meetings.folders.unfiled");
+    folderPath(folders, targetId) ?? t("meetings.folders.unfiled");
   const targetReady =
     (!activeId || openMeeting !== undefined) &&
     (targetId === null || folders.some((folder) => folder.id === targetId));
@@ -233,14 +235,20 @@ export default function MeetingsPage(): React.JSX.Element {
   }, [groupQueries, folders]);
 
   const openFolderId = openMeeting?.folder_id;
+  const openParentId = folders.find((f) => f.id === openFolderId)?.parent_id;
   useEffect(() => {
     if (!activeId || openFolderId === undefined) return;
+    // A meeting in a child folder also opens the parent row.
+    const keys = [
+      openFolderId ?? "none",
+      ...(openParentId ? [openParentId] : []),
+    ];
     setExpanded((old) =>
-      old[openFolderId ?? "none"]
+      keys.every((key) => old[key])
         ? old
-        : { ...old, [openFolderId ?? "none"]: true },
+        : { ...old, ...Object.fromEntries(keys.map((key) => [key, true])) },
     );
-  }, [activeId, openFolderId]);
+  }, [activeId, openFolderId, openParentId]);
 
   // The detail column scrolls on its own. A new meeting, folder or search
   // starts at the top of the column.
@@ -349,11 +357,25 @@ export default function MeetingsPage(): React.JSX.Element {
     setActionError(null);
     try {
       await folderData.move(meeting, folderId);
-      setExpanded((old) => ({ ...old, [folderId ?? "none"]: true }));
+      const parentId = folders.find((f) => f.id === folderId)?.parent_id;
+      setExpanded((old) => ({
+        ...old,
+        [folderId ?? "none"]: true,
+        ...(parentId ? { [parentId]: true } : {}),
+      }));
     } catch (err) {
       setActionError(t(folderErrorKey(err)));
     } finally {
       moving.current = false;
+    }
+  };
+  const moveFolder = async (id: string, parentId: string | null) => {
+    setActionError(null);
+    try {
+      await folderData.update(id, { parent_id: parentId });
+      if (parentId) setExpanded((old) => ({ ...old, [parentId]: true }));
+    } catch (err) {
+      setActionError(t(folderErrorKey(err)));
     }
   };
   const drop = (id: string, folderId: string | null) => {
@@ -465,17 +487,30 @@ export default function MeetingsPage(): React.JSX.Element {
                 onFolder={selectFolder}
                 onOpen={open}
                 onNew={() => {
-                  setCreating(true);
+                  setCreating({ parentId: null });
                   setRenamingId(null);
                 }}
-                onCancelCreate={() => setCreating(false)}
+                onNewChild={(parentId) => {
+                  setCreating({ parentId });
+                  setRenamingId(null);
+                  setExpanded((old) => ({ ...old, [parentId]: true }));
+                }}
+                onCancelCreate={() => setCreating(null)}
                 onCreate={async (name) => {
+                  const parentId = creating?.parentId ?? null;
+                  if (parentId) {
+                    // A new child folder shows under its parent. The
+                    // selection stays.
+                    await folderData.create(name, parentId);
+                    setCreating(null);
+                    return;
+                  }
                   const folder = await folderData.create(name);
-                  setCreating(false);
+                  setCreating(null);
                   selectFolder(folder.id);
                 }}
                 onRename={(id) => {
-                  setCreating(false);
+                  setCreating(null);
                   setRenamingId(id);
                 }}
                 onCancelName={() => setRenamingId(null)}
@@ -487,6 +522,7 @@ export default function MeetingsPage(): React.JSX.Element {
                   selectFolder(id);
                   setPanelAction({ kind, seq: ++actionSequence.current });
                 }}
+                onMoveFolder={(id, parentId) => void moveFolder(id, parentId)}
                 onMove={(meeting, id) => void move(meeting, id)}
                 onDrop={drop}
               />

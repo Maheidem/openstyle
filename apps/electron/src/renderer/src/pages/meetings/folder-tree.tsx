@@ -3,7 +3,7 @@ import { Button } from "@renderer/components/ui/button";
 import { formatClockDuration, formatTimestamp } from "@renderer/lib/format";
 import { cn } from "@renderer/lib/utils";
 import { ChevronDown, ChevronRight, Inbox, Plus } from "lucide-react";
-import { useId, useState } from "react";
+import { type ReactNode, useId, useState } from "react";
 import { useTranslation } from "react-i18next";
 import {
   FolderIcon,
@@ -11,7 +11,11 @@ import {
   FolderNameInput,
   MeetingContextMenu,
 } from "./folder-controls";
-import { MEETING_DRAG_TYPE, type MeetingFolder } from "./folders-model";
+import {
+  childFolders,
+  MEETING_DRAG_TYPE,
+  type MeetingFolder,
+} from "./folders-model";
 import { JobBadge, StatusBadge } from "./shared";
 
 export function FolderMeetingRow({
@@ -125,12 +129,15 @@ function FolderGroup({
   loading,
   failed,
   renaming,
+  nested,
   onToggle,
   onSelect,
   onOpen,
   onMove,
   onRename,
   onDescription,
+  onNewChild,
+  onMoveFolder,
   onDelete,
   onSaveName,
   onCancelName,
@@ -138,6 +145,7 @@ function FolderGroup({
 }: {
   name: string;
   folder?: MeetingFolder;
+  /** Only the meetings of this folder, not the meetings of its children. */
   meetings: MeetingListItem[];
   folders: MeetingFolder[];
   expanded: boolean;
@@ -146,12 +154,16 @@ function FolderGroup({
   loading: boolean;
   failed: boolean;
   renaming: boolean;
+  /** The child folder rows and the new child input, above the meetings. */
+  nested?: ReactNode;
   onToggle: () => void;
   onSelect: () => void;
   onOpen: (id: string) => void;
   onMove: (meeting: MeetingListItem, folderId: string | null) => void;
   onRename: () => void;
   onDescription: () => void;
+  onNewChild: () => void;
+  onMoveFolder: (parentId: string | null) => void;
   onDelete: () => void;
   onSaveName: (name: string) => Promise<void>;
   onCancelName: () => void;
@@ -231,8 +243,11 @@ function FolderGroup({
             {folder ? (
               <FolderMenu
                 folder={folder}
+                folders={folders}
                 onRename={onRename}
                 onDescription={onDescription}
+                onNewChild={onNewChild}
+                onMoveFolder={onMoveFolder}
                 onDelete={onDelete}
               />
             ) : (
@@ -246,6 +261,7 @@ function FolderGroup({
           id={childrenId}
           className="border-border my-1 ml-3.5 flex flex-col gap-0.5 border-l pl-2"
         >
+          {nested}
           {loading || failed ? (
             <p
               className="text-muted-foreground px-2 py-2 text-[11.5px]"
@@ -268,7 +284,7 @@ function FolderGroup({
                 onMove={(id) => onMove(meeting, id)}
               />
             ))
-          ) : (
+          ) : nested ? null : (
             <p className="text-muted-foreground px-2 py-2 text-[11.5px]">
               {t(
                 folder
@@ -297,10 +313,12 @@ export function FolderTree({
   onCreate,
   onCancelCreate,
   onNew,
+  onNewChild,
   onRename,
   onSaveName,
   onCancelName,
   onAction,
+  onMoveFolder,
   onMove,
   onDrop,
 }: {
@@ -312,7 +330,9 @@ export function FolderTree({
   expanded: Record<string, boolean>;
   selectedFolderId: string | null;
   activeId: string | null;
-  creating: boolean;
+  /** The open name input for a new folder: at the top level (parentId
+   * null) or under a top-level folder. null: no input. */
+  creating: { parentId: string | null } | null;
   renamingId: string | null;
   onExpanded: (id: string) => void;
   onFolder: (id: string) => void;
@@ -320,14 +340,69 @@ export function FolderTree({
   onCreate: (name: string) => Promise<void>;
   onCancelCreate: () => void;
   onNew: () => void;
+  onNewChild: (parentId: string) => void;
   onRename: (id: string) => void;
   onSaveName: (id: string, name: string) => Promise<void>;
   onCancelName: () => void;
   onAction: (id: string, action: "description" | "delete") => void;
+  onMoveFolder: (id: string, parentId: string | null) => void;
   onMove: (meeting: MeetingListItem, folderId: string | null) => void;
   onDrop: (meetingId: string, folderId: string | null) => void;
 }) {
   const { t } = useTranslation();
+  const ids = new Set(folders.map((f) => f.id));
+  // A child of a missing parent shows at the top level.
+  const top = folders.filter((f) => !f.parent_id || !ids.has(f.parent_id));
+  const group = (folder: MeetingFolder | undefined): ReactNode => {
+    const id = folder?.id ?? "none";
+    const data = groups.get(folder?.id ?? null);
+    // The list of a parent also holds the meetings of its children.
+    const own = (data?.meetings ?? []).filter(
+      (m) => m.folder_id === (folder?.id ?? null),
+    );
+    const children =
+      folder && !folder.parent_id ? childFolders(folders, folder.id) : [];
+    const creatingHere = Boolean(folder && creating?.parentId === folder.id);
+    const nested =
+      creatingHere || children.length ? (
+        <>
+          {creatingHere && (
+            <FolderNameInput onSave={onCreate} onCancel={onCancelCreate} />
+          )}
+          {children.map((child) => group(child))}
+        </>
+      ) : undefined;
+    return (
+      <FolderGroup
+        key={id}
+        folder={folder}
+        name={folder?.name ?? t("meetings.folders.unfiled")}
+        folders={folders}
+        meetings={own}
+        loading={data?.loading ?? true}
+        failed={data?.failed ?? false}
+        expanded={expanded[id] ?? false}
+        selected={Boolean(folder && selectedFolderId === folder.id)}
+        activeId={activeId}
+        renaming={folder !== undefined && renamingId === folder.id}
+        nested={nested}
+        onToggle={() => onExpanded(id)}
+        onSelect={() => (folder ? onFolder(folder.id) : onExpanded(id))}
+        onOpen={onOpen}
+        onMove={onMove}
+        onRename={() => folder && onRename(folder.id)}
+        onDescription={() => folder && onAction(folder.id, "description")}
+        onNewChild={() => folder && onNewChild(folder.id)}
+        onMoveFolder={(parentId) => folder && onMoveFolder(folder.id, parentId)}
+        onDelete={() => folder && onAction(folder.id, "delete")}
+        onSaveName={(name) =>
+          folder ? onSaveName(folder.id, name) : Promise.resolve()
+        }
+        onCancelName={onCancelName}
+        onDrop={onDrop}
+      />
+    );
+  };
   return (
     <>
       <div className="mb-1 flex min-h-7 items-center justify-between">
@@ -341,40 +416,10 @@ export function FolderTree({
           <Plus />
         </Button>
       </div>
-      {creating && (
+      {creating?.parentId === null && (
         <FolderNameInput onSave={onCreate} onCancel={onCancelCreate} />
       )}
-      {[...folders, undefined].map((folder) => {
-        const id = folder?.id ?? "none";
-        const data = groups.get(folder?.id ?? null);
-        return (
-          <FolderGroup
-            key={id}
-            folder={folder}
-            name={folder?.name ?? t("meetings.folders.unfiled")}
-            folders={folders}
-            meetings={data?.meetings ?? []}
-            loading={data?.loading ?? true}
-            failed={data?.failed ?? false}
-            expanded={expanded[id] ?? false}
-            selected={Boolean(folder && selectedFolderId === folder.id)}
-            activeId={activeId}
-            renaming={folder !== undefined && renamingId === folder.id}
-            onToggle={() => onExpanded(id)}
-            onSelect={() => (folder ? onFolder(folder.id) : onExpanded(id))}
-            onOpen={onOpen}
-            onMove={onMove}
-            onRename={() => folder && onRename(folder.id)}
-            onDescription={() => folder && onAction(folder.id, "description")}
-            onDelete={() => folder && onAction(folder.id, "delete")}
-            onSaveName={(name) =>
-              folder ? onSaveName(folder.id, name) : Promise.resolve()
-            }
-            onCancelName={onCancelName}
-            onDrop={onDrop}
-          />
-        );
-      })}
+      {[...top, undefined].map((folder) => group(folder))}
       <p className="text-muted-foreground mt-3 text-[11px] leading-relaxed">
         {t("meetings.folders.railHint")}
       </p>

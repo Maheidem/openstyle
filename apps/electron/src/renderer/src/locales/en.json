@@ -1359,7 +1359,17 @@
         "selectHint": "Click a meeting to select it. Shift-click selects a range.",
         "bulkLabel": "Actions for the selected meetings",
         "runSelected": "Run"
-      }
+      },
+      "newSub": "New sub-folder",
+      "moveFolder": "Move to…",
+      "hasSubFolders": "Has sub-folders",
+      "topLevel": "Top level",
+      "currentPlace": "Current place",
+      "nameTakenHere": "Has a folder with this name",
+      "inFolder": "In {{name}}",
+      "blockedBodyChildren": "Sub-folders in this folder: {{children}}. Meetings in this folder: {{count}}. Move or delete the sub-folders first.",
+      "depthExceeded": "Folders can have only 2 levels.",
+      "nameSlash": "A folder name cannot contain \"/\"."
     },
     "search": {
       "label": "Search meetings",

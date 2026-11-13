@@ -10,8 +10,11 @@ import { cn } from "@renderer/lib/utils";
 import {
   Check,
   ChevronDown,
+  ChevronRight,
   FileText,
   Folder,
+  FolderInput,
+  FolderPlus,
   Inbox,
   LockKeyhole,
   MoreHorizontal,
@@ -23,7 +26,13 @@ import { ContextMenu, DropdownMenu } from "radix-ui";
 import { useEffect, useId, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { useMeetingFolders } from "./folders-data";
-import { folderErrorKey, type MeetingFolder } from "./folders-model";
+import {
+  type FolderMoveTarget,
+  folderErrorKey,
+  folderMoveTargets,
+  folderTreeOrder,
+  type MeetingFolder,
+} from "./folders-model";
 
 // Full class strings, so Tailwind keeps them.
 const FOLDER_COLORS: Record<FolderColor, { icon: string; swatch: string }> = {
@@ -92,7 +101,14 @@ export function FolderNameInput({
     if (saving.current) return;
     const valid = createMeetingFolderSchema.safeParse({ name });
     if (!valid.success) {
-      setError(t("meetings.folders.nameInvalid"));
+      // A folder path joins the names with "/", so a name cannot hold it.
+      setError(
+        t(
+          name.includes("/")
+            ? "meetings.folders.nameSlash"
+            : "meetings.folders.nameInvalid",
+        ),
+      );
       return;
     }
     saving.current = true;
@@ -166,13 +182,21 @@ export function FolderNameInput({
 
 export function FolderMenu({
   folder,
+  folders,
   onRename,
   onDescription,
+  onNewChild,
+  onMoveFolder,
   onDelete,
 }: {
   folder: MeetingFolder;
+  folders: MeetingFolder[];
   onRename: () => void;
   onDescription: () => void;
+  /** Open the name input for a new child folder (top-level folders only). */
+  onNewChild: () => void;
+  /** Move the folder under a top-level folder, or to the top level (null). */
+  onMoveFolder: (parentId: string | null) => void;
   onDelete: () => void;
 }) {
   const { t } = useTranslation();
@@ -184,6 +208,9 @@ export function FolderMenu({
     focusElsewhere.current = true;
     action();
   };
+  const hasChildren = (folder.child_count ?? 0) > 0;
+  const locked = folder.meeting_count > 0 || hasChildren;
+  const targets = folderMoveTargets(folders, folder);
   return (
     <DropdownMenu.Root>
       <DropdownMenu.Trigger asChild>
@@ -222,6 +249,58 @@ export function FolderMenu({
             <FileText />
             {t("meetings.folders.editDescription")}
           </DropdownMenu.Item>
+          {!folder.parent_id && (
+            <DropdownMenu.Item
+              className={itemClass}
+              onSelect={() => act(onNewChild)}
+            >
+              <FolderPlus />
+              {t("meetings.folders.newSub")}
+            </DropdownMenu.Item>
+          )}
+          {hasChildren ? (
+            // A folder with children can only stay at the top level.
+            <DropdownMenu.Item className={itemClass} disabled>
+              <FolderInput />
+              <span className="min-w-0 flex-1">
+                <span className="block">
+                  {t("meetings.folders.moveFolder")}
+                </span>
+                <span className="text-muted-foreground block text-[10.5px]">
+                  {t("meetings.folders.hasSubFolders")}
+                </span>
+              </span>
+              <ChevronRight className="ml-auto" />
+            </DropdownMenu.Item>
+          ) : (
+            <DropdownMenu.Sub>
+              <DropdownMenu.SubTrigger
+                className={cn(itemClass, "data-[state=open]:bg-accent")}
+              >
+                <FolderInput />
+                <span className="min-w-0 flex-1">
+                  {t("meetings.folders.moveFolder")}
+                </span>
+                <ChevronRight className="ml-auto" />
+              </DropdownMenu.SubTrigger>
+              <DropdownMenu.Portal>
+                <DropdownMenu.SubContent
+                  className={menuClass}
+                  sideOffset={4}
+                  alignOffset={-5}
+                >
+                  {targets.map((target, index) => (
+                    <FolderMoveItem
+                      key={target.parentId ?? "top"}
+                      target={target}
+                      separator={index === 1}
+                      onMove={() => onMoveFolder(target.parentId)}
+                    />
+                  ))}
+                </DropdownMenu.SubContent>
+              </DropdownMenu.Portal>
+            </DropdownMenu.Sub>
+          )}
           <DropdownMenu.Label className="eyebrow px-2 pt-1.5 pb-1">
             {t("meetings.folders.color")}
           </DropdownMenu.Label>
@@ -253,20 +332,22 @@ export function FolderMenu({
           <DropdownMenu.Item
             className={cn(
               itemClass,
-              folder.meeting_count
+              locked
                 ? "text-muted-foreground"
                 : "text-destructive [&>svg:where(:not([data-color]))]:text-destructive",
             )}
             onSelect={() => act(onDelete)}
           >
-            {folder.meeting_count ? <LockKeyhole /> : <Trash2 />}
+            {locked ? <LockKeyhole /> : <Trash2 />}
             <span className="min-w-0">
               <span className="block">{t("meetings.folders.delete")}</span>
-              {folder.meeting_count > 0 && (
+              {locked && (
                 <span className="text-muted-foreground block text-[10.5px]">
-                  {t("meetings.folders.deleteBlockedCount", {
-                    count: folder.meeting_count,
-                  })}
+                  {folder.meeting_count > 0
+                    ? t("meetings.folders.deleteBlockedCount", {
+                        count: folder.meeting_count,
+                      })
+                    : t("meetings.folders.hasSubFolders")}
                 </span>
               )}
             </span>
@@ -274,6 +355,49 @@ export function FolderMenu({
         </DropdownMenu.Content>
       </DropdownMenu.Portal>
     </DropdownMenu.Root>
+  );
+}
+
+/** One place of the "Move to…" submenu of a folder. */
+function FolderMoveItem({
+  target,
+  separator,
+  onMove,
+}: {
+  target: FolderMoveTarget;
+  separator: boolean;
+  onMove: () => void;
+}) {
+  const { t } = useTranslation();
+  const note = target.nameTaken
+    ? t("meetings.folders.nameTakenHere")
+    : target.folder === null
+      ? null
+      : target.current
+        ? t("meetings.folders.currentPlace")
+        : t("meetings.folders.meetingCount", {
+            count: target.folder.meeting_count,
+          });
+  return (
+    <>
+      {separator && <DropdownMenu.Separator className="bg-border my-1 h-px" />}
+      <DropdownMenu.Item
+        className={itemClass}
+        disabled={target.current || target.nameTaken}
+        onSelect={onMove}
+      >
+        <FolderIcon color={target.folder?.color} />
+        <span className="min-w-0 flex-1 truncate">
+          {target.folder?.name ?? t("meetings.folders.topLevel")}
+          {note && (
+            <span className="text-muted-foreground block text-[10.5px]">
+              {note}
+            </span>
+          )}
+        </span>
+        {target.current && <Check />}
+      </DropdownMenu.Item>
+    </>
   );
 }
 
@@ -295,10 +419,11 @@ function MoveItems({
       <Menu.Label className="eyebrow px-2 py-1.5">
         {t("meetings.folders.moveTo")}
       </Menu.Label>
-      {folders.map((folder) => (
+      {folderTreeOrder(folders).map(({ folder, depth }) => (
         <Menu.Item
           key={folder.id}
-          className={itemClass}
+          // A child folder is one step in, under its parent.
+          className={cn(itemClass, depth && "pl-[26px]")}
           disabled={meeting.folder_id === folder.id}
           onSelect={() => onMove(folder.id)}
         >

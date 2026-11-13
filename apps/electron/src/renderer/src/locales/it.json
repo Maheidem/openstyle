@@ -1203,7 +1203,17 @@
         "selectHint": "Fai clic su una riunione per selezionarla. Maiusc-clic seleziona un intervallo.",
         "bulkLabel": "Azioni per le riunioni selezionate",
         "runSelected": "Esegui"
-      }
+      },
+      "newSub": "Nuova sottocartella",
+      "moveFolder": "Sposta in…",
+      "hasSubFolders": "Ha sottocartelle",
+      "topLevel": "Livello principale",
+      "currentPlace": "Posizione attuale",
+      "nameTakenHere": "Ha già una cartella con questo nome",
+      "inFolder": "In {{name}}",
+      "blockedBodyChildren": "Sottocartelle in questa cartella: {{children}}. Riunioni in questa cartella: {{count}}. Prima sposta o elimina le sottocartelle.",
+      "depthExceeded": "Le cartelle possono avere solo 2 livelli.",
+      "nameSlash": "Il nome di una cartella non può contenere \"/\"."
     },
     "search": {
       "label": "Cerca nelle riunioni",
