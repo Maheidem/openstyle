@@ -1,5 +1,18 @@
 # Changelog
 
+## 3.1.0-alpha.4
+
+### New Features ✨
+
+#### Meetings
+
+- AI title for new and imported meetings by @Maheidem in [#442](https://github.com/Maheidem/openstyle/pull/442)
+- Sub-folders (2 levels) by @Maheidem in [#441](https://github.com/Maheidem/openstyle/pull/441)
+
+### Bug Fixes 🐛
+
+- (release) Unlock the notary keychain in the preflight by @Maheidem in [#439](https://github.com/Maheidem/openstyle/pull/439)
+
 ## 3.1.0-alpha.3
 
 ### Bug Fixes 🐛
