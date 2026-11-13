@@ -136,15 +136,15 @@ describe("titleSkipReason (node skip rules)", () => {
 // Schema 58 backfill
 // ---------------------------------------------------------------------------
 
-describe("schema 58: title_source backfill", () => {
+describe("schema 59: title_source backfill", () => {
   it("fills default and calendar, and keeps every other old title as user", () => {
     const db = new DatabaseSync(":memory:");
     db.exec("PRAGMA foreign_keys = ON");
     initSchema(db);
-    // Back to a version-57 file: no title_source column yet.
+    // Back to a version-58 file: no title_source column yet.
     db.exec(`
       ALTER TABLE meetings DROP COLUMN title_source;
-      UPDATE schema_version SET version = 57;
+      UPDATE schema_version SET version = 58;
       INSERT INTO meetings (id, title, status, created_at)
         VALUES ('none', NULL, 'transcribed', 1),
                ('blank', '  ', 'transcribed', 1),
@@ -172,7 +172,7 @@ describe("schema 58: title_source backfill", () => {
       { id: "rec", title: "Budget talk", title_source: "user" },
     ]);
     expect(db.prepare("SELECT version FROM schema_version").get()).toEqual({
-      version: 58,
+      version: 59,
     });
     // A second run changes nothing.
     initSchema(db);

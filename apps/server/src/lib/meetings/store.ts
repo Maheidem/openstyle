@@ -5,7 +5,7 @@ export interface MeetingRow {
   id: string;
   folder_id: string | null;
   title: string | null;
-  /** Who wrote the title (schema 58): default, file, calendar, user or ai.
+  /** Who wrote the title (schema 59): default, file, calendar, user or ai.
    * The auto title writes only over default and file. */
   title_source: MeetingTitleSource | null;
   started_at: number | null;
