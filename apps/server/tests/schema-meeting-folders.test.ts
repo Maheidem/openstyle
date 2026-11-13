@@ -74,8 +74,8 @@ describe("schema 41: meeting folders", () => {
       version: 58,
     });
     expect(db.prepare("SELECT * FROM meetings").all()).toEqual(
-      // Schema 58 fills title_source: system text only reads as an import.
-      before.map((row) => ({ ...row, folder_id: null, title_source: "file" })),
+      // Schema 58 fills title_source: an old title is the user's.
+      before.map((row) => ({ ...row, folder_id: null, title_source: "user" })),
     );
     expect(db.prepare("SELECT * FROM meeting_segments").all()).toEqual(
       segments,

@@ -137,7 +137,7 @@ describe("titleSkipReason (node skip rules)", () => {
 // ---------------------------------------------------------------------------
 
 describe("schema 58: title_source backfill", () => {
-  it("fills default, calendar, file and user from the rows as they are", () => {
+  it("fills default and calendar, and keeps every other old title as user", () => {
     const db = new DatabaseSync(":memory:");
     db.exec("PRAGMA foreign_keys = ON");
     initSchema(db);
@@ -165,8 +165,8 @@ describe("schema 58: title_source backfill", () => {
     expect(rows).toEqual([
       { id: "blank", title: "  ", title_source: "default" },
       { id: "cal", title: "Weekly sync", title_source: "calendar" },
-      { id: "imp", title: "zoom_0412_rec", title_source: "file" },
-      // An import with no transcript yet has no segment to tell: user.
+      // An old import title stays: the AI never writes over an old title.
+      { id: "imp", title: "zoom_0412_rec", title_source: "user" },
       { id: "imp-new", title: "audio-file", title_source: "user" },
       { id: "none", title: null, title_source: "default" },
       { id: "rec", title: "Budget talk", title_source: "user" },
