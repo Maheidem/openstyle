@@ -390,6 +390,7 @@ describe("meeting tools", () => {
       duration_ms: null,
       status: "transcribed",
       folder_id: null,
+      folder_path: null,
       tags: ["harbor"],
       job: null,
     });
@@ -940,6 +941,107 @@ describe("folder tools", () => {
     expect(folders.items[0]).not.toHaveProperty("stage_counts");
   });
 
+  it("sub-folders: create with a parent, path in, id and path out", async () => {
+    const acme = await ok("create_folder", { name: "Acme" });
+    expect(acme).toMatchObject({ path: "Acme", parent_id: null });
+    const planning = await ok("create_folder", {
+      name: "Planning",
+      parent: "acme",
+    });
+    expect(planning).toMatchObject({
+      path: "Acme/Planning",
+      parent_id: acme.id,
+    });
+    // A parent by id works too.
+    const budget = await ok("create_folder", {
+      name: "Budget",
+      parent: acme.id,
+    });
+    expect(budget.path).toBe("Acme/Budget");
+    const listed = await ok("list_folders");
+    expect(
+      listed.items.map((f: { id: string; path: string }) => [f.id, f.path]),
+    ).toEqual([
+      [acme.id, "Acme"],
+      [budget.id, "Acme/Budget"],
+      [planning.id, "Acme/Planning"],
+    ]);
+    insertMeeting("m1", { folderId: planning.id, startedAt: 2 });
+    insertMeeting("m2", { folderId: acme.id, startedAt: 1 });
+    insertMeeting("m3");
+    const inChild = await ok("list_meetings", { path: "ACME/planning" });
+    expect(inChild.items).toEqual([
+      expect.objectContaining({
+        id: "m1",
+        folder_id: planning.id,
+        folder_path: "Acme/Planning",
+      }),
+    ]);
+    // A parent includes its children.
+    const inParent = await ok("list_meetings", { path: "Acme" });
+    expect(inParent.items.map((m: { id: string }) => m.id).sort()).toEqual([
+      "m1",
+      "m2",
+    ]);
+    expect(await ok("get_meeting", { meeting_id: "m1" })).toMatchObject({
+      folder_id: planning.id,
+      folder_path: "Acme/Planning",
+    });
+    const moved = await ok("move_meetings", {
+      meeting_ids: ["m3"],
+      path: "Acme/Budget",
+    });
+    expect(moved).toMatchObject({
+      folder_id: budget.id,
+      folder_path: "Acme/Budget",
+    });
+    expect(meetingRow("m3")?.folder_id).toBe(budget.id);
+    // Move a folder to the top level and back.
+    const top = await ok("update_folder", {
+      path: "Acme/Planning",
+      parent: null,
+    });
+    expect(top).toMatchObject({ path: "Planning", parent_id: null });
+    const back = await ok("update_folder", {
+      path: "Planning",
+      parent: "Acme",
+    });
+    expect(back.path).toBe("Acme/Planning");
+    const overview = await ok("get_folder_overview", { path: "Acme" });
+    expect(overview.folder).toMatchObject({ id: acme.id, path: "Acme" });
+    // Clear errors.
+    for (const [tool, args, text] of [
+      ["list_meetings", { path: "Acme/Nope" }, 'no folder at path "Acme/Nope"'],
+      ["list_meetings", { path: "a/b/c" }, "2 levels"],
+      ["get_folder_overview", { folder_id: acme.id, path: "Acme" }, "not both"],
+      ["get_folder_overview", {}, "Give folder_id or path"],
+      ["move_meetings", { meeting_ids: ["m3"] }, "Give folder_id or path"],
+      [
+        "create_folder",
+        { name: "Deep", parent: "Acme/Planning" },
+        "only 2 levels",
+      ],
+      ["delete_folder", { path: "Acme", confirm: true }, "child folders"],
+    ] as const) {
+      const res = await call(tool, args);
+      expect(res.isError, `${tool} ${JSON.stringify(args)}`).toBe(true);
+      expect(res.text).toContain(text);
+    }
+    // Ask threads carry the folder path.
+    const thread = createThread(getDb(), { kind: "folder", id: planning.id });
+    if (!thread) throw new Error("no thread");
+    const threads = await ok("list_ask_threads", { path: "Acme/Planning" });
+    expect(threads.items).toEqual([
+      expect.objectContaining({
+        id: thread.id,
+        folder_path: "Acme/Planning",
+      }),
+    ]);
+    const one = await ok("get_ask_thread", { thread_id: thread.id });
+    expect(one.thread.folder_path).toBe("Acme/Planning");
+    getDb().exec("DELETE FROM chat_threads");
+  });
+
   it("get_folder_standing reads the saved text", async () => {
     insertFolder("f1", "Harbor");
     const data = await ok("get_folder_standing", { folder_id: "f1" });
@@ -1385,6 +1487,64 @@ describe("PR 3 write tools", () => {
       bullets: ["x"],
     });
     expect(missing.isError).toBe(true);
+  });
+
+  it("open items with sub-folders: a parent lists child items; a child meeting can mark a parent item", async () => {
+    insertFolder("f1", "Harbor");
+    insertFolder("f2", "Lighthouse");
+    getDb().exec("UPDATE meeting_folders SET parent_id = 'f1' WHERE id = 'f2'");
+    insertMeeting("m1", { folderId: "f1", startedAt: 1_780_000_000_000 });
+    insertMeeting("m3", { folderId: "f2", startedAt: 1_780_100_000_000 });
+    const parentItem = await ok("create_open_item", {
+      meeting_id: "m1",
+      kind: "action",
+      text: "Order the oak planks",
+      quote: "order the oak planks",
+    });
+    expect(parentItem).toMatchObject({
+      folder_id: "f1",
+      folder_path: "Harbor",
+    });
+    const childItem = await ok("create_open_item", {
+      meeting_id: "m3",
+      kind: "action",
+      text: "Paint the lamp room",
+      quote: "paint the lamp room",
+    });
+    expect(childItem).toMatchObject({
+      folder_id: "f2",
+      folder_path: "Harbor/Lighthouse",
+    });
+    const ids = async (args: Record<string, unknown>) =>
+      (await ok("list_open_items", { status: "all", ...args })).items
+        .map((i: { id: string }) => i.id)
+        .sort();
+    expect(await ids({ path: "Harbor" })).toEqual(
+      [parentItem.id, childItem.id].sort(),
+    );
+    expect(await ids({ path: "harbor/lighthouse" })).toEqual([childItem.id]);
+    // A child meeting can mark an item of the parent. The child list then
+    // shows that item too, because one of its meetings speaks about it.
+    await ok("add_open_item_mark", {
+      item_id: parentItem.id,
+      meeting_id: "m3",
+      status: "open",
+      quote: "still waiting for the planks",
+    });
+    // A parent meeting cannot mark an item of a child: the child list
+    // would not read that mark.
+    const wrong = await call("add_open_item_mark", {
+      item_id: childItem.id,
+      meeting_id: "m1",
+      status: "done",
+      quote: "the lamp room is done",
+    });
+    expect(wrong.isError).toBe(true);
+    expect(wrong.text).toContain("not in the folder");
+    expect(await ids({ folder_id: "f2" })).toEqual(
+      [parentItem.id, childItem.id].sort(),
+    );
+    getDb().exec("DELETE FROM ledger_marks; DELETE FROM ledger_items;");
   });
 
   it("open items: list, create, mark, update and delete", async () => {

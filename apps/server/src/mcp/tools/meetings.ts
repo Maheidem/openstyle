@@ -17,6 +17,12 @@ import {
   seg,
   ToolError,
 } from "./define.js";
+import {
+  Folders,
+  folderFilterArgs,
+  folderRefArgs,
+  resolveFolderFilter,
+} from "./folder-ref.js";
 
 const meetingId = z
   .string()
@@ -50,26 +56,19 @@ interface MeetingListRow {
 const listMeetings = defineTool({
   name: "list_meetings",
   description:
-    "List the meetings, newest first, one page at a time. Each item is short: id, title, started_at, duration_ms, status, folder_id, tags and the kind of the running job. total counts all meetings of the filter. For the summary, the notes and the transcript, use get_meeting and get_transcript.",
+    "List the meetings, newest first, one page at a time. Each item is short: id, title, started_at, duration_ms, status, folder_id, folder_path, tags and the kind of the running job. total counts all meetings of the filter. For the summary, the notes and the transcript, use get_meeting and get_transcript.",
   kind: "read",
   idempotent: true,
   input: z.object({
-    folder_id: z
-      .string()
-      .min(1)
-      .optional()
-      .describe(
-        'Only the meetings of this folder. "none" gives the meetings with no folder.',
-      ),
+    ...folderFilterArgs("Only the meetings"),
     ...pageArgs,
   }),
-  run: async (
-    { folder_id, offset = 0, limit = LIST_LIMIT_DEFAULT },
-    { api },
-  ) => {
+  run: async ({ offset = 0, limit = LIST_LIMIT_DEFAULT, ...ref }, { api }) => {
+    const folder_id = await resolveFolderFilter(api, ref);
     const list = expectOk(
       await api("GET", `/api/meetings${query({ folder_id, limit, offset })}`),
     ) as { items: MeetingListRow[]; total: number };
+    const folders = await Folders.load(api);
     return {
       data: {
         ...pageFields(list.total, offset, limit, list.items.length),
@@ -80,6 +79,7 @@ const listMeetings = defineTool({
           duration_ms: m.duration_ms,
           status: m.status,
           folder_id: m.folder_id,
+          folder_path: folders.pathOf(m.folder_id),
           tags: m.tags ?? [],
           job: m.job?.kind ?? null,
         })),
@@ -101,10 +101,14 @@ const getMeeting = defineTool({
     // gives it a name that says what it counts.
     const { segment_counts, ...meeting } = expectOk(
       await api("GET", `/api/meetings/${seg(meeting_id)}`),
-    ) as { segment_counts?: { total: number; failed: number } };
+    ) as {
+      segment_counts?: { total: number; failed: number };
+      folder_id?: string | null;
+    };
     return {
       data: {
         ...meeting,
+        folder_path: (await Folders.load(api)).pathOf(meeting.folder_id),
         stored_asr_segments: segment_counts ?? { total: 0, failed: 0 },
       },
     };
@@ -265,7 +269,7 @@ const setMeetingTags = defineTool({
 const moveMeetings = defineTool({
   name: "move_meetings",
   description:
-    "Move meetings into a folder, or out of all folders with folder_id: null.",
+    "Move meetings into a folder (folder_id or path), or out of all folders with folder_id: null.",
   kind: "write",
   idempotent: true,
   input: z.object({
@@ -278,16 +282,35 @@ const moveMeetings = defineTool({
       .string()
       .min(1)
       .nullable()
+      .optional()
       .describe(
         "The target folder id (from list_folders), or null for no folder.",
       ),
+    path: folderRefArgs.path,
   }),
-  run: async ({ meeting_ids, folder_id }, { api }) => {
+  run: async ({ meeting_ids, folder_id, path }, { api }) => {
+    if (folder_id !== undefined && path !== undefined) {
+      throw new ToolError("Give folder_id or path, not both.");
+    }
+    if (folder_id === undefined && path === undefined) {
+      throw new ToolError(
+        "Give folder_id or path. folder_id: null moves the meetings out of all folders.",
+      );
+    }
     for (const id of meeting_ids) assertNoJob(id);
+    const folders = await Folders.load(api);
+    const target =
+      path !== undefined ? folders.idOfPath(path) : (folder_id ?? null);
     const data = expectOk(
-      await api("POST", "/api/meetings/move", { meeting_ids, folder_id }),
-    );
-    return { data, change: { kind: "meeting", ids: meeting_ids } };
+      await api("POST", "/api/meetings/move", {
+        meeting_ids,
+        folder_id: target,
+      }),
+    ) as Record<string, unknown>;
+    return {
+      data: { ...data, folder_path: folders.pathOf(target) },
+      change: { kind: "meeting", ids: meeting_ids },
+    };
   },
 });
 
@@ -310,18 +333,12 @@ const deleteMeeting = defineTool({
 const searchMeetings = defineTool({
   name: "search_meetings",
   description:
-    "Search the meetings by meaning (transcript, title, tags, summary). Gives the best hits with a snippet. When search is off, the answer gives the reason.",
+    "Search the meetings by meaning (transcript, title, tags, summary). Gives the best hits with a snippet. Each hit has folder_id and folder_path. When search is off, the answer gives the reason.",
   kind: "read",
   idempotent: true,
   input: z.object({
     query: z.string().min(1).describe("The search text."),
-    folder_id: z
-      .string()
-      .min(1)
-      .optional()
-      .describe(
-        'Search only in this folder. "none" searches the meetings with no folder.',
-      ),
+    ...folderFilterArgs("Search only in the meetings"),
     tags: z
       .array(z.string())
       .optional()
@@ -336,9 +353,26 @@ const searchMeetings = defineTool({
         `The number of hits, 1 to ${SEARCH_K_MAX}. The default is 10. Each hit has a snippet of at most 400 characters.`,
       ),
   }),
-  run: async (args, { api }) => ({
-    data: expectOk(await api("POST", "/api/search/meetings", args)),
-  }),
+  run: async ({ path, ...args }, { api }) => {
+    const folder_id = await resolveFolderFilter(api, {
+      folder_id: args.folder_id,
+      path,
+    });
+    const data = expectOk(
+      await api("POST", "/api/search/meetings", { ...args, folder_id }),
+    ) as { hits?: { folder_id: string | null }[] };
+    if (!data.hits) return { data };
+    const folders = await Folders.load(api);
+    return {
+      data: {
+        ...data,
+        hits: data.hits.map((h) => ({
+          ...h,
+          folder_path: folders.pathOf(h.folder_id),
+        })),
+      },
+    };
+  },
 });
 
 const getLiveTranscript = defineTool({
