@@ -7,8 +7,9 @@ import type { SpeakerVerdict } from "./meeting-types.js";
 /** A new consumer adds its word here in its own PR. "test": platform tests. */
 export type LlmScope = "meeting" | "dictation" | "folder" | "chat" | "test";
 
-/** An "enhance" run also holds the chained summarize steps. */
-export type LlmRunKind = "enhance" | "summarize";
+/** An "enhance" run also holds the chained summarize steps. A "title" run
+ * holds one `suggestTitle` call (the Generate title button and the batch). */
+export type LlmRunKind = "enhance" | "summarize" | "title";
 
 export type LlmRunStatus =
   | "running"
@@ -44,6 +45,9 @@ export type LlmStepStatus =
  * - `not_saved`: the run saved no result, so the step did not run.
  * - `meeting_gone`: the meeting was deleted during the run.
  * - `empty_transcript`: the transcript has no text for the step.
+ * - `auto_title_off`: the Auto title setting is off.
+ * - `title_kept`: the title is the user's, the event's or an AI title.
+ * - `no_summary`: the meeting has no summary overview to read.
  */
 export type LlmSkipReason =
   | "no_labels"
@@ -54,7 +58,10 @@ export type LlmSkipReason =
   | "speakers_failed"
   | "not_saved"
   | "meeting_gone"
-  | "empty_transcript";
+  | "empty_transcript"
+  | "auto_title_off"
+  | "title_kept"
+  | "no_summary";
 
 /** The meeting targets. A link is generic by (target_type, target_id). */
 export type LlmTargetType = "segment" | "speaker" | "summary";

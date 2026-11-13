@@ -13,6 +13,8 @@ export interface ChatCite {
   meetingId?: string;
   title?: string | null;
   timeMs?: number | null;
+  /** A past meeting: its start (epoch ms). Absent on older rows. */
+  startedAt?: number;
 }
 
 export interface ChatMessage {

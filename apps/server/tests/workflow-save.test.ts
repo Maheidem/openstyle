@@ -786,6 +786,7 @@ describe("save: the summary (SW3)", () => {
       summary,
       saved: null,
       tags: null,
+      title: null,
     };
   }
 

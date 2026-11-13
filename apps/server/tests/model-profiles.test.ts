@@ -442,15 +442,18 @@ describe("W14, the models.dev read is best effort (5.1)", () => {
         identifySpeakers: 1024,
         summarize: 0,
         suggestTags: 0,
+        suggestTitle: 0,
       },
     });
     expect(Object.keys(models).sort()).toEqual([
       "correctChunk",
       "identifySpeakers",
       "suggestTags",
+      "suggestTitle",
       "summarize",
     ]);
     expect(models.suggestTags.taskId).toBe("meetingEnhance");
+    expect(models.suggestTitle.taskId).toBe("meetingSummarize");
     expect(registryMock).toHaveBeenCalledTimes(1);
     expect(models.correctChunk.taskId).toBe("meetingEnhance");
     expect(models.summarize.taskId).toBe("meetingSummarize");
@@ -465,6 +468,7 @@ describe("W14, the models.dev read is best effort (5.1)", () => {
         identifySpeakers: 0,
         summarize: 0,
         suggestTags: 0,
+        suggestTitle: 0,
       },
     });
     expect(registryMock).not.toHaveBeenCalled();

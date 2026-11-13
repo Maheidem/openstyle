@@ -5,6 +5,7 @@ export const meetingStageSchema = z.enum([
   "transcribe",
   "summarize",
   "enhance",
+  "title",
 ]);
 export type MeetingStage = z.infer<typeof meetingStageSchema>;
 
@@ -20,6 +21,7 @@ export const folderStageCountsSchema = z.object({
   transcribe: stageCountSchema,
   summarize: stageCountSchema,
   enhance: stageCountSchema,
+  title: stageCountSchema,
 });
 
 /** Start a batch: every meeting of a folder that needs the stage, or the
@@ -44,6 +46,7 @@ export const batchSkipReasonSchema = z.enum([
   "busy",
   "no_audio",
   "no_transcript",
+  "no_summary",
   "no_llm",
   "refused",
 ]);

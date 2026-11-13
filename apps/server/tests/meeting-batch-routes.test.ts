@@ -264,17 +264,20 @@ describe("folder stage counts", () => {
       transcribe: { ready: 4, blocked: 1 },
       summarize: { ready: 0, blocked: 3 },
       enhance: { ready: 0, blocked: 2 },
+      title: { ready: 0, blocked: 0 },
     });
     seedTestModel();
     expect(await folderCounts(f)).toEqual({
       transcribe: { ready: 4, blocked: 1 },
       summarize: { ready: 3, blocked: 0 },
       enhance: { ready: 2, blocked: 0 },
+      title: { ready: 0, blocked: 0 },
     });
     expect(await folderCounts(other.id)).toEqual({
       transcribe: { ready: 1, blocked: 0 },
       summarize: { ready: 0, blocked: 0 },
       enhance: { ready: 0, blocked: 0 },
+      title: { ready: 0, blocked: 0 },
     });
   });
 });

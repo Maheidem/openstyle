@@ -16,7 +16,7 @@ import type { MeetingSummary } from "./schemas.js";
  * node result type, a node schema, a prompt, a constant below, the unit key
  * grammar, or the model or reasoning choice (3.4.7, "Graph version").
  */
-export const WORKFLOW_GRAPH_VERSION = 10;
+export const WORKFLOW_GRAPH_VERSION = 11;
 
 // ---------------------------------------------------------------------------
 // Constants of 4.0.5. Names are names of this spec. Values marked "new" in the
@@ -43,6 +43,10 @@ export const TAGS_MAX_INPUT_TOKENS = 6000;
 export const TAGS_ANSWER_TOKENS = 200;
 /** The most existing tag names that go in the prompt (the most used first). */
 export const TAGS_PROMPT_MAX_EXISTING = 200;
+/** suggestTitle: the longest title that the app stores, in characters. */
+export const TITLE_MAX_CHARS = 80;
+/** suggestTitle: the answer size. One short title. */
+export const TITLE_ANSWER_TOKENS = 80;
 
 // ---------------------------------------------------------------------------
 // Failure and status (4.0.7)
@@ -55,7 +59,8 @@ export type NodeId =
   | "verifyEvidence"
   | "summarize"
   | "save"
-  | "suggestTags";
+  | "suggestTags"
+  | "suggestTitle";
 
 export type FailureKind =
   | GatewayErrorKind
@@ -351,6 +356,20 @@ export interface SuggestTagsResult {
   suggested: string[];
   /** The names that this run added to the meeting. */
   added: string[];
+  failure: NodeFailure | null;
+}
+
+// ---------------------------------------------------------------------------
+// suggestTitle (auto title). It runs after `save` on a run with Summarize and
+// never changes the run status: deriveRunStatus does not read it.
+// ---------------------------------------------------------------------------
+
+export interface SuggestTitleResult {
+  status: NodeStatus;
+  /** The cleaned title that the model gave, or null. */
+  title: string | null;
+  /** True when the conditional write changed the meeting row. */
+  written: boolean;
   failure: NodeFailure | null;
 }
 

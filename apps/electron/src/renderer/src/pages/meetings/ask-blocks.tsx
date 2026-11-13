@@ -6,6 +6,7 @@ import type {
   ChatWider,
 } from "@openstyle/validations";
 import { Button } from "@renderer/components/ui/button";
+import { datedTitle } from "@renderer/lib/format";
 import { cn } from "@renderer/lib/utils";
 import { Check, Circle } from "lucide-react";
 import { Fragment } from "react";
@@ -53,7 +54,12 @@ function CiteChip({
   const view = citeView(cite);
   const target = actions.resolve(cite);
   const removed = target.kind === "removed";
-  const title = view.title ?? t("meetings.ask.untitled");
+  // No date shows next to a chip: the title gets a `YY-MM-DD ` prefix. The
+  // chip keeps its width, so the prefix cuts the title; the tooltip has all.
+  const title = datedTitle(
+    view.title ?? t("meetings.ask.untitled"),
+    cite.started_at,
+  );
   const name = removed
     ? t("meetings.ask.citeRemovedName", { label: view.label })
     : view.time

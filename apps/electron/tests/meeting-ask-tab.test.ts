@@ -316,7 +316,8 @@ function defineScenario(): void {
     expect(await chips.count()).toBeGreaterThanOrEqual(1);
     const label = await chips.first().getAttribute("aria-label");
     console.log(`FACT first chip: ${label}`);
-    expect(label).toMatch(/^Open meeting Weekly sync/);
+    // The chip title has the meeting date before it (auto title, YY-MM-DD).
+    expect(label).toMatch(/^Open meeting \d{2}-\d{2}-\d{2} Weekly sync/);
     await expect(page.getByTestId("meeting-ask-user").first()).toContainText(
       Q_FACT,
     );

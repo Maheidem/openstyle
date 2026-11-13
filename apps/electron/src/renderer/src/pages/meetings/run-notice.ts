@@ -48,6 +48,7 @@ const KNOWN_NODES: ReadonlySet<string> = new Set([
   "summarize",
   "save",
   "suggestTags",
+  "suggestTitle",
 ]);
 
 /** The run statuses that show a failure or interrupted notice. */
@@ -157,6 +158,9 @@ export const SKIP_REASONS: Readonly<Record<LlmSkipReason, true>> = {
   not_saved: true,
   meeting_gone: true,
   empty_transcript: true,
+  auto_title_off: true,
+  title_kept: true,
+  no_summary: true,
 };
 
 /**

@@ -121,6 +121,7 @@ const PHASE_OF: Partial<Record<NodeId, MeetingJobPhase>> = {
   summarize: "summarizing",
   save: "saving",
   suggestTags: "tags",
+  suggestTitle: "title",
 };
 
 /** The first sentence of a text, at most `max` characters. */
@@ -299,7 +300,7 @@ export type StartRunResult =
   | { ok: true; runId: string }
   | { ok: false; reason: "job_running" | "no_meeting" | "error" };
 
-function kindOf(stages: readonly RunStage[]): LlmRunKind {
+function kindOf(stages: readonly RunStage[]): Exclude<LlmRunKind, "title"> {
   return stages.includes("enhance") ? "enhance" : "summarize";
 }
 
@@ -760,7 +761,10 @@ export async function resumeRun(
     failRun(deps, run, "graph_changed");
     return conflict("graph_changed");
   }
-  if (!admin.hasCheckpoint(runId)) return conflict("no_checkpoint");
+  // A `title` run (the Generate title button) is one call with no graph.
+  if (run.kind === "title" || !admin.hasCheckpoint(runId)) {
+    return conflict("no_checkpoint");
+  }
 
   const controller = new AbortController();
   if (
@@ -839,7 +843,7 @@ function profilesFor(
   const steps: string[] = [];
   if (stages.includes("enhance"))
     steps.push("correctChunk", "identifySpeakers", "suggestTags");
-  if (stages.includes("summarize")) steps.push("summarize");
+  if (stages.includes("summarize")) steps.push("summarize", "suggestTitle");
   return steps.flatMap((s) => (models[s] ? [models[s]] : []));
 }
 

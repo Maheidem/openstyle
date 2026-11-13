@@ -316,13 +316,16 @@ export function createMeetingsImportRoute(opts: { maxBytes?: number } = {}) {
       try {
         mkdirSync(audioDir, { recursive: true });
         placeWavFile(wavPath, join(audioDir, SYSTEM_WAV));
+        const fileTitle = title ? null : stem(audio.filename, ext) || null;
         db.prepare(
-          `INSERT INTO meetings (id, title, started_at, ended_at, duration_ms,
-                                status, audio_dir, created_at, folder_id)
-           VALUES (?, ?, ?, ?, ?, 'recorded', ?, ?, ?)`,
+          `INSERT INTO meetings (id, title, title_source, started_at, ended_at,
+                                duration_ms, status, audio_dir, created_at,
+                                folder_id)
+           VALUES (?, ?, ?, ?, ?, ?, 'recorded', ?, ?, ?)`,
         ).run(
           id,
-          title || stem(audio.filename, ext) || null,
+          title || fileTitle,
+          title ? "user" : fileTitle ? "file" : "default",
           startedAtValue,
           startedAtValue + durationMs,
           durationMs,

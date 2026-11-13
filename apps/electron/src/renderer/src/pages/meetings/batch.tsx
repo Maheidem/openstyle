@@ -21,6 +21,7 @@ import {
   type LucideIcon,
   Sparkles,
   Square,
+  Type,
   WandSparkles,
   X,
 } from "lucide-react";
@@ -35,12 +36,14 @@ export const STAGES: readonly MeetingStage[] = [
   "transcribe",
   "summarize",
   "enhance",
+  "title",
 ];
 
 const STAGE_ICON: Record<MeetingStage, LucideIcon> = {
   transcribe: AudioLines,
   summarize: Sparkles,
   enhance: WandSparkles,
+  title: Type,
 };
 
 /** What a "Start" in the confirmation sends to POST /meetings/batch. */
@@ -255,7 +258,11 @@ export function BatchConfirmDialog({
               {lines.map((key) => (
                 <p key={key}>{t(key)}</p>
               ))}
-              {selection && <p>{t("meetings.folders.batch.explain.rerun")}</p>}
+              {/* Generate titles never runs again on a done meeting
+                  (owner decision 9). */}
+              {selection && request?.stage !== "title" && (
+                <p>{t("meetings.folders.batch.explain.rerun")}</p>
+              )}
               <p>{t("meetings.folders.batch.queueNote")}</p>
             </div>
           </AlertDialogDescription>

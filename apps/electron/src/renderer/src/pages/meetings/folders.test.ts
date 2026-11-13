@@ -65,6 +65,7 @@ const folder = {
     transcribe: { ready: 0, blocked: 0 },
     summarize: { ready: 0, blocked: 0 },
     enhance: { ready: 0, blocked: 0 },
+    title: { ready: 0, blocked: 0 },
   },
 };
 const response = (body: unknown, ok = true) => ({ ok, json: async () => body });

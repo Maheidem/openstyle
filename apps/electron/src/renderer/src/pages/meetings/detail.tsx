@@ -879,8 +879,14 @@ export function MeetingDetailView({
         >
           <ChevronLeft />
         </Button>
-        <div className="min-w-0 flex-1">
-          <EditableTitle id={id} title={meeting.title} onRenamed={invalidate} />
+        <div className="flex min-w-0 flex-1 items-center gap-1.5">
+          <EditableTitle
+            id={id}
+            title={meeting.title}
+            onRenamed={invalidate}
+            canGenerate={hasLlm && Boolean(meeting.summary?.markdown)}
+            onError={setActionError}
+          />
         </div>
         {!primary && (
           <div className="flex shrink-0 items-center gap-2">
@@ -1661,6 +1667,8 @@ function workflowPhaseLabel(
       return t("meetings.progress.saving");
     case "tags":
       return t("meetings.progress.tags");
+    case "title":
+      return t("meetings.progress.title");
     default:
       return null;
   }

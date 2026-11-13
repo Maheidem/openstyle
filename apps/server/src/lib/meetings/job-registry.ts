@@ -48,7 +48,8 @@ export type MeetingJobPhase =
   | "summarizing"
   | "combining"
   | "saving"
-  | "tags";
+  | "tags"
+  | "title";
 
 /** What kind of job holds a meeting's slot. Transcription jobs (a full
  * re-transcribe or a retry-failed pass) and the workflow runs (Enhance, which

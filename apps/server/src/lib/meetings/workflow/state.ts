@@ -7,6 +7,7 @@ import type {
   PreparedMeeting,
   SaveResult,
   SuggestTagsResult,
+  SuggestTitleResult,
   SummarizeResult,
   VerifyResult,
 } from "./types.js";
@@ -48,6 +49,7 @@ export const WorkflowState = new StateSchema({
   summary: z.custom<SummarizeResult>().nullable().default(null),
   saved: z.custom<SaveResult>().nullable().default(null),
   tags: z.custom<SuggestTagsResult>().nullable().default(null),
+  title: z.custom<SuggestTitleResult>().nullable().default(null),
 });
 
 export type WorkflowStateType = typeof WorkflowState.State;

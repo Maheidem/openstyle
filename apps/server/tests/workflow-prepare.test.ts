@@ -49,6 +49,7 @@ function stateFor(meetingId: string, runId = "run-1"): WorkflowStateType {
     summary: null,
     saved: null,
     tags: null,
+    title: null,
   };
 }
 
@@ -104,6 +105,7 @@ describe("prepare", () => {
       "correctChunk",
       "identifySpeakers",
       "suggestTags",
+      "suggestTitle",
       "summarize",
     ]);
     expect(out.models.correctChunk.provider).toBe("server");

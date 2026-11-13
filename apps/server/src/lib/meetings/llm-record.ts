@@ -22,4 +22,5 @@ export const MEETING_LLM_NODES: readonly LlmStepId[] = [
   "identifySpeakers",
   MEETING_SUMMARY_NODE,
   "suggestTags",
+  "suggestTitle",
 ];

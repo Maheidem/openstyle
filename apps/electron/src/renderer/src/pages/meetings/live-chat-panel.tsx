@@ -1,6 +1,7 @@
 import { Button } from "@renderer/components/ui/button";
 import { Input } from "@renderer/components/ui/input";
 import { getClient } from "@renderer/lib/api";
+import { datedTitle } from "@renderer/lib/format";
 import { queryKeys } from "@renderer/lib/query";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useEffect, useRef, useState } from "react";
@@ -15,6 +16,8 @@ interface Cite {
   kind: "live" | "past" | "folder";
   title?: string | null;
   timeMs?: number | null;
+  /** A past meeting: its start (epoch ms), for the date before the title. */
+  startedAt?: number;
 }
 
 /** A message in the list: saved by the server, or shown while it is sent. */
@@ -99,12 +102,8 @@ function CiteChip({ cite }: { cite: Cite }): React.JSX.Element {
   } else if (cite.kind === "folder") {
     text = t("meetings.liveChat.citeFolder");
   } else {
-    text = time
-      ? t("meetings.liveChat.citePast", {
-          title: cite.title ?? "",
-          time,
-        })
-      : (cite.title ?? "");
+    const title = datedTitle(cite.title ?? "", cite.startedAt);
+    text = time ? t("meetings.liveChat.citePast", { title, time }) : title;
   }
   return (
     <span
