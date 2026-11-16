@@ -2049,7 +2049,7 @@
     "dropzone": {
       "title": "Drop an audio file here",
       "subtitle": "to transcribe it",
-      "formats": "Supports wav, mp3, m4a, aac, ogg, mp4"
+      "formats": "Supports wav, mp3, m4a, aac, ogg, mp4, webm, mkv, flac"
     },
     "chooseFile": "Choose File",
     "transcribing": "Transcribing… (uses your current Settings provider)",

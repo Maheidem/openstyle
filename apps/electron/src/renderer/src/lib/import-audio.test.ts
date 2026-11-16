@@ -28,7 +28,17 @@ describe("importExtensionOf", () => {
 });
 
 describe("isImportableFile", () => {
-  it.each(["wav", "mp3", "m4a", "aac", "ogg", "mp4"])("accepts .%s", (ext) => {
+  it.each([
+    "wav",
+    "mp3",
+    "m4a",
+    "aac",
+    "ogg",
+    "mp4",
+    "webm",
+    "mkv",
+    "flac",
+  ])("accepts .%s", (ext) => {
     expect(isImportableFile(`recording.${ext}`)).toBe(true);
   });
 

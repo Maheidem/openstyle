@@ -1757,7 +1757,7 @@
     "dropzone": {
       "title": "Suelta un archivo de audio aquí",
       "subtitle": "para transcribirlo",
-      "formats": "Admite wav, mp3, m4a, aac, ogg, mp4"
+      "formats": "Admite wav, mp3, m4a, aac, ogg, mp4, webm, mkv, flac"
     },
     "chooseFile": "Elegir archivo",
     "transcribing": "Transcribiendo… (usa tu proveedor actual de Ajustes)",

@@ -1757,7 +1757,7 @@
     "dropzone": {
       "title": "Audiodatei hier ablegen",
       "subtitle": "zum Transkribieren",
-      "formats": "Unterstützt wav, mp3, m4a, aac, ogg, mp4"
+      "formats": "Unterstützt wav, mp3, m4a, aac, ogg, mp4, webm, mkv, flac"
     },
     "chooseFile": "Datei auswählen",
     "transcribing": "Wird transkribiert… (verwendet Ihren aktuellen Anbieter aus den Einstellungen)",

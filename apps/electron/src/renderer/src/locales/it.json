@@ -1756,7 +1756,7 @@
     "dropzone": {
       "title": "Trascina qui un file audio",
       "subtitle": "per trascriverlo",
-      "formats": "Supporta wav, mp3, m4a, aac, ogg, mp4"
+      "formats": "Supporta wav, mp3, m4a, aac, ogg, mp4, webm, mkv, flac"
     },
     "chooseFile": "Scegli file",
     "transcribing": "Trascrizione in corso… (usa il provider attuale delle Impostazioni)",

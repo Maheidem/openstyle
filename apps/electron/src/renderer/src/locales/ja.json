@@ -1731,7 +1731,7 @@
     "dropzone": {
       "title": "ここに音声ファイルをドロップ",
       "subtitle": "文字起こしします",
-      "formats": "wav、mp3、m4a、aac、ogg、mp4に対応"
+      "formats": "wav、mp3、m4a、aac、ogg、mp4、webm、mkv、flacに対応"
     },
     "chooseFile": "ファイルを選択",
     "transcribing": "文字起こし中…（設定の現在のプロバイダーを使用）",

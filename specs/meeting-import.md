@@ -83,7 +83,7 @@ tolerates exactly that shape (§2): thin feature, no pipeline change.
 
 ## 3. Goals / Non-goals
 
-**Goals**: (1) import wav/mp3/m4a/aac/ogg/mp4 as a `meetings` row in
+**Goals**: (1) import wav/mp3/m4a/aac/ogg/mp4/webm/mkv/flac as a `meetings` row in
 `recorded` status, audio normalized to 16 kHz mono PCM16 at
 `<audio_dir>/system.wav`, immediately eligible for the existing machinery;
 (2) same UX as dictation Import — picker *and* drag-drop, both layouts,
