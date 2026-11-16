@@ -16,6 +16,8 @@ export interface FakeCalendarEvent {
   title: string;
   start: number;
   end: number;
+  /** Fictional people. Default: none. */
+  attendees?: { name: string; email: string; isOrganizer: boolean }[];
 }
 
 export function isFakeCalendar(): boolean {
@@ -45,19 +47,36 @@ export function setFakeCalendarEvents(next: FakeCalendarEvent[]): void {
   events = next;
 }
 
-/** The answer of the macos-calendar helper for `args`, as JSON text. */
+/** The value after `flag` in `args`, as epoch ms, or NaN. */
+function argTime(args: string[], flag: string): number {
+  const i = args.indexOf(flag);
+  return i >= 0 ? Date.parse(args[i + 1] ?? "") : Number.NaN;
+}
+
+/**
+ * The answer of the macos-calendar helper for `args`, as JSON text. Like
+ * the helper, `events` returns only the events that overlap
+ * `--from`..`--to`.
+ */
 export function fakeCalendarOutput(args: string[]): string {
   if (args[0] !== "events") return JSON.stringify({ status: "fullAccess" });
+  const from = argTime(args, "--from");
+  const to = argTime(args, "--to");
+  const inRange = events.filter(
+    (e) =>
+      (Number.isNaN(to) || e.start < to) &&
+      (Number.isNaN(from) || e.end > from),
+  );
   return JSON.stringify({
     status: "fullAccess",
-    events: events.map((e) => ({
+    events: inRange.map((e) => ({
       id: e.id,
       title: e.title,
       start: new Date(e.start).toISOString(),
       end: new Date(e.end).toISOString(),
       isAllDay: false,
       meetingUrl: null,
-      attendees: [],
+      attendees: e.attendees ?? [],
     })),
   });
 }

@@ -1,15 +1,20 @@
 /**
  * Calendar IPC (specs/calendar-eventkit.md). The renderer asks for the
- * permission status, requests access when the user turns the toggle on, and
- * lists today's events for the "Change" picker. Link and unlink go from the
- * renderer straight to the server.
+ * permission status, requests access when the user turns the toggle on,
+ * lists today's events for the "Change" picker, and lists the events of one
+ * day for the import dialog. Link and unlink go from the renderer straight
+ * to the server.
  */
 
+import type { CalendarEvent } from "@openstyle/validations";
 import { ipcMain, shell } from "electron";
 import type { ServerFetch } from "../shared/server-auth";
 import {
   calendarAuthStatus,
+  clampEvent,
   isCalendarEnabled,
+  type ListedEvent,
+  listRangeEvents,
   listTodayEvents,
   requestCalendarAccess,
 } from "./calendar";
@@ -37,6 +42,32 @@ export function registerCalendarIpc({
     });
     return events.map(({ isAllDay: _isAllDay, ...event }) => event);
   });
+
+  // The import dialog (issue #445): the events of one day. Null when the
+  // setting is off or access is not fullAccess, so the renderer imports
+  // with no dialog. Events are clamped to the server limits.
+  ipcMain.handle(
+    "calendar:list-range",
+    async (
+      _event,
+      range: { from: number; to: number },
+    ): Promise<CalendarEvent[] | null> => {
+      const { from, to } = range ?? {};
+      if (!Number.isFinite(from) || !Number.isFinite(to) || to <= from) {
+        return null;
+      }
+      const events = await listRangeEvents(
+        { isEnabled: () => isCalendarEnabled(serverFetch) },
+        from,
+        to,
+      );
+      return (
+        events?.map(({ isAllDay: _isAllDay, ...event }: ListedEvent) =>
+          clampEvent(event),
+        ) ?? null
+      );
+    },
+  );
 
   ipcMain.on("calendar:open-settings", () => {
     if (process.platform !== "darwin") return;

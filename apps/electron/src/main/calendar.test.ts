@@ -10,6 +10,7 @@ const {
   calendarAuthStatus,
   clampEvent,
   listEvents,
+  listRangeEvents,
   listTodayEvents,
   pickCurrentEvent,
   todayWindow,
@@ -252,5 +253,63 @@ describe("helper parsing", () => {
       now: () => NOW,
     });
     expect(list.map((e) => e.id)).toEqual(["early", "late"]);
+  });
+});
+
+describe("listRangeEvents (import dialog, issue #445)", () => {
+  const FROM = NOW - 12 * 60 * MIN;
+  const TO = NOW + 12 * 60 * MIN;
+
+  it("returns null with the setting off, and the helper never runs", async () => {
+    const run = fakeRunner("fullAccess", [helperEvent("e1")]);
+    const list = await listRangeEvents(
+      { isEnabled: async () => false, run },
+      FROM,
+      TO,
+    );
+    expect(list).toBeNull();
+    expect(run).not.toHaveBeenCalled();
+  });
+
+  it.each([
+    "denied",
+    "notDetermined",
+    "writeOnly",
+  ])("returns null when the status is %s", async (status) => {
+    const run = fakeRunner(status, [helperEvent("e1")]);
+    expect(
+      await listRangeEvents({ isEnabled: async () => true, run }, FROM, TO),
+    ).toBeNull();
+  });
+
+  it("asks the helper for the range, drops all-day events, sorts by start", async () => {
+    const run = fakeRunner("fullAccess", [
+      helperEvent("late", 30),
+      { ...helperEvent("allday"), isAllDay: true },
+      helperEvent("early", -30),
+    ]);
+    const list = await listRangeEvents(
+      { isEnabled: async () => true, run },
+      FROM,
+      TO,
+    );
+    expect(list?.map((e) => e.id)).toEqual(["early", "late"]);
+    expect(run).toHaveBeenCalledWith(
+      [
+        "events",
+        "--from",
+        new Date(FROM).toISOString(),
+        "--to",
+        new Date(TO).toISOString(),
+      ],
+      expect.any(Number),
+    );
+  });
+
+  it("returns [] for a day with no events", async () => {
+    const run = fakeRunner("fullAccess", []);
+    expect(
+      await listRangeEvents({ isEnabled: async () => true, run }, FROM, TO),
+    ).toEqual([]);
   });
 });

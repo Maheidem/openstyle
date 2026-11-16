@@ -205,22 +205,32 @@ export interface CalendarDeps {
 }
 
 /**
- * Today's events (not all-day), sorted by start. Returns [] when the setting
- * is off, before the helper starts. Returns [] when access is not granted
- * (one helper call: the `events` answer carries the status).
+ * Events between `from` and `to` (epoch ms), not all-day, sorted by start.
+ * Returns null when the setting is off (before the helper starts), and when
+ * access is not fullAccess or the helper fails (one helper call: the
+ * `events` answer carries the status).
  */
+export async function listRangeEvents(
+  deps: CalendarDeps,
+  from: number,
+  to: number,
+): Promise<ListedEvent[] | null> {
+  if (!(await deps.isEnabled())) return null;
+  const events = await listEvents(from, to, deps.run ?? defaultRunner);
+  if (!events) return null;
+  const list = events
+    .filter((e) => !e.isAllDay)
+    .sort((a, b) => a.start - b.start);
+  log.info(`calendar: ${list.length} events in range`);
+  return list;
+}
+
+/** Today's events (not all-day), sorted by start. [] when off or no access. */
 export async function listTodayEvents(
   deps: CalendarDeps,
 ): Promise<ListedEvent[]> {
-  if (!(await deps.isEnabled())) return [];
-  const run = deps.run ?? defaultRunner;
   const { from, to } = todayWindow((deps.now ?? Date.now)());
-  const events = await listEvents(from, to, run);
-  const list = (events ?? [])
-    .filter((e) => !e.isAllDay)
-    .sort((a, b) => a.start - b.start);
-  log.info(`calendar: ${list.length} events today`);
-  return list;
+  return (await listRangeEvents(deps, from, to)) ?? [];
 }
 
 const MAX_TITLE_CHARS = 512;

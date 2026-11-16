@@ -128,6 +128,15 @@ const api = {
   /** Today's events for the "Change" picker. [] while the toggle is off. */
   calendarListToday: (): Promise<CalendarEvent[]> =>
     ipcRenderer.invoke("calendar:list-today"),
+  /**
+   * The events of `from`..`to` (epoch ms) for the import dialog, not
+   * all-day. Null while the toggle is off or access is not fullAccess.
+   */
+  calendarListRange: (range: {
+    from: number;
+    to: number;
+  }): Promise<CalendarEvent[] | null> =>
+    ipcRenderer.invoke("calendar:list-range", range),
   /** Open System Settings > Privacy > Calendars. */
   calendarOpenSettings: (): void => ipcRenderer.send("calendar:open-settings"),
   /** Reveal a meeting's audio directory in Finder. False when unavailable. */
@@ -171,9 +180,16 @@ const api = {
   // as the dictation import above, but the upload creates a meeting.
   pickMeetingAudioFile: (): Promise<string | null> =>
     ipcRenderer.invoke("meeting-import:pick-file"),
+  /** The file's mtime (epoch ms), or null when it cannot be read. */
+  meetingImportFileDate: (path: string): Promise<number | null> =>
+    ipcRenderer.invoke("meeting-import:file-date", path),
+  /**
+   * `calendar`: the event to link (issue #445). The meeting then starts at
+   * the event start, and the server links the event before transcription.
+   */
   importMeetingAudio: (
     path: string,
-    opts?: { title?: string },
+    opts?: { title?: string; calendar?: CalendarEvent },
   ): Promise<MeetingImportResult> =>
     ipcRenderer.invoke("meeting-import:transcribe", path, opts),
   // Configured external server URL/token ("" = built-in local server / no auth).
