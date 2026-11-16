@@ -1790,7 +1790,17 @@
       "joinLink": "Meeting link",
       "pickTitle": "Today's events",
       "link": "Link calendar event",
-      "actionFailed": "The change did not work. Try again."
+      "actionFailed": "The change did not work. Try again.",
+      "importDialog": {
+        "title": "Which meeting is this?",
+        "desc": "{{name}} · file date {{date}}. Select the calendar event of this recording. The meeting gets the event title, start time and people.",
+        "prevDay": "Previous day",
+        "nextDay": "Next day",
+        "noEvents": "No events on this day.",
+        "matchesFileName": "Matches file name",
+        "skip": "Skip",
+        "importAndLink": "Import and link"
+      }
     },
     "tags": {
       "label": "Tags",

@@ -1483,7 +1483,17 @@
       "joinLink": "Link della riunione",
       "pickTitle": "Eventi di oggi",
       "link": "Collega evento del calendario",
-      "actionFailed": "La modifica non è riuscita. Riprova."
+      "actionFailed": "La modifica non è riuscita. Riprova.",
+      "importDialog": {
+        "title": "Quale riunione è questa?",
+        "desc": "{{name}} · data del file {{date}}. Seleziona l'evento del calendario di questa registrazione. La riunione riceve il titolo, l'ora di inizio e i partecipanti dell'evento.",
+        "prevDay": "Giorno precedente",
+        "nextDay": "Giorno successivo",
+        "noEvents": "Nessun evento in questo giorno.",
+        "matchesFileName": "Corrisponde al nome del file",
+        "skip": "Salta",
+        "importAndLink": "Importa e collega"
+      }
     },
     "tags": {
       "label": "Tag",

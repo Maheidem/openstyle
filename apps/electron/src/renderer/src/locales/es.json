@@ -1484,7 +1484,17 @@
       "joinLink": "Enlace de la reunión",
       "pickTitle": "Eventos de hoy",
       "link": "Vincular evento del calendario",
-      "actionFailed": "El cambio no funcionó. Inténtalo de nuevo."
+      "actionFailed": "El cambio no funcionó. Inténtalo de nuevo.",
+      "importDialog": {
+        "title": "¿Qué reunión es esta?",
+        "desc": "{{name}} · fecha del archivo {{date}}. Seleccione el evento del calendario de esta grabación. La reunión recibe el título, la hora de inicio y los participantes del evento.",
+        "prevDay": "Día anterior",
+        "nextDay": "Día siguiente",
+        "noEvents": "No hay eventos este día.",
+        "matchesFileName": "Coincide con el nombre del archivo",
+        "skip": "Omitir",
+        "importAndLink": "Importar y vincular"
+      }
     },
     "tags": {
       "label": "Etiquetas",

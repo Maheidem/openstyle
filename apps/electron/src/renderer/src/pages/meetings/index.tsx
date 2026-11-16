@@ -407,6 +407,7 @@ export default function MeetingsPage(): React.JSX.Element {
     <div className="flex h-full min-h-0 flex-col">
       <DragSpacer />
       {showEnhancePrompt && <EnhancePromptDialog />}
+      {meetingImport.calendarDialog}
       {/* Issue #262: at 900px and wider, the page has the height of the
           window. The list column and the detail column scroll on their own.
           Below 900px, one column shows and the page scrolls as one. */}
