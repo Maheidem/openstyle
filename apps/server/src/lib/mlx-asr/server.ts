@@ -50,13 +50,22 @@ interface WorkerResponse {
   id?: number;
   type?: string;
   text?: string;
+  /** The language that the model detected; only when none was sent. */
+  language?: string;
   error?: string;
   model?: string;
   words?: MlxAlignedWord[];
 }
 
+/** One transcription of the worker. */
+export interface MlxTranscript {
+  text: string;
+  /** The language that the model detected ("English"), when it gave one. */
+  language?: string;
+}
+
 interface PendingRequest {
-  resolve: (value: string | MlxAlignedWord[]) => void;
+  resolve: (value: MlxTranscript | MlxAlignedWord[]) => void;
   reject: (err: Error) => void;
   timeout: ReturnType<typeof setTimeout>;
 }
@@ -178,7 +187,7 @@ export async function transcribeWithMlxAsr(opts: {
   language?: string;
   context?: string;
   deferUnload?: boolean;
-}): Promise<string> {
+}): Promise<MlxTranscript> {
   await ensureMlxServerRunning(opts.modelId);
 
   const isPcm = opts.pcmSampleRate !== undefined;
@@ -274,7 +283,7 @@ function sendAlignRequest(opts: {
     }, opts.timeoutMs);
 
     pending.set(id, {
-      resolve: resolve as (v: string | MlxAlignedWord[]) => void,
+      resolve: resolve as (v: MlxTranscript | MlxAlignedWord[]) => void,
       reject,
       timeout,
     });
@@ -516,7 +525,12 @@ function handleWorkerLine(line: string): void {
     );
     return;
   }
-  req.resolve(message.text ?? "");
+  req.resolve({
+    text: message.text ?? "",
+    ...(typeof message.language === "string" && message.language
+      ? { language: message.language }
+      : {}),
+  });
 }
 
 function sendTranscribeRequest(opts: {
@@ -525,7 +539,7 @@ function sendTranscribeRequest(opts: {
   sampleRate?: number;
   language?: string;
   context?: string;
-}): Promise<string> {
+}): Promise<MlxTranscript> {
   clearUnloadTimer();
 
   const proc = workerProcess;
@@ -544,14 +558,14 @@ function sendTranscribeRequest(opts: {
     context: opts.context,
   };
 
-  return new Promise<string>((resolve, reject) => {
+  return new Promise<MlxTranscript>((resolve, reject) => {
     const timeout = setTimeout(() => {
       pending.delete(id);
       reject(new Error("MLX ASR inference timed out."));
     }, TRANSCRIBE_TIMEOUT_MS);
 
     pending.set(id, {
-      resolve: resolve as (v: string | MlxAlignedWord[]) => void,
+      resolve: resolve as (v: MlxTranscript | MlxAlignedWord[]) => void,
       reject,
       timeout,
     });

@@ -321,6 +321,51 @@ class LoopGuardTests(unittest.TestCase):
         model._tokenizer = LangTokenizer()
         self.assertEqual(self._run(model, 2.0, language=None, context=None), "w1 w2")
 
+    def _run_detailed(self, model: object, seconds: float, **kw: object) -> tuple[str, str | None]:
+        mlx_asr_server._state["model"] = model
+        wav = np.zeros(int(seconds * 16000), dtype=np.float32)
+        with mock.patch.object(mlx_asr_server, "_load_waveform", return_value=wav):
+            return mlx_asr_server._transcribe_detailed("unused.wav", **kw)  # type: ignore[arg-type]
+
+    def test_stream_path_returns_detected_language_when_auto(self) -> None:
+        class LangTokenizer(FakeTokenizer):
+            def decode(self, ids: list[int], skip_special_tokens: bool = False) -> str:
+                return "language Portuguese<asr_text>" + super().decode(ids, skip_special_tokens)
+
+        model = FakeQwenModel([[1, 2]])
+        model._tokenizer = LangTokenizer()
+        self.assertEqual(
+            self._run_detailed(model, 2.0, language=None, context=None), ("w1 w2", "Portuguese")
+        )
+
+    def test_stream_path_no_language_when_sent(self) -> None:
+        model = FakeQwenModel([[1, 2]])
+        self.assertEqual(
+            self._run_detailed(model, 2.0, language="English", context=None), ("w1 w2", None)
+        )
+
+    def test_generate_path_reads_result_language(self) -> None:
+        class LangModel(FakeGenerateOnlyModel):
+            def generate(self, audio: str, *, max_tokens: int = 8192, language: str | None = None) -> dict[str, object]:
+                return {"text": self.text, "language": ["pt"]}
+
+        model = LangModel("ola")
+        with tempfile.TemporaryDirectory() as tmp:
+            path = _write_wav(Path(tmp) / "a.wav", 1.0)
+            mlx_asr_server._state["model"] = model
+            self.assertEqual(mlx_asr_server._transcribe_detailed(path, language=None, context=None), ("ola", "pt"))
+            self.assertEqual(mlx_asr_server._transcribe_detailed(path, language="pt", context=None), ("ola", None))
+
+    def test_final_message_carries_language(self) -> None:
+        sent: list[dict[str, object]] = []
+        with (
+            mock.patch.object(mlx_asr_server, "_audio_from_message", return_value="a.wav"),
+            mock.patch.object(mlx_asr_server, "_transcribe_detailed", return_value=("hi", "English")),
+            mock.patch.object(mlx_asr_server, "_send", sent.append),
+        ):
+            mlx_asr_server._handle_transcribe({"id": 7})
+        self.assertEqual(sent, [{"id": 7, "type": "final", "text": "hi", "language": "English"}])
+
     def test_stream_path_pads_short_audio(self) -> None:
         model = FakeQwenModel([[1]])
         self._run(model, 0.25, language="English", context=None)

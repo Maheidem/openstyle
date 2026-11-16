@@ -266,6 +266,25 @@ def _text_from_result(result: Any) -> str:
     return str(result)
 
 
+def _language_value(value: Any) -> str | None:
+    """A detected language as one non-empty string, else None.
+
+    Qwen3-ASR gives a name ("English"). A list gives its first item.
+    """
+    if isinstance(value, (list, tuple)):
+        value = value[0] if value else None
+    if isinstance(value, str) and value.strip():
+        return value.strip()
+    return None
+
+
+def _language_from_result(result: Any) -> str | None:
+    """The `language` of a generate() result (STTOutput or dict), if any."""
+    if isinstance(result, dict):
+        return _language_value(result.get("language"))
+    return _language_value(getattr(result, "language", None))
+
+
 def _transcribe_kwargs(
     fn: Any,
     *,
@@ -443,11 +462,14 @@ def _load_waveform(audio: str) -> np.ndarray:
     return np.array(load_audio(audio))
 
 
-def _stream_decode(model: Any, wav: np.ndarray, kwargs: dict[str, Any]) -> tuple[str, bool]:
+def _stream_decode(
+    model: Any, wav: np.ndarray, kwargs: dict[str, Any]
+) -> tuple[str, bool, str | None]:
     """Decode one chunk like Qwen3-ASR _generate_single_chunk(); stop on a loop.
 
     Without a loop, the text is the same as the text of generate(). Returns
-    (text, looped).
+    (text, looped, language). The language is the one that the model
+    detected, only when no language was sent.
     """
     tokens: list[int] = []
     looped = False
@@ -457,9 +479,11 @@ def _stream_decode(model: Any, wav: np.ndarray, kwargs: dict[str, Any]) -> tuple
             looped = True
             break
     text = model._tokenizer.decode(tokens, skip_special_tokens=True)
+    detected: str | None = None
     if kwargs.get("language") is None:
-        _, text = model.extract_language(text)
-    return text, looped
+        lang, text = model.extract_language(text)
+        detected = _language_value(lang)
+    return text, looped, detected
 
 
 def _transcribe_streamed(
@@ -468,7 +492,7 @@ def _transcribe_streamed(
     *,
     language: str | None,
     context: str | None,
-) -> str:
+) -> tuple[str, str | None]:
     sample_rate = int(getattr(model, "sample_rate", 16000))
     seconds = len(wav) / sample_rate
     # generate() pads audio shorter than 1 s to 1 s. Do the same.
@@ -479,17 +503,17 @@ def _transcribe_streamed(
     if "max_tokens" in _function_params(model.stream_generate):
         kwargs["max_tokens"] = _max_tokens_for(seconds)
 
-    text, looped = _stream_decode(model, wav, kwargs)
+    text, looped, detected = _stream_decode(model, wav, kwargs)
     if not looped:
-        return text
+        return text, detected
 
     trimmed = _strip_prompt_kwargs(kwargs)
     if trimmed == kwargs:
         _log("loop detected; retry without context: skipped (no context)")
-        return text
-    retry_text, retry_looped = _stream_decode(model, wav, trimmed)
+        return text, detected
+    retry_text, retry_looped, retry_detected = _stream_decode(model, wav, trimmed)
     _log(f"loop detected; retry without context: {'looped' if retry_looped else 'ok'}")
-    return retry_text
+    return retry_text, retry_detected
 
 
 def _transcribe_generate(
@@ -498,7 +522,7 @@ def _transcribe_generate(
     *,
     language: str | None,
     context: str | None,
-) -> str:
+) -> tuple[str, str | None]:
     kwargs = _transcribe_kwargs(
         model.generate,
         language=language,
@@ -514,7 +538,34 @@ def _transcribe_generate(
         if trimmed == kwargs:
             raise
         result = model.generate(audio, **trimmed)
-    return _text_from_result(result)
+    sent = bool(language and language.strip())
+    detected = None if sent else _language_from_result(result)
+    return _text_from_result(result), detected
+
+
+def _transcribe_detailed(
+    audio: str,
+    *,
+    language: str | None,
+    context: str | None,
+) -> tuple[str, str | None]:
+    """Return (text, detected language). The language is None when a language
+    was sent or the model gave none."""
+    model = _state["model"]
+    if model is None:
+        raise RuntimeError("model not loaded")
+
+    result: tuple[str, str | None] | None = None
+    if _can_stream(model):
+        wav = _load_waveform(audio)
+        sample_rate = int(getattr(model, "sample_rate", 16000))
+        if len(wav) <= _STREAM_MAX_SECONDS * sample_rate:
+            result = _transcribe_streamed(model, wav, language=language, context=context)
+    if result is None:
+        result = _transcribe_generate(model, audio, language=language, context=context)
+
+    text, detected = result
+    return detect_and_fix_repetitions(text.strip()).strip(), detected
 
 
 def _transcribe(
@@ -523,20 +574,7 @@ def _transcribe(
     language: str | None,
     context: str | None,
 ) -> str:
-    model = _state["model"]
-    if model is None:
-        raise RuntimeError("model not loaded")
-
-    text: str | None = None
-    if _can_stream(model):
-        wav = _load_waveform(audio)
-        sample_rate = int(getattr(model, "sample_rate", 16000))
-        if len(wav) <= _STREAM_MAX_SECONDS * sample_rate:
-            text = _transcribe_streamed(model, wav, language=language, context=context)
-    if text is None:
-        text = _transcribe_generate(model, audio, language=language, context=context)
-
-    return detect_and_fix_repetitions(text.strip()).strip()
+    return _transcribe_detailed(audio, language=language, context=context)[0]
 
 
 def _handle_transcribe(message: dict[str, Any]) -> None:
@@ -544,12 +582,15 @@ def _handle_transcribe(message: dict[str, Any]) -> None:
 
     try:
         audio = _audio_from_message(message)
-        text = _transcribe(
+        text, detected = _transcribe_detailed(
             audio,
             language=message.get("language"),
             context=message.get("context"),
         )
-        _send({"id": req_id, "type": "final", "text": text})
+        reply: dict[str, Any] = {"id": req_id, "type": "final", "text": text}
+        if detected:
+            reply["language"] = detected
+        _send(reply)
     except Exception as exc:
         _log(f"inference error: {exc}")
         _send({"id": req_id, "error": str(exc)})

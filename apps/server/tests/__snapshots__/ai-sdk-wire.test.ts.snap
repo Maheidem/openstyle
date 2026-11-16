@@ -549,6 +549,7 @@ exports[`stt transcribe wire body (WB12-WB14) > WB14 elevenlabs 1`] = `
   ],
   "result": {
     "durationInSeconds": undefined,
+    "language": "en",
     "text": "hello world",
   },
 }

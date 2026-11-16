@@ -1,6 +1,7 @@
 import type { TranscribeParams } from "@openstyle/stt";
 import { transcribe } from "@openstyle/stt";
 import type { TranscriptionModel } from "ai";
+import { toIsoLanguage } from "../language.js";
 import type { AsrVocabularyBias } from "../vocabulary-bias.js";
 import { providerOptionsFromBias } from "./transcribe-bias.js";
 import type { TranscribeOptions, TranscribeResult } from "./types.js";
@@ -65,8 +66,10 @@ export async function transcribeWithAiSdk(
     signal: AbortSignal.timeout(CLOUD_TRANSCRIBE_TIMEOUT_MS),
     ...(providerOptions ? { providerOptions } : {}),
   });
+  const language = toIsoLanguage(result.language);
   return {
     text: result.text,
     durationInSeconds: result.durationInSeconds,
+    ...(language ? { language } : {}),
   };
 }
