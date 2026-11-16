@@ -1,7 +1,10 @@
+import type { DatabaseSync } from "node:sqlite";
 import { zValidator } from "@hono/zod-validator";
 import { historyQuerySchema } from "@openstyle/validations";
 import { Hono } from "hono";
 import { getDb } from "../lib/db.js";
+import { LANGUAGE_MIXED } from "../lib/dictation-language.js";
+import { getLanguagesSetting } from "../lib/language.js";
 import {
   dateRangeWhere,
   LOCAL_TODAY_WHERE,
@@ -38,6 +41,67 @@ const WORDS_SQL = `
 
 /** Days of per-day history returned by /daily — enough for the usage heatmap. */
 const DAILY_WINDOW_DAYS = 140;
+
+/** One row of the "By language" stats. `language` null: Unknown. */
+export interface LanguageStat {
+  language: string | null;
+  dictations: number;
+  words: number;
+  audio_ms: number;
+}
+
+/**
+ * Dictations, words and audio per language, in the same period as the other
+ * stats (issue #443). Each set language has a row, also with 0, in the order
+ * of the set; then "mixed" and Unknown (null), only when they have rows. A
+ * language outside the set folds into Unknown. With an empty set
+ * (auto-detect) no language folds: each detected code has its own row, the
+ * most words first.
+ */
+export function languageStats(
+  db: DatabaseSync,
+  languages: string[],
+  where: string[],
+  params: (string | number)[],
+): LanguageStat[] {
+  const bucket =
+    languages.length > 0
+      ? `CASE WHEN language IN (${languages.map(() => "?").join(", ")})
+              THEN language
+              WHEN language = '${LANGUAGE_MIXED}' THEN language
+              ELSE NULL END`
+      : `CASE WHEN length(language) = 2 OR language = '${LANGUAGE_MIXED}'
+              THEN language ELSE NULL END`;
+  const whereClause = where.length > 0 ? `WHERE ${where.join(" AND ")}` : "";
+  const rows = db
+    .prepare(
+      `SELECT ${bucket} AS language,
+              COUNT(*) AS dictations,
+              COALESCE(SUM(${WORDS_SQL}), 0) AS words,
+              COALESCE(SUM(audio_duration_ms), 0) AS audio_ms
+         FROM transcription_history
+         ${whereClause}
+        GROUP BY 1`,
+    )
+    .all(...languages, ...params) as unknown as LanguageStat[];
+  const byCode = new Map(rows.map((r) => [r.language, r]));
+  const zero = (language: string): LanguageStat => ({
+    language,
+    dictations: 0,
+    words: 0,
+    audio_ms: 0,
+  });
+  const detected =
+    languages.length > 0
+      ? languages.map((code) => byCode.get(code) ?? zero(code))
+      : rows
+          .filter((r) => r.language !== null && r.language !== LANGUAGE_MIXED)
+          .sort((a, b) => b.words - a.words);
+  const tail = [byCode.get(LANGUAGE_MIXED), byCode.get(null)].filter(
+    (r): r is LanguageStat => r !== undefined && r.dictations > 0,
+  );
+  return [...detected, ...tail];
+}
 
 const ALLOWED_ORDER_COLUMNS = new Set([
   "created_at",
@@ -136,8 +200,14 @@ const history = new Hono()
       )
       .get() as { sessions: number; cost: number };
 
+    const byLanguage =
+      stats.total_sessions > 0
+        ? languageStats(db, getLanguagesSetting(), where, params)
+        : [];
+
     return c.json({
       ...stats,
+      by_language: byLanguage,
       today_sessions: today.sessions,
       today_cost: today.cost,
       unfiltered_total_sessions: unfilteredCount.count,

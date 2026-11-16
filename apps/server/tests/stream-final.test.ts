@@ -33,6 +33,7 @@ vi.mock("../src/lib/language.js", () => ({
   getLanguagesSetting: () => ["en"],
   getTranslateModeSetting: () => false,
   resolveLanguageOverride: (_o: string | null, l: string[]) => l,
+  pinnedLanguage: () => null,
 }));
 vi.mock("../src/lib/post-process.js", () => ({
   postProcess: mocks.postProcess,

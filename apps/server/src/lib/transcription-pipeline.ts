@@ -20,7 +20,11 @@ import { createAppLogger, errorMessage } from "@openstyle/utils";
 import { getApiKey } from "./api-keys.js";
 import { formatError } from "./format-error.js";
 import { saveProcessedHistory, saveRawHistory } from "./history-store.js";
-import { getLanguagesSetting, resolveLanguageOverride } from "./language.js";
+import {
+  getLanguagesSetting,
+  pinnedLanguage,
+  resolveLanguageOverride,
+} from "./language.js";
 import { postProcess, resolveAppContextForCleanup } from "./post-process.js";
 import { getDefaultModels } from "./providers.js";
 import { voiceProviderCategory } from "./streaming/local-providers.js";
@@ -139,6 +143,9 @@ export async function runTranscriptionPipeline(
     languages,
   );
   const primaryLanguage = effectiveLanguages[0];
+  // The per-language stats (issue #443): a real pin, else the ASR language.
+  const pin = pinnedLanguage(input.languageOverride, languages);
+  let asrLanguage: string | null = null;
 
   const provider = getProvider(voiceProvider);
   if (!provider) {
@@ -174,6 +181,8 @@ export async function runTranscriptionPipeline(
       appContext,
     });
     rawText = cleanAsrText(result.text, bias);
+    // Only a detection counts. With a language sent, a provider can echo it.
+    if (!primaryLanguage) asrLanguage = result.language ?? null;
 
     log.debug(
       `STT took ${Date.now() - t0}ms | rawText=${JSON.stringify(rawText).slice(0, 120)}`,
@@ -216,6 +225,7 @@ export async function runTranscriptionPipeline(
         voiceModel,
         durationMs,
         audioDurationMs,
+        languageHint: { pin, asr: asrLanguage },
       });
     } catch (err) {
       log.error(`Failed to save history: ${err}`);
@@ -262,6 +272,7 @@ export async function runTranscriptionPipeline(
       outputTokens: pp.outputTokens,
       costUsd: pp.costUsd,
       cleanupSkipped: pp.cleanupSkipped ?? null,
+      languageHint: { pin, asr: asrLanguage },
     });
   } catch (err) {
     log.error(`Failed to save history: ${err}`);

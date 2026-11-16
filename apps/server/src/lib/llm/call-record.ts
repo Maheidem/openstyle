@@ -33,8 +33,15 @@ export type ChatStepId =
   | "chatReflect"
   | "chatDig";
 
+/** The language check of one saved dictation (issue #443). */
+export type DictationLanguageStepId = "dictationLanguage";
+
 /** Every step that the gateway can call. */
-export type GatewayStepId = LlmStepId | FolderStepId | ChatStepId;
+export type GatewayStepId =
+  | LlmStepId
+  | FolderStepId
+  | ChatStepId
+  | DictationLanguageStepId;
 
 export interface ChatTurn {
   role: "user" | "assistant";

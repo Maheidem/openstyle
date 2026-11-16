@@ -172,7 +172,7 @@ describe("schema 59: title_source backfill", () => {
       { id: "rec", title: "Budget talk", title_source: "user" },
     ]);
     expect(db.prepare("SELECT version FROM schema_version").get()).toEqual({
-      version: 59,
+      version: 60,
     });
     // A second run changes nothing.
     initSchema(db);

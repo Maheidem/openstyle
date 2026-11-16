@@ -9,6 +9,7 @@ import { requestId } from "hono/request-id";
 import { timeout } from "hono/timeout";
 import { WebSocketServer } from "ws";
 import { authMiddleware, generateAuthToken, setAuthToken } from "./lib/auth.js";
+import { startDictationLanguageCheck } from "./lib/dictation-language.js";
 import { formatError } from "./lib/format-error.js";
 import { startHistoryRetentionSweep } from "./lib/history-store.js";
 import { startTracing } from "./lib/llm/tracing.js";
@@ -256,6 +257,9 @@ export async function startServer(
         resolve({ server, port: info.port, token });
         // Resume each interrupted run once by itself, in the background.
         void resumeInterruptedRuns();
+        // The language of each dictation (issue #443): the backfill of old
+        // rows, then new rows, in the background.
+        startDictationLanguageCheck();
       },
     );
     // Reject if the server fails to bind (e.g. EADDRINUSE) before listening.
