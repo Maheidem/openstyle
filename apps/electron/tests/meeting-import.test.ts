@@ -14,7 +14,7 @@ import {
   launchOpenstyle,
   waitForDashboardWindow,
 } from "./helpers/e2e-app";
-import { writeSilentWav } from "./helpers/wav";
+import { pcm16Wav, writeSilentWav } from "./helpers/wav";
 
 // ---------------------------------------------------------------------------
 // Meeting import (specs/meeting-import.md §5): mirrors tests/import-screen.test.ts
@@ -283,7 +283,8 @@ test("picker import from the master-detail rail adds another meeting", async () 
 // Calendar link at import (issue #445). The fake calendar gives fictional
 // events. The fixture is a real Chrome MediaRecorder WebM/Opus file (the
 // Krisp shape: no duration in the header), recorded in the renderer from an
-// oscillator. No microphone and no speaker is used.
+// oscillator. No microphone and no speaker is used. With no bundled ffmpeg
+// (the CI E2E job), the fixture is a WAV (see writeFixture).
 // ---------------------------------------------------------------------------
 
 async function setCalendar(on: boolean): Promise<void> {
@@ -329,6 +330,44 @@ async function setTodayEvents(): Promise<{
     [other, match],
   );
   return { match };
+}
+
+// The server decodes a WebM file with the bundled ffmpeg. It looks for
+// resources/bin/<platform>-<arch>/ffmpeg under its cwd, which is the cwd of
+// this run (apps/server/src/lib/audio/decode.ts ffmpegBinaryCandidates). The
+// macOS E2E job in CI does not fetch ffmpeg, so there a WebM import gets 422
+// AUDIO_DECODE_FAILED (binary_missing) and makes no meeting. Without ffmpeg,
+// the calendar tests import a 16 kHz WAV, which needs no decode. The dialog,
+// the link and Skip are the same for both formats.
+const BUNDLED_FFMPEG = existsSync(
+  join(
+    process.cwd(),
+    "resources",
+    "bin",
+    `${process.platform}-${process.arch}`,
+    "ffmpeg",
+  ),
+);
+const FIXTURE_EXT = BUNDLED_FFMPEG ? "webm" : "wav";
+
+/** Write the import fixture: a recorder WebM, or a WAV with no ffmpeg. */
+async function writeFixture(path: string): Promise<void> {
+  test.info().annotations.push({
+    type: "fixture",
+    description: BUNDLED_FFMPEG
+      ? "MediaRecorder WebM/Opus (bundled ffmpeg found)"
+      : "16 kHz WAV (no bundled ffmpeg, the WebM decode is not checked)",
+  });
+  if (BUNDLED_FFMPEG) {
+    await writeRecorderWebm(path);
+    return;
+  }
+  // 1.5 s of a 440 Hz sine, the same length as the recorder WebM.
+  const samples = new Int16Array(24_000);
+  for (let i = 0; i < samples.length; i++) {
+    samples[i] = Math.round(8000 * Math.sin((2 * Math.PI * 440 * i) / 16_000));
+  }
+  writeFileSync(path, pcm16Wav(samples));
 }
 
 /** Record 1.5 s of a sine with MediaRecorder and write it as a .webm. */
@@ -395,8 +434,9 @@ test("calendar on: the dialog links the matching event before transcription", as
   try {
     const { match } = await setTodayEvents();
     await navigateToMeetings(dashboardPage);
-    const webmPath = join(userDataDir, "Atlas Weekly Sync (1).webm");
-    await writeRecorderWebm(webmPath);
+    const fileName = `Atlas Weekly Sync (1).${FIXTURE_EXT}`;
+    const filePath = join(userDataDir, fileName);
+    await writeFixture(filePath);
     const before = (await listMeetings()).length;
     const callsBefore = await e2eCounter(app!, "meetingImportCalls");
     const dialog = dashboardPage.getByTestId("import-calendar-dialog");
@@ -404,7 +444,7 @@ test("calendar on: the dialog links the matching event before transcription", as
     await withPickerFile(
       app!,
       "OPENSTYLE_E2E_MEETING_IMPORT_FILE",
-      webmPath,
+      filePath,
       async () => {
         // 1. Escape cancels: no import.
         await dashboardPage.getByTestId("meetings-import-choose-file").click();
@@ -424,7 +464,7 @@ test("calendar on: the dialog links the matching event before transcription", as
         await dashboardPage.getByTestId("meetings-import-choose-file").click();
         await expect(dialog).toBeVisible({ timeout: 10_000 });
         await expect(dialog).toContainText("Which meeting is this?");
-        await expect(dialog).toContainText("Atlas Weekly Sync (1).webm");
+        await expect(dialog).toContainText(fileName);
         const rows = dialog.getByTestId("import-calendar-event");
         await expect(rows).toHaveCount(2);
         await expect(rows.nth(0)).toContainText("Atlas Weekly Sync");
@@ -483,7 +523,7 @@ test("calendar on: the dialog links the matching event before transcription", as
       "Bruno Lima",
       "Carla Dias",
     ]);
-    // The WebM decoded: a real duration (about 1.5 s) from the WAV header.
+    // The file decoded: a real duration (about 1.5 s) from the WAV header.
     expect(detail.duration_ms as number).toBeGreaterThan(1000);
     expect(detail.duration_ms as number).toBeLessThan(2500);
     expect(await e2eCounter(app!, "meetingImportCalls")).toBe(callsBefore + 1);
@@ -499,15 +539,15 @@ test("calendar on: Skip imports with no link and the file-name title", async () 
   try {
     await setTodayEvents();
     await navigateToMeetings(dashboardPage);
-    const webmPath = join(userDataDir, "skip-check.webm");
-    await writeRecorderWebm(webmPath);
+    const filePath = join(userDataDir, `skip-check.${FIXTURE_EXT}`);
+    await writeFixture(filePath);
     const before = (await listMeetings()).length;
     const dialog = dashboardPage.getByTestId("import-calendar-dialog");
 
     await withPickerFile(
       app!,
       "OPENSTYLE_E2E_MEETING_IMPORT_FILE",
-      webmPath,
+      filePath,
       async () => {
         await dashboardPage.getByTestId("meetings-import-choose-file").click();
         await expect(dialog).toBeVisible({ timeout: 10_000 });
