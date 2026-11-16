@@ -19,6 +19,7 @@ import type { DatabaseSync } from "node:sqlite";
 import { createAppLogger } from "@openstyle/utils";
 import { z } from "zod";
 import { getDb, withTransaction } from "./db.js";
+import { isDictationActive } from "./dictation-activity.js";
 import { getLanguagesSetting, ISO_LANGUAGE_NAMES } from "./language.js";
 import { type CallUnitDeps, callUnit } from "./llm/call-unit.js";
 import {
@@ -171,6 +172,52 @@ export interface LanguageCheckDeps {
   resolveProfile?: () => Promise<CallProfile>;
   sleep?: CallUnitDeps["sleep"];
   now?: () => number;
+  /** The wait before each LLM call. Default: `waitForQuiet`. */
+  waitForQuiet?: () => Promise<void>;
+}
+
+/** The LLM check starts only after this long with no dictation. */
+export const QUIET_MS = 15_000;
+const QUIET_POLL_MS = 1000;
+
+export interface QuietDeps {
+  db: DatabaseSync;
+  isDictationActive?: () => boolean;
+  now?: () => number;
+  sleepMs?: (ms: number) => Promise<void>;
+}
+
+/** Epoch ms of the newest saved dictation, or null when there is none. */
+function lastSavedAt(db: DatabaseSync): number | null {
+  const row = db
+    .prepare(
+      `SELECT CAST(strftime('%s', MAX(created_at)) AS INTEGER) AS t
+         FROM transcription_history`,
+    )
+    .get() as { t: number | null } | undefined;
+  return row?.t == null ? null : row.t * 1000;
+}
+
+/**
+ * Wait until no dictation is in progress and no dictation was saved in the
+ * last QUIET_MS. The LLM check uses the user's model, so it must not
+ * compete with a dictation.
+ */
+export async function waitForQuiet(deps: QuietDeps): Promise<void> {
+  const active = deps.isDictationActive ?? isDictationActive;
+  const now = deps.now ?? Date.now;
+  const sleepMs =
+    deps.sleepMs ?? ((ms: number) => new Promise((r) => setTimeout(r, ms)));
+  for (;;) {
+    if (active()) {
+      await sleepMs(QUIET_POLL_MS);
+      continue;
+    }
+    const last = lastSavedAt(deps.db);
+    const quietFor = last === null ? Number.POSITIVE_INFINITY : now() - last;
+    if (quietFor >= QUIET_MS) return;
+    await sleepMs(Math.min(QUIET_POLL_MS, QUIET_MS - quietFor));
+  }
 }
 
 async function askLlm(
@@ -355,6 +402,7 @@ export async function runLanguageCheck(
         break;
       }
     }
+    await (deps.waitForQuiet ?? (() => waitForQuiet({ db })))();
     let stored = LANGUAGE_UNKNOWN;
     try {
       stored = await askLlm(db, row.id, textOf(row), languages, profile, deps);

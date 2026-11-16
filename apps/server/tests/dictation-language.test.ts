@@ -12,8 +12,10 @@ import {
   LANGUAGE_UNKNOWN,
   type LanguageCheckDeps,
   languageStepSchema,
+  QUIET_MS,
   runLanguageCheck,
   storedFromAnswer,
+  waitForQuiet,
 } from "../src/lib/dictation-language.js";
 import { saveRawHistory } from "../src/lib/history-store.js";
 import { pinnedLanguage, toIsoLanguage } from "../src/lib/language.js";
@@ -69,6 +71,7 @@ function fakeLlm(answers: string[]): {
       callStructured:
         callStructured as unknown as LanguageCheckDeps["callStructured"],
       resolveProfile: async () => profile,
+      waitForQuiet: async () => {},
     },
     texts,
   };
@@ -441,5 +444,90 @@ describe("GET /api/history/stats by_language", () => {
       "pt",
       null,
     ]);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Quiet period before the LLM check
+// ---------------------------------------------------------------------------
+
+describe("quiet period before the LLM check", () => {
+  beforeEach(() => {
+    vi.useRealTimers();
+  });
+  afterEach(() => {
+    vi.useFakeTimers({ shouldAdvanceTime: false });
+  });
+
+  const savedAt = Date.UTC(2026, 2, 10, 12, 0, 0);
+
+  function fakeClock(start: number) {
+    let t = start;
+    const slept: number[] = [];
+    return {
+      now: () => t,
+      sleepMs: async (ms: number) => {
+        slept.push(ms);
+        t += ms;
+      },
+      slept,
+    };
+  }
+
+  it("waits while a dictation is recent, then runs after the quiet period", async () => {
+    addRow("x", { createdAt: "2026-03-10 12:00:00", language: "en" });
+    const clock = fakeClock(savedAt + 5000);
+    await waitForQuiet({
+      db: getDb(),
+      isDictationActive: () => false,
+      ...clock,
+    });
+    expect(clock.now() - savedAt).toBe(QUIET_MS);
+    expect(clock.slept.reduce((a, b) => a + b, 0)).toBe(10_000);
+  });
+
+  it("waits while a dictation is in progress", async () => {
+    let polls = 0;
+    const clock = fakeClock(Date.now());
+    await waitForQuiet({
+      db: getDb(),
+      isDictationActive: () => ++polls <= 2,
+      ...clock,
+    });
+    expect(clock.slept).toHaveLength(2);
+  });
+
+  it("does not wait with no dictation saved", async () => {
+    const clock = fakeClock(Date.now());
+    await waitForQuiet({
+      db: getDb(),
+      isDictationActive: () => false,
+      ...clock,
+    });
+    expect(clock.slept).toEqual([]);
+  });
+
+  it("waits before each LLM call, never before the text step", async () => {
+    const events: string[] = [];
+    const deps: LanguageCheckDeps = {
+      detectAll,
+      resolveProfile: async () => profile,
+      waitForQuiet: async () => {
+        events.push("wait");
+      },
+      callStructured: (async () => {
+        events.push("llm");
+        return { object: { language: "en" } };
+      }) as unknown as LanguageCheckDeps["callStructured"],
+    };
+    addRow(EN_LONG);
+    await runLanguageCheck(deps);
+    // Text step only: no wait.
+    expect(events).toEqual([]);
+
+    addRow("ok then");
+    addRow("yes sure");
+    await runLanguageCheck(deps);
+    expect(events).toEqual(["wait", "llm", "wait", "llm"]);
   });
 });
