@@ -11,6 +11,7 @@ import { saveProcessedHistory, saveRawHistory } from "../lib/history-store.js";
 import {
   getLanguagesSetting,
   getTranslateModeSetting,
+  pinnedLanguage,
   resolveLanguageOverride,
 } from "../lib/language.js";
 import {
@@ -92,6 +93,8 @@ const stream = new Hono().get(
     function resolveStreamConfig(): {
       voice: { provider: string; model_id: string };
       languages: string[];
+      /** The hotkey pin, when one was really used (issue #443). */
+      pin: string | null;
       translate: boolean;
       bias: ReturnType<typeof resolveAsrVocabularyBias>;
       key: string;
@@ -112,6 +115,7 @@ const stream = new Hono().get(
       return {
         voice,
         languages,
+        pin: pinnedLanguage(languageOverride, storedLanguages),
         translate,
         bias,
         key: JSON.stringify([
@@ -315,8 +319,16 @@ const stream = new Hono().get(
             }
             sendJson(ws, { type: "partial", text });
           },
-          onFinal: async (rawText) => {
+          onFinal: async (rawText, detectedLanguage) => {
             if (upstream !== session) return;
+            // Only a detection counts: with a language sent, it is not one.
+            const languageHint = {
+              pin: config.pin,
+              asr:
+                config.languages.length === 0
+                  ? (detectedLanguage ?? null)
+                  : null,
+            };
             // Dictation-activity lease for the streaming path (Defect C,
             // specs/meeting-llm-queue.md §2.6). `beginDictation()` had exactly two
             // callers in the repo before this (`routes/transcribe.ts`,
@@ -413,6 +425,7 @@ const stream = new Hono().get(
                       outputTokens: pp.outputTokens,
                       costUsd: pp.costUsd,
                       cleanupSkipped: pp.cleanupSkipped ?? null,
+                      languageHint,
                     });
                   } catch (err) {
                     log.error(`Failed to save history: ${err}`);
@@ -430,6 +443,7 @@ const stream = new Hono().get(
                       durationMs:
                         commitTime > 0 ? Date.now() - commitTime : durationMs,
                       audioDurationMs,
+                      languageHint,
                     });
                   } catch {}
                 })

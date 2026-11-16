@@ -11,7 +11,7 @@ const DEFAULT_CLOUD_URL = "https://service.freestylevoice.com";
 // reports 26). Migrations only run while currentVersion < SCHEMA_VERSION, so a
 // fork migration numbered below that is silently skipped for anyone arriving
 // from upstream. Keep this above the highest upstream version we have seen.
-const SCHEMA_VERSION = 59;
+const SCHEMA_VERSION = 60;
 
 // Legacy default format-rule patterns (used only by pre-v12 migrations below):
 // domain/phrase entries match as substrings of url+title+app; bare words match
@@ -1588,6 +1588,25 @@ function applyMigrations(db: DatabaseSync, currentVersion: number): void {
         ELSE 'user'
       END
       WHERE title_source IS NULL
+    `);
+  }
+
+  if (currentVersion < 60 && tableExists(db, "transcription_history")) {
+    // Per-language stats (issue #443). The language of one dictation:
+    //   an ISO-639-1 code ("en", "pt") or "mixed": the result;
+    //   "" : checked, not known (shows as Unknown);
+    //   "?": the text check was unsure, waits for the LLM check;
+    //   NULL: not checked yet (old rows, and new rows before the check).
+    // The language check job (lib/dictation-language.ts) fills NULL and "?"
+    // rows in the background. The partial index keeps its query cheap after
+    // the backfill is done.
+    if (!hasColumn(db, "transcription_history", "language")) {
+      db.exec("ALTER TABLE transcription_history ADD COLUMN language TEXT");
+    }
+    db.exec(`
+      CREATE INDEX IF NOT EXISTS idx_transcription_history_language_todo
+        ON transcription_history(id)
+        WHERE language IS NULL OR language = '?'
     `);
   }
 

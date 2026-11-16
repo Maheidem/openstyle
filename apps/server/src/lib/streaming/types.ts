@@ -3,7 +3,8 @@ import type { AsrVocabularyBias } from "../vocabulary-bias.js";
 export interface StreamCallbacks {
   onReady: (model: string) => void;
   onPartial: (text: string) => void;
-  onFinal: (text: string) => void;
+  /** `language`: the ISO-639-1 code that the ASR detected, when it gave one. */
+  onFinal: (text: string, language?: string) => void;
   onError: (message: string, code?: string) => void;
   onClose: () => void;
 }
@@ -39,6 +40,9 @@ export interface TranscribeOptions {
 
 export interface TranscribeResult {
   text: string;
+  /** The ISO-639-1 code that the ASR detected. Only a real detection: a
+   * provider with a fixed language leaves it out. */
+  language?: string;
   segments?: Array<{
     text: string;
     startSecond: number;

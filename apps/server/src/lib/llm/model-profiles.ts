@@ -3,7 +3,12 @@ import type { LlmTaskId } from "@openstyle/validations";
 import { getMlxLlmModel, MLX_LLM_PROVIDER_ID } from "../mlx-llm/constants.js";
 import { stripModelPrefix } from "../model-id.js";
 import { fetchModelsFromRegistry } from "../model-registry.js";
-import type { ChatStepId, LlmStepId, StructuredMode } from "./call-record.js";
+import type {
+  ChatStepId,
+  DictationLanguageStepId,
+  LlmStepId,
+  StructuredMode,
+} from "./call-record.js";
 import { blankFacts, modelUnavailableFrom } from "./gateway-errors.js";
 import {
   type GatewayOverrides,
@@ -81,7 +86,7 @@ export type ResolvedModels = Record<LlmStepId, CallProfile>;
 
 export interface ResolveCallProfileArgs {
   taskId: MeetingLlmTaskId;
-  step: LlmStepId | ChatStepId;
+  step: LlmStepId | ChatStepId | DictationLanguageStepId;
   maxReasoningTokens: number;
   pin?: { provider: string; modelId: string };
   /** Test hook. Replaces the table for this call. Production never passes it. */
@@ -553,7 +558,7 @@ export function reasoningWire(profile: CallProfile): ReasoningWire {
 
 async function resolveBase(
   taskId: MeetingLlmTaskId,
-  step: LlmStepId | ChatStepId,
+  step: LlmStepId | ChatStepId | DictationLanguageStepId,
   pin: { provider: string; modelId: string } | undefined,
 ): Promise<{ provider: string; modelId: string }> {
   try {

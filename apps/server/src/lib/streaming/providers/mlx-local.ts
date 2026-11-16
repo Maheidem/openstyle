@@ -1,5 +1,6 @@
 import { collapseAsrLineBreaks } from "@openstyle/stt";
 import { createAppLogger } from "@openstyle/utils";
+import { toIsoLanguage } from "../../language.js";
 import {
   getMlxAsrModel,
   MLX_ASR_PROVIDER_ID,
@@ -28,6 +29,18 @@ import type {
 import { stripProviderPrefix } from "../types.js";
 
 const log = createAppLogger("mlx-asr");
+
+/**
+ * The worker's language as an ISO code. Parakeet always reports "en": that
+ * is not a detection, so it is left out.
+ */
+function detectedLanguage(
+  modelId: string,
+  language: string | undefined,
+): string | undefined {
+  if (getMlxAsrModel(modelId)?.family === "parakeet") return undefined;
+  return toIsoLanguage(language);
+}
 const STREAM_SAMPLE_RATE = 16_000;
 
 export class MlxLocalTranscriptionProvider implements TranscriptionProvider {
@@ -55,7 +68,7 @@ export class MlxLocalTranscriptionProvider implements TranscriptionProvider {
     }
 
     const t0 = Date.now();
-    const text = await transcribeWithMlxAsr({
+    const { text, language } = await transcribeWithMlxAsr({
       modelId,
       audio: opts.audio,
       language: resolveMlxLanguage(modelId, opts.language),
@@ -64,7 +77,11 @@ export class MlxLocalTranscriptionProvider implements TranscriptionProvider {
 
     log.debug(`inference took ${Date.now() - t0}ms`);
 
-    return { text: collapseAsrLineBreaks(text).trim() };
+    const detected = detectedLanguage(modelId, language);
+    return {
+      text: collapseAsrLineBreaks(text).trim(),
+      ...(detected ? { language: detected } : {}),
+    };
   }
 
   supportsStreaming(_modelId: string): boolean {
@@ -208,12 +225,15 @@ class MlxLocalSessionTransport implements StreamSession {
           deferUnload: true,
         });
       })
-      .then((text) => {
-        if (text === undefined) return;
+      .then((result) => {
+        if (result === undefined) return;
         if (this.closed || this.canceled || generation !== this.generation) {
           return;
         }
-        this.opts.callbacks.onFinal(collapseAsrLineBreaks(text).trim());
+        this.opts.callbacks.onFinal(
+          collapseAsrLineBreaks(result.text).trim(),
+          detectedLanguage(this.opts.modelId, result.language),
+        );
         applyMlxAsrRetentionPolicy();
       })
       .catch((err: Error) => {

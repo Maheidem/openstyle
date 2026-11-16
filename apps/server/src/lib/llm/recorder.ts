@@ -52,6 +52,7 @@ export interface NewRun {
   kind:
     | LlmRunKind
     | "dictation"
+    | "dictationLanguage"
     | "folderDescription"
     | "folderStanding"
     | "meetingChat";

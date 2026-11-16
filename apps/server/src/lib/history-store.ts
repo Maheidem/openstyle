@@ -1,6 +1,10 @@
 import { parseRetentionDays, SETTINGS_KEYS } from "@openstyle/validations";
 import { createDailySweep } from "./daily-sweep.js";
 import { getDb, readSetting } from "./db.js";
+import {
+  kickDictationLanguageCheck,
+  knownLanguage,
+} from "./dictation-language.js";
 import { countFixes } from "./fixes.js";
 
 export const HISTORY_PAUSED_SETTING_KEY = SETTINGS_KEYS.historyPaused;
@@ -12,6 +16,12 @@ export interface RawHistoryEntry {
   voiceModel: string;
   durationMs: number;
   audioDurationMs: number;
+  /**
+   * What the dictation knows about its language: the hotkey pin and the
+   * language that the ASR detected. With neither, the background language
+   * check decides (lib/dictation-language.ts).
+   */
+  languageHint?: { pin?: string | null; asr?: string | null };
 }
 
 export interface ProcessedHistoryEntry extends RawHistoryEntry {
@@ -56,11 +66,12 @@ export const stopHistoryRetentionSweep = historySweep.stop;
 export function saveProcessedHistory(entry: ProcessedHistoryEntry): boolean {
   if (isHistoryPaused()) return false;
 
+  const language = knownLanguage(entry.languageHint ?? {});
   getDb()
     .prepare(
       `INSERT INTO transcription_history
-         (raw_text, cleaned_text, voice_provider, voice_model, llm_provider, llm_model, duration_ms, audio_duration_ms, input_tokens, output_tokens, cost_usd, fixes_count, cleanup_skipped)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+         (raw_text, cleaned_text, voice_provider, voice_model, llm_provider, llm_model, duration_ms, audio_duration_ms, input_tokens, output_tokens, cost_usd, fixes_count, cleanup_skipped, language)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
     )
     .run(
       entry.rawText,
@@ -76,7 +87,10 @@ export function saveProcessedHistory(entry: ProcessedHistoryEntry): boolean {
       entry.costUsd,
       countFixes(entry.rawText, entry.cleanedText),
       entry.cleanupSkipped ?? null,
+      language,
     );
+  // NULL: the background check reads the text after this save.
+  if (language === null) kickDictationLanguageCheck();
 
   return true;
 }

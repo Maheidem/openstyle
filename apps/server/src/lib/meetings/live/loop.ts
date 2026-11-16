@@ -223,7 +223,7 @@ export const defaultLiveDeps: LiveDeps = {
     return { modelId, declared, ...(language ? { language } : {}) };
   },
   transcribe: async ({ modelId, language, pcm }) => {
-    const text = await transcribeWithMlxAsr({
+    const { text } = await transcribeWithMlxAsr({
       modelId,
       audio: pcm,
       pcmSampleRate: LIVE_SAMPLE_RATE,
