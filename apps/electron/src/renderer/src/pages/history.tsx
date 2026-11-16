@@ -35,6 +35,7 @@ import { useSearchShortcut } from "@renderer/hooks/use-search-shortcut";
 import { type ApiClient, type ApiRes, getClient } from "@renderer/lib/api";
 import { formatNumber } from "@renderer/lib/format";
 import { type DiffSegment, diffWords } from "@renderer/lib/history-diff";
+import { LANGUAGES } from "@renderer/lib/languages";
 import { SEARCH_SHORTCUT_LABEL } from "@renderer/lib/platform";
 import { queryKeys, settingsQueryOptions } from "@renderer/lib/query";
 import { cn, ON_DEVICE_PHRASE } from "@renderer/lib/utils";
@@ -75,6 +76,12 @@ import {
   parseLocalDate,
   resolveModelLabel,
 } from "./history/helpers";
+import {
+  formatShare,
+  type LanguageStatRow,
+  languageWpm,
+  roundShares,
+} from "./history/language-stats";
 import { useModelNames } from "./history/use-model-names";
 import {
   STATS_WIDTH_MAX,
@@ -881,12 +888,123 @@ function StatsTab({
         />
       </div>
 
+      {/* Words share and speed per language (issue #443). An older remote
+          server sends no by_language: then the section is not shown. */}
+      {stats && stats.total_sessions > 0 && stats.by_language?.length > 0 && (
+        <ByLanguage rows={stats.by_language} timeLabel={timeLabel} />
+      )}
+
       {/* Daily usage heatmap */}
       <div className="mb-6 flex flex-col gap-2.5">
         <RailLabel>{t("today.dailyActivity")}</RailLabel>
         <DailyHeatmap data={daily} />
       </div>
     </div>
+  );
+}
+
+/** The "By language" list: speed and words share of each language. */
+function ByLanguage({
+  rows,
+  timeLabel,
+}: {
+  rows: LanguageStatRow[];
+  timeLabel: string;
+}): React.JSX.Element {
+  const { t } = useTranslation();
+  const shares = roundShares(rows.map((r) => r.words));
+  return (
+    <div className="flex flex-col gap-2.5">
+      <div className="flex items-baseline justify-between gap-2">
+        <RailLabel>{t("today.byLanguage")}</RailLabel>
+        <span className="text-muted-foreground/70 text-[9.5px]">
+          {timeLabel}
+        </span>
+      </div>
+      <div className="border-border bg-card flex flex-col gap-1 rounded-lg border px-1.5 py-1.5">
+        {rows.map((row, i) => (
+          <LanguageRow
+            key={row.language ?? "unknown"}
+            row={row}
+            share={formatShare(shares[i] ?? 0, row.words)}
+            percent={shares[i] ?? 0}
+          />
+        ))}
+      </div>
+    </div>
+  );
+}
+
+function LanguageRow({
+  row,
+  share,
+  percent,
+}: {
+  row: LanguageStatRow;
+  share: string;
+  percent: number;
+}): React.JSX.Element {
+  const { t } = useTranslation();
+  const [open, setOpen] = useState(false);
+  const known = row.language !== null && row.language !== "mixed";
+  const name =
+    row.language === null
+      ? t("today.languageUnknown")
+      : row.language === "mixed"
+        ? t("today.languageMixed")
+        : t(`settings.recording.transcriptionLanguages.${row.language}`, {
+            defaultValue:
+              LANGUAGES.find((l) => l.id === row.language)?.label ??
+              row.language.toUpperCase(),
+          });
+  const wpm = languageWpm(row);
+  // A share above 0 always shows a sliver of the bar.
+  const fill = row.words > 0 ? Math.max(percent, 1) : 0;
+  return (
+    <Tooltip open={open} onOpenChange={setOpen}>
+      <TooltipTrigger asChild>
+        <button
+          type="button"
+          onClick={() => setOpen(true)}
+          className="hover:bg-muted/50 flex w-full min-w-0 cursor-default flex-col gap-1.5 rounded-md px-2 py-1.5 text-left"
+        >
+          <span className="flex w-full min-w-0 items-baseline justify-between gap-2">
+            <span
+              className={cn(
+                "truncate text-[11.5px]",
+                known ? "text-foreground" : "text-muted-foreground",
+              )}
+            >
+              {name}
+            </span>
+            <span className="text-muted-foreground shrink-0 text-[10px] tabular-nums">
+              {wpm === null ? "—" : t("today.languageWpm", { wpm })}
+            </span>
+          </span>
+          <span className="flex w-full items-center gap-2">
+            <span className="bg-muted h-1 min-w-0 flex-1 overflow-hidden rounded-full">
+              <span
+                className={cn(
+                  "block h-full rounded-full",
+                  known ? "bg-primary" : "bg-muted-foreground/40",
+                )}
+                style={{ width: `${fill}%` }}
+              />
+            </span>
+            <span className="text-muted-foreground w-7 shrink-0 text-right text-[10px] tabular-nums">
+              {share}
+            </span>
+          </span>
+        </button>
+      </TooltipTrigger>
+      <TooltipContent>
+        {t("today.languageTooltip", {
+          dictations: formatNumber(row.dictations),
+          words: formatNumber(row.words),
+          minutes: formatNumber(Math.round(row.audio_ms / 60000)),
+        })}
+      </TooltipContent>
+    </Tooltip>
   );
 }
 
