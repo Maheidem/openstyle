@@ -14,6 +14,9 @@
  *
  * `started_at` comes from the file's mtime so an imported back-catalog file
  * lands at its recorded date in the timeline (spec §7.1's preferred option).
+ * When the user links a calendar event in the import dialog (issue #445),
+ * the event start is `started_at`, and the event goes to the server in the
+ * same request.
  */
 
 import { randomUUID } from "node:crypto";
@@ -22,6 +25,7 @@ import { stat } from "node:fs/promises";
 import { basename, extname, join } from "node:path";
 import { createAppLogger, errorMessage } from "@openstyle/utils";
 import {
+  type CalendarEvent,
   IMPORT_EXTENSIONS,
   MAX_IMPORT_BYTES,
   MEETINGS_DIR_NAME,
@@ -30,6 +34,7 @@ import {
 } from "@openstyle/validations";
 import { app, type BrowserWindow, dialog, ipcMain } from "electron";
 import type { ServerFetch } from "../shared/server-auth";
+import { clampEvent } from "./calendar";
 
 const log = createAppLogger("meeting-import");
 
@@ -72,12 +77,24 @@ export function registerMeetingImportIpc({
     },
   );
 
+  // The import dialog shows the day of the file by default.
+  ipcMain.handle(
+    "meeting-import:file-date",
+    async (_event, path: string): Promise<number | null> => {
+      try {
+        return Math.round((await stat(path)).mtimeMs);
+      } catch {
+        return null;
+      }
+    },
+  );
+
   ipcMain.handle(
     "meeting-import:transcribe",
     async (
       _event,
       path: string,
-      opts?: { title?: string },
+      opts?: { title?: string; calendar?: CalendarEvent },
     ): Promise<MeetingImportResult> => {
       if (isE2E()) {
         const g = globalThis as {
@@ -142,7 +159,11 @@ export function registerMeetingImportIpc({
         // filename stem (its `title ?? stem(filename)` rule).
         const title = opts?.title?.trim();
         if (title) form.append("title", title);
-        form.append("started_at", String(startedAt));
+        // A linked event gives the start time and goes in the same request,
+        // so the link exists before the transcribe job starts.
+        const calendar = opts?.calendar ? clampEvent(opts.calendar) : null;
+        if (calendar) form.append("calendar", JSON.stringify(calendar));
+        form.append("started_at", String(calendar?.start ?? startedAt));
 
         const response = await serverFetch("/meetings/import", {
           method: "POST",

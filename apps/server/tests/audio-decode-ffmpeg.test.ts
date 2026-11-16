@@ -4,8 +4,14 @@
  * vitest runs with cwd = apps/server, so the bundled
  * `resources/bin/<platform>-<arch>/ffmpeg` never resolves here; point
  * `OPENSTYLE_FFMPEG_PATH` at a binary to run these.
+ *
+ * The WebM and FLAC cases (issue #445) make their fixture at test time. The
+ * bundled ffmpeg decodes only, so the fixture needs a second binary with the
+ * libopus and flac encoders: `OPENSTYLE_FFMPEG_ENCODER_PATH` (for example a
+ * Homebrew ffmpeg). Without such an encoder these cases skip.
  */
 
+import { execFileSync } from "node:child_process";
 import {
   existsSync,
   mkdtempSync,
@@ -39,6 +45,58 @@ const bin =
   envPath && existsSync(envPath) ? envPath : (getFfmpegBinaryPath() ?? null);
 
 const TEST_TIMEOUT = 30_000;
+
+/** A binary that can encode the fixtures, or null. */
+const encoderEnv = process.env.OPENSTYLE_FFMPEG_ENCODER_PATH;
+const encoder =
+  encoderEnv && existsSync(encoderEnv) ? encoderEnv : (bin ?? null);
+function encoderHas(name: string): boolean {
+  if (!encoder) return false;
+  try {
+    const out = execFileSync(encoder, ["-hide_banner", "-encoders"], {
+      encoding: "utf8",
+      stdio: ["ignore", "pipe", "ignore"],
+    });
+    return new RegExp(`\\s${name}\\s`).test(out);
+  } catch {
+    return false;
+  }
+}
+const canOpus = encoderHas("libopus");
+const canFlac = encoderHas("flac");
+
+/**
+ * Encode a 2 s sine to `format` and write it through a pipe. A pipe is not
+ * seekable, so the muxer cannot go back to write the duration or the cues:
+ * the same shape as a Chrome MediaRecorder WebM (for example Krisp).
+ */
+function encodeSine(codec: string, format: string): Buffer {
+  return execFileSync(
+    encoder as string,
+    [
+      "-hide_banner",
+      "-loglevel",
+      "error",
+      "-f",
+      "lavfi",
+      "-i",
+      "sine=frequency=440:sample_rate=48000:duration=2",
+      "-c:a",
+      codec,
+      "-f",
+      format,
+      "pipe:1",
+    ],
+    { maxBuffer: 16 * 1024 * 1024, stdio: ["ignore", "pipe", "pipe"] },
+  );
+}
+
+/** The bytes before the first Matroska Cluster (the header part). */
+function matroskaHeader(file: Buffer): Buffer {
+  const cluster = file.indexOf(Buffer.from([0x1f, 0x43, 0xb6, 0x75]));
+  expect(cluster).toBeGreaterThan(0);
+  return file.subarray(0, cluster);
+}
 
 function deps(): DecodeDeps {
   return { ...createDefaultDecodeDeps(), resolveBinaryPath: () => bin };
@@ -164,6 +222,49 @@ suite(`decodeFileToWav16kMono (real ffmpeg: ${bin ?? "none found"})`, () => {
       });
       expect(Math.abs(wavDurationMs(info) - 1500)).toBeLessThanOrEqual(10);
       expect(rms(readFileSync(output))).toBeGreaterThan(1000);
+    },
+    TEST_TIMEOUT,
+  );
+
+  it.runIf(canOpus)(
+    "decodes a WebM/Opus file with no duration in its header (issue #445)",
+    async () => {
+      const { input, output } = freshPaths();
+      const webm = encodeSine("libopus", "webm");
+      // The fixture must have no Duration element (ID 0x4489) in its header.
+      expect(matroskaHeader(webm).includes(Buffer.from([0x44, 0x89]))).toBe(
+        false,
+      );
+      writeFileSync(input, webm);
+      const r = await decodeFileToWav16kMono(input, output, deps());
+      const out = readFileSync(output);
+      expect(r.bytes).toBe(out.length);
+      const info = parseWavHeader(out);
+      expect(info).toMatchObject({
+        formatTag: 1,
+        sampleRate: 16_000,
+        channels: 1,
+        bitsPerSample: 16,
+        dataOffset: 44,
+      });
+      // The route takes the duration from this WAV header.
+      expect(Math.abs(wavDurationMs(info) - 2000)).toBeLessThanOrEqual(30);
+      expect(rms(out)).toBeGreaterThan(1000);
+    },
+    TEST_TIMEOUT,
+  );
+
+  it.runIf(canFlac)(
+    "decodes a FLAC file (issue #445)",
+    async () => {
+      const { input, output } = freshPaths();
+      writeFileSync(input, encodeSine("flac", "flac"));
+      await decodeFileToWav16kMono(input, output, deps());
+      const out = readFileSync(output);
+      const info = parseWavHeader(out);
+      expect(info).toMatchObject({ sampleRate: 16_000, channels: 1 });
+      expect(Math.abs(wavDurationMs(info) - 2000)).toBeLessThanOrEqual(30);
+      expect(rms(out)).toBeGreaterThan(1000);
     },
     TEST_TIMEOUT,
   );

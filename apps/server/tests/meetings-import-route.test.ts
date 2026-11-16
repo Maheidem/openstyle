@@ -367,7 +367,8 @@ describe("POST /api/meetings/import", () => {
     expect(res.status).toBe(415);
     expect(await res.json()).toEqual({
       error: "Unsupported file type",
-      detail: "Accepted extensions: wav, mp3, m4a, aac, ogg, mp4",
+      detail:
+        "Accepted extensions: wav, mp3, m4a, aac, ogg, mp4, webm, mkv, flac",
       code: "UNSUPPORTED_MEDIA_TYPE",
     });
     expect(mocks.decode).not.toHaveBeenCalled();
@@ -595,6 +596,152 @@ describe("POST /api/meetings/import", () => {
     expect(readFileSync(join(dir, "system.wav")).equals(decoded)).toBe(true);
     expect(meetingRow(id)).toMatchObject({ title: "memo", duration_ms: 500 });
     expectNoImportTempDirs();
+  });
+
+  it.each([
+    ["webm", "aaaaaaa1-0000-4000-8000-000000000001"],
+    ["mkv", "aaaaaaa1-0000-4000-8000-000000000002"],
+    ["flac", "aaaaaaa1-0000-4000-8000-000000000003"],
+  ])("201 for a .%s file: accepted and decoded (issue #445)", async (ext, id) => {
+    const dir = meetingDir(id);
+    const res = await postImport(
+      importForm({
+        name: `Krisp call.${ext}`,
+        bytes: new Uint8Array(256).fill(7),
+        id,
+        audioDir: dir,
+      }),
+    );
+    expect(res.status).toBe(201);
+    expect(mocks.decode).toHaveBeenCalledTimes(1);
+    expect(meetingRow(id)).toMatchObject({
+      title: "Krisp call",
+      title_source: "file",
+      duration_ms: 100,
+    });
+  });
+
+  describe("calendar field (issue #445)", () => {
+    const EVENT = {
+      id: "evt-import-1",
+      title: "Atlas Weekly Sync",
+      start: 1_762_768_800_000,
+      end: 1_762_771_500_000,
+      url: "https://meet.example.test/atlas",
+      attendees: [
+        { name: "Ana Souza", email: "ana@example.test", isOrganizer: true },
+        { name: "Bruno Lima", email: "bruno@example.test", isOrganizer: false },
+      ],
+    };
+
+    it("stores the six calendar columns, the event title and the event start", async () => {
+      const id = "bbbbbbb1-0000-4000-8000-000000000001";
+      const dir = meetingDir(id);
+      const form = importForm({
+        name: "Atlas Weekly Sync.webm",
+        bytes: new Uint8Array(256).fill(9),
+        id,
+        audioDir: dir,
+        startedAt: EVENT.start,
+      });
+      form.append("calendar", JSON.stringify(EVENT));
+      const res = await postImport(form);
+
+      expect(res.status).toBe(201);
+      const body = await res.json();
+      expect(body).toMatchObject({
+        title: "Atlas Weekly Sync",
+        title_source: "calendar",
+        started_at: EVENT.start,
+        calendar: EVENT,
+      });
+      expect(meetingRow(id)).toMatchObject({
+        title: "Atlas Weekly Sync",
+        title_source: "calendar",
+        started_at: EVENT.start,
+        ended_at: EVENT.start + 100,
+        calendar_event_id: EVENT.id,
+        calendar_title: EVENT.title,
+        calendar_start: EVENT.start,
+        calendar_end: EVENT.end,
+        calendar_url: EVENT.url,
+        calendar_attendees: JSON.stringify(EVENT.attendees),
+      });
+      // Same shape as GET /:id.
+      const detail = await app.request(`/api/meetings/${id}`);
+      expect(await detail.json()).toEqual(body);
+    });
+
+    it("uses the event start when started_at is absent", async () => {
+      const id = "bbbbbbb1-0000-4000-8000-000000000002";
+      const form = importForm({
+        name: "x.wav",
+        bytes: buildWav(1600),
+        id,
+        audioDir: meetingDir(id),
+      });
+      form.append("calendar", JSON.stringify(EVENT));
+      expect((await postImport(form)).status).toBe(201);
+      expect(meetingRow(id)?.started_at).toBe(EVENT.start);
+    });
+
+    it("a typed title wins over the event title", async () => {
+      const id = "bbbbbbb1-0000-4000-8000-000000000003";
+      const form = importForm({
+        name: "x.wav",
+        bytes: buildWav(1600),
+        id,
+        audioDir: meetingDir(id),
+        title: "Mine",
+      });
+      form.append("calendar", JSON.stringify(EVENT));
+      expect((await postImport(form)).status).toBe(201);
+      expect(meetingRow(id)).toMatchObject({
+        title: "Mine",
+        title_source: "user",
+        calendar_event_id: EVENT.id,
+      });
+    });
+
+    it("an event with no title keeps the file-name title", async () => {
+      const id = "bbbbbbb1-0000-4000-8000-000000000004";
+      const form = importForm({
+        name: "memo.wav",
+        bytes: buildWav(1600),
+        id,
+        audioDir: meetingDir(id),
+      });
+      form.append("calendar", JSON.stringify({ ...EVENT, title: " " }));
+      expect((await postImport(form)).status).toBe(201);
+      expect(meetingRow(id)).toMatchObject({
+        title: "memo",
+        title_source: "file",
+        calendar_event_id: EVENT.id,
+      });
+    });
+
+    it.each([
+      ["bad JSON", "{oops"],
+      ["wrong shape", JSON.stringify({ id: "", title: 1 })],
+    ])("400 for %s, before any write", async (_label, value) => {
+      const id = "bbbbbbb1-0000-4000-8000-000000000005";
+      const dir = meetingDir(id);
+      const form = importForm({
+        name: "x.wav",
+        bytes: buildWav(1600),
+        id,
+        audioDir: dir,
+      });
+      form.append("calendar", value);
+      const res = await postImport(form);
+      expect(res.status).toBe(400);
+      expect(await res.json()).toEqual({
+        error: "calendar must be a calendar event",
+      });
+      expect(meetingRow(id)).toBeUndefined();
+      expect(existsSync(dir)).toBe(false);
+      expectNoImportTempDirs();
+    });
   });
 
   it("422 with a fixed detail (no ffmpeg stderr) when decoding fails, and persists nothing", async () => {

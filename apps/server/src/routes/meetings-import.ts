@@ -3,7 +3,7 @@
  * full meeting record (specs/meeting-import.md).
  *
  * Accepts a `multipart/form-data` upload (`audio` file + `id` + `audio_dir`
- * + optional `title`/`started_at`), normalizes it to 16 kHz mono PCM16 WAV
+ * + optional `title`/`started_at`/`calendar`), normalizes it to 16 kHz mono PCM16 WAV
  * with the bundled ffmpeg when needed, writes it to
  * `<audio_dir>/system.wav` and inserts a `meetings` row in `recorded`
  * status — the exact state a `/start` → `/stop` recording leaves behind — so
@@ -48,6 +48,8 @@ import { tmpdir } from "node:os";
 import { basename, isAbsolute, join } from "node:path";
 import { createAppLogger } from "@openstyle/utils";
 import {
+  type CalendarEvent,
+  calendarEventSchema,
   meetingDetailResponseSchema,
   meetingFolderErrorSchema,
   meetingFolderIdSchema,
@@ -78,6 +80,7 @@ import { readWavInfo, wavDurationMs } from "../lib/audio/wav.js";
 import { getDb } from "../lib/db.js";
 import { meetingFolderExists } from "../lib/meetings/folders.js";
 import {
+  calendarColumnValues,
   getMeetingRow,
   omitCalendarColumns,
   toCalendarEvent,
@@ -210,6 +213,25 @@ export function createMeetingsImportRoute(opts: { maxBytes?: number } = {}) {
         startedAt = n;
       }
 
+      // Optional calendar event (issue #445): JSON text in the same shape
+      // as `POST /start`. The link is written with the row, so the attendee
+      // names are in place before the transcribe job reads its bias terms.
+      const calendarRaw = fields.get("calendar");
+      let calendar: CalendarEvent | null = null;
+      if (calendarRaw !== undefined || files.has("calendar")) {
+        let parsed: unknown;
+        try {
+          parsed = JSON.parse(calendarRaw ?? "");
+        } catch {
+          parsed = undefined;
+        }
+        const result = calendarEventSchema.safeParse(parsed);
+        if (files.has("calendar") || !result.success) {
+          return c.json({ error: "calendar must be a calendar event" }, 400);
+        }
+        calendar = result.data;
+      }
+
       const folderIdResult = meetingFolderIdSchema
         .nullable()
         .safeParse(fields.get("folder_id") ?? null);
@@ -309,28 +331,42 @@ export function createMeetingsImportRoute(opts: { maxBytes?: number } = {}) {
           404,
         );
       }
-      const startedAtValue = startedAt ?? Date.now();
+      // With no explicit start, a linked event gives the start time.
+      const startedAtValue = startedAt ?? calendar?.start ?? Date.now();
       // Only after decode + validation: create the dir, place the WAV,
       // insert the row. On any failure, best-effort remove the dir so a
       // retry isn't 409-blocked (it was empty or ours; nothing to lose).
       try {
         mkdirSync(audioDir, { recursive: true });
         placeWavFile(wavPath, join(audioDir, SYSTEM_WAV));
-        const fileTitle = title ? null : stem(audio.filename, ext) || null;
+        // Title order: a typed title, then the event title, then the file
+        // name stem (same rule as `POST /start` for the event title).
+        const eventTitle = calendar?.title.trim() || null;
+        const fileTitle =
+          title || eventTitle ? null : stem(audio.filename, ext) || null;
         db.prepare(
           `INSERT INTO meetings (id, title, title_source, started_at, ended_at,
                                 duration_ms, status, audio_dir, created_at,
-                                folder_id)
-           VALUES (?, ?, ?, ?, ?, ?, 'recorded', ?, ?, ?)`,
+                                calendar_event_id, calendar_title,
+                                calendar_start, calendar_end, calendar_url,
+                                calendar_attendees, folder_id)
+           VALUES (?, ?, ?, ?, ?, ?, 'recorded', ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
         ).run(
           id,
-          title || fileTitle,
-          title ? "user" : fileTitle ? "file" : "default",
+          title || eventTitle || fileTitle,
+          title
+            ? "user"
+            : eventTitle
+              ? "calendar"
+              : fileTitle
+                ? "file"
+                : "default",
           startedAtValue,
           startedAtValue + durationMs,
           durationMs,
           audioDir,
           Date.now(),
+          ...calendarColumnValues(calendar),
           folderId,
         );
       } catch (err) {

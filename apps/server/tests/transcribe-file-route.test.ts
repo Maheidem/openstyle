@@ -214,7 +214,8 @@ describe("POST /api/transcribe/file", () => {
     expect(res.status).toBe(415);
     expect(await res.json()).toEqual({
       error: "Unsupported file type",
-      detail: "Accepted extensions: wav, mp3, m4a, aac, ogg, mp4",
+      detail:
+        "Accepted extensions: wav, mp3, m4a, aac, ogg, mp4, webm, mkv, flac",
       code: "UNSUPPORTED_MEDIA_TYPE",
     });
     expect(mocks.decode).not.toHaveBeenCalled();

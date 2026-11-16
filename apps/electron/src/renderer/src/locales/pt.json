@@ -1483,7 +1483,17 @@
       "joinLink": "Link da reunião",
       "pickTitle": "Eventos de hoje",
       "link": "Vincular evento do calendário",
-      "actionFailed": "A alteração não funcionou. Tente novamente."
+      "actionFailed": "A alteração não funcionou. Tente novamente.",
+      "importDialog": {
+        "title": "Que reunião é esta?",
+        "desc": "{{name}} · data do arquivo {{date}}. Selecione o evento do calendário desta gravação. A reunião recebe o título, o horário de início e as pessoas do evento.",
+        "prevDay": "Dia anterior",
+        "nextDay": "Próximo dia",
+        "noEvents": "Nenhum evento neste dia.",
+        "matchesFileName": "Corresponde ao nome do arquivo",
+        "skip": "Pular",
+        "importAndLink": "Importar e vincular"
+      }
     },
     "tags": {
       "label": "Tags",
@@ -1756,7 +1766,7 @@
     "dropzone": {
       "title": "Solte um arquivo de áudio aqui",
       "subtitle": "para transcrevê-lo",
-      "formats": "Suporta wav, mp3, m4a, aac, ogg, mp4"
+      "formats": "Suporta wav, mp3, m4a, aac, ogg, mp4, webm, mkv, flac"
     },
     "chooseFile": "Escolher arquivo",
     "transcribing": "Transcrevendo… (usa seu provedor atual em Configurações)",

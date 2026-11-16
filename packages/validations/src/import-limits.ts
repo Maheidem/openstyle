@@ -12,6 +12,9 @@ export const IMPORT_EXTENSIONS = [
   "aac",
   "ogg",
   "mp4",
+  "webm",
+  "mkv",
+  "flac",
 ] as const;
 
 /** 1 GiB (1,073,741,824 B) upload ceiling. */

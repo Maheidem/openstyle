@@ -1484,7 +1484,17 @@
       "joinLink": "Lien de la réunion",
       "pickTitle": "Événements du jour",
       "link": "Associer un événement du calendrier",
-      "actionFailed": "La modification a échoué. Réessayez."
+      "actionFailed": "La modification a échoué. Réessayez.",
+      "importDialog": {
+        "title": "Quelle réunion est-ce ?",
+        "desc": "{{name}} · date du fichier {{date}}. Sélectionnez l'événement du calendrier de cet enregistrement. La réunion reçoit le titre, l'heure de début et les participants de l'événement.",
+        "prevDay": "Jour précédent",
+        "nextDay": "Jour suivant",
+        "noEvents": "Aucun événement ce jour-là.",
+        "matchesFileName": "Correspond au nom du fichier",
+        "skip": "Ignorer",
+        "importAndLink": "Importer et lier"
+      }
     },
     "tags": {
       "label": "Étiquettes",
@@ -1757,7 +1767,7 @@
     "dropzone": {
       "title": "Déposez un fichier audio ici",
       "subtitle": "pour le transcrire",
-      "formats": "Prend en charge wav, mp3, m4a, aac, ogg, mp4"
+      "formats": "Prend en charge wav, mp3, m4a, aac, ogg, mp4, webm, mkv, flac"
     },
     "chooseFile": "Choisir un fichier",
     "transcribing": "Transcription en cours… (utilise votre fournisseur actuel des réglages)",

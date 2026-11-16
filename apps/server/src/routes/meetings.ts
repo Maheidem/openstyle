@@ -5,7 +5,6 @@ import { isVocabLeak, TERMS_MARKER } from "@openstyle/stt";
 import { createAppLogger, errorMessage } from "@openstyle/utils";
 import {
   CALENDAR_MAX_ATTENDEES,
-  type CalendarEvent,
   calendarEventSchema,
   MEETINGS_DIR_NAME,
   type MeetingDetail,
@@ -115,6 +114,7 @@ import {
   stageBlock,
 } from "../lib/meetings/stage-needs.js";
 import {
+  calendarColumnValues,
   getMeetingRow,
   type MeetingRow,
   meetingDisplayStatus,
@@ -1109,20 +1109,6 @@ const startSchema = z.object({
   calendar: calendarEventSchema.optional(),
 });
 
-/** SQL values for the six calendar columns. */
-function calendarColumnValues(
-  event: CalendarEvent | null,
-): (string | number | null)[] {
-  return [
-    event?.id ?? null,
-    event?.title ?? null,
-    event?.start ?? null,
-    event?.end ?? null,
-    event?.url ?? null,
-    event ? JSON.stringify(event.attendees) : null,
-  ];
-}
-
 const renameSchema = z
   .object({
     title: z.string().trim().min(1).max(512).optional(),
@@ -1798,16 +1784,20 @@ const meetings = new Hono()
     }
     return c.json({ ...live, paused: isRecordingPaused(id) });
   })
-  // Link or change the calendar event of a meeting. The title follows the
-  // event only when it is empty or still holds the previous event's title.
+  // Link or change the calendar event of a meeting. The event title wins
+  // over a file-name title and an AI title (issue #445). A title the user
+  // typed stays. An empty title, or the previous event's title, always
+  // follows the new event.
   .put("/:id/calendar", zValidator("json", calendarEventSchema), (c) => {
     const id = c.req.param("id");
     const event = c.req.valid("json");
     const row = getMeetingRow(id);
     if (!row) return c.json({ error: "Not found" }, 404);
     const inherited = !row.title?.trim() || row.title === row.calendar_title;
-    const title = inherited ? event.title.trim() || null : row.title;
-    const titleSource = inherited
+    const replace =
+      inherited || (row.title_source !== "user" && event.title.trim() !== "");
+    const title = replace ? event.title.trim() || null : row.title;
+    const titleSource = replace
       ? title
         ? "calendar"
         : "default"
@@ -1830,7 +1820,8 @@ const meetings = new Hono()
     const row = getMeetingRow(id);
     if (!row) return c.json({ error: "Not found" }, 404);
     const fromEvent =
-      row.calendar_title !== null && row.title === row.calendar_title;
+      row.title_source === "calendar" ||
+      (row.calendar_title !== null && row.title === row.calendar_title);
     const title = fromEvent ? null : row.title;
     getDb()
       .prepare(

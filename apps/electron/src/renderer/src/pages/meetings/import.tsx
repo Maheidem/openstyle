@@ -1,3 +1,4 @@
+import type { CalendarEvent } from "@openstyle/validations";
 import { Button } from "@renderer/components/ui/button";
 import { useFileDrop } from "@renderer/hooks/use-file-drop";
 import { getClient } from "@renderer/lib/api";
@@ -11,12 +12,23 @@ import { useQueryClient } from "@tanstack/react-query";
 import { AudioLines, RefreshCw, Upload } from "lucide-react";
 import { useCallback, useState } from "react";
 import { useTranslation } from "react-i18next";
+import { localDayWindow } from "./import-calendar";
+import {
+  ImportCalendarDialog,
+  type ImportCalendarRequest,
+} from "./import-calendar-dialog";
 
 // ---------------------------------------------------------------------------
 // Import (specs/meeting-import.md §4.5): both layouts expose the same
 // click→picker / drag-drop affordance backed by IPC
 // (`window.api.pickMeetingAudioFile` / `importMeetingAudio`). One import in
 // flight at a time; errors render inline and non-destructively.
+//
+// Calendar link (issue #445): with the calendar setting on and access
+// fullAccess, the dialog "Which meeting is this?" shows after the file
+// choice and before the import. The main process checks both: the ranged
+// list answers null when either is false, and then the import starts with
+// no dialog.
 // ---------------------------------------------------------------------------
 
 export type MeetingImportState =
@@ -29,17 +41,23 @@ export function useMeetingImport(onImported: (id: string) => void): {
   importing: boolean;
   handleFile: (file: File) => void;
   handlePick: () => Promise<void>;
+  /** The calendar dialog while it is open, else null. Render it once. */
+  calendarDialog: React.ReactNode;
 } {
   const { t } = useTranslation();
   const queryClient = useQueryClient();
   const [state, setState] = useState<MeetingImportState>({ status: "idle" });
+  const [pending, setPending] = useState<ImportCalendarRequest | null>(null);
 
   const submit = useCallback(
-    async (path: string) => {
+    async (path: string, calendar?: CalendarEvent) => {
       setState({ status: "importing" });
       let result: Awaited<ReturnType<typeof window.api.importMeetingAudio>>;
       try {
-        result = await window.api.importMeetingAudio(path);
+        result = await window.api.importMeetingAudio(
+          path,
+          calendar ? { calendar } : undefined,
+        );
       } catch (err) {
         setState({
           status: "error",
@@ -84,7 +102,34 @@ export function useMeetingImport(onImported: (id: string) => void): {
     [onImported, queryClient, t],
   );
 
-  const busy = state.status === "importing";
+  const busy = state.status === "importing" || pending !== null;
+
+  // Show the calendar dialog when the main process gives a list for the
+  // file's day. A null list (setting off, no access, helper failure) or an
+  // IPC error imports with no dialog, as before issue #445.
+  const begin = useCallback(
+    async (path: string, fileName: string) => {
+      setState({ status: "importing" });
+      let request: ImportCalendarRequest | null = null;
+      try {
+        const fileDate =
+          (await window.api.meetingImportFileDate?.(path)) ?? Date.now();
+        const events = await window.api.calendarListRange?.(
+          localDayWindow(fileDate),
+        );
+        if (events) request = { path, fileName, fileDate, events };
+      } catch {
+        request = null;
+      }
+      if (!request) {
+        void submit(path);
+        return;
+      }
+      setState({ status: "idle" });
+      setPending(request);
+    },
+    [submit],
+  );
 
   const handleFile = useCallback(
     (file: File) => {
@@ -105,9 +150,9 @@ export function useMeetingImport(onImported: (id: string) => void): {
         setState({ status: "error", message: t("meetings.importNoAccess") });
         return;
       }
-      void submit(path);
+      void begin(path, file.name);
     },
-    [busy, submit, t],
+    [busy, begin, t],
   );
 
   const handlePick = useCallback(async () => {
@@ -123,10 +168,33 @@ export function useMeetingImport(onImported: (id: string) => void): {
       });
       return;
     }
-    void submit(path);
-  }, [busy, submit, t]);
+    void begin(path, name);
+  }, [busy, begin, t]);
 
-  return { state, importing: busy, handleFile, handlePick };
+  const calendarDialog = pending ? (
+    <ImportCalendarDialog
+      request={pending}
+      onLink={(event) => {
+        setPending(null);
+        void submit(pending.path, event);
+      }}
+      onSkip={() => {
+        setPending(null);
+        void submit(pending.path);
+      }}
+      onCancel={() => setPending(null)}
+    />
+  ) : null;
+
+  return {
+    state,
+    // The modal dialog covers the page, so the button shows no spinner
+    // while it is open. `busy` still blocks a second file.
+    importing: state.status === "importing",
+    handleFile,
+    handlePick,
+    calendarDialog,
+  };
 }
 
 export function MeetingImportError({

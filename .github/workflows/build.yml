@@ -216,6 +216,23 @@ jobs:
           test -x "$helper"
           "$helper" --self-test
 
+      # The E2E import tests decode WebM with the bundled ffmpeg (issue
+      # #445). Same cache key as the package job, so both jobs share one
+      # binary. Keep these steps after the native-helper cache and compile
+      # steps: the script copies ffmpeg into resources/bin/darwin-arm64,
+      # so no restore of that folder may come after it.
+      - name: Cache built ffmpeg
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/freestyle/ffmpeg
+          key: ${{ runner.os }}-${{ runner.arch }}-ffmpeg-${{ hashFiles('apps/electron/scripts/download-ffmpeg.mjs') }}
+
+      # On a cache miss the script builds ffmpeg from source (about 5 min).
+      # The job took about 16 of its 30 min before, so no raise is needed.
+      - name: Fetch/build ffmpeg
+        working-directory: apps/electron
+        run: node scripts/download-ffmpeg.mjs
+
       - name: Typecheck and build electron app
         working-directory: apps/electron
         run: pnpm run build

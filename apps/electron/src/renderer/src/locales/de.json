@@ -1484,7 +1484,17 @@
       "joinLink": "Meeting-Link",
       "pickTitle": "Termine von heute",
       "link": "Kalendertermin verknüpfen",
-      "actionFailed": "Die Änderung hat nicht funktioniert. Versuchen Sie es erneut."
+      "actionFailed": "Die Änderung hat nicht funktioniert. Versuchen Sie es erneut.",
+      "importDialog": {
+        "title": "Welches Meeting ist das?",
+        "desc": "{{name}} · Dateidatum {{date}}. Wählen Sie den Kalendertermin dieser Aufnahme. Das Meeting erhält den Titel, die Startzeit und die Teilnehmer des Termins.",
+        "prevDay": "Vorheriger Tag",
+        "nextDay": "Nächster Tag",
+        "noEvents": "Keine Termine an diesem Tag.",
+        "matchesFileName": "Passt zum Dateinamen",
+        "skip": "Überspringen",
+        "importAndLink": "Importieren und verknüpfen"
+      }
     },
     "tags": {
       "label": "Tags",
@@ -1757,7 +1767,7 @@
     "dropzone": {
       "title": "Audiodatei hier ablegen",
       "subtitle": "zum Transkribieren",
-      "formats": "Unterstützt wav, mp3, m4a, aac, ogg, mp4"
+      "formats": "Unterstützt wav, mp3, m4a, aac, ogg, mp4, webm, mkv, flac"
     },
     "chooseFile": "Datei auswählen",
     "transcribing": "Wird transkribiert… (verwendet Ihren aktuellen Anbieter aus den Einstellungen)",

@@ -10,7 +10,7 @@ import { CalendarDays, CalendarPlus, Link2, Users } from "lucide-react";
 import { useCallback, useState } from "react";
 import { useTranslation } from "react-i18next";
 
-function formatRange(start: number, end: number, lang: string): string {
+export function formatRange(start: number, end: number, lang: string): string {
   const fmt = new Intl.DateTimeFormat(lang, {
     hour: "2-digit",
     minute: "2-digit",
