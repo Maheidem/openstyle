@@ -67,6 +67,23 @@ export function parseAttendees(
   }
 }
 
+/**
+ * SQL values for the six calendar columns, in this order: event id, title,
+ * start, end, url, attendees JSON. A null event gives six nulls.
+ */
+export function calendarColumnValues(
+  event: CalendarEvent | null,
+): (string | number | null)[] {
+  return [
+    event?.id ?? null,
+    event?.title ?? null,
+    event?.start ?? null,
+    event?.end ?? null,
+    event?.url ?? null,
+    event ? JSON.stringify(event.attendees) : null,
+  ];
+}
+
 /** The linked event as the API shows it, or null when not linked. */
 export function toCalendarEvent(row: MeetingRow): CalendarEvent | null {
   if (!row.calendar_event_id) return null;

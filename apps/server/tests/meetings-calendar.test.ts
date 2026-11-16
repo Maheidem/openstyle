@@ -133,6 +133,37 @@ describe("PUT and DELETE /api/meetings/:id/calendar", () => {
     expect((await getMeeting()).title).toBe("Mine");
   });
 
+  it.each([
+    "file",
+    "ai",
+    "default",
+  ])("replaces a title with source %s by the event title (issue #445)", async (source) => {
+    await start({});
+    getDb()
+      .prepare("UPDATE meetings SET title = ?, title_source = ? WHERE id = ?")
+      .run("Old title", source, "m1");
+    await jsonRequest(app, "PUT", "/api/meetings/m1/calendar", EVENT);
+    const row = getDb()
+      .prepare("SELECT title, title_source FROM meetings WHERE id = 'm1'")
+      .get() as { title: string; title_source: string };
+    expect(row).toEqual({ title: "Weekly sync", title_source: "calendar" });
+  });
+
+  it("keeps a file title when the event has no title", async () => {
+    await start({});
+    getDb()
+      .prepare("UPDATE meetings SET title = ?, title_source = ? WHERE id = ?")
+      .run("memo", "file", "m1");
+    await jsonRequest(app, "PUT", "/api/meetings/m1/calendar", {
+      ...EVENT,
+      title: "  ",
+    });
+    const row = getDb()
+      .prepare("SELECT title, title_source FROM meetings WHERE id = 'm1'")
+      .get() as { title: string; title_source: string };
+    expect(row).toEqual({ title: "memo", title_source: "file" });
+  });
+
   it("changing the event updates an inherited title", async () => {
     await start({ calendar: EVENT });
     await jsonRequest(app, "PUT", "/api/meetings/m1/calendar", {
