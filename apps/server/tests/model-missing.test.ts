@@ -231,6 +231,11 @@ describe("dictation cleanup with a missing model", () => {
     selectGemma();
     seedGemma();
     writeSetting("llm_cleanup", "true");
+    // The disk check passes, so the server starts the worker. The operator
+    // override makes that start fail at once: a real Python worker with a
+    // fake model took over 10 s under full-suite load.
+    const originalWorker = process.env.OPENSTYLE_MLX_LLM_WORKER;
+    process.env.OPENSTYLE_MLX_LLM_WORKER = "/usr/bin/false";
     const heard: string[] = [];
     const off = onCleanupSkipped((m) => heard.push(m.name));
     try {
@@ -239,6 +244,9 @@ describe("dictation cleanup with a missing model", () => {
       expect(heard).toEqual([]);
     } finally {
       off();
+      if (originalWorker === undefined)
+        delete process.env.OPENSTYLE_MLX_LLM_WORKER;
+      else process.env.OPENSTYLE_MLX_LLM_WORKER = originalWorker;
     }
   });
 });
